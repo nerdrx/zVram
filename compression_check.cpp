@@ -84,7 +84,7 @@ int main() try {
         };
         auto staging = make(bytes,VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         void* mapped=nullptr; vkcheck(vkMapMemory(device,staging.memory,0,VK_WHOLE_SIZE,0,&mapped),"map staging");
-        std::vector<uint8_t> check(bytes), payload(bytes); std::mt19937 rng(0x7900); 
+        std::vector<uint8_t> check(bytes), payload(bytes); std::mt19937 rng(0x7900);
         auto run = [&](const char* name, bool random) {
             if(random) for(auto& x:payload) x=static_cast<uint8_t>(rng()); else for(size_t i=0;i<bytes;i++) payload[i]=static_cast<uint8_t>((i%4096<3072)?(i%17):((i/4096)%256));
             std::memcpy(mapped,payload.data(),bytes);
