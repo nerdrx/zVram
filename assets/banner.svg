@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">zVram</title><desc id="desc">Explore memory beyond VRAM. Experimental Vulkan memory research.</desc>
+  <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#11171a"/><stop offset="1" stop-color="#191829"/></linearGradient><linearGradient id="mint"><stop stop-color="#8fffd3"/><stop offset="1" stop-color="#50b69c"/></linearGradient></defs>
+  <rect width="1200" height="360" rx="18" fill="url(#bg)"/>
+  <g fill="none" stroke="#a997ff" opacity=".13"><circle cx="1090" cy="330" r="160"/><circle cx="1090" cy="330" r="195"/><circle cx="1090" cy="330" r="230"/></g>
+  <text x="64" y="64" fill="#8fffd3" font-family="monospace" font-size="13" letter-spacing="3">EXPERIMENTAL / VULKAN MEMORY RESEARCH</text>
+  <text x="60" y="178" fill="#edf4f4" font-family="system-ui, sans-serif" font-weight="700" font-size="100" letter-spacing="-6">z<tspan fill="#8fffd3">Vram</tspan></text>
+  <text x="64" y="232" fill="#b9c4c8" font-family="system-ui, sans-serif" font-size="26">Explore memory beyond VRAM.</text>
+  <text x="64" y="304" fill="#9ba8ae" font-family="monospace" font-size="14">OPT-IN LAYER  /  CAPACITY PROBES  /  MANAGED COMPRESSION</text>
+  <g transform="translate(765 91)">
+    <text fill="#9ba8ae" font-family="monospace" font-size="11" letter-spacing="2">GPU MEMORY</text>
+    <g fill="url(#mint)"><rect y="18" width="42" height="42" rx="4"/><rect x="50" y="18" width="42" height="42" rx="4"/><rect x="100" y="18" width="42" height="42" rx="4"/><rect x="150" y="18" width="42" height="42" rx="4"/><rect x="200" y="18" width="42" height="42" rx="4"/><rect x="250" y="18" width="42" height="42" rx="4"/></g>
+    <path d="M0 97H292" stroke="#a997ff" opacity=".5"/><rect x="46" y="84" width="205" height="25" fill="#171c23"/><text x="62" y="101" fill="#a997ff" font-family="monospace" font-size="11">NATIVE DRIVER SPILLOVER</text>
+    <g fill="#a997ff" fill-opacity=".15" stroke="#a997ff" stroke-opacity=".65"><rect y="127" width="42" height="42" rx="4"/><rect x="50" y="127" width="42" height="42" rx="4"/><rect x="100" y="127" width="42" height="42" rx="4"/><rect x="150" y="127" width="42" height="42" rx="4"/><rect x="200" y="127" width="42" height="42" rx="4"/><rect x="250" y="127" width="42" height="42" rx="4"/></g>
+    <text y="196" fill="#9ba8ae" font-family="monospace" font-size="11" letter-spacing="2">SYSTEM MEMORY</text>
+  </g>
+</svg>

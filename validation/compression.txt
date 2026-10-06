@@ -1,0 +1,7 @@
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=16777216 live-nonlocal=0 peak-nonlocal=16777216 allocation-failures=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+heap[0] size=32411705344 B budget=29537431552 B usage=0 B
+heap[1] size=25753026560 B budget=15183740928 B usage=0 B device-local
+repetitive: original=16777216 stored=58748 B mode=zstd ratio=0.00350165 released-device-allocation=16777216 B, initial-copy=2.00222 ms compress=2.20556 ms decompress=0.475272 ms restore-copy=1.52244 ms
+seeded-random: original=16777216 stored=16777216 B mode=raw ratio=1 released-device-allocation=16777216 B, initial-copy=2.63382 ms compress=2.54517 ms decompress=0.853824 ms restore-copy=1.71496 ms
