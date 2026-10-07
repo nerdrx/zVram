@@ -37,6 +37,9 @@ extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipFreeA
 extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipMemGetInfo(size_t*, size_t*);
 extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipDeviceTotalMem(size_t*, hipDevice_t);
 extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipGetDeviceProperties(hipDeviceProp_t*, int);
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipGetLastError();
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipExtGetLastError();
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipPeekAtLastError();
 
 using HipMallocFn = hipError_t (*)(void**, size_t);
 using HipHostMallocFn = hipError_t (*)(void**, size_t, unsigned int);
@@ -53,6 +56,7 @@ using HipDeviceTotalMemFn = hipError_t (*)(size_t*, hipDevice_t);
 using HipGetDevicePropertiesFn = hipError_t (*)(hipDeviceProp_t*, int);
 using HipGetProcAddressFn = hipError_t (*)(const char*, void**, int, uint64_t,
                                             hipDriverProcAddressQueryResult*);
+using HipLastErrorFn = hipError_t (*)();
 using HipMemGetGranularityFn = hipError_t (*)(size_t*, const hipMemAllocationProp*,
                                                hipMemAllocationGranularity_flags);
 using HipMemCreateFn = hipError_t (*)(hipMemGenericAllocationHandle_t*, size_t,
@@ -138,6 +142,62 @@ HipGetProcAddressFn realHipGetProcAddress() {
   static const auto function = nextSymbol<HipGetProcAddressFn>("hipGetProcAddress");
   return function;
 }
+HipLastErrorFn realHipGetLastError() {
+  static const auto function = nextSymbol<HipLastErrorFn>("hipGetLastError");
+  return function;
+}
+HipLastErrorFn realHipExtGetLastError() {
+  static const auto function = nextSymbol<HipLastErrorFn>("hipExtGetLastError");
+  return function;
+}
+HipLastErrorFn realHipPeekAtLastError() {
+  static const auto function = nextSymbol<HipLastErrorFn>("hipPeekAtLastError");
+  return function;
+}
+
+thread_local hipError_t gShadowError = hipSuccess;
+thread_local unsigned int gPrimaryDepth = 0;
+
+// Native HIP retains an internal OOM even after a successful host fallback.
+// Preserve the caller's pending error, then expose only the wrapped call's result.
+class PrimaryCallBoundary {
+ public:
+  PrimaryCallBoundary() noexcept : outer_(gPrimaryDepth == 0) {
+    ++gPrimaryDepth;
+    if (!outer_) return;
+    const auto peek = realHipPeekAtLastError();
+    prior_ = peek ? peek() : hipSuccess;
+    if (prior_ == hipSuccess) prior_ = gShadowError;
+    const auto get = realHipGetLastError();
+    if (get) (void)get();
+  }
+
+  PrimaryCallBoundary(const PrimaryCallBoundary&) = delete;
+  PrimaryCallBoundary& operator=(const PrimaryCallBoundary&) = delete;
+
+  ~PrimaryCallBoundary() noexcept {
+    if (!finished_) (void)finish(hipErrorOutOfMemory);
+  }
+
+  hipError_t finish(hipError_t status) noexcept {
+    if (finished_) return status;
+    if (outer_) {
+      const auto get = realHipGetLastError();
+      if (get) (void)get();
+      if (gPrimaryDepth) --gPrimaryDepth;
+      gShadowError = status == hipSuccess ? prior_ : status;
+    } else if (gPrimaryDepth) {
+      --gPrimaryDepth;
+    }
+    finished_ = true;
+    return status;
+  }
+
+ private:
+  bool outer_{};
+  bool finished_{};
+  hipError_t prior_{hipSuccess};
+};
 HipMemGetGranularityFn realHipMemGetGranularity() {
   static const auto function = nextSymbol<HipMemGetGranularityFn>("hipMemGetAllocationGranularity");
   return function;
@@ -1455,6 +1515,15 @@ void* wrappedProcedure(const char* symbol, void* realAddress) {
   if (devicePropertiesName &&
       realAddress == functionAddress(realHipGetDeviceProperties()))
     return functionAddress(&zvramWrappedHipGetDeviceProperties);
+  if (std::strcmp(symbol, "hipGetLastError") == 0 &&
+      realAddress == functionAddress(realHipGetLastError()))
+    return functionAddress(&zvramWrappedHipGetLastError);
+  if (std::strcmp(symbol, "hipExtGetLastError") == 0 &&
+      realAddress == functionAddress(realHipExtGetLastError()))
+    return functionAddress(&zvramWrappedHipExtGetLastError);
+  if (std::strcmp(symbol, "hipPeekAtLastError") == 0 &&
+      realAddress == functionAddress(realHipPeekAtLastError()))
+    return functionAddress(&zvramWrappedHipPeekAtLastError);
   return nullptr;
 }
 
@@ -1462,32 +1531,69 @@ void* wrappedProcedure(const char* symbol, void* realAddress) {
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipMalloc(void** pointer, size_t bytes) {
-  return wrapHipMalloc(pointer, bytes);
+  PrimaryCallBoundary boundary;
+  return boundary.finish(wrapHipMalloc(pointer, bytes));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipFree(void* pointer) {
-  return wrapHipFree(pointer);
+  PrimaryCallBoundary boundary;
+  return boundary.finish(wrapHipFree(pointer));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipFreeAsync(void* pointer, hipStream_t stream) {
-  return wrapHipFreeAsync(pointer, stream);
+  PrimaryCallBoundary boundary;
+  return boundary.finish(wrapHipFreeAsync(pointer, stream));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipMemGetInfo(size_t* free, size_t* total) {
-  return wrapHipMemGetInfo(free, total);
+  PrimaryCallBoundary boundary;
+  return boundary.finish(wrapHipMemGetInfo(free, total));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipDeviceTotalMem(size_t* bytes, hipDevice_t device) {
-  return wrapHipDeviceTotalMem(bytes, device);
+  PrimaryCallBoundary boundary;
+  return boundary.finish(wrapHipDeviceTotalMem(bytes, device));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipGetDeviceProperties(hipDeviceProp_t* properties, int device) {
-  return wrapHipGetDeviceProperties(properties, device);
+  PrimaryCallBoundary boundary;
+  return boundary.finish(wrapHipGetDeviceProperties(properties, device));
+}
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t
+zvramWrappedHipGetLastError() {
+  const auto next = realHipGetLastError();
+  if (!next) return hipErrorNotSupported;
+  if (gPrimaryDepth) return next();
+  const hipError_t native = next();
+  const hipError_t result = native == hipSuccess ? gShadowError : native;
+  gShadowError = hipSuccess;
+  return result;
+}
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t
+zvramWrappedHipExtGetLastError() {
+  const auto next = realHipExtGetLastError();
+  if (!next) return hipErrorNotSupported;
+  if (gPrimaryDepth) return next();
+  const hipError_t native = next();
+  const hipError_t result = native == hipSuccess ? gShadowError : native;
+  gShadowError = hipSuccess;
+  return result;
+}
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t
+zvramWrappedHipPeekAtLastError() {
+  const auto next = realHipPeekAtLastError();
+  if (!next) return hipErrorNotSupported;
+  if (gPrimaryDepth) return next();
+  const hipError_t native = next();
+  return native == hipSuccess ? gShadowError : native;
 }
 
 extern "C" hipError_t hipMalloc(void** pointer, size_t bytes) {
@@ -1513,6 +1619,18 @@ extern "C" hipError_t hipDeviceTotalMem(size_t* bytes, hipDevice_t device) {
 // The installed headers expose this ABI as hipGetDevicePropertiesR0600.
 extern "C" hipError_t hipGetDeviceProperties(hipDeviceProp_t* properties, int device) {
   return zvramWrappedHipGetDeviceProperties(properties, device);
+}
+
+extern "C" hipError_t hipGetLastError() {
+  return zvramWrappedHipGetLastError();
+}
+
+extern "C" hipError_t hipExtGetLastError() {
+  return zvramWrappedHipExtGetLastError();
+}
+
+extern "C" hipError_t hipPeekAtLastError() {
+  return zvramWrappedHipPeekAtLastError();
 }
 
 extern "C" hipError_t hipGetProcAddress(

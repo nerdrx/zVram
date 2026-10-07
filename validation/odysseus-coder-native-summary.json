@@ -1,0 +1,44 @@
+{
+  "run": {
+    "label": "native",
+    "command": [
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-build/bin/llama-completion",
+      "--model",
+      "/run/media/nerdrx/Lex/Odysseus/data/ollama/models/blobs/sha256-9fddd9b57b678ca9f9f7b07b02c6f7107bc0f8b307e2383a68cf7a513e6ae0f5",
+      "--gpu-layers",
+      "999",
+      "--ctx-size",
+      "512",
+      "--batch-size",
+      "128",
+      "--predict",
+      "1",
+      "--temp",
+      "0",
+      "--seed",
+      "1",
+      "--load-mode",
+      "none",
+      "--fit",
+      "off",
+      "--flash-attn",
+      "off",
+      "--verbose",
+      "--simple-io",
+      "--no-display-prompt",
+      "--prompt",
+      "Once upon a time, a deterministic GPU memory test"
+    ],
+    "stdout_path": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/odysseus-coder-native/native.stdout.txt",
+    "stderr_path": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/odysseus-coder-native/native.stderr.txt",
+    "returncode": 1,
+    "timed_out": false,
+    "launch_error": null
+  },
+  "metrics": {
+    "last_offloaded_layers": null,
+    "rocm_model_buffers_mib": [],
+    "largest_rocm_model_buffer_mib": 0.0
+  },
+  "stdout_nonempty": false
+}

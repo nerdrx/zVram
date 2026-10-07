@@ -1,0 +1,19 @@
+hip-fallback-error-state
+15/18 Test: hip-fallback-error-state
+Command: "/usr/bin/cmake" "-E" "env" "LD_PRELOAD=/home/nerdrx/Documents/ChatGPT/NX/zvram/build/libzvram_hip_oom_test.so" "ZVRAM_TEST_NATIVE_ERROR=1" "HIP_VISIBLE_DEVICES=0" "--unset=ZVRAM_HIP_LOCAL_LIMIT_MIB" "--unset=ZVRAM_HIP_VMM" "--unset=ZVRAM_HIP_REPORT_CAPACITY" "--unset=ZVRAM_TEST_VMM_FAIL_AFTER" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-error-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"hip-fallback-error-state" start time: Oct 07 02:59 CEST
+Output:
+----------------------------------------------------------
+[zvram-hip] mapped-host fallback refused by available-RAM/reserve or host limit
+[zvram-hip] mapped-host fallback refused by available-RAM/reserve or host limit
+[zvram-hip] mapped-host fallback refused by available-RAM/reserve or host limit
+[zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=134217728 host_pinned_backing_bytes_current=0 pending=0 peak=33554432 native_allocations=0 mapped_host_allocations=3 hybrid_vmm_allocations=0 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=1 failures=3; mapped host is pinned host RAM, not compressed VRAM
+HIP host error-state check PASS
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"hip-fallback-error-state" end time: Oct 07 02:59 CEST
+"hip-fallback-error-state" time elapsed: 00:00:00
+----------------------------------------------------------

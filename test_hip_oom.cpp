@@ -5,8 +5,37 @@
 #include <atomic>
 #include <cstdlib>
 
+namespace {
+bool probeNativeOom() {
+    using Malloc = hipError_t (*)(void**, size_t);
+    using Free = hipError_t (*)(void*);
+    static void* runtime = dlopen("libamdhip64.so", RTLD_NOW | RTLD_LOCAL);
+    if (!runtime) return false;
+    static auto nativeMalloc = reinterpret_cast<Malloc>(dlsym(runtime, "hipMalloc"));
+    static auto nativeFree = reinterpret_cast<Free>(dlsym(runtime, "hipFree"));
+    if (!nativeMalloc) return false;
+    constexpr size_t probeBytes = size_t{64} * 1024 * 1024 * 1024;
+    void* pointer = nullptr;
+    const hipError_t status = nativeMalloc(&pointer, probeBytes);
+    if (status == hipSuccess) {
+        if (pointer && nativeFree) (void)nativeFree(pointer);
+        return false;
+    }
+    return status == hipErrorOutOfMemory;
+}
+bool injectNativeOom() {
+    if (!std::getenv("ZVRAM_TEST_NATIVE_ERROR")) return true;
+    static std::atomic<bool> probed{false};
+    return probed.exchange(true) || probeNativeOom();
+}
+}  // namespace
+
 extern "C" hipError_t hipMalloc(void** pointer, size_t bytes) {
     if (pointer && bytes && !std::getenv("ZVRAM_TEST_VMM_FAIL_AFTER")) {
+        if (!injectNativeOom()) {
+            *pointer = nullptr;
+            return hipErrorUnknown;
+        }
         *pointer = nullptr;
         return hipErrorOutOfMemory;
     }
@@ -18,6 +47,10 @@ extern "C" hipError_t hipMalloc(void** pointer, size_t bytes) {
 extern "C" hipError_t hipMemCreate(hipMemGenericAllocationHandle_t* handle,
                                     size_t bytes, const hipMemAllocationProp* properties,
                                     unsigned long long flags) {
+    if (!injectNativeOom()) {
+        if (handle) *handle = {};
+        return hipErrorUnknown;
+    }
     static std::atomic<unsigned long> calls{0};
     const char* limit = std::getenv("ZVRAM_TEST_VMM_FAIL_AFTER");
     if (limit && ++calls > std::strtoul(limit, nullptr, 10)) {

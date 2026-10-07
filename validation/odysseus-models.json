@@ -1,0 +1,31 @@
+{
+  "source": "live local Ollama bind mount and manifests",
+  "models": [
+    {
+      "name": "huihui-qwen3-coder:30b-local",
+      "weights": [
+        {
+          "path": "/run/media/nerdrx/Lex/Odysseus/data/ollama/models/blobs/sha256-9fddd9b57b678ca9f9f7b07b02c6f7107bc0f8b307e2383a68cf7a513e6ae0f5",
+          "manifest_sha256": "sha256:9fddd9b57b678ca9f9f7b07b02c6f7107bc0f8b307e2383a68cf7a513e6ae0f5",
+          "size_bytes": 18556688736,
+          "gguf_magic": "GGUF",
+          "verified_sha256": "9fddd9b57b678ca9f9f7b07b02c6f7107bc0f8b307e2383a68cf7a513e6ae0f5",
+          "matches_manifest_digest": true
+        }
+      ]
+    },
+    {
+      "name": "huihui-qwen3.8:27b-local",
+      "weights": [
+        {
+          "path": "/run/media/nerdrx/Lex/Odysseus/data/ollama/models/blobs/sha256-6c2c13cef89238c3604d756b07b3ef5fafebbd61095feb8553ff449c95e4c1c6",
+          "manifest_sha256": "sha256:6c2c13cef89238c3604d756b07b3ef5fafebbd61095feb8553ff449c95e4c1c6",
+          "size_bytes": 16810714400,
+          "gguf_magic": "GGUF",
+          "verified_sha256": "6c2c13cef89238c3604d756b07b3ef5fafebbd61095feb8553ff449c95e4c1c6",
+          "matches_manifest_digest": true
+        }
+      ]
+    }
+  ]
+}

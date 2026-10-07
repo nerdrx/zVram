@@ -1,0 +1,19 @@
+hip-vmm-error-state
+16/18 Test: hip-vmm-error-state
+Command: "/usr/bin/cmake" "-E" "env" "LD_PRELOAD=/home/nerdrx/Documents/ChatGPT/NX/zvram/build/libzvram_hip_oom_test.so" "ZVRAM_TEST_NATIVE_ERROR=1" "HIP_VISIBLE_DEVICES=0" "--unset=ZVRAM_TEST_VMM_FAIL_AFTER" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-report-capacity" "--hip-local-mib" "16" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-error-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"hip-vmm-error-state" start time: Oct 07 02:59 CEST
+Output:
+----------------------------------------------------------
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+[zvram-hip] hybrid VMM allocation: logical=65536 mapped=65536 VRAM=65536 host_pinned=0 handles=1
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+[zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=3 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=1 failures=3; mapped host is pinned host RAM, not compressed VRAM
+HIP host error-state check PASS
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"hip-vmm-error-state" end time: Oct 07 02:59 CEST
+"hip-vmm-error-state" time elapsed: 00:00:00
+----------------------------------------------------------

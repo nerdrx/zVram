@@ -94,6 +94,10 @@ bool checkSmallFreePaths(int device) {
         std::cout << "mapped-host hipFreeAsync correctly rejected; pointer remains "
                      "available for hipFree\n";
       }
+      if (hipGetLastError() != asyncFree) {
+        std::cerr << "HIP sticky error did not match the rejected async free\n";
+        ok = false;
+      }
     }
 
     int freeDevice = device;

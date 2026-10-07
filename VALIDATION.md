@@ -185,3 +185,30 @@ Both procedure checks passed. The physical-query run reported 24 GiB and used a 
 `check_model.py` repeated the same small F16 model with fit disabled and `--load-mode none`, using the existing llama.cpp build and model provenance above. Both native and VMM runs exited 0, offloaded 31/31 layers, and logged an actual 256.63 MiB ROCm model buffer. Their greedy 32-token output matched byte for byte (SHA-256 `d798f86733d30a691d3907c380ff89fcb95f5022a3e927c921e82e2b0345f0f1`). The VMM run recorded eight hybrid allocations, with cleanup/failure counters zero. A separate one-token `--vmm-only` check also passed; that mode explicitly omits native comparison. Neither small check proves large-model capacity.
 
 [Reproducer summary](validation/llama-repro-summary.json), [native log](validation/llama-repro-native.stderr.txt), [VMM log](validation/llama-repro-vmm.stderr.txt), [native stdout](validation/llama-repro-native.stdout.txt), [VMM stdout](validation/llama-repro-vmm.stdout.txt). The report keeps the measured actual model-buffer threshold separate from the configured logical capacity.
+
+## Existing Odysseus models
+
+The live local Ollama server stores two larger, unchanged Q4_K_M GGUF weight files. Their local aliases reuse the same blobs as their upstream model names; they are not four independent models. Both complete file SHA-256 values were checked against the local manifests. The 27B model's Ollama package size also includes a vision projector; the inference checks below use its text weight blob.
+
+| Model | Weight file bytes | Verified SHA-256 | Actual ROCm model buffer |
+|---|---:|---|---:|
+| `huihui-qwen3-coder:30b-local` | 18,556,688,736 | `9fddd9b57b678ca9f9f7b07b02c6f7107bc0f8b307e2383a68cf7a513e6ae0f5` | 17,524.43 MiB |
+| `huihui-qwen3.8:27b-local` | 16,810,714,400 | `6c2c13cef89238c3604d756b07b3ef5fafebbd61095feb8553ff449c95e4c1c6` | 15,088.32 MiB |
+
+Each first passed a separate `check_model.py --vmm-only` run with a 4,096 MiB local cap, 20,000 MiB GTT cap, context 512, batch 128, greedy sampling, and the same unmodified llama.cpp build documented above. Full layer offload was 49/49 and 66/66. The 30B run generated one token and the 27B run two; these are short compatibility checks. The 30B weight allocation used 4 GiB local + 14,080,733,184 bytes GTT; the 27B allocation used 4 GiB local + 11,526,283,264 bytes GTT. Both exited 0, with cleanup and failure counters zero. [30B summary](validation/odysseus-coder-summary.json), [27B summary](validation/odysseus-27b-summary.json).
+
+A separate native 30B run using the same model and application arguments returned exit 1: native `hipMalloc` could not allocate its 18,375,698,432-byte weight buffer with the desktop's current memory use. This is a capacity improvement under that observed headroom, not evidence that an otherwise idle 24 GiB card cannot fit this model. [Native log](validation/odysseus-coder-native.stderr.txt).
+
+### Concurrent inference
+
+The two VMM processes then ran concurrently, with the same per-process 4 GiB local / 20,000 MiB GTT caps, generating 64 and 32 tokens. Both exited 0, fully offloaded their layers, and reported zero live allocations, pending operations, orphaned cleanup, or failures on exit. A 100 ms sampler observed **116 samples with both processes alive and both outputs nonempty**, approximately 11.6 seconds of overlap. Their actual GPU model buffers sum to **32,612.75 MiB (31.85 GiB, about 34.2 GB)**, exceeding the physical 24 GiB card. File sizes are not used as the GPU-memory measurement.
+
+The two processes each peaked at 4 GiB local backing. Host/GTT peaks were 14,257,631,232 and 11,891,027,968 bytes including context/compute allocations. Driver-wide VRAM/GTT peaks were 19,551,813,632 / 28,863,438,848 bytes; these include other applications and need not occur in the same sample. `MemAvailable` stayed at or above 14,349,968 KiB. GTT accounting was 2,689,425,408 bytes before and 2,685,231,104 after. The per-process caps are independent, not a global VRAM reservation policy.
+
+[Concurrent report and samples](validation/odysseus-pair-summary.json), [30B log](validation/odysseus-pair-coder30b.stderr.log), [27B log](validation/odysseus-pair-dense27b.stderr.log), [hardware-specific runner](validation/odysseus-pair-runner.py), [file provenance](validation/odysseus-models.json). The runner reproduces this host's paths and caps; adjust them for another machine. These checks establish concurrent unchanged-model inference through GPU-accessible GTT backing. They do not demonstrate compressed inference, a single 40 GiB model, performance improvement, or arbitrary application compatibility.
+
+## HIP error-state compatibility
+
+A successful mapped-host fallback previously left its internal native OOM visible through `hipGetLastError`. The shim now preserves prior caller errors, hides errors from successful internal fallback steps, and exposes rejected wrapped calls through thread-local error queries. The installed error-query ABIs also participate in the supported `hipGetProcAddress` lookup path.
+
+The mapped-host and VMM checks each injected a real native 64 GiB allocation failure inside a successful allocation path, then verified clean peek/get/ext-get results and a 64 KiB byte-for-byte copy. They also verified that a prior native error survives successful allocation/capacity queries, quota failures remain visible until cleared, rejected async free retains the allocation, newer native errors take precedence, and errors remain isolated between two threads. Three intentional quota rejections appear in each failure counter; final tracked/pending/orphaned allocation counters were zero. [Mapped-host log](validation/hip-fallback-error-state.txt), [VMM log](validation/hip-vmm-error-state.txt). All 18 CTests passed after this change on the documented GPU.

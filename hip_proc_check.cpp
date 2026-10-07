@@ -103,7 +103,8 @@ int main(int argc, char** argv) try {
   auto memcpy = resolve<HipMemcpyFn>("hipMemcpy");
 
   for (const char* name : {"hipMalloc", "hipFree", "hipFreeAsync", "hipMemGetInfo",
-                           "hipDeviceTotalMem", "hipGetDeviceProperties"})
+                           "hipDeviceTotalMem", "hipGetDeviceProperties", "hipGetLastError",
+                           "hipExtGetLastError", "hipPeekAtLastError"})
     requireIntercepted(hipGetProcAddress, nativeResolver, name);
 
   // Compare normal non-wrapper and failure cases with the direct runtime resolver.

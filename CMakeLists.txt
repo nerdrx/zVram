@@ -76,6 +76,11 @@ if(ZVRAM_BUILD_HIP)
         target_compile_features(zvram-hip-proc-check PRIVATE cxx_std_17)
         target_compile_definitions(zvram-hip-proc-check PRIVATE __HIP_PLATFORM_AMD__=1)
         target_link_libraries(zvram-hip-proc-check PRIVATE ${ZVRAM_HIP_RUNTIME} ${CMAKE_DL_LIBS})
+        add_executable(zvram-hip-error-check hip_error_check.cpp)
+        target_include_directories(zvram-hip-error-check PRIVATE ${ZVRAM_HIP_INCLUDE})
+        target_compile_features(zvram-hip-error-check PRIVATE cxx_std_17)
+        target_compile_definitions(zvram-hip-error-check PRIVATE __HIP_PLATFORM_AMD__=1)
+        target_link_libraries(zvram-hip-error-check PRIVATE ${ZVRAM_HIP_RUNTIME} Threads::Threads)
         foreach(check hip_check hip_probe vmm_probe)
             add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${check}
                 COMMAND ${ZVRAM_HIPCC} --offload-arch=${ZVRAM_HIP_ARCH} -O2 -std=c++17 -pthread
@@ -107,6 +112,18 @@ if(ZVRAM_BUILD_HIP)
         add_test(NAME hip-procedure-vmm-query COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-report-capacity --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-proc-check>)
         endif()
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME hip-fallback-error-state COMMAND ${CMAKE_COMMAND} -E env
+            "LD_PRELOAD=$<TARGET_FILE:zvram_hip_oom_test>" "ZVRAM_TEST_NATIVE_ERROR=1" "HIP_VISIBLE_DEVICES=0"
+            --unset=ZVRAM_HIP_LOCAL_LIMIT_MIB --unset=ZVRAM_HIP_VMM
+            --unset=ZVRAM_HIP_REPORT_CAPACITY --unset=ZVRAM_TEST_VMM_FAIL_AFTER
+            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-error-check>)
+        if(DRM_AMDGPU_FOUND)
+        add_test(NAME hip-vmm-error-state COMMAND ${CMAKE_COMMAND} -E env
+            "LD_PRELOAD=$<TARGET_FILE:zvram_hip_oom_test>" "ZVRAM_TEST_NATIVE_ERROR=1" "HIP_VISIBLE_DEVICES=0"
+            --unset=ZVRAM_TEST_VMM_FAIL_AFTER
+            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-report-capacity
+            --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-error-check>)
+        endif()
         add_test(NAME hip-injected-oom-integrity COMMAND ${Python3_EXECUTABLE} -c
             "import os,subprocess; e=os.environ.copy(); e['LD_PRELOAD']='${CMAKE_CURRENT_BINARY_DIR}/libzvram_hip_oom_test.so'; e.pop('ZVRAM_HIP_LOCAL_LIMIT_MIB',None); e.pop('ZVRAM_HIP_VMM',None); p=subprocess.run(['${CMAKE_CURRENT_SOURCE_DIR}/zvram','--hip','--hip-host-mib','64','--','${CMAKE_CURRENT_BINARY_DIR}/hip_check'],env=e,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True); print(p.stdout); assert p.returncode==0; assert 'mapped_host_allocations=6 ' in p.stdout")
         if(DRM_AMDGPU_FOUND)
