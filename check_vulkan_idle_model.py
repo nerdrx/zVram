@@ -190,6 +190,7 @@ def main():
     parser.add_argument("--validate", action="store_true", help="enable Vulkan core/synchronization validation on both runs")
     parser.add_argument("--resident-mib", type=int, help="test pressure admission limit; requires --range-mib")
     parser.add_argument("--strict-robustness", action="store_true", help="enable supported robustness2 for narrow descriptor ranges")
+    parser.add_argument("--clean-cache", action="store_true", help="retain and reuse snapshots after proven read-only GPU work")
     parser.add_argument("--resident-after-cold", action="store_true", help="allow bootstrap then arm pressure admission after all eligible backing is cold")
     parser.add_argument("--max-nodes-per-submit", type=int, help="set llama.cpp graph batching identically for both runs")
     parser.add_argument("--serialize-submissions", action="store_true", help="use llama.cpp synchronous submissions identically for both runs")
@@ -206,6 +207,8 @@ def main():
         parser.error("--resident-mib requires --range-mib and positive size fitting 64-bit bytes")
     if args.strict_robustness and args.range_mib is None:
         parser.error("--strict-robustness requires --range-mib")
+    if args.clean_cache and args.range_mib is None:
+        parser.error("--clean-cache requires --range-mib")
     if args.resident_after_cold and args.resident_mib is None:
         parser.error("--resident-after-cold requires --resident-mib")
     if args.max_nodes_per_submit is not None and not 1 <= args.max_nodes_per_submit <= (1 << 32) - 1:
@@ -257,6 +260,8 @@ def main():
         command.append("--vulkan-resident-after-cold")
     if args.strict_robustness:
         command.append("--vulkan-strict-robustness")
+    if args.clean_cache:
+        command.append("--vulkan-clean-cache")
     if args.validate:
         command += ["--validate", "--isolate-layers"]
     command += ["--", *app]
@@ -302,6 +307,13 @@ def main():
     resident_states = [int(value) for value in re.findall(r"snapshot state event=[^ ]+ resident=(\d+)", admission_text)]
     if args.strict_robustness:
         checks["bounded_robustness_enabled"] = "bounded Vulkan robustness enabled" in auto_text
+    cache_states = [tuple(map(int, values)) for values in re.findall(
+        r"snapshot state [^\n]*cold-stored=(\d+)[^\n]*cache-stored=(\d+) clean-reuses=(\d+) cache-invalidations=(\d+)", auto_text)]
+    if args.clean_cache:
+        checks["clean_cache_enabled"] = "Vulkan clean snapshot cache enabled" in auto_text
+        checks["clean_cache_reused"] = any(reuses > 0 for _, _, reuses, _ in cache_states)
+        checks["clean_cache_invalidated"] = any(invalidations > 0 for _, _, _, invalidations in cache_states)
+        checks["shared_cold_cache_budget"] = bool(cache_states) and all(cold + cached <= args.cold_mib * MiB for cold, cached, _, _ in cache_states)
     if args.resident_mib is not None:
         if args.resident_after_cold:
             checks["resident_admission_armed"] = "resident admission armed after complete cold transition" in auto_text
@@ -316,6 +328,7 @@ def main():
               "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
               "resident_admission_events": pressure_events,
               "tracked_resident_peak_after_arming": max(resident_states) if resident_states else None,
+              "clean_cache_state": cache_states[-1] if cache_states else None,
               "native": {k: v for k, v in native.items() if k not in ("stdout", "stderr")},
               "automatic": {k: v for k, v in auto.items() if k not in ("stdout", "stderr")},
               "automatic_cold_state_before_prompt": cold_state,

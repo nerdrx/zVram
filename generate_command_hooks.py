@@ -130,11 +130,11 @@ def action(name, params):
     if name == "vkCmdUpdateBuffer":
         return ["bufferRange(commandBuffer, dstBuffer, dstOffset, dataSize);"]
     if name == "vkCmdBindDescriptorSets":
-        return ["descriptors(commandBuffer, descriptorSetCount, pDescriptorSets);"]
+        return ["descriptors(commandBuffer, descriptorSetCount, pDescriptorSets, firstSet);"]
     if name == "vkCmdBindPipeline":
         return ["pipeline(commandBuffer, pipeline);"]
     if name == "vkCmdDispatchIndirect":
-        return ["bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand));"]
+        return ["bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand), false);"]
     if name == "vkCmdExecuteCommands":
         return ["secondary(commandBuffer, commandBufferCount, pCommandBuffers);"]
     if name in NO_ACTION:
@@ -202,7 +202,7 @@ def generate(registry):
         if calls == ["copy-buffer"]:
             out += ["                if (regionCount && !pRegions) d->submission.unknown(commandBuffer);",
                     "                else for (std::uint32_t i=0; i<regionCount; ++i) {",
-                    "                    d->submission.bufferRange(commandBuffer, srcBuffer, pRegions[i].srcOffset, pRegions[i].size);",
+                    "                    d->submission.bufferRange(commandBuffer, srcBuffer, pRegions[i].srcOffset, pRegions[i].size, false);",
                     "                    d->submission.bufferRange(commandBuffer, dstBuffer, pRegions[i].dstOffset, pRegions[i].size);",
                     "                }"]
         elif calls == ["copy-buffer-2"]:
@@ -216,7 +216,7 @@ def generate(registry):
                     "                    if (unknownRegion) d->submission.unknown(commandBuffer);",
                     "                    else for (std::uint32_t i=0; i<pCopyBufferInfo->regionCount; ++i) {",
                     "                        const auto& region=pCopyBufferInfo->pRegions[i];",
-                    "                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->srcBuffer, region.srcOffset, region.size);",
+                    "                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->srcBuffer, region.srcOffset, region.size, false);",
                     "                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->dstBuffer, region.dstOffset, region.size);",
                     "                    }",
                     "                }"]

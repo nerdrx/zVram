@@ -284,7 +284,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindDescriptorSets(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.descriptors(commandBuffer, descriptorSetCount, pDescriptorSets);
+                d->submission.descriptors(commandBuffer, descriptorSetCount, pDescriptorSets, firstSet);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -523,7 +523,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchIndirect(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand));
+                d->submission.bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand), false);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -636,7 +636,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBuffer(
             if (d->selectiveRestore) {
                 if (regionCount && !pRegions) d->submission.unknown(commandBuffer);
                 else for (std::uint32_t i=0; i<regionCount; ++i) {
-                    d->submission.bufferRange(commandBuffer, srcBuffer, pRegions[i].srcOffset, pRegions[i].size);
+                    d->submission.bufferRange(commandBuffer, srcBuffer, pRegions[i].srcOffset, pRegions[i].size, false);
                     d->submission.bufferRange(commandBuffer, dstBuffer, pRegions[i].dstOffset, pRegions[i].size);
                 }
             }
@@ -4528,7 +4528,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBuffer2(
                     if (unknownRegion) d->submission.unknown(commandBuffer);
                     else for (std::uint32_t i=0; i<pCopyBufferInfo->regionCount; ++i) {
                         const auto& region=pCopyBufferInfo->pRegions[i];
-                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->srcBuffer, region.srcOffset, region.size);
+                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->srcBuffer, region.srcOffset, region.size, false);
                         d->submission.bufferRange(commandBuffer, pCopyBufferInfo->dstBuffer, region.dstOffset, region.size);
                     }
                 }
@@ -4562,7 +4562,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBuffer2KHR(
                     if (unknownRegion) d->submission.unknown(commandBuffer);
                     else for (std::uint32_t i=0; i<pCopyBufferInfo->regionCount; ++i) {
                         const auto& region=pCopyBufferInfo->pRegions[i];
-                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->srcBuffer, region.srcOffset, region.size);
+                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->srcBuffer, region.srcOffset, region.size, false);
                         d->submission.bufferRange(commandBuffer, pCopyBufferInfo->dstBuffer, region.dstOffset, region.size);
                     }
                 }

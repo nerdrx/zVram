@@ -126,7 +126,7 @@ PFN_vkVoidFunction submissionHookLookup(const char* name) {
     return nullptr;
 }
 
-bool commandMemories(Device&,const std::vector<VkCommandBuffer>&,std::vector<ActiveRefs::Use>&);
+bool commandMemories(Device&,const std::vector<VkCommandBuffer>&,std::vector<ActiveRefs::Use>&,bool writesOnly=false);
 
 // Called with the existing device and queue gates held.
 VkResult restoreTrackedCommands(Device& d,const std::vector<VkCommandBuffer>& commands) {
@@ -195,17 +195,14 @@ VkResult restoreForQueue(Device& d,const char*,std::uint32_t count,const VkSubmi
 // Unknown accesses protect every pool until that queue epoch retires.
 template<class... Args>
 bool queueMemories(Device&,const char*,std::vector<ActiveRefs::Use>&,Args...) { return false; }
-bool commandMemories(Device& d,const std::vector<VkCommandBuffer>& commands,std::vector<ActiveRefs::Use>& memories) {
+bool commandMemories(Device& d,const std::vector<VkCommandBuffer>& commands,std::vector<ActiveRefs::Use>& memories,bool writesOnly) {
     if(!d.selectiveRestore || unknownCommandProc) return false;
     std::vector<VkSubmissionTracker::BufferRange> ranges;
-    if(d.rangeChunkBytes && d.narrowDescriptorRanges) {
-        if(!d.submission.collectRanges(static_cast<std::uint32_t>(commands.size()),commands.data(),ranges)) return false;
-    } else {
-        std::vector<VkBuffer> buffers;
-        if(!d.submission.collect(static_cast<std::uint32_t>(commands.size()),commands.data(),buffers)) return false;
-        for(auto buffer:buffers) ranges.push_back({buffer,0,VK_WHOLE_SIZE});
-    }
+    if(!d.submission.collectRanges(static_cast<std::uint32_t>(commands.size()),commands.data(),ranges)) return false;
+    if(!d.rangeChunkBytes || !d.narrowDescriptorRanges)
+        for(auto& range:ranges) { range.offset=0; range.size=VK_WHOLE_SIZE; }
     for(const auto& range:ranges) {
+        if(writesOnly && !range.mayWrite) continue;
         const auto p=d.promotedBuffers.find(range.buffer);
         if(p==d.promotedBuffers.end() || !p->second.memory) continue;
         const auto memory=p->second.memory;
@@ -238,15 +235,15 @@ bool commandMemories(Device& d,const std::vector<VkCommandBuffer>& commands,std:
     }
     return true;
 }
-bool queueMemories(Device& d,const char*,std::vector<ActiveRefs::Use>& memories,std::uint32_t count,const VkSubmitInfo* infos,VkFence) {
+bool queueMemoryAccess(Device& d,const char*,std::vector<ActiveRefs::Use>& memories,bool writesOnly,std::uint32_t count,const VkSubmitInfo* infos,VkFence) {
     std::vector<VkCommandBuffer> commands;
     for(std::uint32_t i=0;i<count;i++) {
         if(!infos || !trackedSubmitChain(infos[i].pNext)) return false;
         if(infos[i].commandBufferCount) commands.insert(commands.end(),infos[i].pCommandBuffers,infos[i].pCommandBuffers+infos[i].commandBufferCount);
     }
-    return commandMemories(d,commands,memories);
+    return commandMemories(d,commands,memories,writesOnly);
 }
-bool queueMemories(Device& d,const char*,std::vector<ActiveRefs::Use>& memories,std::uint32_t count,const VkSubmitInfo2* infos,VkFence) {
+bool queueMemoryAccess(Device& d,const char*,std::vector<ActiveRefs::Use>& memories,bool writesOnly,std::uint32_t count,const VkSubmitInfo2* infos,VkFence) {
     std::vector<VkCommandBuffer> commands;
     for(std::uint32_t i=0;i<count;i++) {
         if(!infos || infos[i].pNext) return false;
@@ -255,7 +252,31 @@ bool queueMemories(Device& d,const char*,std::vector<ActiveRefs::Use>& memories,
             commands.push_back(infos[i].pCommandBufferInfos[j].commandBuffer);
         }
     }
-    return commandMemories(d,commands,memories);
+    return commandMemories(d,commands,memories,writesOnly);
+}
+template<class... Args>
+bool queueMemoryAccess(Device&,const char*,std::vector<ActiveRefs::Use>&,bool,Args...) { return false; }
+bool queueMemories(Device& d,const char* name,std::vector<ActiveRefs::Use>& memories,std::uint32_t count,const VkSubmitInfo* infos,VkFence fence) {
+    return queueMemoryAccess(d,name,memories,false,count,infos,fence);
+}
+bool queueMemories(Device& d,const char* name,std::vector<ActiveRefs::Use>& memories,std::uint32_t count,const VkSubmitInfo2* infos,VkFence fence) {
+    return queueMemoryAccess(d,name,memories,false,count,infos,fence);
+}
+// Called after downstream acceptance, while both layer gates remain held.
+// Failed submissions leave clean copies intact; uncertain accepted work drops
+// every clean copy, including aliases outside its known descriptor ranges.
+template<class... Args>
+void invalidateAcceptedWrites(Device& d,const char* name,Args... args) {
+    if(!d.cleanCache || !d.cacheBytes) return;
+    std::vector<ActiveRefs::Use> writes;
+    bool known=false;
+    try { known=queueMemoryAccess(d,name,writes,true,args...); }
+    catch(const std::bad_alloc&) { known=false; }
+    for(auto& pair:d.virtualMemory)
+        for(std::size_t i=0;i<pair.second.coldGroups.size();++i)
+            if(!known || std::any_of(writes.begin(),writes.end(),[&](const auto& use){
+                return use.memory==pair.first && (use.child==SIZE_MAX || use.child==i);
+            })) discardCleanCacheLocked(d,pair.second,i);
 }
 
 // Pressure admission never waits for an application queue: a future timeline

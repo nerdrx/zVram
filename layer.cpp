@@ -114,6 +114,7 @@ struct VirtualMemory {
     std::vector<std::uint32_t> poolViewMemoryTypeBits;
     std::vector<ColdGroup> coldGroups;
     VkDeviceSize coldStoredBytes{};
+    VkDeviceSize cacheStoredBytes{};
     VkDeviceSize coldLogicalSize{};
     bool cold{};
     bool capacityAccounted{};
@@ -216,6 +217,7 @@ struct Device {
     VkDeviceSize rangeChunkBytes{};
     VkDeviceSize residentLimitBytes{};
     bool residentAdmissionArmed{true};
+    bool cleanCache{};
     bool narrowDescriptorRanges{};
     VkDeviceSize robustRangeAlignment{1};
     std::uint64_t restoreGeneration{};
@@ -224,6 +226,8 @@ struct Device {
     std::uint64_t idleMilliseconds{};
     std::uint64_t coldBudget{};
     std::uint64_t coldBytes{};
+    std::uint64_t cacheBytes{};
+    std::uint64_t cleanReuseCount{}, cacheInvalidations{};
     std::uint64_t coldLogicalBytes{};
     std::uint64_t residentBytes{};
     std::uint64_t freezeCount{}, restoreCount{}, snapshotFailures{};
@@ -247,10 +251,12 @@ struct Device {
     uint64_t liveLocal{}, peakLocal{}, liveOther{}, peakOther{}, failures{};
 };
 void logSnapshotState(const char* event,const Device& d) {
-    logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu",
+    logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu cache-stored=%llu clean-reuses=%llu cache-invalidations=%llu",
          event,static_cast<unsigned long long>(d.residentBytes),static_cast<unsigned long long>(d.coldLogicalBytes),
          static_cast<unsigned long long>(d.coldBytes),static_cast<unsigned long long>(d.freezeCount),
-         static_cast<unsigned long long>(d.restoreCount),static_cast<unsigned long long>(d.snapshotFailures));
+         static_cast<unsigned long long>(d.restoreCount),static_cast<unsigned long long>(d.snapshotFailures),
+         static_cast<unsigned long long>(d.cacheBytes),static_cast<unsigned long long>(d.cleanReuseCount),
+         static_cast<unsigned long long>(d.cacheInvalidations));
 }
 std::mutex mapsMutex;
 // Future command entry points absent from our build cannot be tracked safely.
@@ -317,6 +323,7 @@ void releaseSnapshotResources(Device&);
 void snapshotWorkerLoop(const std::shared_ptr<Device>&);
 VkResult restoreColdLocked(VkDevice,Device&,VkDeviceMemory only=VK_NULL_HANDLE,std::size_t childOnly=SIZE_MAX);
 VkResult freezeChildLocked(Device&,VirtualMemory&,std::size_t);
+void discardCleanCacheLocked(Device&,VirtualMemory&,std::size_t);
 std::vector<std::uint32_t> backingMemoryTypes(const Device&,const VkMemoryRequirements&);
 VkResult allocateBackingChild(Device&,VkDevice,VkDeviceSize,std::uint32_t,VkMemoryAllocateFlags,bool,float,VkDeviceMemory*);
 void releaseChildren(Device&,VirtualMemory&);
@@ -764,6 +771,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 const char* active=std::getenv("ZVRAM_VULKAN_ACTIVE_EVICTION");
                 d->activeEviction=d->selectiveRestore && active && std::strcmp(active,"1")==0;
                 if(d->activeEviction && rangeEnabled) d->rangeChunkBytes=rangeMiB*1024ull*1024ull;
+                const char* clean=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE");
+                d->cleanCache=d->rangeChunkBytes && clean && std::strcmp(clean,"1")==0;
                 if(d->activeEviction && d->rangeChunkBytes) {
                     const auto residentMiB=positiveEnv("ZVRAM_VULKAN_RESIDENT_MIB",std::numeric_limits<std::uint64_t>::max()/(1024ull*1024ull));
                     d->residentLimitBytes=residentMiB*1024ull*1024ull;
@@ -797,6 +806,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     if(d->autoEnabled && strictRobustnessEnabled) logf("bounded Vulkan robustness enabled alignment-bytes=%llu",static_cast<unsigned long long>(robustAlignment));
                     else if(strictRequested) logf("bounded Vulkan robustness unavailable: feature chain or device support");
                     if(d->autoEnabled && d->residentLimitBytes) logf("Vulkan resident admission enabled limit-bytes=%llu",static_cast<unsigned long long>(d->residentLimitBytes));
+                    if(d->autoEnabled && d->cleanCache) logf("Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget");
                 }
             }
         }
@@ -990,6 +1000,10 @@ VkResult bindSparse(VkDevice d,Device& state,VkBuffer buffer,const VkSparseMemor
     return bindSparseLocked(d,state,buffer,binds,count);
 }
 void releaseChildren(Device& d,VirtualMemory& memory) {
+    if(memory.cacheStoredBytes) {
+        d.cacheBytes-=memory.cacheStoredBytes; memory.cacheStoredBytes=0;
+        ++d.coldBudgetGeneration; d.activity.notify_all();
+    }
     destroyPoolViews(d,memory);
     for(std::size_t i=0;i<memory.children.size();i++) {
         const auto child=memory.children[i];
@@ -1115,6 +1129,28 @@ VkResult copyChunkLocked(Device& d,VkBuffer source,VkBuffer destination,VkDevice
     const auto queue=d.copyQueue?d.copyQueue:d.sparseQueue;
     return r==VK_SUCCESS?d.queueWaitIdle(queue):r;
 }
+void discardCleanCacheLocked(Device& d,VirtualMemory& memory,std::size_t i) {
+    auto& group=memory.coldGroups[i];
+    if(group.cold || !group.storedBytes) return;
+    d.cacheBytes-=group.storedBytes; memory.cacheStoredBytes-=group.storedBytes;
+    group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0;
+    ++d.cacheInvalidations; ++d.coldBudgetGeneration; d.activity.notify_all();
+}
+// Clean copies are expendable; cold copies remain the only lossless backing.
+// Both share the existing cold-store quota, so retaining copies cannot grow RAM
+// beyond that quota. Drop clean copies only when a new snapshot needs room.
+void trimCleanCacheLocked(Device& d,VkDeviceSize required) {
+    if(required>d.coldBudget) return;
+    for(auto& pair:d.virtualMemory) {
+        for(std::size_t i=0;i<pair.second.coldGroups.size();++i) {
+            if(d.coldBytes+d.cacheBytes<=d.coldBudget-required) return;
+            const auto& group=pair.second.coldGroups[i];
+            if(!group.cold && group.storedBytes)
+                logf("clean snapshot cache trimmed bytes=%llu",static_cast<unsigned long long>(group.storedBytes));
+            discardCleanCacheLocked(d,pair.second,i);
+        }
+    }
+}
 VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::size_t childOnly) {
     if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
     auto& s=d.snapshot;
@@ -1190,11 +1226,14 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             }
             memory.bound=!memory.bindings.empty();
             d.coldBytes-=group.storedBytes; d.coldLogicalBytes-=group.logicalBytes;
-            if(group.storedBytes) {
+            if(d.cleanCache) {
+                d.cacheBytes+=group.storedBytes; memory.cacheStoredBytes+=group.storedBytes;
+            } else if(group.storedBytes) {
                 ++d.coldBudgetGeneration; d.lastActivity=std::chrono::steady_clock::now(); d.activity.notify_all();
             }
             memory.coldStoredBytes-=group.storedBytes; memory.coldLogicalSize-=group.logicalBytes;
-            group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0; group.cold=false; group.restoreBound=false;
+            if(!d.cleanCache) { group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0; }
+            group.cold=false; group.restoreBound=false;
             restoredAny=true; ++d.restoreCount; ++restoredThisCall;
             memory.cold=std::any_of(memory.coldGroups.begin(),memory.coldGroups.end(),[](const auto& entry){return entry.cold;});
             const bool coldRemains=std::any_of(d.virtualMemory.begin(),d.virtualMemory.end(),
@@ -1237,6 +1276,19 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     if(r!=VK_SUCCESS) {
         ++d.snapshotFailures; d.lastSnapshotError=r; return r;
     }
+    if(d.cleanCache && !group.chunks.empty()) {
+        d.residentBytes-=memory.childSizes[i]; memory.residentBytes-=memory.childSizes[i];
+        releaseBackingChild(d,memory,i);
+        memory.bound=std::any_of(memory.children.begin(),memory.children.end(),[](VkDeviceMemory child){return child!=VK_NULL_HANDLE;});
+        d.cacheBytes-=group.storedBytes; memory.cacheStoredBytes-=group.storedBytes;
+        group.cold=true; memory.cold=true;
+        d.coldBytes+=group.storedBytes; d.coldLogicalBytes+=group.logicalBytes;
+        memory.coldStoredBytes+=group.storedBytes; memory.coldLogicalSize+=group.logicalBytes;
+        ++d.freezeCount; ++d.cleanReuseCount;
+        logf("snapshot reused clean bytes=%llu stored=%llu",static_cast<unsigned long long>(group.logicalBytes),static_cast<unsigned long long>(group.storedBytes));
+        logSnapshotState("clean-freeze",d);
+        return VK_SUCCESS;
+    }
     VkSparseMemoryBind viewBind{}; viewBind.size=dataSize; viewBind.memory=memory.children[i];
     r=bindSparseLocked(d.handle,d,memory.poolViews[i],&viewBind,1);
     if(r!=VK_SUCCESS) {
@@ -1263,7 +1315,9 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
             } else {
                 chunk.bytes.resize(static_cast<std::size_t>(amount)); std::memcpy(chunk.bytes.data(),d.snapshot.mapped,static_cast<std::size_t>(amount));
             }
-            const auto remaining=d.coldBudget-d.coldBytes;
+            if(stored<=d.coldBudget && chunk.bytes.size()<=d.coldBudget-stored)
+                trimCleanCacheLocked(d,stored+chunk.bytes.size());
+            const auto remaining=d.coldBudget-d.coldBytes-d.cacheBytes;
             if(stored>remaining || chunk.bytes.size()>remaining-stored) { okay=false; budgetExceeded=true; break; }
             stored+=chunk.bytes.size(); candidate.chunks.push_back(std::move(chunk));
         }
@@ -2018,6 +2072,8 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
         }
     }
     const auto r=next(queue,args...);
+    if(r==VK_SUCCESS && std::strcmp(name,"vkQueueWaitIdle")!=0)
+        invalidateAcceptedWrites(*d,name,args...);
     if(r==VK_SUCCESS && d->residentLimitBytes && d->autoEnabled && std::strcmp(name,"vkQueueWaitIdle")==0) {
         const auto finished=d->autoQueues.finishIdleActive(queue,
             [&](VkQueue q){d->activeRefs.retire(q);},[&](VkQueue q){d->activeRefs.cover(q);});

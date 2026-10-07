@@ -1103,8 +1103,10 @@ void selectiveBindCheck(Context& context, bool api2) {
               << " independent pools froze cold, woke selectively, and preserved distinct full-byte patterns" << std::endl;
 }
 
-void rangeSubmitCheck(Context& context, bool pressure) {
-    constexpr VkDeviceSize Bytes=2*ChunkBytes;
+void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
+                      bool cacheQuota = false) {
+    const std::uint32_t chunkCount = cacheQuota ? 3u : 2u;
+    const VkDeviceSize Bytes=static_cast<VkDeviceSize>(chunkCount)*ChunkBytes;
     Buffer pool; pool.device=context.device;
     VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     bufferInfo.size=Bytes; bufferInfo.usage=VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -1130,14 +1132,31 @@ void rangeSubmitCheck(Context& context, bool pressure) {
     if (pressure) {
         auto requirePressure = [&] {
             const auto stats = context.stats();
-            require(stats.residentBytes == ChunkBytes && stats.coldLogicalBytes == ChunkBytes &&
-                    stats.failures == 0, "range pressure did not retain exactly one resident chunk");
+            const auto expectedResident = cacheQuota ? 2*ChunkBytes : ChunkBytes;
+            require(stats.residentBytes == expectedResident &&
+                    stats.coldLogicalBytes == Bytes-expectedResident &&
+                    stats.failures == 0, "range pressure did not retain the expected resident chunks");
         };
         requirePressure();
+        if (cleanCache) {
+            std::cout << "CLEAN_CACHE_READBACK_PHASE_BEGIN" << std::endl;
+            for (std::uint32_t pass = 0; pass < 3; ++pass) {
+                for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
+                    readbackAndVerify(context, pool.handle, staging, 0, false, ChunkBytes, 0, chunk);
+                    requirePressure();
+                    std::cout << "CLEAN_CACHE_READBACK pass=" << pass
+                              << " chunk=" << chunk << std::endl;
+                }
+            }
+            std::cout << "CLEAN_CACHE_READBACK_PHASE_END" << std::endl;
+        }
         for (std::uint32_t cycle = 1; cycle <= 3; ++cycle) {
-            for (std::uint32_t chunk = 0; chunk < 2; ++chunk) {
+            for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
                 check(computeCycle(context, pool.handle, cycle, 0, false, ChunkBytes, chunk),
                       "compute pressured range chunk");
+                if (cleanCache)
+                    std::cout << "CLEAN_CACHE_SHADER_WRITE cycle=" << cycle
+                              << " chunk=" << chunk << std::endl;
                 requirePressure();
                 readbackAndVerify(context, pool.handle, staging, cycle, false, ChunkBytes, 0, chunk);
                 requirePressure();
@@ -1153,10 +1172,10 @@ void rangeSubmitCheck(Context& context, bool pressure) {
             [&](VkCommandBuffer command) {
                 vkCmdFillBuffer(command, pool.handle, 0, Bytes, 0xfeedfaceu);
             });
-        readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, 0);
-        requirePressure();
-        readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, 1);
-        requirePressure();
+        for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
+            readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, chunk);
+            requirePressure();
+        }
 
         VkEvent event{};
         VkEventCreateInfo eventInfo{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
@@ -1166,10 +1185,10 @@ void rangeSubmitCheck(Context& context, bool pressure) {
                 vkCmdSetEvent(command, event, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             });
         vkDestroyEvent(context.device, event, nullptr);
-        readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, 0);
-        requirePressure();
-        readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, 1);
-        requirePressure();
+        for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
+            readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, chunk);
+            requirePressure();
+        }
 
         if (context.twoQueues) {
             VkDescriptorBufferInfo info{pool.handle, 0, ChunkBytes};
@@ -1287,6 +1306,92 @@ void rangeSubmitCheck(Context& context, bool pressure) {
     vkFreeMemory(context.device,pool.memory,nullptr);pool.memory=VK_NULL_HANDLE;
     const auto empty=context.stats();
     require(!empty.residentBytes && !empty.coldLogicalBytes && !empty.coldStoredBytes && !empty.failures,"range cleanup retained backing or errors");
+}
+
+void rangeCacheUnknownCheck(Context& context) {
+    constexpr VkDeviceSize Bytes=2*ChunkBytes;
+    Buffer pool; pool.device=context.device;
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size=Bytes;
+    bufferInfo.usage=VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|
+                     VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device,&bufferInfo,nullptr,&pool.handle),"create clean-cache unknown pool");
+    VkMemoryRequirements req{}; vkGetBufferMemoryRequirements(context.device,pool.handle,&req);
+    require(req.size==Bytes,"clean-cache unknown check requires two exact 32 MiB children");
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize=req.size;
+    allocation.memoryTypeIndex=context.nativeAllocation?gpuOnlyNativeType(context,req.memoryTypeBits):context.virtualType;
+    require(allocation.memoryTypeIndex!=UINT32_MAX,"no compatible clean-cache unknown memory type");
+    check(vkAllocateMemory(context.device,&allocation,nullptr,&pool.memory),"allocate clean-cache unknown pool");
+    check(vkBindBufferMemory(context.device,pool.handle,pool.memory,0),"bind clean-cache unknown pool");
+
+    Staging staging; staging.device=context.device;
+    bufferInfo.size=ChunkBytes;
+    bufferInfo.usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device,&bufferInfo,nullptr,&staging.buffer),"create clean-cache unknown staging");
+    vkGetBufferMemoryRequirements(context.device,staging.buffer,&req);
+    allocation.allocationSize=req.size; allocation.memoryTypeIndex=hostCoherentType(context,req.memoryTypeBits);
+    check(vkAllocateMemory(context.device,&allocation,nullptr,&staging.memory),"allocate clean-cache unknown staging");
+    check(vkBindBufferMemory(context.device,staging.buffer,staging.memory,0),"bind clean-cache unknown staging");
+    check(vkMapMemory(context.device,staging.memory,0,ChunkBytes,0,&staging.mapped),"map clean-cache unknown staging");
+
+    upload(context,pool.handle,staging,Bytes);
+    check(computeCycle(context,pool.handle,0,0,false,Bytes),"initialize clean-cache unknown chunks");
+    auto waitCold=[&] {
+        const auto deadline=std::chrono::steady_clock::now()+ColdTimeout;
+        while(std::chrono::steady_clock::now()<deadline) {
+            const auto stats=context.stats();
+            if(stats.coldLogicalBytes==Bytes && stats.residentBytes==0 && stats.failures==0) return stats;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        throw std::runtime_error("clean-cache unknown pool failed to reach two cold chunks");
+    };
+    const auto cold=waitCold();
+    readbackAndVerify(context,pool.handle,staging,0,false,ChunkBytes,0,0);
+    readbackAndVerify(context,pool.handle,staging,0,false,ChunkBytes,0,1);
+    const auto warm=context.stats();
+    require(warm.residentBytes==Bytes && warm.coldLogicalBytes==0 && warm.failures==0,
+            "read-only range copies did not restore both cached chunks");
+
+    auto* words=static_cast<std::uint32_t*>(staging.mapped);
+    for(std::uint32_t i=0;i<ChunkWords;++i)
+        words[i]=initialWord(i)^mix32(i^cycleSalt(0,0))^mix32(i^cycleSalt(1,0));
+    VkEvent event{};
+    VkEventCreateInfo eventInfo{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
+    check(vkCreateEvent(context.device,&eventInfo,nullptr,&event),"create accepted-unknown event");
+    try {
+        check(context.submit([&](VkCommandBuffer command) {
+            vkCmdSetEvent(command,event,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            VkMemoryBarrier before{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+            before.srcAccessMask=VK_ACCESS_HOST_WRITE_BIT;
+            before.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+            vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_HOST_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 0,1,&before,0,nullptr,0,nullptr);
+            VkBufferCopy copy{0,0,ChunkBytes};
+            vkCmdCopyBuffer(command,staging.buffer,pool.handle,1,&copy);
+            VkMemoryBarrier after{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+            after.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+            after.dstAccessMask=VK_ACCESS_MEMORY_READ_BIT|VK_ACCESS_MEMORY_WRITE_BIT;
+            vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                 0,1,&after,0,nullptr,0,nullptr);
+        }),"submit accepted unknown write");
+    } catch(...) {
+        vkDestroyEvent(context.device,event,nullptr);
+        throw;
+    }
+    vkDestroyEvent(context.device,event,nullptr);
+    const auto updatedCold=waitCold();
+    require(updatedCold.restores>=cold.restores+2,
+            "accepted unknown write did not restore both cold cached chunks");
+    readbackAndVerify(context,pool.handle,staging,1,false,ChunkBytes,0,0);
+    readbackAndVerify(context,pool.handle,staging,0,false,ChunkBytes,0,1);
+    std::cout << "PASS: accepted unknown write invalidated clean snapshots and preserved both full-byte patterns" << std::endl;
+
+    vkDestroyBuffer(context.device,pool.handle,nullptr); pool.handle=VK_NULL_HANDLE;
+    vkFreeMemory(context.device,pool.memory,nullptr); pool.memory=VK_NULL_HANDLE;
+    const auto empty=context.stats();
+    require(!empty.residentBytes && !empty.coldLogicalBytes && !empty.coldStoredBytes && !empty.failures,
+            "clean-cache unknown cleanup retained backing or errors");
 }
 
 void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool activeSubmit) {
@@ -1609,6 +1714,8 @@ int main(int argc, char** argv) try {
     bool activeSubmit = false;
     bool rangeSubmit = false;
     bool rangePressure = false;
+    bool rangeCache = false;
+    bool rangeCacheQuota = false, rangeCacheUnknown = false;
     bool robustCore = false;
     bool concurrentWait = false;
     bool suballocation = false, suballocationAuto = false, suballocationApi2 = false;
@@ -1638,8 +1745,17 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--range-submit") == 0) { rangeSubmit=true; selectiveSubmit=true; }
         else if (std::strcmp(argv[i], "--robust-core") == 0) robustCore=true;
         else if (std::strcmp(argv[i], "--range-pressure") == 0) { rangeSubmit=true; rangePressure=true; }
+        else if (std::strcmp(argv[i], "--range-cache") == 0) {
+            rangeSubmit=true; rangePressure=true; rangeCache=true;
+        }
+        else if (std::strcmp(argv[i], "--range-cache-quota") == 0) {
+            rangeSubmit=true; rangePressure=true; rangeCache=true; rangeCacheQuota=true;
+        }
+        else if (std::strcmp(argv[i], "--range-cache-unknown") == 0) {
+            rangeSubmit=true; rangeCache=true; rangeCacheUnknown=true;
+        }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-pressure] [--active-submit --two-queues]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-pressure|--range-cache|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
     }
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||
@@ -1656,6 +1772,8 @@ int main(int argc, char** argv) try {
             "range pressure requires descriptor-tracked range-submit mode");
     require(!rangePressure || !pendingWait,
             "range pressure manages its own pending timeline test");
+    require(!(rangeCacheQuota && rangeCacheUnknown),
+            "choose only one clean-cache extension check");
     require(!(expectBudgetRefusal && exclusiveFamilies), "budget refusal mode does not use exclusive family transfers");
     require(!(pendingWait && pendingBind), "choose only one pending queue test");
     require(!concurrentWait || (pendingWait && twoQueues),
@@ -1684,7 +1802,8 @@ int main(int argc, char** argv) try {
             "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind, activeSubmit, rangePressure && twoQueues, robustCore);
-    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure); return 0; }
+    if (rangeCacheUnknown) { rangeCacheUnknownCheck(context); return 0; }
+    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
     if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }

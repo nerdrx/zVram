@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <initializer_list>
 #include <type_traits>
 
 template <typename Handle>
@@ -24,6 +25,80 @@ static bool hasRange(const std::vector<VkSubmissionTracker::BufferRange>& ranges
     for (const auto& range : ranges)
         if (range.buffer == buffer && range.offset == offset && range.size == size) return true;
     return false;
+}
+
+static void emit(std::vector<std::uint32_t>& words, std::uint16_t opcode,
+                 std::initializer_list<std::uint32_t> operands) {
+    words.push_back((static_cast<std::uint32_t>(operands.size() + 1) << 16) | opcode);
+    words.insert(words.end(), operands.begin(), operands.end());
+}
+
+static void emit(std::vector<std::uint32_t>& words, std::uint16_t opcode,
+                 const std::vector<std::uint32_t>& operands) {
+    words.push_back((static_cast<std::uint32_t>(operands.size() + 1) << 16) | opcode);
+    words.insert(words.end(), operands.begin(), operands.end());
+}
+
+static std::vector<std::uint32_t> storageShader(const std::vector<bool>& readOnlyMembers,
+                                                bool variableReadOnly = false,
+                                                bool arrayWrapped = false,
+                                                bool decorationGroup = false,
+                                                std::uint32_t storage = 12,
+                                                bool runtimeArrayWrapped = false,
+                                                bool duplicateWritableAlias = false,
+                                                bool includeUniformBuffer = false) {
+    std::vector<std::uint32_t> words{0x07230203u, 0x00010000u, 0u, 16u, 0u};
+    emit(words, 14, {0u, 1u});
+    if (variableReadOnly) emit(words, 71, {6u, 24u});
+    emit(words, 71, {2u, storage == 12 ? 2u : 3u});
+    if (includeUniformBuffer) {
+        emit(words, 71, {11u, 2u});
+        emit(words, 71, {13u, 33u, 0u});
+        emit(words, 71, {13u, 34u, 1u});
+    }
+    emit(words, 71, {6u, 33u, 0u});
+    emit(words, 71, {6u, 34u, 0u});
+    if (duplicateWritableAlias) {
+        emit(words, 71, {8u, 33u, 0u});
+        emit(words, 71, {8u, 34u, 0u});
+    }
+    for (std::uint32_t i = 0; i < readOnlyMembers.size(); ++i)
+        if (readOnlyMembers[i]) emit(words, 72, {2u, i, 24u});
+    if (decorationGroup) emit(words, 73, {10u});
+    emit(words, 21, {1u, 32u, 0u});
+    emit(words, 43, {1u, 9u, 1u});
+    std::vector<std::uint32_t> members{2u};
+    for (std::size_t i = 0; i < readOnlyMembers.size(); ++i) members.push_back(1u);
+    emit(words, 30, members);
+    if (arrayWrapped) {
+        if (runtimeArrayWrapped) emit(words, 29, {3u, 2u});
+        else emit(words, 28, {3u, 2u, 9u});
+    }
+    emit(words, 32, {4u, storage, arrayWrapped ? 3u : 2u});
+    emit(words, 59, {4u, 6u, storage});
+    if (duplicateWritableAlias) emit(words, 59, {4u, 8u, storage});
+    if (includeUniformBuffer) {
+        emit(words, 30, {11u, 1u});
+        emit(words, 32, {12u, 2u, 11u});
+        emit(words, 59, {12u, 13u, 2u});
+    }
+    return words;
+}
+
+static VkPipeline readonlyPipeline(VkSubmissionTracker& tracker, VkShaderModule shader,
+                                   const std::vector<std::uint32_t>& words,
+                                   std::uintptr_t handle) {
+    VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    shaderInfo.codeSize = words.size() * sizeof(std::uint32_t);
+    shaderInfo.pCode = words.data();
+    tracker.shader(shader, &shaderInfo);
+    VkComputePipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+    pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    pipelineInfo.stage.module = shader;
+    const auto pipeline = fakeHandle<VkPipeline>(handle);
+    tracker.computePipeline(pipeline, pipelineInfo);
+    return pipeline;
 }
 
 int main() {
@@ -284,6 +359,156 @@ int main() {
     require(tracker.collect(1, &primary, found), "begin restores a reset command buffer");
     tracker.eraseCommandPool(commandPool);
     require(!tracker.collect(1, &primary, found), "command pool destruction erases handles");
+
+    // Access metadata remains conservative by default; transfer callers can mark sources read-only.
+    tracker.allocateCommands(&commandInfo, commands);
+    tracker.beginCommand(primary);
+    tracker.bufferRange(primary, bufferA, 0, 16, false);
+    tracker.bufferRange(primary, bufferB, 0, 16, true);
+    require(tracker.collectRanges(1, &primary, ranges) && ranges.size() == 2 &&
+            !ranges[0].mayWrite && ranges[1].mayWrite,
+            "explicit transfer source and destination access flags survive collection");
+
+    VkSubmissionTracker proofTracker;
+    const auto proofLayout = fakeHandle<VkDescriptorSetLayout>(50);
+    const VkDescriptorSetLayoutBinding proofBindings[] = {
+        {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}
+    };
+    VkDescriptorSetLayoutCreateInfo proofLayoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    proofLayoutInfo.bindingCount = 2;
+    proofLayoutInfo.pBindings = proofBindings;
+    proofTracker.layout(proofLayout, proofLayoutInfo);
+    const auto proofPool = fakeHandle<VkDescriptorPool>(51);
+    const auto proofSet = fakeHandle<VkDescriptorSet>(52);
+    const auto reboundSet = fakeHandle<VkDescriptorSet>(65);
+    VkDescriptorSetAllocateInfo proofSetInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    proofSetInfo.descriptorPool = proofPool;
+    const VkDescriptorSet proofSets[] = {proofSet, reboundSet};
+    const VkDescriptorSetLayout proofLayouts[] = {proofLayout, proofLayout};
+    proofSetInfo.descriptorSetCount = 2;
+    proofSetInfo.pSetLayouts = proofLayouts;
+    proofTracker.allocateSets(&proofSetInfo, proofSets);
+    const auto alias = fakeHandle<VkBuffer>(53);
+    VkDescriptorBufferInfo proofBufferInfos[] = {{alias, 4, 8}, {alias, 16, 8}};
+    VkWriteDescriptorSet proofWrites[2]{};
+    for (std::uint32_t i = 0; i < 2; ++i) {
+        proofWrites[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        proofWrites[i].dstSet = proofSet;
+        proofWrites[i].dstBinding = i;
+        proofWrites[i].descriptorCount = 1;
+        proofWrites[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        proofWrites[i].pBufferInfo = &proofBufferInfos[i];
+    }
+    proofTracker.updateSets(2, proofWrites, 0, nullptr);
+    const auto reboundBuffer = fakeHandle<VkBuffer>(66);
+    VkDescriptorBufferInfo reboundInfo{reboundBuffer, 27, 6};
+    proofWrites[0].dstSet = reboundSet;
+    proofWrites[0].dstBinding = 0;
+    proofWrites[0].pBufferInfo = &reboundInfo;
+    proofTracker.updateSets(1, proofWrites, 0, nullptr);
+    const auto proofCommand = fakeHandle<VkCommandBuffer>(54);
+    const VkCommandBuffer proofCommands[] = {proofCommand};
+    VkCommandBufferAllocateInfo proofCommandInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    proofCommandInfo.commandPool = commandPool;
+    proofCommandInfo.commandBufferCount = 1;
+    proofTracker.allocateCommands(&proofCommandInfo, proofCommands);
+
+    const auto allMembersShader = fakeHandle<VkShaderModule>(55);
+    const auto allMembersWords = storageShader({true});
+    const auto allMembersPipeline = readonlyPipeline(proofTracker, allMembersShader, allMembersWords, 56);
+    proofTracker.eraseShader(allMembersShader);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, allMembersPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && ranges.size() == 2 &&
+            !ranges[0].mayWrite && ranges[1].mayWrite,
+            "all block members prove only their matching descriptor binding read-only");
+
+    const auto partialShader = fakeHandle<VkShaderModule>(57);
+    const auto partialWords = storageShader({true, false}, false, true);
+    const auto partialPipeline = readonlyPipeline(proofTracker, partialShader, partialWords, 58);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, partialPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && ranges[0].mayWrite,
+            "one writable block member prevents a read-only proof through array wrappers");
+
+    const auto variableShader = fakeHandle<VkShaderModule>(59);
+    const auto variableWords = storageShader({}, true, true, false, 12, true);
+    const auto variablePipeline = readonlyPipeline(proofTracker, variableShader, variableWords, 60);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, variablePipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && !ranges[0].mayWrite,
+            "variable NonWritable proves a storage block read-only through array wrappers");
+
+    const auto uniformShader = fakeHandle<VkShaderModule>(69);
+    const auto uniformWords = storageShader({true}, false, false, false, 12, false, false, true);
+    const auto uniformPipeline = readonlyPipeline(proofTracker, uniformShader, uniformWords, 70);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, uniformPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && !ranges[0].mayWrite,
+            "ordinary Uniform Block descriptors do not erase SSBO read-only proofs");
+
+    const auto legacyStorageShader = fakeHandle<VkShaderModule>(71);
+    const auto legacyStorageWords = storageShader({true}, false, false, false, 2);
+    const auto legacyStoragePipeline = readonlyPipeline(proofTracker, legacyStorageShader,
+                                                        legacyStorageWords, 72);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, legacyStoragePipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && !ranges[0].mayWrite,
+            "legacy Uniform BufferBlock storage descriptor supports read-only proof");
+
+    const auto aliasShader = fakeHandle<VkShaderModule>(67);
+    const auto aliasWords = storageShader({false}, true, false, false, 12, false, true);
+    const auto aliasPipeline = readonlyPipeline(proofTracker, aliasShader, aliasWords, 68);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, aliasPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && ranges[0].mayWrite,
+            "duplicate variables at one descriptor binding require every alias read-only");
+
+    const auto groupShader = fakeHandle<VkShaderModule>(61);
+    const auto groupWords = storageShader({true}, false, false, true);
+    const auto groupPipeline = readonlyPipeline(proofTracker, groupShader, groupWords, 62);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, groupPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && ranges[0].mayWrite,
+            "unsupported decoration groups provide no read-only proof");
+
+    const auto secondReadonlyShader = fakeHandle<VkShaderModule>(63);
+    const auto secondReadonlyWords = storageShader({true});
+    const auto secondReadonlyPipeline = readonlyPipeline(proofTracker, secondReadonlyShader,
+                                                        secondReadonlyWords, 64);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, allMembersPipeline);
+    proofTracker.pipeline(proofCommand, secondReadonlyPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && !ranges[0].mayWrite,
+            "all bound pipeline proofs must agree for read-only classification");
+    proofTracker.pipeline(proofCommand, partialPipeline);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && ranges[0].mayWrite,
+            "a writable alias pipeline makes the binding writable");
+
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, allMembersPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet, 0);
+    proofTracker.descriptors(proofCommand, 1, &reboundSet, 0);
+    proofTracker.descriptors(proofCommand, 1, &proofSet, 1);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) && ranges.size() == 5 &&
+            std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == reboundBuffer && range.offset == 27 && !range.mayWrite;
+            }) && std::count_if(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == alias && range.offset == 4;
+            }) == 2 && std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == alias && range.offset == 4 && !range.mayWrite;
+            }) && std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == alias && range.offset == 4 && range.mayWrite;
+            }), "descriptor set rebinding preserves both previously referenced sets");
 
     const auto physicalPipeline = fakeHandle<VkPipeline>(32);
     pipelineInfo.stage.module = physicalShader;

@@ -18,24 +18,28 @@ public:
         VkBuffer buffer;
         VkDeviceSize offset{};
         VkDeviceSize size{VK_WHOLE_SIZE};
+        bool mayWrite{true};
     };
 
     void boundedRobustness(bool bounded) { boundedDefault_ = bounded; }
 
     void shader(VkShaderModule module, const VkShaderModuleCreateInfo* info) {
-        shaders_[module] = classify(info);
+        shaders_[module] = parseShader(info);
     }
     void eraseShader(VkShaderModule module) { shaders_.erase(module); }
     ShaderKind shaderKind(VkShaderModule module) const {
         const auto i = shaders_.find(module);
-        return i == shaders_.end() ? ShaderKind::Unknown : i->second;
+        return i == shaders_.end() ? ShaderKind::Unknown : i->second.kind;
     }
 
     void computePipeline(VkPipeline pipeline, const VkComputePipelineCreateInfo& info) {
-        pipelines_[pipeline] = info.stage.stage == VK_SHADER_STAGE_COMPUTE_BIT &&
+        const bool safe = info.stage.stage == VK_SHADER_STAGE_COMPUTE_BIT &&
                                safePipelineChain(info.pNext) &&
                                safeStageChain(info.stage.pNext) &&
                                shaderKind(info.stage.module) == ShaderKind::Logical;
+        pipelines_[pipeline] = safe;
+        pipelineReadOnly_.erase(pipeline);
+        if (safe) pipelineReadOnly_[pipeline] = shaders_.at(info.stage.module).readOnly;
         bool wide=false;
         for(auto* p=static_cast<const VkBaseInStructure*>(info.pNext);p;p=p->pNext) {
 #ifdef VK_EXT_pipeline_robustness
@@ -58,7 +62,11 @@ public:
         }
         widePipelines_[pipeline]=wide;
     }
-    void erasePipeline(VkPipeline pipeline) { pipelines_.erase(pipeline); widePipelines_.erase(pipeline); }
+    void erasePipeline(VkPipeline pipeline) {
+        pipelines_.erase(pipeline);
+        widePipelines_.erase(pipeline);
+        pipelineReadOnly_.erase(pipeline);
+    }
 
     void layout(VkDescriptorSetLayout handle, const VkDescriptorSetLayoutCreateInfo& info) {
         Layout state;
@@ -188,23 +196,28 @@ public:
     void buffer(VkCommandBuffer command, VkBuffer handle) {
         bufferRange(command, handle, 0, VK_WHOLE_SIZE);
     }
-    void bufferRange(VkCommandBuffer command, VkBuffer handle, VkDeviceSize offset, VkDeviceSize size) {
+    void bufferRange(VkCommandBuffer command, VkBuffer handle, VkDeviceSize offset,
+                     VkDeviceSize size, bool mayWrite = true) {
         auto i = commands_.find(command);
         if (i == commands_.end()) return;
         if (!handle) { i->second.safe = false; return; }
-        i->second.buffers.push_back({handle, offset, size});
+        i->second.buffers.push_back({handle, offset, size, mayWrite});
     }
-    void descriptors(VkCommandBuffer command, std::uint32_t count, const VkDescriptorSet* sets) {
+    void descriptors(VkCommandBuffer command, std::uint32_t count, const VkDescriptorSet* sets,
+                     std::uint32_t firstSet = 0) {
         auto i = commands_.find(command);
         if (i == commands_.end()) return;
-        if (count && !sets) { i->second.safe = false; return; }
-        if (count) i->second.sets.insert(i->second.sets.end(), sets, sets + count);
+        if (count && (!sets || count > UINT32_MAX - firstSet)) { i->second.safe = false; return; }
+        for (std::uint32_t j = 0; j < count; ++j)
+            i->second.sets.emplace_back(firstSet + j, sets[j]);
     }
     void pipeline(VkCommandBuffer command, VkPipeline pipelineHandle) {
         auto c = commands_.find(command);
         if (c == commands_.end()) return;
         const auto p = pipelines_.find(pipelineHandle);
         if (p == pipelines_.end() || !p->second) c->second.safe = false;
+        else if (std::find(c->second.pipelines.begin(), c->second.pipelines.end(), pipelineHandle) ==
+                 c->second.pipelines.end()) c->second.pipelines.push_back(pipelineHandle);
         const auto wide=widePipelines_.find(pipelineHandle);
         if(wide!=widePipelines_.end() && wide->second) c->second.wideBuffers=true;
     }
@@ -243,6 +256,27 @@ public:
     }
 
 private:
+    using SetBinding = std::pair<std::uint32_t, std::uint32_t>;
+    struct ShaderData {
+        ShaderKind kind{ShaderKind::Unknown};
+        std::map<SetBinding, bool> readOnly;
+    };
+    struct Type {
+        enum class Kind { Other, Pointer, Array, RuntimeArray, Struct } kind{Kind::Other};
+        std::uint32_t element{};
+        std::uint32_t storage{};
+        std::vector<std::uint32_t> members;
+    };
+    struct Decoration {
+        bool nonWritable{};
+        bool block{};
+        bool bufferBlock{};
+        bool hasSet{};
+        bool hasBinding{};
+        bool conflict{};
+        std::uint32_t set{};
+        std::uint32_t binding{};
+    };
     struct Binding { VkDescriptorType type; std::uint32_t count; bool storage; };
     struct Layout { bool safe{true}; std::map<std::uint32_t, Binding> bindings; };
     struct Set {
@@ -258,39 +292,166 @@ private:
         bool safe{true};
         std::vector<BufferRange> buffers;
         bool wideBuffers{};
-        std::vector<VkDescriptorSet> sets;
+        std::vector<std::pair<std::uint32_t, VkDescriptorSet>> sets;
+        std::vector<VkPipeline> pipelines;
         std::vector<VkCommandBuffer> secondaries;
     };
     struct Slot { std::uint32_t binding, element; };
 
-    static ShaderKind classify(const VkShaderModuleCreateInfo* info) {
+    static ShaderData parseShader(const VkShaderModuleCreateInfo* info) {
+        ShaderData result;
         if (!info || info->pNext || info->flags || !info->pCode || info->codeSize < 5 * sizeof(std::uint32_t) ||
-            info->codeSize % sizeof(std::uint32_t)) return ShaderKind::Unknown;
+            info->codeSize % sizeof(std::uint32_t)) return result;
         const auto* words = info->pCode;
         const auto count = info->codeSize / sizeof(std::uint32_t);
         if (words[0] != 0x07230203u || words[1] < 0x00010000u || words[1] > 0x00010600u ||
-            words[3] == 0 || words[4] != 0) return ShaderKind::Unknown;
+            words[3] == 0 || words[4] != 0) return result;
         bool hasMemoryModel = false, physicalStorage = false;
+        bool reflectionSupported = true;
         std::uint32_t addressingModel = UINT32_MAX;
+        std::unordered_map<std::uint32_t, Type> types;
+        std::unordered_map<std::uint32_t, Decoration> decorations;
+        std::map<std::pair<std::uint32_t, std::uint32_t>, bool> nonWritableMembers;
+        struct Variable { std::uint32_t pointer{}, id{}, storage{}; };
+        std::vector<Variable> variables;
+        std::unordered_set<std::uint32_t> variableIds;
         for (std::size_t at = 5; at < count;) {
             const auto instruction = words[at];
             const auto wordCount = instruction >> 16;
             const auto opcode = instruction & 0xffffu;
-            if (!wordCount || wordCount > count - at) return ShaderKind::Unknown;
+            if (!wordCount || wordCount > count - at) return result;
             if (opcode == 17) {
-                if (wordCount < 2) return ShaderKind::Unknown;
+                if (wordCount < 2) return result;
                 if (words[at + 1] == 5347u) physicalStorage = true;
             } else if (opcode == 14) {
-                if (wordCount != 3 || hasMemoryModel) return ShaderKind::Unknown;
+                if (wordCount != 3 || hasMemoryModel) return result;
                 hasMemoryModel = true;
                 addressingModel = words[at + 1];
                 if (addressingModel == 5348u) physicalStorage = true;
+            } else if (opcode == 28 || opcode == 29 || opcode == 30 || opcode == 32) {
+                if ((opcode == 28 && wordCount != 4) || (opcode == 29 && wordCount != 3) ||
+                    (opcode == 30 && wordCount < 2) || (opcode == 32 && wordCount != 4)) {
+                    reflectionSupported = false;
+                } else {
+                    const auto id = words[at + 1];
+                    if (!id || id >= words[3] || types.count(id)) reflectionSupported = false;
+                    else {
+                        Type type;
+                        if (opcode == 28 || opcode == 29) {
+                            type.kind = opcode == 28 ? Type::Kind::Array : Type::Kind::RuntimeArray;
+                            type.element = words[at + 2];
+                        } else if (opcode == 30) {
+                            type.kind = Type::Kind::Struct;
+                            type.members.assign(words + at + 2, words + at + wordCount);
+                        } else {
+                            type.kind = Type::Kind::Pointer;
+                            type.storage = words[at + 2];
+                            type.element = words[at + 3];
+                        }
+                        types.emplace(id, std::move(type));
+                    }
+                }
+            } else if (opcode == 59) {
+                if (wordCount < 4 || !words[at + 1] || !words[at + 2] || words[at + 2] >= words[3] ||
+                    !variableIds.insert(words[at + 2]).second)
+                    reflectionSupported = false;
+                else variables.push_back({words[at + 1], words[at + 2], words[at + 3]});
+            } else if (opcode == 71) {
+                if (wordCount < 3 || !words[at + 1] || words[at + 1] >= words[3]) {
+                    reflectionSupported = false;
+                } else {
+                    auto& d = decorations[words[at + 1]];
+                    const auto decoration = words[at + 2];
+                    if (decoration == 24 || decoration == 2 || decoration == 3) {
+                        if (wordCount != 3) reflectionSupported = false;
+                        if (decoration == 24) d.nonWritable = true;
+                        if (decoration == 2) d.block = true;
+                        if (decoration == 3) d.bufferBlock = true;
+                    } else if (decoration == 33 || decoration == 34) {
+                        if (wordCount != 4) reflectionSupported = false;
+                        else {
+                            const auto value = words[at + 3];
+                            auto& has = decoration == 33 ? d.hasBinding : d.hasSet;
+                            auto& stored = decoration == 33 ? d.binding : d.set;
+                            if (has && stored != value) d.conflict = true;
+                            has = true;
+                            stored = value;
+                        }
+                    }
+                }
+            } else if (opcode == 72) {
+                if (wordCount < 4 || !words[at + 1] || words[at + 1] >= words[3]) {
+                    reflectionSupported = false;
+                } else if (words[at + 3] == 24) {
+                    if (wordCount != 4) reflectionSupported = false;
+                    nonWritableMembers[{words[at + 1], words[at + 2]}] = true;
+                }
+            } else if (opcode == 73 || opcode == 74 || opcode == 75) {
+                reflectionSupported = false;
             }
             at += wordCount;
         }
-        if (!hasMemoryModel) return ShaderKind::Unknown;
-        if (physicalStorage) return ShaderKind::PhysicalStorageBuffer;
-        return addressingModel == 0 ? ShaderKind::Logical : ShaderKind::Unknown;
+        if (!hasMemoryModel) return result;
+        if (physicalStorage) result.kind = ShaderKind::PhysicalStorageBuffer;
+        else if (addressingModel == 0) result.kind = ShaderKind::Logical;
+        if (result.kind != ShaderKind::Logical || !reflectionSupported) return result;
+
+        for (const auto& variable : variables) {
+            if (variable.storage != 12 && variable.storage != 2) continue;
+            const auto pointer = types.find(variable.pointer);
+            if (pointer == types.end() || pointer->second.kind != Type::Kind::Pointer ||
+                pointer->second.storage != variable.storage) {
+                reflectionSupported = false;
+                break;
+            }
+            auto typeId = pointer->second.element;
+            std::unordered_set<std::uint32_t> visited;
+            while (true) {
+                if (!visited.insert(typeId).second) { reflectionSupported = false; break; }
+                const auto type = types.find(typeId);
+                if (type == types.end()) { reflectionSupported = false; break; }
+                if (type->second.kind == Type::Kind::Array || type->second.kind == Type::Kind::RuntimeArray) {
+                    typeId = type->second.element;
+                    continue;
+                }
+                if (type->second.kind != Type::Kind::Struct) {
+                    reflectionSupported = false;
+                    break;
+                }
+                const auto block = decorations.find(typeId);
+                const bool uniformBlock = block != decorations.end() && block->second.block &&
+                                          !block->second.bufferBlock;
+                if (variable.storage == 2 && uniformBlock) break;
+                const bool storageBlock = block != decorations.end() &&
+                    (variable.storage == 12 ? block->second.block && !block->second.bufferBlock :
+                                               block->second.bufferBlock && !block->second.block);
+                const auto object = decorations.find(variable.id);
+                const bool nonWritable = object != decorations.end() && object->second.nonWritable;
+                const auto variableDecorations = object == decorations.end() ? Decoration{} : object->second;
+                if (!storageBlock || variableDecorations.conflict ||
+                    !variableDecorations.hasSet || !variableDecorations.hasBinding) {
+                    reflectionSupported = false;
+                    break;
+                }
+                for (const auto& member : nonWritableMembers)
+                    if (member.first.first == typeId && member.first.second >= type->second.members.size())
+                        reflectionSupported = false;
+                if (reflectionSupported) {
+                    bool allMembersReadOnly = !type->second.members.empty();
+                    for (std::uint32_t member = 0; member < type->second.members.size(); ++member)
+                        allMembersReadOnly &= nonWritableMembers.count({typeId, member}) != 0;
+                    const bool readOnly = nonWritable || allMembersReadOnly;
+                    const SetBinding key{variableDecorations.set, variableDecorations.binding};
+                    const auto existing = result.readOnly.find(key);
+                    if (existing == result.readOnly.end()) result.readOnly.emplace(key, readOnly);
+                    else existing->second = existing->second && readOnly;
+                }
+                break;
+            }
+            if (!reflectionSupported) break;
+        }
+        if (!reflectionSupported) result.readOnly.clear();
+        return result;
     }
     static bool safeStageChain(const void* chain) {
         bool subgroupSize = false;
@@ -414,7 +575,9 @@ private:
         const auto c = commands_.find(command);
         if (c == commands_.end() || !c->second.safe) return false;
         out.insert(out.end(), c->second.buffers.begin(), c->second.buffers.end());
-        for (auto setHandle : c->second.sets) {
+        for (const auto& setEntry : c->second.sets) {
+            const auto setIndex = setEntry.first;
+            const auto setHandle = setEntry.second;
             const auto set = sets_.find(setHandle);
             if (set == sets_.end() || !set->second.safe) return false;
             bool hasInitializedStorage = false;
@@ -432,10 +595,20 @@ private:
                     const auto& descriptor = buffers->second[i];
                     const auto buffer = descriptor.buffer;
                     if (!written->second[i] || !buffer) return false;
+                    bool mayWrite = c->second.pipelines.empty();
+                    for (const auto pipeline : c->second.pipelines) {
+                        const auto proof = pipelineReadOnly_.find(pipeline);
+                        if (proof == pipelineReadOnly_.end()) { mayWrite = true; break; }
+                        const auto access = proof->second.find({setIndex, binding.first});
+                        if (access == proof->second.end() || !access->second) {
+                            mayWrite = true;
+                            break;
+                        }
+                    }
                     if (binding.second.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC || c->second.wideBuffers)
-                        out.push_back({buffer, 0, VK_WHOLE_SIZE});
+                        out.push_back({buffer, 0, VK_WHOLE_SIZE, mayWrite});
                     else
-                        out.push_back({buffer, descriptor.offset, descriptor.range});
+                        out.push_back({buffer, descriptor.offset, descriptor.range, mayWrite});
                 }
             }
             if (!hasInitializedStorage) return false;
@@ -449,9 +622,10 @@ private:
     void poisonSets() { for (auto& set : sets_) set.second.safe = false; }
     void poisonCommands() { for (auto& command : commands_) command.second.safe = false; }
 
-    std::unordered_map<VkShaderModule, ShaderKind> shaders_;
+    std::unordered_map<VkShaderModule, ShaderData> shaders_;
     std::unordered_map<VkPipeline, bool> pipelines_;
     std::unordered_map<VkPipeline, bool> widePipelines_;
+    std::unordered_map<VkPipeline, std::map<SetBinding, bool>> pipelineReadOnly_;
     bool boundedDefault_{};
     std::unordered_map<VkDescriptorSetLayout, Layout> layouts_;
     std::unordered_map<VkDescriptorSet, Set> sets_;

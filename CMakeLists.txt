@@ -133,6 +133,51 @@ foreach(range_pressure_mode synthetic native)
         endif()
     endforeach()
 endforeach()
+foreach(range_cache_mode synthetic native)
+    set(range_cache_flags --range-cache)
+    if(range_cache_mode STREQUAL "native")
+        list(APPEND range_cache_flags --native-allocation)
+    endif()
+    set(test_name vulkan-range-clean-cache-${range_cache_mode})
+    add_test(NAME ${test_name}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 32 --vulkan-clean-cache --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${range_cache_flags})
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
+foreach(range_cache_mode synthetic native)
+    set(range_cache_flags --range-cache-quota)
+    if(range_cache_mode STREQUAL "native")
+        list(APPEND range_cache_flags --native-allocation)
+    endif()
+    set(test_name vulkan-range-clean-cache-quota-${range_cache_mode})
+    add_test(NAME ${test_name}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 64 --vulkan-clean-cache --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${range_cache_flags})
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
+foreach(range_cache_mode synthetic native)
+    set(range_cache_flags --range-cache-unknown)
+    if(range_cache_mode STREQUAL "native")
+        list(APPEND range_cache_flags --native-allocation)
+    endif()
+    set(test_name vulkan-range-clean-cache-accepted-unknown-${range_cache_mode})
+    add_test(NAME ${test_name}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 1000 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 96 --vulkan-clean-cache --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${range_cache_flags})
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
 foreach(robust_mode synthetic native)
     set(robust_flags --range-pressure --robust-core)
     if(robust_mode STREQUAL "native")
