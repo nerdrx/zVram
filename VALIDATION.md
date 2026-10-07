@@ -212,3 +212,29 @@ The two processes each peaked at 4 GiB local backing. Host/GTT peaks were 14,257
 A successful mapped-host fallback previously left its internal native OOM visible through `hipGetLastError`. The shim now preserves prior caller errors, hides errors from successful internal fallback steps, and exposes rejected wrapped calls through thread-local error queries. The installed error-query ABIs also participate in the supported `hipGetProcAddress` lookup path.
 
 The mapped-host and VMM checks each injected a real native 64 GiB allocation failure inside a successful allocation path, then verified clean peek/get/ext-get results and a 64 KiB byte-for-byte copy. They also verified that a prior native error survives successful allocation/capacity queries, quota failures remain visible until cleared, rejected async free retains the allocation, newer native errors take precedence, and errors remain isolated between two threads. Three intentional quota rejections appear in each failure counter; final tracked/pending/orphaned allocation counters were zero. [Mapped-host log](validation/hip-fallback-error-state.txt), [VMM log](validation/hip-vmm-error-state.txt). All 18 CTests passed after this change on the documented GPU.
+
+## Userspace HIP hibernation
+
+The explicit API in [`hip_hibernate.hpp`](hip_hibernate.hpp) was tested on October 7, 2026, without root or a service. It snapshots zVram-owned VMM allocations to lossless Zstd/raw CPU storage, releases physical handles/BOs, and reserves their GPU virtual addresses. The caller must serialize all application HIP/HSA work across hibernate/resume and must not use cold pointers. Native and mapped-host allocations do not participate. Logical cold bytes count whole allocations requiring resume; stored bytes count retained payload, excluding metadata and bounded staging/codec scratch.
+
+| Check | Allocation | Layout | Stored cold payload | Result |
+| --- | ---: | --- | ---: | --- |
+| Integrity and resident-cap reuse | 33,554,432 B | 16 MiB local + 16 MiB GTT | 16,779,392 B | PASS |
+| Multiple GTT segments | 301,989,888 B | 16 MiB local + 256 MiB GTT + 16 MiB GTT | 151,014,528 B | PASS |
+| Injected remap failure and retry | 33,554,432 B | 16 MiB local + 16 MiB GTT | 16,779,392 B retained on refusal | PASS |
+
+Each allocation contains half repeated 64-bit values and half seeded pseudo-random values. The GPU mutates both halves over two cycles. A separate GPU kernel checks every word, and native `hipMemcpy` reads back the entire allocation for CPU verification before and after hibernation. A one-byte cold budget refuses without eviction or data changes. A second allocation consumes the released resident cap, causing resume to refuse until that allocation is freed; recovery then verifies the original data and pointer. The remap fixture fails the fourth map after the first segment has been remapped, retains snapshots, then succeeds after removing the injection. Free while cold, empty resume, pending caller-error preservation, and final zero allocation/cold counters also pass.
+
+Per-process `/proc/self/fdinfo` measurements separate these resources from other desktop applications. In the larger check's first cycle, DRM client 17584 reported resident VRAM **159,916 → 143,532 KiB** and GTT **286,772 → 8,244 KiB** hot-to-cold: exactly **16 MiB VRAM + 272 MiB GTT** released. On restore, GTT returned to 286,772 KiB and VRAM to 159,920 KiB, with a 4 KiB runtime difference. GPU-wide sysfs counters are also logged; they include other applications and need not immediately reflect client releases. These measurements establish backing release for this synthetic check, not total process-RAM savings or a model compression ratio.
+
+Internal snapshot copies use a GPU kernel and a 1 MiB mapped staging allocation with its explicit device alias. An earlier native-copy staging attempt returned incorrect readbacks after remapping; the final path passes both GPU checks and native application readbacks. Access is granted on the full mapped range because ROCm 7.2's [`hipMemSetAccess` implementation](https://github.com/ROCm/clr/blob/rocm-7.2.0/hipamd/src/hip_vm.cpp) validates child sizes from the parent range. Resume maps all missing segments before granting access and restoring chunks. It can require active backing plus retained snapshots, and can fail with recoverable cold data if another allocation occupies capacity or RAM admission fails. No automatic idle hooks, launch interception, fault paging, compressed inference, or multi-GPU validation is claimed.
+
+All **21 CTests passed** after this feature, including the existing allocation, lookup, error-state, and Vulkan regressions. Raw logs: [32 MiB integrity](validation/hip-hibernation-integrity.txt), [288 MiB and process residency](validation/hip-hibernation-multisegment.txt), [failed remap recovery](validation/hip-hibernation-remap-recovery.txt).
+
+```sh
+cmake --build build -j2
+ctest --test-dir build -R hip-hibernation --output-on-failure
+# Tests select the discrete gfx1100 device and run without privilege.
+```
+
+A separate allocator regression reran the unchanged small F16 llama.cpp model for eight tokens through native and VMM/GTT paths. Both exited 0, offloaded 31/31 layers, and produced identical output (SHA-256 `93f6b895a3f0448b3fa0a4299639533448ddafe1a235a21dc059de633fa4fcb3`). VMM reported eight allocations and zero cleanup/failure counters. This run did **not** invoke hibernation; it checks the refactored allocator only. [Summary](validation/hip-hibernation-model-summary.json), [native log](validation/hip-hibernation-model-native.stderr.txt), [VMM log](validation/hip-hibernation-model-vmm.stderr.txt).

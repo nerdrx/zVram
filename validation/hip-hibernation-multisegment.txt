@@ -1,0 +1,248 @@
+10/21 Testing: hip-hibernation-multisegment
+10/21 Test: hip-hibernation-multisegment
+Command: "/usr/bin/cmake" "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "768" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_hibernate_check" "--large"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"hip-hibernation-multisegment" start time: Oct 07 03:38 CEST
+Output:
+----------------------------------------------------------
+[zvram-hip] hybrid VMM allocation: logical=301989888 mapped=301989888 VRAM=16777216 host_pinned=285212672 handles=3
+[zvram-hip] hybrid VMM allocation: logical=301989888 mapped=301989888 VRAM=16777216 host_pinned=285212672 handles=3
+cold logical=0 stored=0
+cold logical=0 stored=0
+driver hot mem_info_vram_used=4308611072 mem_info_gtt_used=3128373248
+fdinfo hot fd=6 drm-client-id:	17590
+fdinfo hot fd=6 drm-resident-cpu:	0
+fdinfo hot fd=6 drm-resident-gtt:	2 MiB
+fdinfo hot fd=6 drm-resident-vram:	12 KiB
+fdinfo hot fd=6 drm-resident-gds:	0
+fdinfo hot fd=6 drm-resident-gws:	0
+fdinfo hot fd=6 drm-resident-oa:	0
+fdinfo hot fd=6 drm-resident-doorbell:	0
+fdinfo hot fd=6 drm-resident-mmioremap:	0
+fdinfo hot fd=6 drm-memory-vram:	12 KiB
+fdinfo hot fd=6 drm-memory-gtt: 	2048 KiB
+fdinfo hot fd=6 drm-memory-cpu: 	0 KiB
+fdinfo hot fd=8 drm-client-id:	17584
+fdinfo hot fd=8 drm-resident-cpu:	0
+fdinfo hot fd=8 drm-resident-gtt:	286772 KiB
+fdinfo hot fd=8 drm-resident-vram:	159916 KiB
+fdinfo hot fd=8 drm-resident-gds:	0
+fdinfo hot fd=8 drm-resident-gws:	0
+fdinfo hot fd=8 drm-resident-oa:	0
+fdinfo hot fd=8 drm-resident-doorbell:	0
+fdinfo hot fd=8 drm-resident-mmioremap:	0
+fdinfo hot fd=8 drm-memory-vram:	159916 KiB
+fdinfo hot fd=8 drm-memory-gtt: 	286772 KiB
+fdinfo hot fd=8 drm-memory-cpu: 	0 KiB
+fdinfo hot fd=9 drm-client-id:	17585
+fdinfo hot fd=9 drm-resident-cpu:	0
+fdinfo hot fd=9 drm-resident-gtt:	8232 KiB
+fdinfo hot fd=9 drm-resident-vram:	60 KiB
+fdinfo hot fd=9 drm-resident-gds:	0
+fdinfo hot fd=9 drm-resident-gws:	0
+fdinfo hot fd=9 drm-resident-oa:	0
+fdinfo hot fd=9 drm-resident-doorbell:	0
+fdinfo hot fd=9 drm-resident-mmioremap:	0
+fdinfo hot fd=9 drm-memory-vram:	60 KiB
+fdinfo hot fd=9 drm-memory-gtt: 	8232 KiB
+fdinfo hot fd=9 drm-memory-cpu: 	0 KiB
+driver cold mem_info_vram_used=4295958528 mem_info_gtt_used=3128373248
+fdinfo cold fd=6 drm-client-id:	17590
+fdinfo cold fd=6 drm-resident-cpu:	0
+fdinfo cold fd=6 drm-resident-gtt:	2 MiB
+fdinfo cold fd=6 drm-resident-vram:	12 KiB
+fdinfo cold fd=6 drm-resident-gds:	0
+fdinfo cold fd=6 drm-resident-gws:	0
+fdinfo cold fd=6 drm-resident-oa:	0
+fdinfo cold fd=6 drm-resident-doorbell:	0
+fdinfo cold fd=6 drm-resident-mmioremap:	0
+fdinfo cold fd=6 drm-memory-vram:	12 KiB
+fdinfo cold fd=6 drm-memory-gtt: 	2048 KiB
+fdinfo cold fd=6 drm-memory-cpu: 	0 KiB
+fdinfo cold fd=8 drm-client-id:	17584
+fdinfo cold fd=8 drm-resident-cpu:	0
+fdinfo cold fd=8 drm-resident-gtt:	8244 KiB
+fdinfo cold fd=8 drm-resident-vram:	143532 KiB
+fdinfo cold fd=8 drm-resident-gds:	0
+fdinfo cold fd=8 drm-resident-gws:	0
+fdinfo cold fd=8 drm-resident-oa:	0
+fdinfo cold fd=8 drm-resident-doorbell:	0
+fdinfo cold fd=8 drm-resident-mmioremap:	0
+fdinfo cold fd=8 drm-memory-vram:	143532 KiB
+fdinfo cold fd=8 drm-memory-gtt: 	8244 KiB
+fdinfo cold fd=8 drm-memory-cpu: 	0 KiB
+fdinfo cold fd=9 drm-client-id:	17585
+fdinfo cold fd=9 drm-resident-cpu:	0
+fdinfo cold fd=9 drm-resident-gtt:	8232 KiB
+fdinfo cold fd=9 drm-resident-vram:	60 KiB
+fdinfo cold fd=9 drm-resident-gds:	0
+fdinfo cold fd=9 drm-resident-gws:	0
+fdinfo cold fd=9 drm-resident-oa:	0
+fdinfo cold fd=9 drm-resident-doorbell:	0
+fdinfo cold fd=9 drm-resident-mmioremap:	0
+fdinfo cold fd=9 drm-memory-vram:	60 KiB
+fdinfo cold fd=9 drm-memory-gtt: 	8232 KiB
+fdinfo cold fd=9 drm-memory-cpu: 	0 KiB
+cold logical=301989888 stored=151014528
+cold logical=301989888 stored=151014528
+driver restored mem_info_vram_used=4295979008 mem_info_gtt_used=3126976512
+fdinfo restored fd=6 drm-client-id:	17590
+fdinfo restored fd=6 drm-resident-cpu:	0
+fdinfo restored fd=6 drm-resident-gtt:	2 MiB
+fdinfo restored fd=6 drm-resident-vram:	12 KiB
+fdinfo restored fd=6 drm-resident-gds:	0
+fdinfo restored fd=6 drm-resident-gws:	0
+fdinfo restored fd=6 drm-resident-oa:	0
+fdinfo restored fd=6 drm-resident-doorbell:	0
+fdinfo restored fd=6 drm-resident-mmioremap:	0
+fdinfo restored fd=6 drm-memory-vram:	12 KiB
+fdinfo restored fd=6 drm-memory-gtt: 	2048 KiB
+fdinfo restored fd=6 drm-memory-cpu: 	0 KiB
+fdinfo restored fd=8 drm-client-id:	17584
+fdinfo restored fd=8 drm-resident-cpu:	0
+fdinfo restored fd=8 drm-resident-gtt:	286772 KiB
+fdinfo restored fd=8 drm-resident-vram:	159920 KiB
+fdinfo restored fd=8 drm-resident-gds:	0
+fdinfo restored fd=8 drm-resident-gws:	0
+fdinfo restored fd=8 drm-resident-oa:	0
+fdinfo restored fd=8 drm-resident-doorbell:	0
+fdinfo restored fd=8 drm-resident-mmioremap:	0
+fdinfo restored fd=8 drm-memory-vram:	159920 KiB
+fdinfo restored fd=8 drm-memory-gtt: 	286772 KiB
+fdinfo restored fd=8 drm-memory-cpu: 	0 KiB
+fdinfo restored fd=9 drm-client-id:	17585
+fdinfo restored fd=9 drm-resident-cpu:	0
+fdinfo restored fd=9 drm-resident-gtt:	8232 KiB
+fdinfo restored fd=9 drm-resident-vram:	60 KiB
+fdinfo restored fd=9 drm-resident-gds:	0
+fdinfo restored fd=9 drm-resident-gws:	0
+fdinfo restored fd=9 drm-resident-oa:	0
+fdinfo restored fd=9 drm-resident-doorbell:	0
+fdinfo restored fd=9 drm-resident-mmioremap:	0
+fdinfo restored fd=9 drm-memory-vram:	60 KiB
+fdinfo restored fd=9 drm-memory-gtt: 	8232 KiB
+fdinfo restored fd=9 drm-memory-cpu: 	0 KiB
+cold logical=0 stored=0
+driver hot mem_info_vram_used=4308598784 mem_info_gtt_used=3126976512
+fdinfo hot fd=6 drm-client-id:	17590
+fdinfo hot fd=6 drm-resident-cpu:	0
+fdinfo hot fd=6 drm-resident-gtt:	2 MiB
+fdinfo hot fd=6 drm-resident-vram:	12 KiB
+fdinfo hot fd=6 drm-resident-gds:	0
+fdinfo hot fd=6 drm-resident-gws:	0
+fdinfo hot fd=6 drm-resident-oa:	0
+fdinfo hot fd=6 drm-resident-doorbell:	0
+fdinfo hot fd=6 drm-resident-mmioremap:	0
+fdinfo hot fd=6 drm-memory-vram:	12 KiB
+fdinfo hot fd=6 drm-memory-gtt: 	2048 KiB
+fdinfo hot fd=6 drm-memory-cpu: 	0 KiB
+fdinfo hot fd=8 drm-client-id:	17584
+fdinfo hot fd=8 drm-resident-cpu:	0
+fdinfo hot fd=8 drm-resident-gtt:	286772 KiB
+fdinfo hot fd=8 drm-resident-vram:	159920 KiB
+fdinfo hot fd=8 drm-resident-gds:	0
+fdinfo hot fd=8 drm-resident-gws:	0
+fdinfo hot fd=8 drm-resident-oa:	0
+fdinfo hot fd=8 drm-resident-doorbell:	0
+fdinfo hot fd=8 drm-resident-mmioremap:	0
+fdinfo hot fd=8 drm-memory-vram:	159920 KiB
+fdinfo hot fd=8 drm-memory-gtt: 	286772 KiB
+fdinfo hot fd=8 drm-memory-cpu: 	0 KiB
+fdinfo hot fd=9 drm-client-id:	17585
+fdinfo hot fd=9 drm-resident-cpu:	0
+fdinfo hot fd=9 drm-resident-gtt:	8232 KiB
+fdinfo hot fd=9 drm-resident-vram:	60 KiB
+fdinfo hot fd=9 drm-resident-gds:	0
+fdinfo hot fd=9 drm-resident-gws:	0
+fdinfo hot fd=9 drm-resident-oa:	0
+fdinfo hot fd=9 drm-resident-doorbell:	0
+fdinfo hot fd=9 drm-resident-mmioremap:	0
+fdinfo hot fd=9 drm-memory-vram:	60 KiB
+fdinfo hot fd=9 drm-memory-gtt: 	8232 KiB
+fdinfo hot fd=9 drm-memory-cpu: 	0 KiB
+driver cold mem_info_vram_used=4295950336 mem_info_gtt_used=3112296448
+fdinfo cold fd=6 drm-client-id:	17590
+fdinfo cold fd=6 drm-resident-cpu:	0
+fdinfo cold fd=6 drm-resident-gtt:	2 MiB
+fdinfo cold fd=6 drm-resident-vram:	12 KiB
+fdinfo cold fd=6 drm-resident-gds:	0
+fdinfo cold fd=6 drm-resident-gws:	0
+fdinfo cold fd=6 drm-resident-oa:	0
+fdinfo cold fd=6 drm-resident-doorbell:	0
+fdinfo cold fd=6 drm-resident-mmioremap:	0
+fdinfo cold fd=6 drm-memory-vram:	12 KiB
+fdinfo cold fd=6 drm-memory-gtt: 	2048 KiB
+fdinfo cold fd=6 drm-memory-cpu: 	0 KiB
+fdinfo cold fd=8 drm-client-id:	17584
+fdinfo cold fd=8 drm-resident-cpu:	0
+fdinfo cold fd=8 drm-resident-gtt:	8244 KiB
+fdinfo cold fd=8 drm-resident-vram:	143536 KiB
+fdinfo cold fd=8 drm-resident-gds:	0
+fdinfo cold fd=8 drm-resident-gws:	0
+fdinfo cold fd=8 drm-resident-oa:	0
+fdinfo cold fd=8 drm-resident-doorbell:	0
+fdinfo cold fd=8 drm-resident-mmioremap:	0
+fdinfo cold fd=8 drm-memory-vram:	143536 KiB
+fdinfo cold fd=8 drm-memory-gtt: 	8244 KiB
+fdinfo cold fd=8 drm-memory-cpu: 	0 KiB
+fdinfo cold fd=9 drm-client-id:	17585
+fdinfo cold fd=9 drm-resident-cpu:	0
+fdinfo cold fd=9 drm-resident-gtt:	8232 KiB
+fdinfo cold fd=9 drm-resident-vram:	60 KiB
+fdinfo cold fd=9 drm-resident-gds:	0
+fdinfo cold fd=9 drm-resident-gws:	0
+fdinfo cold fd=9 drm-resident-oa:	0
+fdinfo cold fd=9 drm-resident-doorbell:	0
+fdinfo cold fd=9 drm-resident-mmioremap:	0
+fdinfo cold fd=9 drm-memory-vram:	60 KiB
+fdinfo cold fd=9 drm-memory-gtt: 	8232 KiB
+fdinfo cold fd=9 drm-memory-cpu: 	0 KiB
+cold logical=301989888 stored=151014528
+driver restored mem_info_vram_used=4295950336 mem_info_gtt_used=3112296448
+fdinfo restored fd=6 drm-client-id:	17590
+fdinfo restored fd=6 drm-resident-cpu:	0
+fdinfo restored fd=6 drm-resident-gtt:	2 MiB
+fdinfo restored fd=6 drm-resident-vram:	12 KiB
+fdinfo restored fd=6 drm-resident-gds:	0
+fdinfo restored fd=6 drm-res[zvram-hip] summary: tracked=0 peak_allocations=2 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=285212672 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=2 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+ident-gws:	0
+fdinfo restored fd=6 drm-resident-oa:	0
+fdinfo restored fd=6 drm-resident-doorbell:	0
+fdinfo restored fd=6 drm-resident-mmioremap:	0
+fdinfo restored fd=6 drm-memory-vram:	12 KiB
+fdinfo restored fd=6 drm-memory-gtt: 	2048 KiB
+fdinfo restored fd=6 drm-memory-cpu: 	0 KiB
+fdinfo restored fd=8 drm-client-id:	17584
+fdinfo restored fd=8 drm-resident-cpu:	0
+fdinfo restored fd=8 drm-resident-gtt:	286772 KiB
+fdinfo restored fd=8 drm-resident-vram:	159920 KiB
+fdinfo restored fd=8 drm-resident-gds:	0
+fdinfo restored fd=8 drm-resident-gws:	0
+fdinfo restored fd=8 drm-resident-oa:	0
+fdinfo restored fd=8 drm-resident-doorbell:	0
+fdinfo restored fd=8 drm-resident-mmioremap:	0
+fdinfo restored fd=8 drm-memory-vram:	159920 KiB
+fdinfo restored fd=8 drm-memory-gtt: 	286772 KiB
+fdinfo restored fd=8 drm-memory-cpu: 	0 KiB
+fdinfo restored fd=9 drm-client-id:	17585
+fdinfo restored fd=9 drm-resident-cpu:	0
+fdinfo restored fd=9 drm-resident-gtt:	8232 KiB
+fdinfo restored fd=9 drm-resident-vram:	60 KiB
+fdinfo restored fd=9 drm-resident-gds:	0
+fdinfo restored fd=9 drm-resident-gws:	0
+fdinfo restored fd=9 drm-resident-oa:	0
+fdinfo restored fd=9 drm-resident-doorbell:	0
+fdinfo restored fd=9 drm-resident-mmioremap:	0
+fdinfo restored fd=9 drm-memory-vram:	60 KiB
+fdinfo restored fd=9 drm-memory-gtt: 	8232 KiB
+fdinfo restored fd=9 drm-memory-cpu: 	0 KiB
+cold logical=0 stored=0
+cold logical=0 stored=0
+HIP hibernation PASS: full 288 MiB GPU-mutated data, two cycles, stable pointer, budget refusal, cold free
+<end of output>
+Test time =   1.22 sec
+----------------------------------------------------------
+Test Passed.
+"hip-hibernation-multisegment" end time: Oct 07 03:38 CEST
+"hip-hibernation-multisegment" time elapsed: 00:00:01
+----------------------------------------------------------

@@ -47,10 +47,17 @@ if(ZVRAM_BUILD_HIP)
     find_library(ZVRAM_HIP_RUNTIME amdhip64 HINTS /opt/rocm/lib)
     if(ZVRAM_HIPCC AND ZVRAM_HIP_INCLUDE AND ZVRAM_HIP_RUNTIME)
         add_library(zvram_hip SHARED hip_layer.cpp)
+        add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o
+            COMMAND ${ZVRAM_HIPCC} --offload-arch=${ZVRAM_HIP_ARCH} -O2 -std=c++17 -fPIC -c
+                ${CMAKE_CURRENT_SOURCE_DIR}/hip_snapshot_copy.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o
+            DEPENDS hip_snapshot_copy.cpp VERBATIM)
+        set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o
+            PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
+        target_sources(zvram_hip PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o)
         target_include_directories(zvram_hip PRIVATE ${ZVRAM_HIP_INCLUDE})
         target_compile_features(zvram_hip PRIVATE cxx_std_17)
         target_compile_definitions(zvram_hip PRIVATE __HIP_PLATFORM_AMD__=1)
-        target_link_libraries(zvram_hip PRIVATE ${ZVRAM_HIP_RUNTIME} ${CMAKE_DL_LIBS} Threads::Threads)
+        target_link_libraries(zvram_hip PRIVATE ${ZVRAM_HIP_RUNTIME} ${CMAKE_DL_LIBS} Threads::Threads PkgConfig::ZSTD)
         pkg_check_modules(DRM_AMDGPU QUIET IMPORTED_TARGET libdrm_amdgpu)
         if(DRM_AMDGPU_FOUND)
             target_compile_definitions(zvram_hip PRIVATE ZVRAM_HAS_DRM_VMM=1)
@@ -81,10 +88,10 @@ if(ZVRAM_BUILD_HIP)
         target_compile_features(zvram-hip-error-check PRIVATE cxx_std_17)
         target_compile_definitions(zvram-hip-error-check PRIVATE __HIP_PLATFORM_AMD__=1)
         target_link_libraries(zvram-hip-error-check PRIVATE ${ZVRAM_HIP_RUNTIME} Threads::Threads)
-        foreach(check hip_check hip_probe vmm_probe)
+        foreach(check hip_check hip_probe vmm_probe hip_hibernate_check)
             add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${check}
                 COMMAND ${ZVRAM_HIPCC} --offload-arch=${ZVRAM_HIP_ARCH} -O2 -std=c++17 -pthread
-                    ${CMAKE_CURRENT_SOURCE_DIR}/${check}.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/${check}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/${check}.cpp -ldl -o ${CMAKE_CURRENT_BINARY_DIR}/${check}
                 DEPENDS ${check}.cpp VERBATIM)
             add_custom_target(zvram-${check} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${check})
         endforeach()
@@ -104,6 +111,12 @@ if(ZVRAM_BUILD_HIP)
         add_test(NAME hip-spill-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-local-mib 16 --hip-host-mib 64 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check)
         add_test(NAME hip-procedure-native-query COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-local-mib 32 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-proc-check> --expect-physical)
         if(DRM_AMDGPU_FOUND)
+        add_test(NAME hip-hibernation-integrity COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
+            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 --
+            ${CMAKE_CURRENT_BINARY_DIR}/hip_hibernate_check)
+        add_test(NAME hip-hibernation-multisegment COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
+            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 768 --
+            ${CMAKE_CURRENT_BINARY_DIR}/hip_hibernate_check --large)
         add_test(NAME hip-vmm-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 32 --hip-host-mib 32 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check --single-allocation --mib 64)
         add_test(NAME hip-vmm-host-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 0 --hip-host-mib 64 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check --single-allocation --mib 32)
         add_test(NAME hip-native-capacity-query COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-capacity-check>)
@@ -127,6 +140,12 @@ if(ZVRAM_BUILD_HIP)
         add_test(NAME hip-injected-oom-integrity COMMAND ${Python3_EXECUTABLE} -c
             "import os,subprocess; e=os.environ.copy(); e['LD_PRELOAD']='${CMAKE_CURRENT_BINARY_DIR}/libzvram_hip_oom_test.so'; e.pop('ZVRAM_HIP_LOCAL_LIMIT_MIB',None); e.pop('ZVRAM_HIP_VMM',None); p=subprocess.run(['${CMAKE_CURRENT_SOURCE_DIR}/zvram','--hip','--hip-host-mib','64','--','${CMAKE_CURRENT_BINARY_DIR}/hip_check'],env=e,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True); print(p.stdout); assert p.returncode==0; assert 'mapped_host_allocations=6 ' in p.stdout")
         if(DRM_AMDGPU_FOUND)
+        add_test(NAME hip-hibernation-remap-recovery COMMAND ${CMAKE_COMMAND} -E env
+            "LD_PRELOAD=$<TARGET_FILE:zvram_hip_oom_test>" "HIP_VISIBLE_DEVICES=0"
+            "ZVRAM_TEST_VMM_FAIL_AFTER=999999" "ZVRAM_TEST_VMM_MAP_FAIL_AFTER=3"
+            --unset=ZVRAM_TEST_NATIVE_ERROR
+            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 --
+            ${CMAKE_CURRENT_BINARY_DIR}/hip_hibernate_check --retry-map-failure)
         add_test(NAME hip-vmm-partial-failure-cleanup COMMAND ${Python3_EXECUTABLE} -c
             "import os,subprocess; e=os.environ.copy(); e['LD_PRELOAD']='${CMAKE_CURRENT_BINARY_DIR}/libzvram_hip_oom_test.so'; e['ZVRAM_TEST_VMM_FAIL_AFTER']='1'; p=subprocess.run(['${CMAKE_CURRENT_SOURCE_DIR}/zvram','--hip','--hip-vmm','--hip-local-mib','512','--hip-host-mib','256','--','${CMAKE_CURRENT_BINARY_DIR}/hip_check','--single-allocation','--mib','768'],env=e,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True); print(p.stdout); assert p.returncode==1; assert 'failures=1' in p.stdout; assert 'hipMalloc_api_bytes_current=0' in p.stdout; assert 'host_pinned_backing_bytes_current=0 pending=0' in p.stdout; assert 'tracked=0 ' in p.stdout")
         endif()

@@ -9,18 +9,21 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <zstd.h>
 
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -311,7 +314,11 @@ struct VmmSegment {
   size_t bytes = 0;
   bool host = false;
   bool mapped = false;
+  bool accessGranted = false;
+  bool accounted = true;
   hipMemGenericAllocationHandle_t handle{};
+  std::unique_ptr<unsigned char[]> snapshot;
+  size_t snapshotBytes = 0;
 #ifdef ZVRAM_HAS_DRM_VMM
   amdgpu_bo_handle gttBo = nullptr;
   int exportFd = -1;
@@ -351,7 +358,10 @@ struct DrmProvider {
 struct VmmStorage {
   void* base = nullptr;
   size_t mappedBytes = 0;
+  size_t logicalBytes = 0;
   bool addressReserved = false;
+  bool coldLogical = false;
+  bool freeStarted = false;
   std::vector<VmmSegment> segments;
 #ifdef ZVRAM_HAS_DRM_VMM
   std::shared_ptr<DrmProvider> drm;
@@ -386,6 +396,7 @@ struct Totals {
 };
 
 std::mutex gMutex;
+std::recursive_mutex gResidencyMutex;
 #ifdef ZVRAM_HAS_DRM_VMM
 std::mutex gDrmProviderMutex;
 std::unordered_map<int, std::weak_ptr<DrmProvider>> gDrmProviders;
@@ -395,6 +406,8 @@ std::unordered_map<void*, size_t> gFreeingCounts;
 std::unordered_map<int, DeviceBytes> gDeviceBytes;
 std::vector<std::shared_ptr<VmmStorage>> gOrphanedVmm;
 size_t gOrphanSlotsReserved = 0;
+size_t gColdLogicalBytes = 0;
+size_t gColdStoredBytes = 0;
 Totals gTotals;
 bool gSummaryRegistered = false;
 
@@ -579,6 +592,44 @@ void releaseHostBytes(size_t bytes) {
   gTotals.hostPending = bytes > gTotals.hostPending ? 0 : gTotals.hostPending - bytes;
 }
 
+void commitHostBytes(size_t bytes) {
+  std::lock_guard<std::mutex> lock(gMutex);
+  gTotals.hostPending = bytes > gTotals.hostPending ? 0 : gTotals.hostPending - bytes;
+  if (bytes <= std::numeric_limits<size_t>::max() - gTotals.hostCurrent)
+    gTotals.hostCurrent += bytes;
+  if (gTotals.hostCurrent > gTotals.hostPeak) gTotals.hostPeak = gTotals.hostCurrent;
+}
+
+void releaseCurrentHostBytes(size_t bytes) {
+  std::lock_guard<std::mutex> lock(gMutex);
+  gTotals.hostCurrent = bytes > gTotals.hostCurrent ? 0 : gTotals.hostCurrent - bytes;
+}
+
+void setColdLogical(VmmStorage& storage, bool cold) {
+  std::lock_guard<std::mutex> lock(gMutex);
+  if (storage.coldLogical == cold) return;
+  if (cold) {
+    if (storage.logicalBytes <= std::numeric_limits<size_t>::max() - gColdLogicalBytes)
+      gColdLogicalBytes += storage.logicalBytes;
+    storage.coldLogical = true;
+  } else {
+    gColdLogicalBytes = storage.logicalBytes > gColdLogicalBytes
+                            ? 0 : gColdLogicalBytes - storage.logicalBytes;
+    storage.coldLogical = false;
+  }
+}
+
+void addColdStored(size_t bytes) {
+  std::lock_guard<std::mutex> lock(gMutex);
+  if (bytes <= std::numeric_limits<size_t>::max() - gColdStoredBytes)
+    gColdStoredBytes += bytes;
+}
+
+void removeColdStored(size_t bytes) {
+  std::lock_guard<std::mutex> lock(gMutex);
+  gColdStoredBytes = bytes > gColdStoredBytes ? 0 : gColdStoredBytes - bytes;
+}
+
 bool rememberAllocation(void* returnedPointer, const Allocation& allocation) {
   if (!returnedPointer) return false;
   try {
@@ -658,17 +709,31 @@ void finishTrackedFree(void* pointer, const Allocation& allocation,
                                 ? 0
                                 : gTotals.hostCurrent - allocation.bytes;
     } else {
-      gTotals.hostCurrent = allocation.bytes > gTotals.hostCurrent
-                                ? 0
-                                : gTotals.hostCurrent - allocation.bytes;
+      size_t hostBytes = 0, deviceBytes = 0, storedBytes = 0;
+      if (allocation.vmm) {
+        for (const auto& segment : allocation.vmm->segments) {
+          if (segment.accounted) {
+            if (segment.host) hostBytes += segment.bytes;
+            else deviceBytes += segment.bytes;
+          }
+          storedBytes += segment.snapshotBytes;
+        }
+        if (allocation.vmm->coldLogical) {
+          gColdLogicalBytes = allocation.vmm->logicalBytes > gColdLogicalBytes
+                                  ? 0 : gColdLogicalBytes - allocation.vmm->logicalBytes;
+          allocation.vmm->coldLogical = false;
+        }
+      }
+      gColdStoredBytes = storedBytes > gColdStoredBytes ? 0 : gColdStoredBytes - storedBytes;
+      gTotals.hostCurrent = hostBytes > gTotals.hostCurrent
+                                ? 0 : gTotals.hostCurrent - hostBytes;
       const auto device = gDeviceBytes.find(allocation.device);
       if (device != gDeviceBytes.end())
-        device->second.current = allocation.deviceBytes > device->second.current
+        device->second.current = deviceBytes > device->second.current
                                      ? 0
-                                     : device->second.current - allocation.deviceBytes;
-      gTotals.localCurrent = allocation.deviceBytes > gTotals.localCurrent
-                                 ? 0
-                                 : gTotals.localCurrent - allocation.deviceBytes;
+                                     : device->second.current - deviceBytes;
+      gTotals.localCurrent = deviceBytes > gTotals.localCurrent
+                                 ? 0 : gTotals.localCurrent - deviceBytes;
     }
     if (gTotals.allocations) --gTotals.allocations;
   }
@@ -891,6 +956,8 @@ bool cleanupGttProvider(VmmStorage& storage) {
 }
 #endif
 
+hipError_t createSegmentBacking(VmmStorage& storage, VmmSegment& segment, int device);
+
 hipError_t createHybridVmm(void** output, size_t bytes, int device,
                            hipError_t originalError) {
   *output = nullptr;
@@ -1004,6 +1071,7 @@ hipError_t createHybridVmm(void** output, size_t bytes, int device,
     return originalError;
   }
   storage->mappedBytes = mappedBytes;
+  storage->logicalBytes = bytes;
 
 #ifdef ZVRAM_HAS_DRM_VMM
   if (hostBytes) {
@@ -1084,69 +1152,19 @@ hipError_t createHybridVmm(void** output, size_t bytes, int device,
   storage->base = va;
   storage->addressReserved = true;
   auto mapSegments = [&](size_t regionBytes, size_t maxSegmentBytes,
-                         const hipMemAllocationProp& prop, bool host) -> hipError_t {
+                         const hipMemAllocationProp&, bool host) -> hipError_t {
     size_t offset = host ? deviceBytes : 0;
     const size_t end = offset + regionBytes;
     while (offset < end) {
       const size_t amount = std::min(maxSegmentBytes, end - offset);
-      storage->segments.push_back(VmmSegment{offset, amount, host, false, {}});
+      VmmSegment added{};
+      added.offset = offset;
+      added.bytes = amount;
+      added.host = host;
+      storage->segments.push_back(std::move(added));
       VmmSegment& segment = storage->segments.back();
-      hipError_t result = hipSuccess;
-#ifdef ZVRAM_HAS_DRM_VMM
-      if (host) {
-        amdgpu_bo_alloc_request request{};
-        request.alloc_size = amount;
-        request.phys_alignment = hostGranularity;
-        request.preferred_heap = AMDGPU_GEM_DOMAIN_GTT;
-        if (!storage->drm ||
-            amdgpu_bo_alloc(storage->drm->device, &request, &segment.gttBo) != 0)
-          return hipErrorOutOfMemory;
-        amdgpu_bo_info info{};
-        if (amdgpu_bo_query_info(segment.gttBo, &info) != 0 ||
-            info.alloc_size != amount) {
-          std::fprintf(stderr,
-                       "[zvram-hip] GTT BO size mismatch: requested=%zu allocated=%llu\n",
-                       amount, static_cast<unsigned long long>(info.alloc_size));
-          return hipErrorInvalidValue;
-        }
-        uint32_t exportedFd = 0;
-        if (amdgpu_bo_export(segment.gttBo, amdgpu_bo_handle_type_dma_buf_fd,
-                             &exportedFd) != 0)
-          return hipErrorNotSupported;
-        segment.exportFd = static_cast<int>(exportedFd);
-        result = import(&segment.handle,
-                        reinterpret_cast<void*>(static_cast<intptr_t>(segment.exportFd)),
-                        hipMemHandleTypePosixFileDescriptor);
-        if (close(segment.exportFd) == 0) segment.exportFd = -1;
-        else {
-          std::fprintf(stderr, "[zvram-hip] close exported GTT dma-buf failed: %s\n",
-                       std::strerror(errno));
-          return hipErrorUnknown;
-        }
-        if (result != hipSuccess) return result;
-        hipMemAllocationProp importedProp{};
-        result = getProperties(&importedProp, segment.handle);
-        if (result != hipSuccess) return result;
-        size_t importedGranularity = 0;
-        result = getGranularity(&importedGranularity, &importedProp,
-                                hipMemAllocationGranularityMinimum);
-        if (result != hipSuccess) return result;
-        if (!importedGranularity || amount % importedGranularity) {
-          std::fprintf(stderr,
-                       "[zvram-hip] imported GTT BO size %zu is incompatible with granularity %zu\n",
-                       amount, importedGranularity);
-          return hipErrorInvalidValue;
-        }
-      } else
-#endif
-      {
-        result = create(&segment.handle, amount, &prop, 0);
-        if (result != hipSuccess) return result;
-      }
-      result = map(static_cast<char*>(va) + offset, amount, 0,
-                   segment.handle, 0);
+      const hipError_t result = createSegmentBacking(*storage, segment, device);
       if (result != hipSuccess) return result;
-      segment.mapped = true;
       offset += amount;
     }
     return hipSuccess;
@@ -1172,6 +1190,7 @@ hipError_t createHybridVmm(void** output, size_t bytes, int device,
   access.flags = hipMemAccessFlagsProtReadWrite;
   status = setAccess(va, mappedBytes, &access, 1);
   if (status != hipSuccess) { rollback(); noteFailure(); return status; }
+  for (auto& segment : storage->segments) segment.accessGranted = true;
 
   Allocation allocation{Origin::HybridVmm, va, hostBytes, device,
                         mappedBytes, deviceBytes, storage};
@@ -1186,6 +1205,507 @@ hipError_t createHybridVmm(void** output, size_t bytes, int device,
                bytes, mappedBytes, deviceBytes, hostBytes, storage->segments.size(),
                localLimit().set ? "" : " (native OOM; all-host VMM fallback)");
   *output = va;
+  return hipSuccess;
+}
+
+struct SnapshotChunkHeader {
+  uint32_t rawBytes;
+  uint32_t storedBytes;
+  uint32_t compressed;
+};
+constexpr size_t kSnapshotChunkBytes = 1024u * 1024u;
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramHipCopyMapped(
+    void*, const void*, size_t, hipStream_t);
+
+struct SnapshotScratch {
+  unsigned char* pointer = nullptr;
+  void* devicePointer = nullptr;
+  ~SnapshotScratch() { if (pointer && realHipHostFree()) (void)realHipHostFree()(pointer); }
+  hipError_t allocate() {
+    const auto allocate = realHipHostMalloc();
+    const auto alias = realHipHostGetDevicePointer();
+    if (!allocate || !alias) return hipErrorNotSupported;
+    const hipError_t status = allocate(reinterpret_cast<void**>(&pointer), kSnapshotChunkBytes,
+        hipHostMallocMapped | hipHostMallocPortable);
+    return status == hipSuccess ? alias(&devicePointer, pointer, 0) : status;
+  }
+  unsigned char* data() { return pointer; }
+  void* deviceData() { return devicePointer; }
+  size_t size() const { return kSnapshotChunkBytes; }
+};
+
+hipError_t copyVmmBytes(void* destination, const void* source, size_t bytes,
+                        hipMemcpyKind) {
+  // ponytail: bounded mapped scratch and a GPU kernel avoid remapped-VMM
+  // readback corruption observed with ROCm 7.2's ordinary memcpy path.
+  const hipError_t status = zvramHipCopyMapped(destination, source, bytes, nullptr);
+  if (status != hipSuccess) return status;
+  const auto sync = realHipDeviceSynchronize();
+  return sync ? sync() : hipErrorNotSupported;
+}
+
+bool chooseSnapshotChunk(const unsigned char* raw, size_t bytes,
+                         std::vector<unsigned char>* compressed,
+                         bool* useCompressed, size_t* payloadBytes) {
+  const size_t result = ZSTD_compress(compressed->data(), compressed->size(), raw, bytes, 3);
+  if (ZSTD_isError(result)) return false;
+  *useCompressed = result < bytes;
+  *payloadBytes = *useCompressed ? result : bytes;
+  return true;
+}
+
+hipError_t measureSegmentSnapshot(const VmmStorage& storage, const VmmSegment& segment,
+                                  SnapshotScratch* raw,
+                                  std::vector<unsigned char>* compressed,
+                                  size_t* encodedBytes) {
+  *encodedBytes = 0;
+  size_t offset = 0;
+  while (offset < segment.bytes) {
+    const size_t amount = std::min(kSnapshotChunkBytes, segment.bytes - offset);
+    hipError_t status = copyVmmBytes(raw->deviceData(),
+        static_cast<const char*>(storage.base) + segment.offset + offset, amount,
+        hipMemcpyDeviceToHost);
+    if (status != hipSuccess) return status;
+    bool compressedChunk = false;
+    size_t payloadBytes = 0;
+    if (!chooseSnapshotChunk(raw->data(), amount, compressed, &compressedChunk,
+                             &payloadBytes) ||
+        payloadBytes > std::numeric_limits<size_t>::max() - sizeof(SnapshotChunkHeader) ||
+        *encodedBytes > std::numeric_limits<size_t>::max() -
+                            sizeof(SnapshotChunkHeader) - payloadBytes)
+      return hipErrorOutOfMemory;
+    *encodedBytes += sizeof(SnapshotChunkHeader) + payloadBytes;
+    offset += amount;
+  }
+  return hipSuccess;
+}
+
+hipError_t buildSegmentSnapshot(VmmStorage& storage, VmmSegment& segment,
+                                size_t encodedBytes,
+                                SnapshotScratch* raw,
+                                std::vector<unsigned char>* compressed) {
+  std::unique_ptr<unsigned char[]> snapshot(
+      encodedBytes ? new (std::nothrow) unsigned char[encodedBytes] : nullptr);
+  if (encodedBytes && !snapshot) return hipErrorOutOfMemory;
+  size_t offset = 0, written = 0;
+  while (offset < segment.bytes) {
+    const size_t amount = std::min(kSnapshotChunkBytes, segment.bytes - offset);
+    hipError_t status = copyVmmBytes(raw->deviceData(),
+        static_cast<const char*>(storage.base) + segment.offset + offset, amount,
+        hipMemcpyDeviceToHost);
+    if (status != hipSuccess) return status;
+    bool compressedChunk = false;
+    size_t payloadBytes = 0;
+    if (!chooseSnapshotChunk(raw->data(), amount, compressed, &compressedChunk,
+                             &payloadBytes))
+      return hipErrorUnknown;
+    SnapshotChunkHeader header{static_cast<uint32_t>(amount),
+                               static_cast<uint32_t>(payloadBytes),
+                               compressedChunk ? 1u : 0u};
+    if (sizeof(header) + payloadBytes > encodedBytes - written)
+      return hipErrorUnknown;
+    std::memcpy(snapshot.get() + written, &header, sizeof(header));
+    written += sizeof(header);
+    const unsigned char* payload = compressedChunk ? compressed->data() : raw->data();
+    std::memcpy(snapshot.get() + written, payload, payloadBytes);
+    written += payloadBytes;
+    offset += amount;
+  }
+  if (written != encodedBytes) return hipErrorUnknown;
+  segment.snapshot = std::move(snapshot);
+  segment.snapshotBytes = encodedBytes;
+  addColdStored(encodedBytes);
+  setColdLogical(storage, true);
+  return hipSuccess;
+}
+
+hipError_t restoreSegmentSnapshot(VmmStorage& storage, VmmSegment& segment,
+                                  SnapshotScratch* raw) {
+  if (!segment.snapshot) return hipSuccess;
+  size_t streamOffset = 0, outputOffset = 0;
+  while (streamOffset < segment.snapshotBytes) {
+    if (segment.snapshotBytes - streamOffset < sizeof(SnapshotChunkHeader))
+      return hipErrorInvalidValue;
+    SnapshotChunkHeader header{};
+    std::memcpy(&header, segment.snapshot.get() + streamOffset, sizeof(header));
+    streamOffset += sizeof(header);
+    if (!header.rawBytes || header.rawBytes > kSnapshotChunkBytes ||
+        header.storedBytes > segment.snapshotBytes - streamOffset ||
+        header.rawBytes > segment.bytes - std::min(outputOffset, segment.bytes))
+      return hipErrorInvalidValue;
+    const unsigned char* payload = segment.snapshot.get() + streamOffset;
+    if (header.compressed) {
+      const size_t decoded = ZSTD_decompress(raw->data(), raw->size(), payload,
+                                             header.storedBytes);
+      if (ZSTD_isError(decoded) || decoded != header.rawBytes) return hipErrorInvalidValue;
+    } else {
+      if (header.storedBytes != header.rawBytes) return hipErrorInvalidValue;
+      std::memcpy(raw->data(), payload, header.rawBytes);
+    }
+    const hipError_t status = copyVmmBytes(
+        static_cast<char*>(storage.base) + segment.offset + outputOffset,
+        raw->deviceData(), header.rawBytes, hipMemcpyHostToDevice);
+    if (status != hipSuccess) return status;
+    outputOffset += header.rawBytes;
+    streamOffset += header.storedBytes;
+  }
+  if (outputOffset != segment.bytes) return hipErrorInvalidValue;
+  const auto sync = realHipDeviceSynchronize();
+  const hipError_t synchronized = sync ? sync() : hipErrorNotSupported;
+  if (synchronized != hipSuccess) return synchronized;
+  const size_t releasedBytes = segment.snapshotBytes;
+  segment.snapshot.reset();
+  segment.snapshotBytes = 0;
+  removeColdStored(releasedBytes);
+  return hipSuccess;
+}
+
+bool snapshotMemoryAvailable(size_t bytes) {
+  size_t available = 0;
+  if (!memAvailableBytes(&available) || available <= kHostReserveBytes) return false;
+  const size_t scratch = kSnapshotChunkBytes + ZSTD_compressBound(kSnapshotChunkBytes);
+  if (bytes > std::numeric_limits<size_t>::max() - scratch) return false;
+  return bytes + scratch <= available - kHostReserveBytes;
+}
+
+hipError_t createSegmentBacking(VmmStorage& storage, VmmSegment& segment, int device) {
+  const auto create = realHipMemCreate();
+  const auto map = realHipMemMap();
+  const auto setAccess = realHipMemSetAccess();
+  const auto getGranularity = realHipMemGetGranularity();
+  const auto import = realHipMemImport();
+  if (!create || !map || !setAccess || !getGranularity || !import)
+    return hipErrorNotSupported;
+  if (!segment.accounted) {
+    if (segment.host) {
+      if (!reserveHostBytes(segment.bytes)) return hipErrorOutOfMemory;
+#ifdef ZVRAM_HAS_DRM_VMM
+      hipError_t status = storage.drm ? hipSuccess : acquireGttProvider(device, &storage.drm);
+      if (status != hipSuccess) { releaseHostBytes(segment.bytes); return status; }
+      if (!segment.gttBo) {
+        size_t granularity = 0;
+        hipMemAllocationProp prop{};
+        prop.type = hipMemAllocationTypePinned;
+        prop.location = {hipMemLocationTypeHost, 0};
+        status = getGranularity(&granularity, &prop, hipMemAllocationGranularityMinimum);
+        if (status != hipSuccess || !granularity) {
+          releaseHostBytes(segment.bytes);
+          return status == hipSuccess ? hipErrorInvalidValue : status;
+        }
+        amdgpu_bo_alloc_request request{};
+        request.alloc_size = segment.bytes;
+        request.phys_alignment = granularity;
+        request.preferred_heap = AMDGPU_GEM_DOMAIN_GTT;
+        if (amdgpu_bo_alloc(storage.drm->device, &request, &segment.gttBo) != 0) {
+          releaseHostBytes(segment.bytes);
+          return hipErrorOutOfMemory;
+        }
+      }
+      commitHostBytes(segment.bytes);
+      segment.accounted = true;
+#else
+      releaseHostBytes(segment.bytes);
+      return hipErrorNotSupported;
+#endif
+    } else {
+      const NativeReservation reservation = reserveNativeBytes(segment.bytes, device);
+      if (reservation != NativeReservation::Reserved) return hipErrorOutOfMemory;
+      hipMemAllocationProp prop{};
+      prop.type = hipMemAllocationTypePinned;
+      prop.location = {hipMemLocationTypeDevice, device};
+      const hipError_t status = create(&segment.handle, segment.bytes, &prop, 0);
+      if (status != hipSuccess) {
+        releaseNativeBytes(segment.bytes, device);
+        return status;
+      }
+      segment.accounted = true;
+    }
+  }
+
+  if (!segment.host && !segment.handle) {
+    hipMemAllocationProp prop{};
+    prop.type = hipMemAllocationTypePinned;
+    prop.location = {hipMemLocationTypeDevice, device};
+    const hipError_t status = create(&segment.handle, segment.bytes, &prop, 0);
+    if (status != hipSuccess) return status;
+  }
+
+  if (segment.host && !segment.handle) {
+#ifdef ZVRAM_HAS_DRM_VMM
+    if (!storage.drm) return hipErrorInvalidValue;
+    if (!segment.gttBo) {
+      size_t granularity = 0;
+      hipMemAllocationProp prop{};
+      prop.type = hipMemAllocationTypePinned;
+      prop.location = {hipMemLocationTypeHost, 0};
+      hipError_t status = getGranularity(&granularity, &prop,
+                                         hipMemAllocationGranularityMinimum);
+      if (status != hipSuccess || !granularity)
+        return status == hipSuccess ? hipErrorInvalidValue : status;
+      amdgpu_bo_alloc_request request{};
+      request.alloc_size = segment.bytes;
+      request.phys_alignment = granularity;
+      request.preferred_heap = AMDGPU_GEM_DOMAIN_GTT;
+      if (amdgpu_bo_alloc(storage.drm->device, &request, &segment.gttBo) != 0)
+        return hipErrorOutOfMemory;
+      amdgpu_bo_info info{};
+      if (amdgpu_bo_query_info(segment.gttBo, &info) != 0 ||
+          info.alloc_size != segment.bytes)
+        return hipErrorInvalidValue;
+      if (!segment.accounted) {
+        commitHostBytes(segment.bytes);
+        segment.accounted = true;
+      }
+    }
+    if (segment.exportFd < 0) {
+      uint32_t exportedFd = 0;
+      if (amdgpu_bo_export(segment.gttBo, amdgpu_bo_handle_type_dma_buf_fd,
+                           &exportedFd) != 0)
+        return hipErrorNotSupported;
+      segment.exportFd = static_cast<int>(exportedFd);
+    }
+    if (fcntl(segment.exportFd, F_SETFD, FD_CLOEXEC) != 0)
+      return hipErrorUnknown;
+    hipError_t status = import(&segment.handle,
+        reinterpret_cast<void*>(static_cast<intptr_t>(segment.exportFd)),
+        hipMemHandleTypePosixFileDescriptor);
+    if (close(segment.exportFd) == 0) segment.exportFd = -1;
+    else if (status == hipSuccess) status = hipErrorUnknown;
+    if (status != hipSuccess) return status;
+    const auto getProperties = realHipMemGetAllocationProps();
+    if (!getProperties) return hipErrorNotSupported;
+    hipMemAllocationProp importedProp{};
+    status = getProperties(&importedProp, segment.handle);
+    if (status != hipSuccess) return status;
+    size_t importedGranularity = 0;
+    status = getGranularity(&importedGranularity, &importedProp,
+                            hipMemAllocationGranularityMinimum);
+    if (status != hipSuccess) return status;
+    if (!importedGranularity || segment.bytes % importedGranularity)
+      return hipErrorInvalidValue;
+#else
+    return hipErrorNotSupported;
+#endif
+  }
+  if (!segment.handle) return hipErrorInvalidValue;
+  if (!segment.mapped) {
+    const hipError_t status = map(static_cast<char*>(storage.base) + segment.offset,
+                                  segment.bytes, 0, segment.handle, 0);
+    if (status != hipSuccess) return status;
+    segment.mapped = true;
+  }
+  return hipSuccess;
+}
+
+hipError_t releaseSegmentBacking(VmmStorage& storage, VmmSegment& segment,
+                                 int device) {
+  if (segment.mapped) {
+    const auto unmap = realHipMemUnmap();
+    const hipError_t status = unmap
+        ? unmap(static_cast<char*>(storage.base) + segment.offset, segment.bytes)
+        : hipErrorNotSupported;
+    if (status != hipSuccess) return status;
+    segment.mapped = false;
+    segment.accessGranted = false;
+  }
+  if (segment.handle) {
+    const auto release = realHipMemRelease();
+    const hipError_t status = release ? release(segment.handle) : hipErrorNotSupported;
+    if (status != hipSuccess) return status;
+    segment.handle = {};
+  }
+#ifdef ZVRAM_HAS_DRM_VMM
+  if (!cleanupGttSegment(segment)) return hipErrorUnknown;
+#endif
+  if (segment.accounted) {
+    if (segment.host) releaseCurrentHostBytes(segment.bytes);
+    else releaseNativeBytes(segment.bytes, device);
+    segment.accounted = false;
+  }
+  return hipSuccess;
+}
+
+hipError_t switchDeviceFor(int device, int* previous, bool* switched) {
+  const auto get = realHipGetDevice();
+  const auto set = realHipSetDevice();
+  if (!get || !set) return hipErrorNotSupported;
+  hipError_t status = get(previous);
+  if (status != hipSuccess) return status;
+  *switched = *previous != device;
+  return *switched ? set(device) : hipSuccess;
+}
+
+hipError_t zvramHibernate(size_t coldBudgetBytes) {
+  std::lock_guard<std::recursive_mutex> residency(gResidencyMutex);
+  std::vector<std::shared_ptr<VmmStorage>> storages;
+  try {
+    std::lock_guard<std::mutex> lock(gMutex);
+    for (const auto& item : gAllocations) {
+      if (item.second.origin == Origin::HybridVmm && item.second.vmm &&
+          std::find(storages.begin(), storages.end(), item.second.vmm) == storages.end())
+        storages.push_back(item.second.vmm);
+    }
+  } catch (...) { return hipErrorOutOfMemory; }
+  if (storages.empty()) return hipSuccess;
+  for (const auto& storage : storages)
+    if (storage->freeStarted) return hipErrorInvalidValue;
+
+  std::vector<int> devices;
+  for (const auto& storage : storages)
+    for (const auto& item : gAllocations)
+      if (item.second.vmm == storage &&
+          std::find(devices.begin(), devices.end(), item.second.device) == devices.end())
+        devices.push_back(item.second.device);
+  const auto sync = realHipDeviceSynchronize();
+  int originalDevice = -1;
+  bool haveOriginal = false;
+  const auto getDevice = realHipGetDevice();
+  const auto setDevice = realHipSetDevice();
+  if (!getDevice || !setDevice || !sync) return hipErrorNotSupported;
+  hipError_t status = getDevice(&originalDevice);
+  if (status != hipSuccess) return status;
+  haveOriginal = true;
+  for (int device : devices) {
+    if ((status = setDevice(device)) != hipSuccess) break;
+    status = sync();
+    if (status != hipSuccess) break;
+  }
+  if (haveOriginal && getDevice) {
+    const hipError_t restore = setDevice(originalDevice);
+    if (status == hipSuccess && restore != hipSuccess) status = restore;
+  }
+  if (status != hipSuccess) return status;
+
+  SnapshotScratch raw;
+  const hipError_t scratchStatus = raw.allocate();
+  if (scratchStatus != hipSuccess) return scratchStatus;
+  std::vector<unsigned char> compressed(ZSTD_compressBound(kSnapshotChunkBytes));
+  std::vector<std::vector<size_t>> plans(storages.size());
+  size_t additionalBytes = 0;
+  for (size_t i = 0; i < storages.size(); ++i) {
+    const auto& storage = storages[i];
+    plans[i].resize(storage->segments.size());
+    int previous = -1; bool switched = false;
+    status = switchDeviceFor([&] {
+      for (const auto& item : gAllocations) if (item.second.vmm == storage) return item.second.device;
+      return 0;
+    }(), &previous, &switched);
+    if (status != hipSuccess) return status;
+    for (size_t j = 0; j < storage->segments.size(); ++j) {
+      const auto& segment = storage->segments[j];
+      if (segment.snapshot || !segment.mapped) continue;
+      size_t planned = 0;
+      status = measureSegmentSnapshot(*storage, segment, &raw, &compressed, &planned);
+      if (status != hipSuccess) break;
+      if (planned > std::numeric_limits<size_t>::max() - additionalBytes) {
+        status = hipErrorOutOfMemory; break;
+      }
+      plans[i][j] = planned;
+      additionalBytes += planned;
+    }
+    if (switched) {
+      const hipError_t restore = realHipSetDevice()(previous);
+      if (status == hipSuccess && restore != hipSuccess) status = restore;
+    }
+    if (status != hipSuccess) return status;
+  }
+  size_t existingCold = 0;
+  { std::lock_guard<std::mutex> lock(gMutex); existingCold = gColdStoredBytes; }
+  if (additionalBytes > coldBudgetBytes || existingCold > coldBudgetBytes - additionalBytes)
+    return hipErrorOutOfMemory;
+
+  // Release host-tier segments first so their GTT backing returns RAM before the
+  // bounded per-segment snapshot buffer for local VRAM segments is allocated.
+  for (size_t pass = 0; pass < 2; ++pass) {
+    for (size_t i = 0; i < storages.size(); ++i) {
+      auto& storage = *storages[i];
+      int device = 0;
+      for (const auto& item : gAllocations) if (item.second.vmm == storages[i]) { device = item.second.device; break; }
+      int previous = -1; bool switched = false;
+      status = switchDeviceFor(device, &previous, &switched);
+      if (status != hipSuccess) return status;
+      for (size_t j = 0; j < storage.segments.size(); ++j) {
+        auto& segment = storage.segments[j];
+        if (static_cast<size_t>(segment.host ? 0 : 1) != pass) continue;
+        if (!segment.snapshot && segment.mapped) {
+          const size_t planned = plans[i][j];
+          if (planned && !snapshotMemoryAvailable(planned)) {
+            status = hipErrorOutOfMemory; break;
+          }
+          status = buildSegmentSnapshot(storage, segment, planned, &raw, &compressed);
+          if (status != hipSuccess) break;
+        }
+        if (segment.snapshot) setColdLogical(storage, true);
+        status = releaseSegmentBacking(storage, segment, device);
+        if (status != hipSuccess) break;
+      }
+      if (switched) {
+        const hipError_t restore = realHipSetDevice()(previous);
+        if (status == hipSuccess && restore != hipSuccess) status = restore;
+      }
+      if (status != hipSuccess) return status;
+    }
+  }
+  return hipSuccess;
+}
+
+hipError_t zvramResume() {
+  std::lock_guard<std::recursive_mutex> residency(gResidencyMutex);
+  std::vector<std::shared_ptr<VmmStorage>> storages;
+  try {
+    std::lock_guard<std::mutex> lock(gMutex);
+    for (const auto& item : gAllocations)
+      if (item.second.origin == Origin::HybridVmm && item.second.vmm &&
+          item.second.vmm->coldLogical &&
+          std::find(storages.begin(), storages.end(), item.second.vmm) == storages.end())
+        storages.push_back(item.second.vmm);
+  } catch (...) { return hipErrorOutOfMemory; }
+  if (storages.empty()) return hipSuccess;
+  SnapshotScratch raw;
+  const hipError_t scratchStatus = raw.allocate();
+  if (scratchStatus != hipSuccess) return scratchStatus;
+  for (const auto& shared : storages) {
+    auto& storage = *shared;
+    if (storage.freeStarted) return hipErrorInvalidValue;
+    int device = 0;
+    for (const auto& item : gAllocations) if (item.second.vmm == shared) { device = item.second.device; break; }
+    int previous = -1; bool switched = false;
+    hipError_t status = switchDeviceFor(device, &previous, &switched);
+    if (status != hipSuccess) return status;
+    for (auto& segment : storage.segments) {
+      if (!segment.accounted || !segment.mapped) {
+        status = createSegmentBacking(storage, segment, device);
+        if (status != hipSuccess) break;
+      }
+    }
+    if (status == hipSuccess) {
+      // ROCm 7.2 validates access ranges from the parent's first child, so a
+      // later child's size alone can fail. Grant the complete mapped range.
+      hipMemAccessDesc access{};
+      access.location = {hipMemLocationTypeDevice, device};
+      access.flags = hipMemAccessFlagsProtReadWrite;
+      const auto setAccess = realHipMemSetAccess();
+      status = setAccess ? setAccess(storage.base, storage.mappedBytes, &access, 1)
+                         : hipErrorNotSupported;
+      if (status == hipSuccess)
+        for (auto& segment : storage.segments) segment.accessGranted = true;
+    }
+    if (status == hipSuccess) {
+      for (auto& segment : storage.segments) {
+        status = restoreSegmentSnapshot(storage, segment, &raw);
+        if (status != hipSuccess) break;
+      }
+    }
+    if (switched) {
+      const hipError_t restore = realHipSetDevice()(previous);
+      if (status == hipSuccess && restore != hipSuccess) status = restore;
+    }
+    if (status != hipSuccess) return status;
+    bool allHot = std::all_of(storage.segments.begin(), storage.segments.end(),
+        [](const VmmSegment& segment) { return segment.accounted && segment.mapped && !segment.snapshot; });
+    if (allHot) setColdLogical(storage, false);
+  }
   return hipSuccess;
 }
 
@@ -1225,6 +1745,7 @@ hipError_t freeTracked(void* pointer, Allocation* allocation, bool* freed) {
     if (!unmap || !release || !addressFree || !storage) {
       status = hipErrorNotSupported;
     } else {
+      storage->freeStarted = true;
       bool changed = false;
       for (auto it = storage->segments.rbegin(); it != storage->segments.rend(); ++it) {
         if (!it->mapped) continue;
@@ -1377,6 +1898,7 @@ hipError_t wrapHipGetDeviceProperties(hipDeviceProp_t* properties, int device) {
 }
 
 hipError_t wrapHipMalloc(void** pointer, size_t bytes) {
+  std::lock_guard<std::recursive_mutex> residency(gResidencyMutex);
   try {
     const auto nativeMalloc = realHipMalloc();
     if (!nativeMalloc) return hipErrorNotSupported;
@@ -1444,6 +1966,7 @@ hipError_t wrapHipMalloc(void** pointer, size_t bytes) {
 }
 
 hipError_t wrapHipFree(void* pointer) {
+  std::lock_guard<std::recursive_mutex> residency(gResidencyMutex);
   try {
     registerSummary();
     Allocation allocation{};
@@ -1466,6 +1989,7 @@ hipError_t wrapHipFree(void* pointer) {
 }
 
 hipError_t wrapHipFreeAsync(void* pointer, hipStream_t stream) {
+  std::lock_guard<std::recursive_mutex> residency(gResidencyMutex);
   try {
     registerSummary();
     Allocation allocation{};
@@ -1528,6 +2052,51 @@ void* wrappedProcedure(const char* symbol, void* realAddress) {
 }
 
 }  // namespace
+
+// Experimental explicit lifecycle API: callers must serialize all HIP/GPU use
+// of these allocations and must not dereference them until resume succeeds.
+extern "C" hipError_t zvramHipHibernate(size_t coldBudgetBytes) {
+  PrimaryCallBoundary boundary;
+  try {
+    return boundary.finish(zvramHibernate(coldBudgetBytes));
+  } catch (const std::bad_alloc&) {
+    return boundary.finish(hipErrorOutOfMemory);
+  } catch (...) {
+    return boundary.finish(hipErrorUnknown);
+  }
+}
+
+extern "C" hipError_t zvramHipResume() {
+  PrimaryCallBoundary boundary;
+  try {
+    return boundary.finish(zvramResume());
+  } catch (const std::bad_alloc&) {
+    return boundary.finish(hipErrorOutOfMemory);
+  } catch (...) {
+    return boundary.finish(hipErrorUnknown);
+  }
+}
+
+extern "C" hipError_t zvramHipColdBytes(size_t* logicalColdBytes,
+                                         size_t* storedColdBytes) {
+  PrimaryCallBoundary boundary;
+  if (!logicalColdBytes || !storedColdBytes)
+    return boundary.finish(hipErrorInvalidValue);
+  try {
+    std::lock_guard<std::recursive_mutex> residency(gResidencyMutex);
+    size_t logical = 0, stored = 0;
+    {
+      std::lock_guard<std::mutex> lock(gMutex);
+      logical = gColdLogicalBytes;
+      stored = gColdStoredBytes;
+    }
+    *logicalColdBytes = logical;
+    *storedColdBytes = stored;
+    return boundary.finish(hipSuccess);
+  } catch (...) {
+    return boundary.finish(hipErrorUnknown);
+  }
+}
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipMalloc(void** pointer, size_t bytes) {

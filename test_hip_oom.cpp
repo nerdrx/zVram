@@ -62,3 +62,15 @@ extern "C" hipError_t hipMemCreate(hipMemGenericAllocationHandle_t* handle,
     static auto next = reinterpret_cast<Function>(dlsym(RTLD_NEXT, "hipMemCreate"));
     return next ? next(handle, bytes, properties, flags) : hipErrorNotSupported;
 }
+
+extern "C" hipError_t hipMemMap(void* pointer, size_t bytes, size_t offset,
+                                 hipMemGenericAllocationHandle_t handle,
+                                 unsigned long long flags) {
+    static std::atomic<unsigned long> calls{0};
+    const char* limit = std::getenv("ZVRAM_TEST_VMM_MAP_FAIL_AFTER");
+    if (limit && ++calls > std::strtoul(limit, nullptr, 10)) return hipErrorOutOfMemory;
+    using Function = hipError_t (*)(void*, size_t, size_t,
+                                    hipMemGenericAllocationHandle_t, unsigned long long);
+    static auto next = reinterpret_cast<Function>(dlsym(RTLD_NEXT, "hipMemMap"));
+    return next ? next(pointer, bytes, offset, handle, flags) : hipErrorNotSupported;
+}
