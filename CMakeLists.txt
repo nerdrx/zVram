@@ -181,6 +181,17 @@ foreach(batch_mode synthetic native)
         set_tests_properties(${batch_test} PROPERTIES TIMEOUT 30
             ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
     endforeach()
+    foreach(shuffle_stride 2 4)
+        set(shuffle_test vulkan-byte-shuffle-${batch_mode}-${shuffle_stride})
+        add_test(NAME ${shuffle_test}
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+                --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512
+                --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib 128 --vulkan-byte-shuffle ${shuffle_stride} --
+                $<TARGET_FILE:zvram-vulkan-auto-check> ${batch_flags})
+        set_tests_properties(${shuffle_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+    endforeach()
 endforeach()
 add_test(NAME vulkan-snapshot-pipeline
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_pipeline.py

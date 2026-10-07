@@ -1,0 +1,26 @@
+{
+  "source_path": "build/third-party/models/internlm2_5-20b-chat-fp16.gguf",
+  "source_file_size_bytes": 39725643136,
+  "source_offset_bytes": 67108864,
+  "source_slice_bytes": 33554432,
+  "source_slice_sha256": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895",
+  "gguf_data_tensors_covering_slice": [
+    {
+      "tensor": "blk.0.attn_output.weight",
+      "type": "F16",
+      "source_range": [
+        67108864,
+        77649280
+      ]
+    },
+    {
+      "tensor": "blk.0.attn_q.weight",
+      "type": "F16",
+      "source_range": [
+        77649280,
+        100663296
+      ]
+    }
+  ],
+  "output_path": "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw"
+}

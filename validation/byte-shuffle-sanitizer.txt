@@ -1,0 +1,5 @@
+CPU-only command: g++ -std=c++17 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer snapshot_decode_check.cpp -lzstd -pthread -o /tmp/zvram-shuffle-decode-asan
+Run: /tmp/zvram-shuffle-decode-asan
+Exit: 0
+Captured stdout: PASS: serial/parallel mixed Zstd+RAW+stride2/4, odd tails, canaries, corruption, truncation, metadata, and bounds
+No sanitizer diagnostics.

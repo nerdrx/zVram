@@ -1,0 +1,48 @@
+{
+  "codec": "Zstandard",
+  "codec_version": "1.5.7",
+  "level": 1,
+  "workers": 1,
+  "input_bytes": 33554432,
+  "input_sha256": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895",
+  "encoded_bytes": 26673213,
+  "encoded_sha256": "03c28f81d9e883ca23adbc105b991b9c5ec368a830ec7e4aa575d3a90278dfa4",
+  "decoded_sha256": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895",
+  "repetitions": [
+    {
+      "rep": 1,
+      "encode_ms": 17.2371,
+      "decode_ms": 13.7561,
+      "encoded_bytes": 26673213,
+      "exact_roundtrip": true
+    },
+    {
+      "rep": 2,
+      "encode_ms": 17.1795,
+      "decode_ms": 13.8893,
+      "encoded_bytes": 26673213,
+      "exact_roundtrip": true
+    },
+    {
+      "rep": 3,
+      "encode_ms": 17.3635,
+      "decode_ms": 13.9014,
+      "encoded_bytes": 26673213,
+      "exact_roundtrip": true
+    }
+  ],
+  "median_encode_ms": 17.2371,
+  "median_decode_ms": 13.8893,
+  "ratio_encoded_to_input": 0.7949236929416656,
+  "exact_roundtrip_each_rep": true,
+  "comparand_gdeflate": {
+    "level": 1,
+    "encode_threads": 1,
+    "workers_decode": 1,
+    "encoded_bytes": 27219160,
+    "median_encode_ms": 345.694,
+    "median_decode_ms": 114.066,
+    "ratio_encoded_to_input": 0.8111941814422607
+  },
+  "comparison_note": "CPU-only, same resident 32 MiB slice; one worker both codecs. ZVram production currently permits up to 4 Zstd decode workers."
+}

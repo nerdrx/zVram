@@ -12,6 +12,36 @@ Measured on **2026-10-07**. These are prototype integrity and allocation-path ch
 | Host RAM | Approximately 60 GiB usable |
 | Build | CMake Release, C++17 |
 
+## Lossless byte-plane filter
+
+The experimental `--vulkan-byte-shuffle 2` / `4` option permutes byte planes before Zstd and restores their original order after decompression. It is disabled by default and requires automatic snapshots. Compressed chunks carry their stride; RAW fallback remains unfiltered. The filter preserves incomplete trailing elements. x86 uses baseline SSE2, with a portable fallback on other targets. This feature currently has **CPU-only validation**; its Vulkan freeze/restore integration and model/game performance have not been tested on the GPU. The preceding 101/101 GPU suite predates this feature.
+
+The corpus is a 32 MiB slice at file offset 67,108,864 of the previously tested InternLM2.5-20B F16 GGUF, covering parts of `blk.0.attn_output.weight` and `blk.0.attn_q.weight`. Input SHA-256: `8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895`. No model weights are included in the repository. Each measurement uses Zstd 1.5.7 level 1, one CPU worker, and three exact full-byte round trips.
+
+| Preallocated-buffer CPU measurement | Plain Zstd | Stride 2 | Stride 4 |
+|---|---:|---:|---:|
+| Stored bytes | 26,673,213 | 23,452,077 | 23,465,723 |
+| Median decode + reverse filter | 13.605 ms | 11.737 ms | 12.020 ms |
+| Median full filter/compress/decompress/reverse cycle | 30.766 ms | 32.652 ms | 34.129 ms |
+
+Stride 2 saves about 12.1% of compressed storage on this sample. The preallocated restore measurement is faster, while the full CPU cycle is slower. These timings exclude GPU copies and initially exclude the production decoder's scratch allocation. A separate full `decodeOne` measurement, including a zero-filled scratch vector, was slower than plain decoding; the implementation now allocates scratch without zero-fill and still verifies the exact decompressed size before reading it. Five full-call repetitions of the current implementation measured **13.867 ms plain**, **14.246 ms stride 2**, and **14.443 ms stride 4**, with exact 32 MiB output every time. Including allocation, filtered decoding remains about 2.7–4.1% slower here. This is a storage experiment, with no measured token-rate gain.
+
+Filtered decoding adds up to 32 MiB temporary memory per worker, at most 128 MiB across four workers, in addition to existing staging. Allocation or decoding failure returns failure before filtered bytes are restored to the GPU. CPU tests cover mixed RAW/plain/filtered batches, stride 2/4, odd lengths, canaries, corrupt/truncated frames, invalid metadata, and caller/worker failures. Both SSE2 and forced portable implementations passed 1,080 reference comparisons and round trips. AddressSanitizer/UndefinedBehaviorSanitizer passed the mixed snapshot test.
+
+Four synthetic/native Vulkan byte-shuffle tests are registered for strides 2 and 4, but have **not been run** pending GPU recovery. After recovery, their focused selector is `ctest --test-dir build -R '^vulkan-byte-shuffle-' --output-on-failure`; this is a pending hardware gate, not a passed check.
+
+Evidence: [SSE2 component results](validation/byte-shuffle-internlm-f16-32m-offset64m.zstd-shuffle-bench-sse2.json), [portable component results](validation/byte-shuffle-internlm-f16-32m-offset64m.zstd-shuffle-bench-portable.json), [component benchmark source](validation/byte-shuffle-cpu_zstd_shuffle_bench.cpp), [CPU CTest](validation/byte-shuffle-cpu-ctest.txt), [test details](validation/byte-shuffle-cpu-details.txt), and [sanitizer output](validation/byte-shuffle-sanitizer-final.txt). Compile the component source from the repository root with `g++ -std=c++17 -O3 -Wall -Wextra -Werror -I. validation/byte-shuffle-cpu_zstd_shuffle_bench.cpp -lzstd -o /tmp/zvram-shuffle-bench`; pass the exact local 32 MiB input slice as its argument. It writes compressed fixtures beside that input. Add `-U__SSE2__` to exercise the portable path.
+
+Full-call evidence: [current scratch allocation](validation/byte-shuffle-internlm-f16-32m-offset64m.snapshot-decode-one-uninitialized.json), [historical zero-filled scratch](validation/byte-shuffle-internlm-f16-32m-offset64m.snapshot-decode-one-zeroed-historical.json), and [benchmark source](validation/byte-shuffle-snapshot_decode_one_bench.cpp). Compile with `g++ -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Werror -I. validation/byte-shuffle-snapshot_decode_one_bench.cpp -lzstd -o /tmp/zvram-decode-one-bench`; arguments are the raw slice followed by plain, stride-2, and stride-4 compressed fixtures.
+
+### GPU GDeflate research failure
+
+A standalone software GPU GDeflate decoder was investigated separately, without adding it to the layer or a production dependency. Sources were pinned to DirectStorage `c53f1499d5f67a61b69a1a348d22dcd2b4cb4ede` and NVIDIA's libdeflate fork `8ba9502fb30d2bf728592d121f0d402e40c8cb05`; shaders used DXC v1.9.2602.24, explicit Vulkan bindings, and a required 32-lane subgroup. GPU-only device-local input/output/scratch buffers passed full-byte comparisons for 64 KiB and 131,195-byte inputs, five iterations each, with zero reported core/synchronization validation errors. Median decode timestamps were 0.362 ms and 0.357 ms respectively. These tiny cases do not establish useful bandwidth.
+
+The real 32 MiB F16 stream passed CPU GDeflate round trips but **failed on the GPU**: at 17:47:55 local time on 2026-10-07 the kernel attributed a gfx ring timeout to `zvram-vulkan-gd`, performed a ring reset, and reported the device wedged. The test's error diagnostics subsequently dereferenced an unmapped pointer and crashed. The process is gone; subsequent observations showed 100% GPU busy, approximately 302 W, and 84°C. GPU experiments were stopped pending recovery. The diagnostic host code was hardened and compiled on CPU afterward, but was not rerun on the GPU. A devcoredump was inaccessible due to permissions and **was not captured**.
+
+CPU GDeflate level 1 stored 27,219,160 bytes and had a median 114.066 ms decode time, versus plain Zstd's 26,673,213 bytes and 13.889 ms in the earlier paired baseline. All 512 GDeflate tiles used dynamic Huffman coding. CPU validity and small GPU successes do not validate the failing GPU decoder, and this research is excluded from the product. Evidence: [64 KiB GPU log](validation/gdeflate-gpu-vram-single-64k.log), [multi-tile GPU log](validation/gdeflate-gpu-vram-multi-tail.log), [kernel failure](validation/gdeflate-real-f16-gpu-failure.txt), [capture failure](validation/gdeflate-gpu-timeout-capture.json), and [tile classification](validation/gdeflate-internlm-f16-32m-offset64m.tile-classification.json.gz).
+
 ## Vulkan capacity integrity
 
 The native run and Vulkan-layer run each retained **640 × 64 MiB device-local allocations** simultaneously: **42,949,672,960 bytes (40 GiB)**. The transfer queue uploaded deterministic data to every allocation, then read all allocations back and compared every 64-bit word.

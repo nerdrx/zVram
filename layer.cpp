@@ -98,7 +98,7 @@ struct VirtualMemory {
     std::vector<VkDeviceMemory> children;
     std::vector<VkDeviceSize> childSizes;
     std::vector<std::uint32_t> childTypes;
-    struct ColdChunk { std::vector<std::uint8_t> bytes; VkDeviceSize rawSize{}; bool compressed{}; };
+    struct ColdChunk { std::vector<std::uint8_t> bytes; VkDeviceSize rawSize{}; bool compressed{}; unsigned byteShuffle{}; };
     struct ColdGroup {
         std::vector<ColdChunk> chunks;
         VkDeviceSize logicalBytes{};
@@ -229,6 +229,7 @@ struct Device {
     bool cleanCache{};
     bool mruEviction{};
     unsigned minSavingsPercent{};
+    unsigned byteShuffle{};
     bool narrowDescriptorRanges{};
     VkDeviceSize robustRangeAlignment{1};
     std::uint64_t restoreGeneration{};
@@ -790,6 +791,11 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 const char* clean=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE");
                 d->cleanCache=d->rangeChunkBytes && clean && std::strcmp(clean,"1")==0;
                 d->minSavingsPercent=static_cast<unsigned>(positiveEnv("ZVRAM_VULKAN_MIN_SAVINGS_PERCENT",100));
+                if(const char* shuffle=std::getenv("ZVRAM_VULKAN_BYTE_SHUFFLE")) {
+                    if(std::strcmp(shuffle,"2")==0) d->byteShuffle=2;
+                    else if(std::strcmp(shuffle,"4")==0) d->byteShuffle=4;
+                    else { autoResult=VK_ERROR_FEATURE_NOT_PRESENT; logf("invalid Vulkan byte shuffle stride: expected 2 or 4"); }
+                }
                 if(d->activeEviction && d->rangeChunkBytes) {
                     const auto residentMiB=positiveEnv("ZVRAM_VULKAN_RESIDENT_MIB",std::numeric_limits<std::uint64_t>::max()/(1024ull*1024ull));
                     d->residentLimitBytes=residentMiB*1024ull*1024ull;
@@ -828,6 +834,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     if(d->autoEnabled && d->residentLimitBytes) logf("Vulkan eviction policy=%s",d->mruEviction?"mru":"lru");
                     if(d->autoEnabled && d->cleanCache) logf("Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget");
                     if(d->autoEnabled) logf("Vulkan snapshot minimum savings percent=%u",d->minSavingsPercent);
+                    if(d->autoEnabled && d->byteShuffle) logf("Vulkan snapshot byte shuffle stride=%u",d->byteShuffle);
                 }
             }
         }
@@ -1275,7 +1282,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                         r=VK_ERROR_UNKNOWN; break;
                     }
                     if(chunk.rawSize>s.stagingSize-staged) break;
-                    batch[count++]={chunk.bytes.data(),chunk.bytes.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed};
+                    batch[count++]={chunk.bytes.data(),chunk.bytes.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle};
                     staged+=chunk.rawSize; ++next;
                 }
                 if(r!=VK_SUCCESS || !count) { r=VK_ERROR_UNKNOWN; break; }
@@ -1390,6 +1397,7 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     try {
         candidate.chunks.reserve(static_cast<std::size_t>((logicalBytes+d.snapshot.chunkSize-1)/d.snapshot.chunkSize));
         std::vector<std::uint8_t> encoded;
+        std::vector<std::uint8_t> shuffled;
         for(VkDeviceSize offset=0;offset<logicalBytes;offset+=d.snapshot.chunkSize) {
             const auto amount=std::min(d.snapshot.chunkSize,logicalBytes-offset);
             const auto stagedOffset=offset%d.snapshot.stagingSize;
@@ -1403,12 +1411,21 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
             std::size_t compressed=0;
             bool keepCompressed=false;
             if(d.minSavingsPercent<100) {
+                const auto* compressionSource=source;
+                if(d.byteShuffle) {
+                    shuffled.resize(static_cast<std::size_t>(amount));
+                    if(!zvram::byte_shuffle(source,shuffled.data(),static_cast<std::size_t>(amount),d.byteShuffle)) {
+                        okay=false; r=VK_ERROR_UNKNOWN; break;
+                    }
+                    compressionSource=shuffled.data();
+                }
                 encoded.resize(ZSTD_compressBound(static_cast<std::size_t>(amount)));
-                compressed=ZSTD_compress(encoded.data(),encoded.size(),source,static_cast<std::size_t>(amount),1);
+                compressed=ZSTD_compress(encoded.data(),encoded.size(),compressionSource,static_cast<std::size_t>(amount),1);
                 keepCompressed=!ZSTD_isError(compressed) && retainCompression(amount,compressed,d.minSavingsPercent);
             }
             if(keepCompressed) {
                 chunk.bytes.resize(compressed); std::memcpy(chunk.bytes.data(),encoded.data(),compressed); chunk.compressed=true;
+                chunk.byteShuffle=d.byteShuffle;
             } else {
                 chunk.bytes.resize(static_cast<std::size_t>(amount)); std::memcpy(chunk.bytes.data(),source,static_cast<std::size_t>(amount));
             }
@@ -1453,7 +1470,8 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     memory.cold=true; memory.coldStoredBytes+=stored; memory.coldLogicalSize+=logicalBytes;
     d.coldBytes+=stored; d.coldLogicalBytes+=logicalBytes; ++d.freezeCount;
     const auto compressedChunks=static_cast<std::size_t>(std::count_if(group.chunks.begin(),group.chunks.end(),[](const auto& chunk){return chunk.compressed;}));
-    logf("snapshot cold bytes=%llu stored=%llu compressed-chunks=%zu raw-chunks=%zu",static_cast<unsigned long long>(logicalBytes),static_cast<unsigned long long>(stored),compressedChunks,group.chunks.size()-compressedChunks);
+    const auto shuffledChunks=static_cast<std::size_t>(std::count_if(group.chunks.begin(),group.chunks.end(),[](const auto& chunk){return chunk.byteShuffle!=0;}));
+    logf("snapshot cold bytes=%llu stored=%llu compressed-chunks=%zu raw-chunks=%zu shuffled-chunks=%zu",static_cast<unsigned long long>(logicalBytes),static_cast<unsigned long long>(stored),compressedChunks,group.chunks.size()-compressedChunks,shuffledChunks);
     logSnapshotState("freeze",d);
     return VK_SUCCESS;
 }

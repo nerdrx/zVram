@@ -1,0 +1,10 @@
+Oct 07 17:47:55 x0x0x0x0x0x kernel: amdgpu 0000:03:00.0: Dumping IP State
+Oct 07 17:47:55 x0x0x0x0x0x kernel: amdgpu 0000:03:00.0: Dumping IP State Completed
+Oct 07 17:47:55 x0x0x0x0x0x kernel: amdgpu 0000:03:00.0: [drm] AMDGPU device coredump file has been created
+Oct 07 17:47:55 x0x0x0x0x0x kernel: amdgpu 0000:03:00.0: [drm] Check your /sys/class/drm/card1/device/devcoredump/data
+Oct 07 17:47:55 x0x0x0x0x0x kernel: amdgpu 0000:03:00.0: ring gfx_0.0.0 timeout, signaled seq=472433938, emitted seq=472433941
+Oct 07 17:47:55 x0x0x0x0x0x kernel: amdgpu 0000:03:00.0:  Process zvram-vulkan-gd pid 318430 thread zvram-vulkan-gd pid 318430
+Oct 07 17:47:55 x0x0x0x0x0x kernel: amdgpu 0000:03:00.0: Starting gfx_0.0.0 ring reset
+Oct 07 17:47:55 x0x0x0x0x0x kernel: amdgpu 0000:03:00.0: Ring gfx_0.0.0 reset succeeded
+Oct 07 17:47:55 x0x0x0x0x0x kernel: amdgpu 0000:03:00.0: [drm] device wedged, but no recovery needed
+Oct 07 17:47:55 x0x0x0x0x0x kernel: zvram-vulkan-gd[318430]: segfault at 0 ip 0000560d1e8bcf0a sp 00007ffc9f12c550 error 4 in zvram-vulkan-gdeflate-vram[6f0a,560d1e8b9000+7000] likely on CPU 8 (core 8, socket 0)

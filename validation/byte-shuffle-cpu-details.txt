@@ -1,0 +1,112 @@
+Start testing: Oct 07 18:17 CEST
+----------------------------------------------------------
+1/101 Testing: cpu-vulkan-ram-guard
+1/101 Test: cpu-vulkan-ram-guard
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_ram_guard.py"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-vulkan-ram-guard" start time: Oct 07 18:17 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-vulkan-ram-guard" end time: Oct 07 18:17 CEST
+"cpu-vulkan-ram-guard" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/101 Testing: cpu-vulkan-compression-options
+2/101 Test: cpu-vulkan-compression-options
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_compression_options.py"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-vulkan-compression-options" start time: Oct 07 18:17 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.55 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-vulkan-compression-options" end time: Oct 07 18:17 CEST
+"cpu-vulkan-compression-options" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/101 Testing: cpu-vulkan-model-budget
+3/101 Test: cpu-vulkan-model-budget
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_model_budget.py"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-vulkan-model-budget" start time: Oct 07 18:17 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   1.35 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-vulkan-model-budget" end time: Oct 07 18:17 CEST
+"cpu-vulkan-model-budget" time elapsed: 00:00:01
+----------------------------------------------------------
+
+4/101 Testing: cpu-compression-policy
+4/101 Test: cpu-compression-policy
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-compression-policy-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-compression-policy" start time: Oct 07 18:17 CEST
+Output:
+----------------------------------------------------------
+COMPRESSION_POLICY_OK including uint64 boundary checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-compression-policy" end time: Oct 07 18:17 CEST
+"cpu-compression-policy" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/101 Testing: cpu-snapshot-decode
+5/101 Test: cpu-snapshot-decode
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-snapshot-decode-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-snapshot-decode" start time: Oct 07 18:17 CEST
+Output:
+----------------------------------------------------------
+PASS: serial/parallel mixed Zstd+RAW+stride2/4, odd tails, canaries, corruption, truncation, metadata, and bounds
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-snapshot-decode" end time: Oct 07 18:17 CEST
+"cpu-snapshot-decode" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/101 Testing: cpu-snapshot-pipeline
+6/101 Test: cpu-snapshot-pipeline
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-snapshot-pipeline-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-snapshot-pipeline" start time: Oct 07 18:17 CEST
+Output:
+----------------------------------------------------------
+PASS: bounded decode-ahead (async), replacement, join, corruption and capacity checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-snapshot-pipeline" end time: Oct 07 18:17 CEST
+"cpu-snapshot-pipeline" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/101 Testing: cpu-active-refs
+8/101 Test: cpu-active-refs
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-active-refs-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-active-refs" start time: Oct 07 18:17 CEST
+Output:
+----------------------------------------------------------
+active refs checks passed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-active-refs" end time: Oct 07 18:17 CEST
+"cpu-active-refs" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 07 18:17 CEST

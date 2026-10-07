@@ -45,6 +45,20 @@ with tempfile.TemporaryDirectory() as temporary:
               "--vulkan-min-savings-percent", "5", "--", sys.executable, "-c", "pass")
     assert hip.returncode == 2, hip.stderr
 
+    for value in ("0", "3", "-1", "not-an-int"):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100",
+                     "--vulkan-byte-shuffle", value,
+                     "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2, (value, result.stderr)
+
+    missing_auto_shuffle = run(launcher, *BASE, "--vulkan-byte-shuffle", "2",
+                               "--", sys.executable, "-c", "pass")
+    assert missing_auto_shuffle.returncode == 2, missing_auto_shuffle.stderr
+
+    hip_shuffle = run(launcher, "--hip", "--hip-vmm", *BASE, "--vulkan-auto-idle-ms", "100",
+                      "--vulkan-byte-shuffle", "2", "--", sys.executable, "-c", "pass")
+    assert hip_shuffle.returncode == 2, hip_shuffle.stderr
+
     child = "import os; print(os.environ.get('" + KEY + "', ''))"
     for value in ("0", "5", "100"):
         result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100",
@@ -59,3 +73,11 @@ with tempfile.TemporaryDirectory() as temporary:
                  "--", sys.executable, "-c", idle_child)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "300000\n", result.stdout
+
+    shuffle_child = "import os; print(os.environ.get('ZVRAM_VULKAN_BYTE_SHUFFLE', ''))"
+    for value in ("2", "4"):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100",
+                     "--vulkan-byte-shuffle", value,
+                     "--", sys.executable, "-c", shuffle_child)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == value + "\n", result.stdout

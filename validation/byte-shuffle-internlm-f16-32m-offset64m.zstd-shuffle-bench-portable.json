@@ -1,0 +1,149 @@
+{
+  "codec": "Zstandard",
+  "codec_version": "1.5.7",
+  "level": 1,
+  "workers": 1,
+  "input_bytes": 33554432,
+  "input_sha256": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895",
+  "baseline_unshuffled": {
+    "encoded_bytes": 26673213,
+    "encoded_sha256": "03c28f81d9e883ca23adbc105b991b9c5ec368a830ec7e4aa575d3a90278dfa4",
+    "median_encode_ms": 17.2371,
+    "median_decode_ms": 13.8893,
+    "ratio_encoded_to_input": 0.7949236929416656
+  },
+  "transform": "reversible byte-plane shuffle; lane bytes are grouped contiguously for each stride-sized element",
+  "trailing_bytes_policy": "copy unchanged; benchmark input is divisible by both strides",
+  "strides": {
+    "2": {
+      "repetitions": [
+        {
+          "rep": 1,
+          "shuffle_ms": 3.9014,
+          "encode_ms": 17.9291,
+          "decode_ms": 9.6859,
+          "unshuffle_ms": 3.71842,
+          "full_ms": 36.984,
+          "encoded_bytes": 23452077,
+          "exact_roundtrip": true
+        },
+        {
+          "rep": 2,
+          "shuffle_ms": 3.87699,
+          "encode_ms": 17.7452,
+          "decode_ms": 10.0614,
+          "unshuffle_ms": 3.76014,
+          "full_ms": 36.9074,
+          "encoded_bytes": 23452077,
+          "exact_roundtrip": true
+        },
+        {
+          "rep": 3,
+          "shuffle_ms": 3.90465,
+          "encode_ms": 17.619,
+          "decode_ms": 9.80938,
+          "unshuffle_ms": 3.74382,
+          "full_ms": 36.5593,
+          "encoded_bytes": 23452077,
+          "exact_roundtrip": true
+        }
+      ],
+      "median_shuffle_ms": 3.9014,
+      "median_encode_ms": 17.7452,
+      "median_decode_ms": 9.80938,
+      "median_unshuffle_ms": 3.74382,
+      "median_full_pipeline_ms": 36.9074,
+      "encoded_bytes": 23452077,
+      "encoded_sha256": "1a38c4f5d42f37746b667c610b1cf68b5483bba2d85f7639328ace5962edd914",
+      "ratio_encoded_to_input": 0.6989263594150543,
+      "exact_roundtrip_each_rep": true
+    },
+    "4": {
+      "repetitions": [
+        {
+          "rep": 1,
+          "shuffle_ms": 4.46333,
+          "encode_ms": 18.0906,
+          "decode_ms": 10.2021,
+          "unshuffle_ms": 3.92271,
+          "full_ms": 38.4014,
+          "encoded_bytes": 23465723,
+          "exact_roundtrip": true
+        },
+        {
+          "rep": 2,
+          "shuffle_ms": 5.37856,
+          "encode_ms": 18.1612,
+          "decode_ms": 9.9079,
+          "unshuffle_ms": 3.91048,
+          "full_ms": 38.8438,
+          "encoded_bytes": 23465723,
+          "exact_roundtrip": true
+        },
+        {
+          "rep": 3,
+          "shuffle_ms": 4.18265,
+          "encode_ms": 18.2747,
+          "decode_ms": 10.269,
+          "unshuffle_ms": 3.76814,
+          "full_ms": 37.7802,
+          "encoded_bytes": 23465723,
+          "exact_roundtrip": true
+        }
+      ],
+      "median_shuffle_ms": 4.46333,
+      "median_encode_ms": 18.1612,
+      "median_decode_ms": 10.2021,
+      "median_unshuffle_ms": 3.91048,
+      "median_full_pipeline_ms": 38.4014,
+      "encoded_bytes": 23465723,
+      "encoded_sha256": "1f6adba80e742917d2057d2998b5d5a819ef4db909e8b3022dc0a70192f4c7ea",
+      "ratio_encoded_to_input": 0.6993330419063568,
+      "exact_roundtrip_each_rep": true
+    }
+  },
+  "paired_baseline_current_run": {
+    "repetitions": [
+      {
+        "rep": 1,
+        "shuffle_ms": 0.0,
+        "encode_ms": 17.3833,
+        "decode_ms": 13.836,
+        "unshuffle_ms": 0.0,
+        "full_ms": 31.2291,
+        "encoded_bytes": 26673213,
+        "exact_roundtrip": true
+      },
+      {
+        "rep": 2,
+        "shuffle_ms": 0.0,
+        "encode_ms": 17.4394,
+        "decode_ms": 13.9788,
+        "unshuffle_ms": 0.0,
+        "full_ms": 31.4183,
+        "encoded_bytes": 26673213,
+        "exact_roundtrip": true
+      },
+      {
+        "rep": 3,
+        "shuffle_ms": 0.0,
+        "encode_ms": 17.5123,
+        "decode_ms": 14.0427,
+        "unshuffle_ms": 0.0,
+        "full_ms": 31.555,
+        "encoded_bytes": 26673213,
+        "exact_roundtrip": true
+      }
+    ],
+    "median_encode_ms": 17.4394,
+    "median_decode_ms": 13.9788,
+    "median_roundtrip_ms": 31.4183,
+    "encoded_bytes": 26673213
+  },
+  "implementation": "portable-generic",
+  "compile_flags": "g++ -std=c++17 -O3 -Wall -Wextra -Werror -U__SSE2__ -I.",
+  "source_sha256": {
+    "byte_shuffle.hpp": "124e34b6189260f6422d86653837b225f34ed948415abf8454f5d36467d45f44",
+    "cpu_zstd_shuffle_bench.cpp": "8c23a37cb693c8dc4752d1cfc53d4e087a3fc20ff0e190cffaf1d0aacdb7f87d"
+  }
+}

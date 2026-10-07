@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <cstring>
 #include <future>
+#include <memory>
 #include <zstd.h>
+#include "byte_shuffle.hpp"
 
 namespace zvram::snapshot {
 
@@ -14,9 +16,18 @@ struct EncodedChunk {
     std::size_t storedSize{};
     std::size_t rawSize{};
     bool compressed{};
+    unsigned byteShuffle{};
 };
 
 inline bool decodeOne(const EncodedChunk& chunk, std::uint8_t* output) noexcept {
+    if (chunk.byteShuffle) {
+        try {
+            std::unique_ptr<std::uint8_t[]> shuffled(new std::uint8_t[chunk.rawSize]);
+            const auto size = ZSTD_decompress(shuffled.get(), chunk.rawSize, chunk.data, chunk.storedSize);
+            return !ZSTD_isError(size) && size == chunk.rawSize &&
+                   zvram::byte_unshuffle(shuffled.get(), output, chunk.rawSize, chunk.byteShuffle);
+        } catch (...) { return false; }
+    }
     if (!chunk.compressed) {
         std::memcpy(output, chunk.data, chunk.rawSize);
         return true;
@@ -34,6 +45,7 @@ inline bool decodeBatch(const EncodedChunk* chunks, std::size_t count,
         const auto& chunk = chunks[i];
         if (!chunk.rawSize || chunk.rawSize > chunkLimit ||
             chunk.rawSize > capacity - total || !chunk.data || !chunk.storedSize ||
+            (chunk.byteShuffle && (!chunk.compressed || (chunk.byteShuffle != 2 && chunk.byteShuffle != 4))) ||
             (!chunk.compressed && chunk.storedSize != chunk.rawSize)) return false;
         total += chunk.rawSize;
         if (chunk.compressed) {

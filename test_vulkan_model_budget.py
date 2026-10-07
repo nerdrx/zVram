@@ -99,6 +99,12 @@ def main():
     result = subprocess.run(pressure[:7], capture_output=True, text=True)
     assert result.returncode == 2, result
     assert "requires --range-mib and --resident-mib" in result.stderr, result.stderr
+    result = subprocess.run(pressure + ["--byte-shuffle", "2", "--min-savings-percent", "100"],
+                            capture_output=True, text=True)
+    assert result.returncode == 2 and "cannot be verified" in result.stderr, result.stderr
+    for stride in ("2", "4"):
+        result = subprocess.run(pressure + ["--byte-shuffle", stride], capture_output=True, text=True)
+        assert result.returncode == 2 and "existing executable" in result.stderr, result.stderr
 
 
 if __name__ == "__main__":

@@ -1,0 +1,62 @@
+{
+  "benchmark": "snapshot::decodeOne full-call-path CPU timing",
+  "repetitions": 5,
+  "compile": "g++ -O3 -DNDEBUG -std=c++17 -Wall -Wextra -Werror -I. SOURCE -lzstd",
+  "fixture_bytes": 33554432,
+  "paths": {
+    "plain": {
+      "shuffle": 0,
+      "stored_bytes": 26673213,
+      "times_ms": [
+        14.22,
+        14.6667,
+        14.8191,
+        14.9872,
+        15.1048
+      ],
+      "median_ms": 14.8191,
+      "decodeOne_temp_bytes": 0
+    },
+    "stride2": {
+      "shuffle": 2,
+      "stored_bytes": 23452077,
+      "times_ms": [
+        14.6565,
+        15.5363,
+        15.5738,
+        15.5862,
+        16.024
+      ],
+      "median_ms": 15.5738,
+      "decodeOne_temp_bytes": 33554432
+    },
+    "stride4": {
+      "shuffle": 4,
+      "stored_bytes": 23465723,
+      "times_ms": [
+        14.8732,
+        15.2357,
+        15.4055,
+        15.4089,
+        16.9781
+      ],
+      "median_ms": 15.4055,
+      "decodeOne_temp_bytes": 33554432
+    }
+  },
+  "verification": "decodeOne returned true and full 32 MiB output compared byte-for-byte to raw fixture on every repetition",
+  "resource_bounds": {
+    "benchmark_live_buffers_plain_bytes": 93782077,
+    "benchmark_live_buffers_shuffled_bytes_max": 124115373,
+    "note": "raw expected + destination + compressed stream + decodeOne temporary; excludes executable/runtime overhead; vectors allocated once except decodeOne temporary, allocated and zero-initialized inside each shuffled call"
+  },
+  "sha256": {
+    "benchmark_source": "312bd5179de3b73851420ea58968a0e1a1fae6408ce333e32d9d56c4c2502623",
+    "decoder_header": "17660b01629a54ee7b85365a8d70c190049535b831eb4eaf26b6191edafec8f7",
+    "shuffle_header": "124e34b6189260f6422d86653837b225f34ed948415abf8454f5d36467d45f44",
+    "raw_fixture": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895",
+    "plain_chunk": "03c28f81d9e883ca23adbc105b991b9c5ec368a830ec7e4aa575d3a90278dfa4",
+    "stride2_chunk": "1a38c4f5d42f37746b667c610b1cf68b5483bba2d85f7639328ace5962edd914",
+    "stride4_chunk": "1f6adba80e742917d2057d2998b5d5a819ef4db909e8b3022dc0a70192f4c7ea"
+  }
+}

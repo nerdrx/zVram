@@ -266,6 +266,8 @@ def main():
     parser.add_argument("--cold-mib", type=int, default=512)
     parser.add_argument("--min-savings-percent", type=int,
                         help="minimum snapshot savings 0..100; 0 keeps any saving, 100 uses raw snapshots")
+    parser.add_argument("--byte-shuffle", type=int, choices=(2, 4),
+                        help="test opt-in lossless byte-plane filtering before Zstd")
     parser.add_argument("--selective-restore", action="store_true",
                         help="test opt-in per-submission Vulkan restoration")
     parser.add_argument("--active-eviction", action="store_true",
@@ -302,6 +304,8 @@ def main():
         parser.error("--min-available-mib must be positive and fit uint64")
     if args.min_savings_percent is not None and not 0 <= args.min_savings_percent <= 100:
         parser.error("--min-savings-percent must be 0..100")
+    if args.byte_shuffle is not None and args.min_savings_percent == 100:
+        parser.error("--byte-shuffle cannot be verified when 100% savings forces raw snapshots")
     if args.eviction_policy is not None and args.resident_mib is None:
         parser.error("--eviction-policy requires --resident-mib")
     if args.strict_robustness and args.range_mib is None:
@@ -353,6 +357,8 @@ def main():
                str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib)]
     if args.min_savings_percent is not None:
         command += ["--vulkan-min-savings-percent", str(args.min_savings_percent)]
+    if args.byte_shuffle is not None:
+        command += ["--vulkan-byte-shuffle", str(args.byte_shuffle)]
     if args.selective_restore:
         command.append("--vulkan-selective-restore")
     if args.active_eviction:
@@ -403,6 +409,12 @@ def main():
             f"Vulkan snapshot minimum savings percent={args.min_savings_percent}" in auto_text)
     encodings = [tuple(map(int, values)) for values in re.findall(
         r"snapshot cold bytes=(\d+) stored=(\d+) compressed-chunks=(\d+) raw-chunks=(\d+)", auto_text)]
+    shuffled_counts = [int(value) for value in re.findall(
+        r"snapshot cold bytes=[^\n]* shuffled-chunks=(\d+)", auto_text)]
+    if args.byte_shuffle is not None:
+        checks["byte_shuffle_configured"] = (
+            f"Vulkan snapshot byte shuffle stride={args.byte_shuffle}" in auto_text)
+        checks["byte_shuffle_encoding_observed"] = any(count > 0 for count in shuffled_counts)
     if args.min_savings_percent == 100:
         checks["raw_only_snapshots"] = bool(encodings) and all(
             logical == stored and compressed == 0 and raw > 0
@@ -476,8 +488,10 @@ def main():
               "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
               "eviction_policy": args.eviction_policy,
               "min_savings_percent": args.min_savings_percent,
+              "byte_shuffle": args.byte_shuffle,
               "snapshot_encoding_counts": {"compressed_chunks": sum(x[2] for x in encodings),
-                                            "raw_chunks": sum(x[3] for x in encodings)},
+                                            "raw_chunks": sum(x[3] for x in encodings),
+                                            "shuffled_chunks": sum(shuffled_counts)},
               "resident_admission_events": pressure_events,
               "tracked_resident_peak_after_arming": None if args.pressure_on_first_submit else tracked_peak,
               "tracked_resident_peak_at_completed_restore": tracked_peak if args.pressure_on_first_submit else None,

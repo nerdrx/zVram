@@ -1,0 +1,6 @@
+{
+  "captured_at_utc": "2026-10-07T15:49:02.486212+00:00",
+  "source": "/sys/class/drm/card1/device/devcoredump/data",
+  "complete": false,
+  "error": "[Errno 13] Permission denied: '/sys/class/drm/card1/device/devcoredump/data'"
+}
