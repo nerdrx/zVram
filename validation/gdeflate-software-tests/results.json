@@ -1,0 +1,46 @@
+{
+  "icd": "build/third-party/lavapipe/local_lvp_icd.json",
+  "binary": "build/gdeflate-host-check/zvram-gdeflate-research",
+  "module": "research/gdeflate/GDeflate-bounded-subgroup8.spv",
+  "verified_sha256": {
+    "research/gdeflate/GDeflate-bounded.hlsl": "d2fd6d8cc8036aac8eba0d6a720d9ae7018d8aa7b24aed1f7a96d64f20d13945",
+    "research/gdeflate/tilestream.hlsl": "acc24fd1140eea8d14a17e15101ce0d0fe6e2e362e701c5d77df7a0d78cd713b",
+    "research/gdeflate/GDeflate-bounded-subgroup8.spv": "4b33823990e82f8111ec6cedcb6e9b89886a765c5c141a200c6150205b0a91a4",
+    "research/gdeflate/fixtures/synthetic-64k.gdeflate": "c39cffab1acaac1ab58aed72bdf6ab3d69b763b50c69b1d7f994517224511e66",
+    "research/gdeflate/fixtures/synthetic-multi-tail.gdeflate": "1dfb813552292b4914530710a872f8bb2a649514dce16e771b27147243ccd7b0",
+    "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.gdeflate": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+    "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895"
+  },
+  "fp16_fixture_status": "verified and tested",
+  "cases": [
+    {
+      "name": "synthetic-64k",
+      "encoded_bytes": 516,
+      "decoded_bytes": 65536,
+      "log": "validation/gdeflate-software-tests/synthetic-64k.log",
+      "returncode": 0
+    },
+    {
+      "name": "synthetic-multi-tail",
+      "encoded_bytes": 1288,
+      "decoded_bytes": 131195,
+      "log": "validation/gdeflate-software-tests/synthetic-multi-tail.log",
+      "returncode": 0
+    },
+    {
+      "name": "fp16-first-tile",
+      "encoded_bytes": 52308,
+      "decoded_bytes": 65536,
+      "log": "validation/gdeflate-software-tests/fp16-first-tile.log",
+      "returncode": 0
+    },
+    {
+      "name": "fp16-full-32m",
+      "encoded_bytes": 27219160,
+      "decoded_bytes": 33554432,
+      "log": "validation/gdeflate-software-tests/fp16-full-32m.log",
+      "returncode": 0
+    }
+  ],
+  "status": "PASS"
+}

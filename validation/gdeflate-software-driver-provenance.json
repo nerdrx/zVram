@@ -1,0 +1,15 @@
+{
+  "scope": "CPU-only Vulkan software driver extracted locally; no system package installed",
+  "package_url": "https://mirror.krfoss.org/cachyos/repo/x86_64/cachyos/vulkan-swrast-3:26.2.4-1-x86_64.pkg.tar.zst",
+  "package_sha256": "fba30c5296f5c9c130f5cc511bd402e362e881ac3868266cb81b30b1d6cc37aa",
+  "signature_key": "882DCFE48E2051D48E2562ABF3B607488DB35A47",
+  "signature_verified": true,
+  "driver_sha256": "6d75e9ab9e2fc660a8c9787a350c9ccf023b1e06a59c57a39ff89b091258fb21",
+  "cpu_driver": "llvmpipe (LLVM 23.1.1, 256 bits)",
+  "device_type": "CPU",
+  "driver_version": "Mesa 26.2.4-arch3.1",
+  "subgroup_size": 8,
+  "subgroup_min": 8,
+  "subgroup_max": 8,
+  "worker_limit": 2
+}

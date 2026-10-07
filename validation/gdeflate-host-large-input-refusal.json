@@ -1,0 +1,7 @@
+{
+  "gpu_execution": false,
+  "invalid_icd_for_test": true,
+  "returncode": 1,
+  "stdout": "preflight tiles=512 decoded-bytes=33554432 payload-bytes=27217104\nvalidation-errors=0 validation-vuids=0\n",
+  "stderr": "FAIL: GPU research is restricted to one tile pending hardware validation\n"
+}

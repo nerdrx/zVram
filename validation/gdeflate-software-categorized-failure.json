@@ -1,0 +1,9 @@
+{
+  "stage": "categorized CPU rejection before valid tile-size index fix",
+  "gpu_execution": false,
+  "source_sha256": "b0ffa676998cefd1f3f9c66dd1e38da7bf151bcd40ddb06d601d0326db40ae0b",
+  "cpu_shader_sha256": "cd057677e89ed5899488eb4ff947ebaf8c11505dcd355e9b6b7a14c6fd997aac",
+  "error_mask": 1,
+  "identified_guard": "(tileStream.m_word2 & 0xfff00003u) != 0 rejects format tile-size index1",
+  "hash_provenance": "hashes recorded by compiler before the observed categorized run; historical source not current"
+}

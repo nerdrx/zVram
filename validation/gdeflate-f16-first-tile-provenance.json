@@ -1,0 +1,10 @@
+{
+  "source_slice_offset": 67108864,
+  "decoded_bytes": 65536,
+  "tile_count": 1,
+  "encoded_bytes": 52308,
+  "encoded_sha256": "121dbb822d0cd58d801cc709f55f2dc9a9db485b20be671ac47b83343ea9f380",
+  "raw_sha256": "945dadafdc488e0ec77770f3b942c9840d8b86454dda48517295bb5495876e88",
+  "method": "first independent tile from the CPU-verified 512-tile stream; rebuilt one-tile envelope",
+  "weights_published": false
+}

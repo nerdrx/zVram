@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install development packages
-        run: sudo apt-get update && sudo apt-get install -y libvulkan-dev libzstd-dev glslc
+        run: sudo apt-get update && sudo apt-get install -y libvulkan-dev libzstd-dev glslc mesa-vulkan-drivers vulkan-validationlayers spirv-tools
       - name: Build
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j 2
       - name: Check launcher syntax
@@ -21,6 +21,15 @@ jobs:
         run: python3 test_vulkan_model_budget.py
       - name: Check lossless parallel snapshot decoding
         run: ctest --test-dir build -R cpu-snapshot-decode --output-on-failure
+      - name: Check GDeflate envelope bounds without GPU execution
+        run: ctest --test-dir build -R cpu-gdeflate-envelope --output-on-failure
+      - name: Compile standalone GDeflate research host without running it
+        run: cmake -S . -B build/research -DZVRAM_BUILD_GDEFLATE_RESEARCH=ON -DCMAKE_BUILD_TYPE=Release && cmake --build build/research --target zvram-gdeflate-research -j 2
+      - name: Validate research modules and run CPU-only Vulkan correctness fixtures
+        run: |
+          spirv-val --target-env vulkan1.2 research/gdeflate/GDeflate-bounded-wave32.spv
+          spirv-val --target-env vulkan1.2 research/gdeflate/GDeflate-bounded-subgroup8.spv
+          python3 research/gdeflate/test_software.py --binary build/research/zvram-gdeflate-research
       - name: Check bounded snapshot decode look-ahead
         run: ctest --test-dir build -R cpu-snapshot-pipeline --output-on-failure
       # GPU integrity checks are run on the hardware documented in VALIDATION.md.

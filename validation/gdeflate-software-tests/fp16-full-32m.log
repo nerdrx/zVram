@@ -1,0 +1,12 @@
+preflight tiles=512 decoded-bytes=33554432 payload-bytes=27217104
+validation=on debug-utils=on
+device=llvmpipe (LLVM 23.1.1, 256 bits) vendor=0x10005 type=4 queue-family=0 shaderInt64=enabled execution=CPU-software default-subgroup=8 supported-stages=0xf0 supported-operations=0x6ff subgroup-range=8-8
+buffer bytes=27219160 allocation-bytes=27219160 memory-type=0 flags=0xf host-visible=yes device-local=yes
+buffer bytes=27219160 allocation-bytes=27219160 memory-type=0 flags=0xf host-visible=yes device-local=yes
+buffer bytes=12 allocation-bytes=12 memory-type=0 flags=0xf host-visible=yes device-local=yes
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0xf host-visible=yes device-local=yes
+buffer bytes=4 allocation-bytes=4 memory-type=0 flags=0xf host-visible=yes device-local=yes
+buffer bytes=33554436 allocation-bytes=33554436 memory-type=0 flags=0xf host-visible=yes device-local=yes
+cpu-software-timing iterations=1 upload-ns-median=1826058 decode-ns-median=5692871680 readback-copy-ns-median=2211618
+PASS: decoded 33554432 exact bytes in 512 tile workgroups across 1 iterations
+validation-errors=0 validation-vuids=0

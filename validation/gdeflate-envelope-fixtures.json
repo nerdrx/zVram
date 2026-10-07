@@ -1,0 +1,48 @@
+{
+  "gpu_execution": false,
+  "payload_decode_validation": false,
+  "fixtures": [
+    {
+      "fixture": "gdeflate-single-64k",
+      "sha256": "c39cffab1acaac1ab58aed72bdf6ab3d69b763b50c69b1d7f994517224511e66",
+      "metadata": {
+        "valid": true,
+        "encoded_bytes": 516,
+        "decoded_bytes": 65536,
+        "tile_count": 1,
+        "last_tile_bytes": 65536,
+        "payload_offset": 12,
+        "payload_bytes": 504
+      },
+      "exit": 0
+    },
+    {
+      "fixture": "gdeflate-multi-2tiles-tail",
+      "sha256": "1dfb813552292b4914530710a872f8bb2a649514dce16e771b27147243ccd7b0",
+      "metadata": {
+        "valid": true,
+        "encoded_bytes": 1288,
+        "decoded_bytes": 131195,
+        "tile_count": 3,
+        "last_tile_bytes": 123,
+        "payload_offset": 20,
+        "payload_bytes": 1268
+      },
+      "exit": 0
+    },
+    {
+      "fixture": "internlm-f16-32m-offset64m",
+      "sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "metadata": {
+        "valid": true,
+        "encoded_bytes": 27219160,
+        "decoded_bytes": 33554432,
+        "tile_count": 512,
+        "last_tile_bytes": 65536,
+        "payload_offset": 2056,
+        "payload_bytes": 27217104
+      },
+      "exit": 0
+    }
+  ]
+}
