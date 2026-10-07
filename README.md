@@ -76,7 +76,9 @@ The launcher option `--vulkan-clean-cache` (model helper: `--clean-cache`) keeps
 
 In the matched small-model scan comparison, LRU and MRU each passed 26/26 checks with identical output. MRU measured 8.36 tokens/s versus 6.23 for LRU in one run each, while native reference runs measured 119.43 and 122.04 tokens/s respectively. This is a workload-specific, single-run result with throughput variance; it does not establish a general speedup, 40 GiB behavior, or game performance. See [eviction-policy evidence and limits](VALIDATION.md#vulkan-range-eviction-policy).
 
-The model helper accepts the same choice with `--eviction-policy lru|mru`. Its optional `--min-available-mib N` guard aborts the helper's child process group when system-wide Linux `MemAvailable` reaches that floor; it is a safety stop, not a hard allocation cap.
+A longer-idle MRU run completed the unchanged 16.8107 GB Q4 model under a 12 GiB tracked-residency cap, with 26/26 checks, identical output, 66/66 layers, and 4,952 pressure admissions. It measured 0.28 tokens/s versus 6.00 native, so this establishes functional large-model coverage but shows a substantial slowdown. No large-model LRU comparison was run; this is not a 40 GB model or game result. See [long-idle model evidence and limits](VALIDATION.md#vulkan-range-eviction-policy).
+
+The model helper accepts the same choice with `--eviction-policy lru|mru`. Its optional `--min-available-mib N` guard aborts the helper's child process group when system-wide Linux `MemAvailable` falls below that floor; it is a safety stop, not a hard allocation cap.
 
 ```sh
 python3 check_vulkan_idle_model.py --binary build/third-party/llama-vulkan-build/bin/llama-completion --model build/third-party/models/SmolLM2-135M-Instruct-f16.gguf --tokens 64 --idle-ms 100 --range-mib 32 --resident-mib 192 --resident-after-cold --strict-robustness --max-nodes-per-submit 1 --validate --clean-cache --output-dir build/vulkan-clean-cache-model --timeout 120
