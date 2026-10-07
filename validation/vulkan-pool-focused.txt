@@ -1,0 +1,131 @@
+Focused pool test output extracted unchanged from final 44-test CTest run.
+test 5
+      Start  5: vulkan-virtual-pool-legacy
+
+5: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation"
+5: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+5: Environment variables: 
+5:  VK_LOADER_LAYERS_DISABLE=~implicit~
+5: Test timeout computed to be: 60
+5: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+5: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+5: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+5: shared pool range contents survived buffer destruction/rebind
+5: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+5: PASS: shared 512 MiB allocation, nonzero offsets, child-boundary compute/readback, overlap refusal, rebind persistence, quota recovery
+5: [zvram] virtual free bytes=536870912
+5: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+ 5/44 Test  #5: vulkan-virtual-pool-legacy ...............   Passed    0.59 sec
+test 6
+      Start  6: vulkan-automatic-pool-legacy
+
+6: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation" "--suballocation-auto"
+6: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+6: Environment variables: 
+6:  VK_LOADER_LAYERS_DISABLE=~implicit~
+6: Test timeout computed to be: 60
+6: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+6: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+6: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+6: [zvram] snapshot cold bytes=268435456 stored=135447939
+6: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=135447939 freezes=1 restores=0 failures=0
+6: [zvram] snapshot cold bytes=268435456 stored=201328678
+6: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=2 restores=0 failures=0
+6: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+6: shared pool cold: logical=536870912 stored=336776617
+6: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+6: shared pool range contents survived buffer destruction/rebind
+6: [zvram] snapshot cold bytes=268435456 stored=167775289
+6: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=167775289 freezes=3 restores=2 failures=0
+6: [zvram] snapshot cold bytes=268435456 stored=201328678
+6: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=4 restores=2 failures=0
+6: shared pool cold: logical=536870912 stored=369103967
+6: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+6: shared pool cold contents survived destruction of every buffer
+6: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+6: PASS: shared 512 MiB allocation, nonzero offsets, child-boundary compute/readback, overlap refusal, rebind persistence, quota recovery
+6: [zvram] virtual free bytes=536870912
+6: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+6: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+ 6/44 Test  #6: vulkan-automatic-pool-legacy .............   Passed    1.65 sec
+test 7
+      Start  7: vulkan-virtual-pool-api2
+
+7: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation" "--suballocation-api2"
+7: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+7: Environment variables: 
+7:  VK_LOADER_LAYERS_DISABLE=~implicit~
+7: Test timeout computed to be: 60
+7: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+7: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+7: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+7: shared pool range contents survived buffer destruction/rebind
+7: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+7: PASS: shared 512 MiB allocation, nonzero offsets, child-boundary compute/readback, overlap refusal, rebind persistence, quota recovery
+7: [zvram] virtual free bytes=536870912
+7: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+ 7/44 Test  #7: vulkan-virtual-pool-api2 .................   Passed    0.60 sec
+test 8
+      Start  8: vulkan-automatic-pool-api2
+
+8: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation" "--suballocation-api2" "--suballocation-auto"
+8: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+8: Environment variables: 
+8:  VK_LOADER_LAYERS_DISABLE=~implicit~
+8: Test timeout computed to be: 60
+8: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+8: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+8: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+8: [zvram] snapshot cold bytes=268435456 stored=135447939
+8: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=135447939 freezes=1 restores=0 failures=0
+8: [zvram] snapshot cold bytes=268435456 stored=201328678
+8: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=2 restores=0 failures=0
+8: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+8: shared pool cold: logical=536870912 stored=336776617
+8: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+8: shared pool range contents survived buffer destruction/rebind
+8: [zvram] snapshot cold bytes=268435456 stored=167775289
+8: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=167775289 freezes=3 restores=2 failures=0
+8: [zvram] snapshot cold bytes=268435456 stored=201328678
+8: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=4 restores=2 failures=0
+8: shared pool cold: logical=536870912 stored=369103967
+8: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+8: shared pool cold contents survived destruction of every buffer
+8: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+8: PASS: shared 512 MiB allocation, nonzero offsets, child-boundary compute/readback, overlap refusal, rebind persistence, quota recovery
+8: [zvram] virtual free bytes=536870912
+8: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+8: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+ 8/44 Test  #8: vulkan-automatic-pool-api2 ...............   Passed    1.67 sec
+test 9
+      Start  9: vulkan-automatic-pool-bda
+
+9: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--suballocation-api2" "--bda"
+9: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+9: Environment variables: 
+9:  VK_LOADER_LAYERS_DISABLE=~implicit~
+9: Test timeout computed to be: 60
+9: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+9: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+9: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+9: [zvram] snapshot cold bytes=268435456 stored=135447939
+9: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=135447939 freezes=1 restores=0 failures=0
+9: [zvram] snapshot cold bytes=268435456 stored=201328678
+9: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=2 restores=0 failures=0
+9: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+9: shared pool cold: logical=536870912 stored=336776617
+9: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+9: shared pool range contents survived buffer destruction/rebind
+9: [zvram] snapshot cold bytes=268435456 stored=167775289
+9: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=167775289 freezes=3 restores=2 failures=0
+9: [zvram] snapshot cold bytes=268435456 stored=201328678
+9: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=4 restores=2 failures=0
+9: shared pool cold: logical=536870912 stored=369103967
+9: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+9: shared pool cold contents survived destruction of every buffer
+9: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+9: PASS: shared 512 MiB allocation, nonzero offsets, child-boundary compute/readback, overlap refusal, rebind persistence, quota recovery
+9: [zvram] virtual free bytes=536870912
+9: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+9: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+ 9/44 Test  #9: vulkan-automatic-pool-bda ................   Passed    1.64 sec

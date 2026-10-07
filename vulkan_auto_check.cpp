@@ -709,6 +709,149 @@ void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
         }
     }
 }
+void suballocationCheck(Context& context, bool automatic, bool api2) {
+    constexpr VkDeviceSize PoolBytes = 512 * MiB;
+    constexpr VkDeviceSize ABytes = 192 * MiB, AOffset = 128 * MiB;
+    constexpr VkDeviceSize BBytes = 128 * MiB, BOffset = 352 * MiB;
+    require(context.memory.memoryHeaps[context.memory.memoryTypes[context.virtualType].heapIndex].size == PoolBytes,
+            "suballocation check requires a 512 MiB virtual heap");
+    Buffer pool; pool.device = context.device;
+    VkMemoryAllocateFlagsInfo flags{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
+    flags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize = PoolBytes; allocation.memoryTypeIndex = context.virtualType;
+    if (context.bdaMode) allocation.pNext = &flags;
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &pool.memory), "allocate shared virtual pool");
+    auto quotaCharged = [&] {
+        VkMemoryAllocateInfo probe = allocation; probe.allocationSize = MiB;
+        VkDeviceMemory extra{};
+        const auto result = vkAllocateMemory(context.device, &probe, nullptr, &extra);
+        if (result == VK_SUCCESS) vkFreeMemory(context.device, extra, nullptr);
+        require(result == VK_ERROR_OUT_OF_DEVICE_MEMORY, "shared pool stopped charging its logical heap quota");
+    };
+    quotaCharged();
+    Buffer a, b, c;
+    auto create = [&](Buffer& buffer, VkDeviceSize size) {
+        buffer.device = context.device;
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = size; info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        if (context.bdaMode) info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        check(vkCreateBuffer(context.device, &info, nullptr, &buffer.handle), "create pool buffer");
+        VkMemoryRequirements requirements{};
+        vkGetBufferMemoryRequirements(context.device, buffer.handle, &requirements);
+        require(requirements.size == size && (requirements.memoryTypeBits & (1u << context.virtualType)),
+                "pool buffer has incompatible requirements");
+    };
+    auto bind = [&](VkBuffer buffer, VkDeviceSize offset) {
+        if (!api2) return vkBindBufferMemory(context.device, buffer, pool.memory, offset);
+        VkBindBufferMemoryInfo info{VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO};
+        info.buffer = buffer; info.memory = pool.memory; info.memoryOffset = offset;
+        return vkBindBufferMemory2(context.device, 1, &info);
+    };
+    create(a, ABytes); create(b, BBytes); create(c, ChunkBytes);
+    if (api2) {
+        VkBindBufferMemoryInfo infos[2]{};
+        for (auto& info : infos) { info.sType = VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO; info.memory = pool.memory; }
+        infos[0].buffer = a.handle; infos[0].memoryOffset = AOffset;
+        infos[1].buffer = b.handle; infos[1].memoryOffset = BOffset;
+        check(vkBindBufferMemory2(context.device, 2, infos), "bind two pool slices with API2");
+    } else {
+        check(bind(a.handle, AOffset), "bind pool slice across child boundary");
+        check(bind(b.handle, BOffset), "bind second pool slice");
+    }
+    require(bind(c.handle, AOffset + ChunkBytes) == VK_ERROR_FEATURE_NOT_PRESENT,
+            "live overlapping sparse pool ranges were not rejected");
+    check(bind(c.handle, 0), "bind previously rejected buffer to unused pool range");
+
+    Staging staging; staging.device = context.device;
+    VkBufferCreateInfo stagingInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    stagingInfo.size = ChunkBytes; stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device, &stagingInfo, nullptr, &staging.buffer), "create pool staging buffer");
+    VkMemoryRequirements stagingRequirements{};
+    vkGetBufferMemoryRequirements(context.device, staging.buffer, &stagingRequirements);
+    VkMemoryAllocateInfo stagingAllocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    stagingAllocation.allocationSize = stagingRequirements.size;
+    stagingAllocation.memoryTypeIndex = hostCoherentType(context, stagingRequirements.memoryTypeBits);
+    require(stagingAllocation.memoryTypeIndex != UINT32_MAX, "no pool staging memory type");
+    check(vkAllocateMemory(context.device, &stagingAllocation, nullptr, &staging.memory), "allocate pool staging");
+    check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0), "bind pool staging");
+    check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped), "map pool staging");
+    auto address = [&](VkBuffer buffer) {
+        if (!context.bdaMode) return VkDeviceAddress{0};
+        VkBufferDeviceAddressInfo info{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO}; info.buffer = buffer;
+        const auto value = vkGetBufferDeviceAddress(context.device, &info);
+        require(value != 0, "pool buffer has no device address"); return value;
+    };
+    auto compute = [&](VkBuffer buffer, std::uint32_t cycle, VkDeviceSize size) {
+        context.bufferAddress = address(buffer);
+        check(computeCycle(context, buffer, cycle, 0, false, size), "compute pool slice");
+    };
+    const auto aAddress = address(a.handle), bAddress = address(b.handle), cAddress = address(c.handle);
+    upload(context, a.handle, staging, ABytes); upload(context, b.handle, staging, BBytes);
+    upload(context, c.handle, staging, ChunkBytes);
+    compute(a.handle, 0, ABytes); compute(b.handle, 0, BBytes); compute(b.handle, 1, BBytes);
+    readbackAndVerify(context, a.handle, staging, 0, false, ABytes);
+    readbackAndVerify(context, b.handle, staging, 1, false, BBytes);
+    readbackAndVerify(context, c.handle, staging, -1, false, ChunkBytes);
+    auto waitCold = [&] {
+        const auto deadline = std::chrono::steady_clock::now() + ColdTimeout;
+        ZvramSnapshotStatsNX cold{};
+        do {
+            cold = context.stats();
+            if (cold.coldLogicalBytes == PoolBytes && cold.residentBytes == 0 && cold.coldStoredBytes > 0) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        } while (std::chrono::steady_clock::now() < deadline);
+        require(cold.coldLogicalBytes == PoolBytes && cold.residentBytes == 0 && cold.coldStoredBytes > 0,
+                "shared pool did not become fully cold");
+        std::cout << "shared pool cold: logical=" << cold.coldLogicalBytes << " stored=" << cold.coldStoredBytes << std::endl;
+    };
+    if (automatic) {
+        waitCold();
+        require(address(a.handle) == aAddress && address(b.handle) == bAddress && address(c.handle) == cAddress,
+                "cold pool changed a buffer device address");
+    }
+    compute(a.handle, 1, ABytes); compute(b.handle, 2, BBytes); compute(c.handle, 0, ChunkBytes);
+    readbackAndVerify(context, a.handle, staging, 1, false, ABytes);
+    readbackAndVerify(context, b.handle, staging, 2, false, BBytes);
+    readbackAndVerify(context, c.handle, staging, 0, false, ChunkBytes);
+    vkDestroyBuffer(context.device, a.handle, nullptr); a.handle = VK_NULL_HANDLE;
+    quotaCharged();
+    create(a, ABytes); check(bind(a.handle, AOffset), "rebind pool range after buffer destruction");
+    readbackAndVerify(context, a.handle, staging, 1, false, ABytes);
+    readbackAndVerify(context, b.handle, staging, 2, false, BBytes);
+    std::cout << "shared pool range contents survived buffer destruction/rebind" << std::endl;
+    if (automatic) {
+        for (Buffer* buffer : {&a, &b, &c}) {
+            vkDestroyBuffer(context.device, buffer->handle, nullptr); buffer->handle = VK_NULL_HANDLE;
+        }
+        quotaCharged();
+        waitCold();
+        create(a, ABytes); create(b, BBytes); create(c, ChunkBytes);
+        check(bind(a.handle, AOffset), "rebind cold pool without live buffers");
+        check(bind(b.handle, BOffset), "rebind second retained cold range");
+        check(bind(c.handle, 0), "rebind third retained cold range");
+        readbackAndVerify(context, a.handle, staging, 1, false, ABytes);
+        readbackAndVerify(context, b.handle, staging, 2, false, BBytes);
+        readbackAndVerify(context, c.handle, staging, 0, false, ChunkBytes);
+        std::cout << "shared pool cold contents survived destruction of every buffer" << std::endl;
+    }
+    vkFreeMemory(context.device, pool.memory, nullptr); pool.memory = VK_NULL_HANDLE;
+    quotaCharged();
+    unsigned destroyed = 0;
+    for (Buffer* buffer : {&a, &b, &c}) {
+        vkDestroyBuffer(context.device, buffer->handle, nullptr); buffer->handle = VK_NULL_HANDLE;
+        if (++destroyed < 3) quotaCharged();
+    }
+    if (automatic) {
+        const auto empty = context.stats();
+        require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 && empty.coldStoredBytes == 0,
+                "shared pool cleanup retained resident or cold bytes");
+    }
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &pool.memory), "reuse all virtual heap quota after pool cleanup");
+    std::cout << "PASS: shared 512 MiB allocation, nonzero offsets, child-boundary compute/readback, overlap refusal, rebind persistence, quota recovery" << std::endl;
+}
 } // namespace
 
 int main(int argc, char** argv) try {
@@ -718,6 +861,7 @@ int main(int argc, char** argv) try {
     bool twoQueues = false, twoFamilies = false, exclusiveFamilies = false;
     bool pendingWait = false, pendingBind = false;
     bool concurrentWait = false;
+    bool suballocation = false, suballocationAuto = false, suballocationApi2 = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--expect-budget-refusal") == 0) expectBudgetRefusal = true;
         else if (std::strcmp(argv[i], "--expect-budget-release") == 0) expectBudgetRelease = true;
@@ -731,7 +875,10 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--pending-wait") == 0) pendingWait = true;
         else if (std::strcmp(argv[i], "--pending-bind") == 0) pendingBind = true;
         else if (std::strcmp(argv[i], "--concurrent-wait") == 0) concurrentWait = true;
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait]");
+        else if (std::strcmp(argv[i], "--suballocation") == 0) suballocation = true;
+        else if (std::strcmp(argv[i], "--suballocation-auto") == 0) { suballocation = true; suballocationAuto = true; }
+        else if (std::strcmp(argv[i], "--suballocation-api2") == 0) { suballocation = true; suballocationApi2 = true; }
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2]");
     }
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||
@@ -751,8 +898,12 @@ int main(int argc, char** argv) try {
     require(!pendingBind || (nativeAllocation && (twoQueues || twoFamilies || exclusiveFamilies)),
             "--pending-bind requires --native-allocation and a multi-queue mode");
     Context context;
+    require(!suballocation || !(expectBudgetRefusal || expectBudgetRelease || expectPartialFreeze || expectPartialRestore ||
+                               nativeAllocation || twoQueues || twoFamilies || exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
+            "suballocation mode uses an independent synthetic single-queue allocation path");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind);
+    if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }
     if (pendingWait || pendingBind) {
         VkTimelineSemaphoreSubmitInfo waitValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
         const std::uint64_t value = 1;
