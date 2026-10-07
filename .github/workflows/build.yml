@@ -8,9 +8,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install development packages
-        run: sudo apt-get update && sudo apt-get install -y libvulkan-dev libzstd-dev
+        run: sudo apt-get update && sudo apt-get install -y libvulkan-dev libzstd-dev glslc
       - name: Build
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j 2
       - name: Check launcher syntax
-        run: python3 -m py_compile zvram && ./zvram --help
+        run: python3 -m py_compile zvram dmem_probe.py && ./zvram --help
       # GPU integrity checks are run on the hardware documented in VALIDATION.md.

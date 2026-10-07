@@ -1,0 +1,4 @@
+[zvram-hip] summary: tracked=0 peak_allocations=36 hipMalloc_api_bytes_current=0 peak=1048576 mapped_host_bytes_current=0 pending=0 peak=131072 native_allocations=256 mapped_host_allocations=32 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+Running allocation-only concurrency check.
+Concurrent check: 4 threads x 8 rounds x 9 live 32 KiB allocations; observed native=256 mapped-host=32 (no GPU kernels launched).

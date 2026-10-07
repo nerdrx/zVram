@@ -1,0 +1,17 @@
+Command: ./zvram --hip --hip-vmm --hip-report-capacity --hip-local-mib 20480 --hip-host-mib 20480 -- ./build/hip_check --single-allocation --mib 40960
+Driver snapshot: {'mem_info_vram_used': '1263779840', 'mem_info_gtt_used': '3536683008', 'phase': 'before', 'MemAvailable': 'MemAvailable:   40764276 kB'}
+Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+Workload=40960 MiB; one live allocation, checked in 8 MiB chunks.
+small allocation cycle 1: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f483e400000
+small allocation cycle 2: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f483e400000
+HIP capacity before: total=42949672960 free=42949672960
+[zvram-hip] hybrid VMM allocation: logical=42949672960 mapped=42949672960 VRAM=21474836480 host_pinned=21474836480 handles=160
+single allocation pointer attributes: type=2 device=0 managed=0 hostPointer=0 devicePointer=0x7f3ce5000000
+HIP capacity allocated: total=42949672960 free=0
+Driver snapshot: {'mem_info_vram_used': '23005634560', 'mem_info_gtt_used': '25017876480', 'phase': '40 GiB allocation live', 'MemAvailable': 'MemAvailable:   20025816 kB'}
+GPU wrote and CPU verified all 5368709120 words across one live allocation checked in 5120 chunks.
+HIP capacity freed: total=42949672960 free=42949672960
+[zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=21474836480 host_pinned_backing_bytes_current=0 pending=0 peak=21474836480 native_allocations=2 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+Driver snapshot: {'mem_info_vram_used': '16471797760', 'mem_info_gtt_used': '3547287552', 'phase': 'after', 'MemAvailable': 'MemAvailable:   40860676 kB'}
+Exit=0; elapsed=8.555s (one integrity check, not benchmark)

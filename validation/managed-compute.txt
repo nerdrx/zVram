@@ -1,0 +1,7 @@
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=16777216 live-nonlocal=0 peak-nonlocal=1056768 allocation-failures=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+cycle 1: verified 64 MiB of GPU mutations after eviction/restoration
+cycle 2: verified 64 MiB of GPU mutations after eviction/restoration
+resident=0 stored=58721120 evictions=38 restores=30 raw-fallbacks=33
+PASS: compute integrity, LRU budgets, pinned refusal, raw fallback, and failed-eviction recovery

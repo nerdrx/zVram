@@ -1,0 +1,9 @@
+Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+Workload=40960 MiB; one live allocation, checked in 8 MiB chunks.
+small allocation cycle 1: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f105d800000
+small allocation cycle 2: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f105d800000
+[zvram-hip] VMM host segment creation failed: out of memory
+single-allocation hipMalloc: out of memory (2)
+This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+[zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=21474836480 host_pinned_backing_bytes_current=0 pending=0 peak=21474836480 native_allocations=2 mapped_host_allocations=0 hybrid_vmm_allocations=0 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=1; mapped host is pinned host RAM, not compressed VRAM
+elapsed=0.387 s exit=1

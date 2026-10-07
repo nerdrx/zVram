@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Launch one Vulkan process with the local zVram layer."""
+"""Launch one process with the local zVram Vulkan or HIP backend."""
 import argparse
 import os
 from pathlib import Path
 import sys
 
-parser = argparse.ArgumentParser(description="zVram experimental Vulkan launcher (native spillover; no transparent compression yet)")
-parser.add_argument("--verbose", action="store_true", help="log each allocation")
+parser = argparse.ArgumentParser(description="zVram experimental GPU memory launcher")
+parser.add_argument("--hip", action="store_true", help="use the HIP allocation spillover backend instead of the Vulkan layer")
+parser.add_argument("--hip-vmm", action="store_true", help="use HIP virtual memory for a single pointer backed by VRAM and RAM (experimental)")
+parser.add_argument("--hip-report-capacity", action="store_true", help="report the configured VRAM plus GTT capacity through supported HIP queries (opt-in)")
+parser.add_argument("--hip-local-mib", type=int, help="spill tracked HIP allocations beyond this local limit; 0 forces RAM backing")
+parser.add_argument("--hip-host-mib", type=int, help="limit tracked mapped HIP host memory")
+parser.add_argument("--verbose", action="store_true", help="log each Vulkan allocation")
 parser.add_argument("--validate", action="store_true", help="enable Vulkan core and synchronization validation")
 parser.add_argument("--isolate-layers", action="store_true", help="disable implicit layers for a controlled experiment")
 parser.add_argument("command", nargs=argparse.REMAINDER, help="-- application [arguments]")
@@ -17,18 +22,44 @@ if command and command[0] == "--":
 if not command:
     parser.error("supply an application after --")
 build = Path(__file__).resolve().parent / "build"
-if not (build / "VK_LAYER_NX_zvram.json").is_file() or not (build / "libzvram_layer.so").is_file():
+if args.hip and args.validate:
+    parser.error("--validate applies to the Vulkan backend")
+if not args.hip and (args.hip_vmm or args.hip_report_capacity or args.hip_local_mib is not None or args.hip_host_mib is not None):
+    parser.error("HIP virtual memory and memory limits require --hip")
+if args.hip_report_capacity and (not args.hip_vmm or args.hip_local_mib is None or
+                                 args.hip_host_mib is None or args.hip_host_mib <= 0):
+    parser.error("--hip-report-capacity requires --hip-vmm and explicit local and positive host limits")
+for limit in (args.hip_local_mib, args.hip_host_mib):
+    if limit is not None and not 0 <= limit <= 40960:
+        parser.error("HIP memory limits must be 0..40960 MiB")
+if args.hip and not (build / "libzvram_hip.so").is_file():
+    parser.error("HIP backend missing; install ROCm development tools and rebuild")
+if not args.hip and (not (build / "VK_LAYER_NX_zvram.json").is_file() or not (build / "libzvram_layer.so").is_file()):
     parser.error("build first: cmake -S zvram -B zvram/build && cmake --build zvram/build")
 env = os.environ.copy()
-# Both variables are needed when the caller already overrides loader search paths.
-path_variable = "VK_LAYER_PATH" if env.get("VK_LAYER_PATH") else "VK_ADD_LAYER_PATH"
-env[path_variable] = str(build) + (os.pathsep + env[path_variable] if env.get(path_variable) else "")
-layers = ["VK_LAYER_NX_zvram"]
-if args.validate:
-    layers.append("VK_LAYER_KHRONOS_validation")
-    env["VK_VALIDATION_VALIDATE_SYNC"] = "1"
-layers.extend(x for x in env.get("VK_INSTANCE_LAYERS", "").split(os.pathsep) if x and x not in layers)
-env["VK_INSTANCE_LAYERS"] = os.pathsep.join(layers)
+if args.hip:
+    # The loader accepts spaces/colons in LD_PRELOAD, without escaping. Reject an ambiguous checkout path.
+    library = str(build / "libzvram_hip.so")
+    if any(character.isspace() or character == ":" for character in library):
+        parser.error("HIP checkout path must not contain spaces or colons")
+    env["LD_PRELOAD"] = library + (" " + env["LD_PRELOAD"] if env.get("LD_PRELOAD") else "")
+    if args.hip_vmm:
+        env["ZVRAM_HIP_VMM"] = "1"
+    if args.hip_report_capacity:
+        env["ZVRAM_HIP_REPORT_CAPACITY"] = "1"
+    if args.hip_local_mib is not None:
+        env["ZVRAM_HIP_LOCAL_LIMIT_MIB"] = str(args.hip_local_mib)
+    if args.hip_host_mib is not None:
+        env["ZVRAM_HIP_HOST_LIMIT_MIB"] = str(args.hip_host_mib)
+else:
+    path_variable = "VK_LAYER_PATH" if env.get("VK_LAYER_PATH") else "VK_ADD_LAYER_PATH"
+    env[path_variable] = str(build) + (os.pathsep + env[path_variable] if env.get(path_variable) else "")
+    layers = ["VK_LAYER_NX_zvram"]
+    if args.validate:
+        layers.append("VK_LAYER_KHRONOS_validation")
+        env["VK_VALIDATION_VALIDATE_SYNC"] = "1"
+    layers.extend(x for x in env.get("VK_INSTANCE_LAYERS", "").split(os.pathsep) if x and x not in layers)
+    env["VK_INSTANCE_LAYERS"] = os.pathsep.join(layers)
 if args.verbose:
     env["ZVRAM_VERBOSE"] = "1"
 if args.isolate_layers:

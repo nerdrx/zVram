@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101316">
-  <meta name="description" content="zVram is an experimental Vulkan layer exploring memory beyond VRAM.">
-  <title>zVram — Explore memory beyond VRAM</title>
+  <meta name="description" content="zVram is an experimental Vulkan and HIP project exploring explicit GPU memory strategies beyond VRAM.">
+  <title>zVram v0.2 — Explore memory beyond VRAM</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -22,14 +22,14 @@
   <main id="main">
     <section class="hero wrap" id="top" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> Experimental <span class="dot">·</span> v0.1</p>
+        <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> Experimental <span class="dot">·</span> v0.2</p>
         <h1 id="hero-title">Explore memory<br>beyond <span>VRAM.</span></h1>
-        <p class="lede">An opt-in Vulkan layer for AMD RADV that observes allocations and explores explicit memory strategies.</p>
+        <p class="lede">Explicit memory experiments: managed Vulkan buffers with bounded lossless snapshots, plus an optional HIP allocation fallback.</p>
         <div class="hero-actions">
           <a class="button primary" href="#get-started">Build from source <span aria-hidden="true">↓</span></a>
           <a class="text-link" href="https://github.com/nerdrx/zVram#readme">View on GitHub <span aria-hidden="true">↗</span></a>
         </div>
-        <p class="hardware-note"><span class="status-dot" aria-hidden="true"></span> 40 GiB buffer integrity verified · RX 7900 XTX · 24 GiB VRAM</p>
+        <p class="hardware-note"><span class="status-dot" aria-hidden="true"></span> 40 GiB Vulkan pool and HIP checks · RX 7900 XTX · 24 GiB VRAM</p>
       </div>
       <div class="memory-card" role="img" aria-label="Illustration of memory blocks crossing from GPU memory into system memory">
         <div class="card-top"><span>MEMORY PATH</span><span class="live-label"><i></i> EXPERIMENTAL</span></div>
@@ -44,29 +44,35 @@
 
     <section class="notice wrap" aria-label="Important limitation">
       <span class="notice-icon" aria-hidden="true">i</span>
-      <p><strong>What this does not do:</strong> compression is not transparent across applications, and zVram is not universal GPU memory expansion. No capacity or performance gain is claimed.</p>
+      <p><strong>Experimental boundary:</strong> compression applies only to buffers explicitly managed by the Vulkan pool. The HIP fallback uses pinned host RAM. Neither path claims transparent arbitrary-app compression or a gain over native driver behavior.</p>
     </section>
 
     <section class="results wrap" aria-labelledby="results-title">
-      <div><p class="eyebrow">Measured on hardware</p><h2 id="results-title">40 GiB of data. 24 GiB of VRAM.</h2></div>
-      <p>Full buffer readback passed both natively and with the layer, using driver-managed system RAM spillover. This verifies transfer integrity; it does not prove a capacity gain from zVram or a model workload.</p>
+      <div><p class="eyebrow">Measured on hardware</p><h2 id="results-title">40 GiB data. 256 MiB budget.</h2></div>
+      <p>The managed pool verified every word after GPU mutation, eviction, and restoration. Its highly compressible constant pattern stored 3,998,720 bytes under a 256 MiB resident budget; this is not representative of model weights. A report-enabled HIP VMM/GTT check verified one 40 GiB pointer backed by 20 GiB VRAM and 20 GiB GTT, with logical free capacity returning from 40 GiB to zero while allocated and back after free. An 80 MiB check agreed across three HIP APIs. By default HIP still reports physical capacity. These synthetic checks do not establish model compatibility, a native HIP capacity gain, or transparent paging.</p>
       <a class="text-link" href="https://github.com/nerdrx/zVram/blob/main/VALIDATION.md">Read the test evidence <span aria-hidden="true">↗</span></a>
     </section>
 
     <section class="content-section wrap" id="how" aria-labelledby="how-title">
-      <div class="section-heading"><p class="eyebrow">The current prototype</p><h2 id="how-title">Two paths. Clear boundaries.</h2></div>
+      <div class="section-heading"><p class="eyebrow">The current prototype</p><h2 id="how-title">Three experiments. Explicit limits.</h2></div>
       <div class="feature-grid">
         <article class="feature-card">
           <span class="feature-index">01 / TELEMETRY</span>
           <h3>See allocation behavior</h3>
-          <p>An opt-in Vulkan layer records AMD RADV device-memory allocation activity and applies an explicit overallocation policy when the driver supports it. The native driver may place allowed overflow allocations in system RAM.</p>
+          <p>An opt-in layer records allocation activity and requests AMD RADV overallocation when supported. The native driver remains responsible for migration into system RAM.</p>
           <span class="tag">Vulkan layer</span><span class="tag">AMD RADV</span>
         </article>
         <article class="feature-card">
-          <span class="feature-index">02 / COMPRESSION</span>
-          <h3>Test managed buffers</h3>
-          <p>A CPU zstd proof explores compression on buffers the application explicitly manages. It does not intercept or compress arbitrary application memory.</p>
-          <span class="tag">CPU zstd</span><span class="tag">Explicit buffers</span>
+          <span class="feature-index">02 / VULKAN POOL</span>
+          <h3>Evict and restore safely</h3>
+          <p>A C++ API owns explicit buffers, pins them while in use, and stores lossless zstd or raw snapshots under a host budget. Applications refresh VkBuffer references after restore.</p>
+          <span class="tag">Bounded host store</span><span class="tag">C++17 API</span>
+        </article>
+        <article class="feature-card">
+          <span class="feature-index">03 / HIP FALLBACK</span>
+          <h3>Route capped allocations</h3>
+          <p>An optional hipMalloc shim supports native device allocations, mapped pinned host fallback, and an experimental one-pointer VMM/GTT provider. Logical capacity reporting is opt-in and limited to three HIP APIs; these paths are not compressed and broader application integration remains untested.</p>
+          <span class="tag">Opt-in</span><span class="tag">Pinned host RAM</span>
         </article>
       </div>
     </section>
@@ -74,15 +80,16 @@
     <section class="content-section roadmap wrap" id="roadmap" aria-labelledby="roadmap-title">
       <div class="section-heading"><p class="eyebrow">Research direction</p><h2 id="roadmap-title">Prototype today. Learn what’s next.</h2></div>
       <div class="milestones">
-        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>Prototype today</h3><p>Allocation telemetry, opt-in policy, and an isolated compression proof.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
-        <article class="milestone"><span class="milestone-state">NEXT</span><div><h3>Managed buffer API</h3><p>Define a clear application-facing contract for data zVram owns.</p></div><span class="milestone-mark" aria-hidden="true">○</span></article>
-        <article class="milestone"><span class="milestone-state">NEXT</span><div><h3>Safe eviction &amp; restore</h3><p>Research lifecycle, synchronization, and recovery requirements.</p></div><span class="milestone-mark" aria-hidden="true">○</span></article>
-        <article class="milestone"><span class="milestone-state">NEXT</span><div><h3>Compatibility research</h3><p>Map driver and application behavior before making broader claims.</p></div><span class="milestone-mark" aria-hidden="true">○</span></article>
+        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>Managed Vulkan pool</h3><p>Chunked lossless snapshots, LRU eviction, and compute integrity verified under a 16 MiB resident budget.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
+        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>Optional HIP allocation fallback</h3><p>GPU-write integrity verified across native device and mapped host allocations; no native HIP baseline or model workload yet.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
+        <article class="milestone"><span class="milestone-state">RESEARCH</span><div><h3>Native Linux paging</h3><p>TTM has a shmem backing path for eligible BOs. A scoped dmem pressure probe is prepared; its privileged run is pending.</p></div><span class="milestone-mark" aria-hidden="true">○</span></article>
+        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>HIP VMM with GTT backing</h3><p>One 40 GiB pointer passed GPU-write/CPU-verify using 20 GiB VRAM and 20 GiB GTT; model and application integration remain untested.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
+        <article class="milestone"><span class="milestone-state">NEXT</span><div><h3>Broader workloads</h3><p>Validate model-like data and real application behavior before making wider claims.</p></div><span class="milestone-mark" aria-hidden="true">○</span></article>
       </div>
     </section>
 
     <section class="get-started wrap" id="get-started" aria-labelledby="start-title">
-      <div><p class="eyebrow">Try the prototype</p><h2 id="start-title">Build. Inspect. Experiment.</h2><p>Requires a Vulkan development environment, AMD RADV, and zstd development files.</p></div>
+      <div><p class="eyebrow">Try the prototype</p><h2 id="start-title">Build. Inspect. Experiment.</h2><p>Requires Vulkan headers, glslc, and zstd development files. HIP checks need ROCm; VMM/GTT also needs libdrm AMDGPU development files.</p></div>
       <div class="code-card"><span class="code-label">SHELL</span><pre><code><span class="comment"># Get the source</span>
 git clone https://github.com/nerdrx/zVram.git
 cd zVram
@@ -91,11 +98,16 @@ cd zVram
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
-<span class="comment"># Launch a Vulkan application with zVram</span>
-./zvram -- application [args]</code></pre></div>
+<span class="comment"># Run the managed Vulkan integrity check</span>
+./zvram --validate --isolate-layers -- ./build/zvram-managed-check
+
+<span class="comment"># HIP VMM/GTT, with opt-in capacity reporting through supported HIP queries</span>
+./zvram --hip --hip-vmm --hip-report-capacity \
+  --hip-local-mib 20480 --hip-host-mib 20480 -- \
+  ./build/hip_check --single-allocation --mib 40960</code></pre></div>
     </section>
   </main>
 
-  <footer class="site-footer wrap"><a class="wordmark" href="#top"><span class="mark" aria-hidden="true">z</span>Vram</a><p>Experimental memory research for Vulkan.</p><a href="https://github.com/nerdrx/zVram#readme">README <span aria-hidden="true">↗</span></a></footer>
+  <footer class="site-footer wrap"><a class="wordmark" href="#top"><span class="mark" aria-hidden="true">z</span>Vram</a><p>Experimental memory research for Vulkan and HIP.</p><a href="https://github.com/nerdrx/zVram/blob/main/KERNEL_PAGING.md">Linux paging notes <span aria-hidden="true">↗</span></a><a href="https://github.com/nerdrx/zVram#readme">README <span aria-hidden="true">↗</span></a></footer>
 </body>
 </html>

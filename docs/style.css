@@ -68,7 +68,7 @@ h1 span { color: var(--mint); }
 .section-heading { margin-bottom: 28px; }
 .section-heading .eyebrow { margin-bottom: 9px; }
 h2 { margin: 0; font-size: clamp(1.9rem, 4vw, 2.7rem); line-height: 1.15; letter-spacing: -.055em; font-weight: 600; }
-.feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .feature-card { min-height: 225px; padding: 25px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .feature-index, .milestone-state, .code-label { color: #7f8b91; font: .65rem var(--mono); letter-spacing: .08em; }
 h3 { margin: 15px 0 8px; font-size: 1.12rem; letter-spacing: -.025em; }
@@ -101,6 +101,7 @@ pre { overflow-x: auto; margin: 0; padding: 17px 15px; color: #d5e0df; font: .76
   .hero-copy { max-width: 680px; }
   .memory-card { max-width: 590px; }
   .get-started { grid-template-columns: 1fr; gap: 24px; }
+  .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) {
   .wrap { width: min(100% - 32px, 1120px); }

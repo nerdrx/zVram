@@ -1,0 +1,5 @@
+Command: ./zvram --hip --hip-vmm --hip-report-capacity --hip-local-mib 16 --hip-host-mib 64 -- ./build/zvram-hip-capacity-check
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+[zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+PASS: configured virtual capacity total=83886080 free(before,during,after)=83886080,50331648,83886080; three HIP queries agree
+Exit=0

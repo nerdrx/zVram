@@ -1,0 +1,8 @@
+Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+Workload=40960 MiB; allocation chunk=8 MiB; all chunks stay live through verification.
+small allocation cycle 1: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f9e96400000
+small allocation cycle 2: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f9e96400000
+GPU wrote and CPU verified all 5368709120 words across 5120 live HIP allocations.
+This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+[zvram-hip] summary: tracked=0 peak_allocations=5120 hipMalloc_api_bytes_current=0 peak=21474836480 mapped_host_bytes_current=0 pending=0 peak=21474836480 native_allocations=2562 mapped_host_allocations=2560 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+elapsed=19.163 s exit=0

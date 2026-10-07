@@ -1,27 +1,39 @@
 <p align="center"><img src="assets/banner.svg" alt="zVram — Explore memory beyond VRAM" width="100%"></p>
 
-<p align="center"><b>Experimental GPU memory research · Vulkan · AMD RADV · C++17</b><br><a href="https://nerdrx.github.io/zVram/">Project website</a> · <a href="#quick-start">Quick start</a> · <a href="VALIDATION.md">Measured results</a></p>
+<p align="center"><b>Experimental GPU memory research · Vulkan · AMD RADV · HIP · C++17</b><br><a href="https://nerdrx.github.io/zVram/">Project website</a> · <a href="#quick-start">Quick start</a> · <a href="VALIDATION.md">Measured results</a> · <a href="KERNEL_PAGING.md">Linux paging research</a></p>
 
-zVram explores how GPU workloads can use memory beyond physical VRAM. The first prototype combines an **opt-in Vulkan allocation layer**, a **full-data capacity check**, and a **lossless compression round trip for explicitly managed buffers**.
+zVram tests explicit strategies for GPU memory beyond local VRAM: native driver migration, a managed Vulkan buffer pool with lossless zstd snapshots, and an opt-in HIP `hipMalloc` spillover layer.
 
-**Status: experimental v0.1.0.** Transparent compression for arbitrary applications is a research goal. The launcher currently observes allocations and requests a supported driver policy; it does not compress application memory or change reported physical VRAM.
+**Status: experimental v0.2.0.** The managed pool only controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing. The VMM/GTT provider passed one 40 GiB single-pointer integrity check using 20 GiB of VRAM and 20 GiB of GTT on this machine. This is explicit integration research, not transparent arbitrary-application paging or compression; no model workload, unmodified application compatibility, or native HIP baseline has been tested.
 
 ## What works today
 
 | Component | Behavior |
 |---|---|
-| `zvram` launcher | Enables the local layer for one Vulkan process; no global installation. |
-| Vulkan layer | Records live/peak allocation bytes and failures. Requests AMD `ALLOWED` overallocation when supported and the application supplies no policy. Preserves explicit application policies. |
-| Capacity check | Keeps all chunks allocated, uploads distinct data, then copies back and verifies every byte. Records physical VRAM and GTT usage. |
-| Compression check | Reads a managed buffer, compresses it with CPU zstd, releases its Vulkan allocation, restores it, and verifies the GPU readback. Uses raw storage for incompressible data. |
+| Vulkan launcher and layer | Opt-in allocation telemetry; requests AMD `ALLOWED` overallocation when available and preserves an explicit application policy. |
+| Managed Vulkan pool | Logical IDs, pinned acquire/release, LRU eviction, zstd snapshots with raw fallback, and restore/readback under resident and host-store budgets. |
+| HIP allocation layer | Opt-in `hipMalloc` routing to native device memory, mapped pinned host memory, or experimental imported GTT BOs through HIP VMM. |
+| Integrity checks | Vulkan transfer and compute readback, compression round trips, and HIP GPU-write/CPU-verify tests. |
 
-RADV can already migrate allocations from VRAM into GPU-accessible system RAM. Native spillover remains the driver's work. A successful baseline without zVram demonstrates that native capability, not a capacity gain created by this layer.
+RADV already migrates allocations between VRAM and GPU-accessible system memory. Successful native checks demonstrate that driver behavior; they do not attribute extra capacity to zVram. The layer's counters report API allocation requests, not physical residency.
 
-Layer counters describe requested allocation bytes by memory heap, not physical residency. The capacity check uses driver-wide sysfs accounting to observe VRAM/GTT placement.
+## Managed Vulkan buffer pool
+
+Include [`managed_pool.hpp`](managed_pool.hpp) and link `zvram_pool`. The pool owns each Vulkan buffer and allocation. `upload` creates a stable logical ID; `acquire` returns the current `VkBuffer` and pins it; `release` is valid only after the caller has synchronized all GPU work using that buffer. A restored allocation can have a different `VkBuffer`, so refresh descriptors and other references after every acquire. The supplied queue must be externally synchronized with pool calls.
+
+The pool assumes resident data can be modified by GPU work and reads it back before eviction. Host storage uses zstd when smaller and raw bytes otherwise. Snapshot encoding and restoration stream by staging chunk; temporary codec scratch is bounded by the configured chunk and zstd compression bound, while caller-owned readbacks are outside the pool budget. The pool is an explicit application integration API, not a transparent Vulkan layer or virtual-memory implementation.
+
+## HIP allocation layer
+
+Builds when HIP/ROCm development files are available. The `--hip` shim covers `hipMalloc`/`hipFree`; it is not a general HIP memory manager, and asynchronous free of a mapped-host fallback is rejected. `--hip-local-mib` caps native device allocation bytes; without `--hip-vmm`, overflow uses mapped pinned host memory, while `--hip-host-mib` sets its cap. Mapped host is system RAM, not compressed storage.
+
+With `--hip-vmm`, overflow is backed by AMDGPU GTT buffer objects exported through libdrm and imported into one HIP VMM virtual address range. This experimental path requires the `libdrm_amdgpu` development files in addition to ROCm/HIP. One 40 GiB synthetic integrity check passed with 20 GiB each of local VRAM and GTT backing. An earlier HIP host-location VMM provider failed and consumed VRAM in a separate probe; that superseded path is not the current GTT provider. Neither result establishes model compatibility, performance gain, or transparent paging.
+
+By default HIP capacity queries keep reporting native physical capacity. `--hip-report-capacity` opts into reporting the configured local cap plus available GTT-backed tier through `hipMemGetInfo`, `hipDeviceTotalMem`, and the installed `hipGetDeviceProperties` ABI. Use it only with `--hip-vmm`, an explicit `--hip-local-mib`, and a positive `--hip-host-mib`; it does not change physical VRAM, external queries, or older property-query ABIs. This logical report passed both an 80 MiB three-query consistency check and a 40 GiB single-pointer GPU integrity run. It applies only to those HIP entry points and does not reserve memory or promise general application compatibility. See [validation details](VALIDATION.md#hip-vmm-research-probe).
 
 ## Quick start
 
-Requires Linux, CMake, a C++17 compiler, Python 3, Vulkan headers/loader, and zstd development files. The GPU checks currently select a discrete AMD GPU; the layer passes other drivers through when the AMD extension is unavailable.
+Requires Linux, CMake, a C++17 compiler, Python 3, Vulkan headers and loader, glslc, and zstd development files. HIP tests are optional and require ROCm/HIP tooling; the VMM/GTT path also needs libdrm AMDGPU development files. The GPU checks select a discrete AMD device.
 
 ```sh
 git clone https://github.com/nerdrx/zVram.git
@@ -29,44 +41,42 @@ cd zVram
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
-# Launch a Vulkan application with allocation telemetry.
+# Observe allocations for one Vulkan process.
 ./zvram -- your-application its-arguments
 
-# Include per-allocation logging.
-./zvram --verbose -- your-application
+# Managed Vulkan compute, eviction, restoration, and integrity check.
+./zvram --validate --isolate-layers -- ./build/zvram-managed-check
 
-# Small integrity and compression checks.
-./zvram -- ./build/zvram-capacity-check --mib 64
-./zvram -- ./build/zvram-compression-check
+# Optional HIP probe: 40 GiB live with 20 GiB local and 20 GiB mapped-host caps.
+./zvram --hip --hip-local-mib 20480 --hip-host-mib 20480 -- \
+  ./build/hip_check --mib 40960
+
+# Experimental HIP VMM/GTT path: one 40 GiB pointer and opt-in capacity reporting.
+./zvram --hip --hip-vmm --hip-report-capacity \
+  --hip-local-mib 20480 --hip-host-mib 20480 -- \
+  ./build/hip_check --single-allocation --mib 40960
+
+# Small three-query capacity consistency check (80 MiB configured total).
+./zvram --hip --hip-vmm --hip-report-capacity --hip-local-mib 16 --hip-host-mib 64 -- \
+  ./build/zvram-hip-capacity-check
 ```
 
-When Vulkan validation layers are installed, `--validate` enables core and synchronization validation. `--isolate-layers` disables implicit layers for controlled comparisons.
+The launcher uses the build directory beside itself. Reconfigure CMake after moving the checkout so its layer manifest points to the current library.
+
+## Scoped kernel paging probe
+
+[`dmem_probe.py`](dmem_probe.py) has a read-only `--inspect` mode and an opt-in privileged `--run` mode:
 
 ```sh
-./zvram --validate --isolate-layers -- ./build/zvram-capacity-check --mib 64
+python3 dmem_probe.py --inspect
+sudo python3 dmem_probe.py --run
 ```
 
-The launcher uses the build directory beside itself. Reconfigure CMake after moving the checkout, so its layer manifest points to the current shared library.
+The run creates one temporary cgroup, limits the selected AMDGPU VRAM region to 16 MiB by default, caps child RAM and swap, and runs only the 64 MiB capacity integrity check. It requires root cgroup-v2 `dmem` and `memory` controllers to already be available and enabled. The helper changes no global swap or TTM settings and removes its cgroup on exit. It measures cgroup accounting and integrity only; it does not prove that TTM shmem pages reached swap, nor that GPU data was compressed. See [the kernel paging notes](KERNEL_PAGING.md).
 
-## Measuring capacity
+## Validation
 
-`zvram-capacity-check` defaults to **64 MiB**, uses a single staging buffer, and accepts `--mib 1..40960` and `--chunk-mib 1..256`. It refuses requests beyond an estimate based on the Vulkan budget, free AMD GTT, and host memory with an 8 GiB reserve. This estimate and allocation priority are advisory; a large check can still pressure the desktop.
-
-Compare the same command with and without the launcher. The check verifies transfer data integrity while allocations remain live. It does not establish inference throughput, shader random-access performance, or compatibility with a 40 GB model.
-
-See [VALIDATION.md](VALIDATION.md) for hardware, exact commands, and evidence. Synthetic compressibility is not a model compression ratio.
-
-## Toward compressed GPU memory
-
-- [x] Lossless managed-buffer eviction and restoration proof.
-- [x] Opt-in Vulkan layer and allocation telemetry.
-- [x] Full-data capacity probe with driver memory accounting.
-- [ ] Reusable managed-buffer API and bounded host storage.
-- [ ] Resource lifetime and synchronization handling for an eviction scheduler.
-- [ ] Broader Vulkan workload compatibility and compute benchmarks.
-- [ ] Assess driver support needed for transparent virtual memory across APIs.
-
-Freeing and rebuilding a standalone buffer is straightforward. Preserving arbitrary application's bindings, device addresses, command buffers, images, and in-flight work requires deeper memory management. HIP/CUDA, OpenGL, and DirectX support are outside this prototype.
+The current hardware evidence and exact commands are in [VALIDATION.md](VALIDATION.md). Results include 40 GiB native Vulkan integrity, a 40 GiB managed-pool check under a 256 MiB resident budget using highly compressible synthetic data, two smaller mixed-data compute/readback cycles, and an independent 40 GiB HIP mapped-host fallback check. None is an inference benchmark, representative model-weight compression ratio, or proof of universal application compatibility.
 
 ## Development
 
@@ -75,6 +85,6 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Tests require a discrete AMD GPU. CI checks compilation and launcher syntax; GPU results come from the documented hardware runs. No desktop windows are opened by the transfer checks.
+GPU tests require supported AMD hardware and the relevant runtime. Contributions should include reproducible workloads and distinguish native driver behavior from zVram behavior.
 
-MIT licensed. Contributions should include reproducible workloads and distinguish native driver behavior from zVram changes.
+MIT licensed.

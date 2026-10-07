@@ -1,0 +1,6 @@
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+PASS: 40960 MiB of highly compressible GPU-mutated data verified; resident budget=256 MiB stored=3998720 evictions=2553 restores=1273
+This synthetic pattern is not representative of model weights.
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=268435456 live-nonlocal=0 peak-nonlocal=8388608 allocation-failures=0
+elapsed=31.264 s exit=0
