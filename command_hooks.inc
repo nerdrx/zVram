@@ -16,7 +16,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindPipeline(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.pipeline(commandBuffer, pipeline);
+                d->submission.pipeline(commandBuffer, pipelineBindPoint, pipeline);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -284,7 +284,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindDescriptorSets(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.descriptors(commandBuffer, descriptorSetCount, pDescriptorSets, firstSet);
+                d->submission.descriptors(commandBuffer, descriptorSetCount, pDescriptorSets, firstSet, pipelineBindPoint);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -502,6 +502,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatch(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
+                d->submission.dispatch(commandBuffer);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -524,6 +525,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchIndirect(
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
                 d->submission.bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand), false);
+                d->submission.dispatch(commandBuffer);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1599,6 +1601,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchBase(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
+                d->submission.dispatch(commandBuffer);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1624,6 +1627,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchBaseKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
+                d->submission.dispatch(commandBuffer);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;

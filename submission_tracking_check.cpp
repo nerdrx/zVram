@@ -299,8 +299,20 @@ int main() {
         tracker.beginCommand(primary);
         tracker.pipeline(primary, boundedPipeline);
         tracker.descriptors(primary, 1, &copiedSet);
-        require(tracker.collectRanges(1, &primary, ranges) && ranges.size() == 3 &&
-                hasRange(ranges, bufferD, expectedOffset, expectedSize), message);
+        const char* rangeReason = nullptr;
+        const bool collected = tracker.collectRanges(1, &primary, ranges, &rangeReason);
+        const bool rangesOk = collected && ranges.size() == 3 &&
+                              hasRange(ranges, bufferD, expectedOffset, expectedSize);
+        if (!rangesOk) {
+            std::cerr << "robustness collected=" << collected << " reason="
+                      << (rangeReason ? rangeReason : "none") << " actual ranges="
+                      << ranges.size() << " expected="
+                      << expectedOffset << ":" << expectedSize << '\n';
+            for (const auto& range : ranges)
+                std::cerr << "range " << range.buffer << " " << range.offset << ":" << range.size
+                          << " write=" << range.mayWrite << '\n';
+        }
+        require(rangesOk, message);
         tracker.erasePipeline(boundedPipeline);
     };
     checkRobustnessRange(VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT, 44, 20,
@@ -540,6 +552,89 @@ int main() {
             }) && std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
                 return range.buffer == alias && range.offset == 4 && range.mayWrite;
             }), "descriptor set rebinding preserves both previously referenced sets");
+
+    const VkDescriptorBufferInfo scopedWriteInfo{alias, 4, 8};
+    proofWrites[0].dstSet = reboundSet;
+    proofWrites[0].dstBinding = 0;
+    proofWrites[0].pBufferInfo = &scopedWriteInfo;
+    proofTracker.updateSets(1, proofWrites, 0, nullptr);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, VK_PIPELINE_BIND_POINT_COMPUTE, allMembersPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet, 0, VK_PIPELINE_BIND_POINT_COMPUTE);
+    proofTracker.dispatch(proofCommand);
+    proofTracker.pipeline(proofCommand, VK_PIPELINE_BIND_POINT_COMPUTE, aliasPipeline);
+    proofTracker.descriptors(proofCommand, 1, &reboundSet, 0, VK_PIPELINE_BIND_POINT_COMPUTE);
+    proofTracker.dispatch(proofCommand);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) &&
+            std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == alias && range.offset == 4 && !range.mayWrite;
+            }) && std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == alias && range.offset == 4 && range.mayWrite;
+            }), "opposite binding-0 access remains scoped to distinct descriptor sets");
+
+    const VkDescriptorBufferInfo separateOutput{reboundBuffer, 119, 8};
+    proofWrites[0].pBufferInfo = &separateOutput;
+    proofTracker.updateSets(1, proofWrites, 0, nullptr);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) &&
+            std::none_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == alias && range.offset == 4 && range.mayWrite;
+            }) && std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == reboundBuffer && range.offset == 119 && range.mayWrite;
+            }), "a separate output writer does not invalidate the read-only weight range");
+    proofWrites[0].pBufferInfo = &scopedWriteInfo;
+    proofTracker.updateSets(1, proofWrites, 0, nullptr);
+
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, VK_PIPELINE_BIND_POINT_COMPUTE, allMembersPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet, 0, VK_PIPELINE_BIND_POINT_COMPUTE);
+    proofTracker.dispatch(proofCommand);
+    proofTracker.pipeline(proofCommand, VK_PIPELINE_BIND_POINT_GRAPHICS, aliasPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet, 0, VK_PIPELINE_BIND_POINT_GRAPHICS);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) &&
+            std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == alias && range.offset == 4 && range.mayWrite;
+            }), "mixed graphics-write and compute-read use remains conservative");
+
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, allMembersPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    proofTracker.dispatch(proofCommand);
+    proofWrites[0].dstSet = proofSet;
+    const VkDescriptorBufferInfo liveUpdate{reboundBuffer, 81, 7};
+    proofWrites[0].pBufferInfo = &liveUpdate;
+    proofTracker.updateSets(1, proofWrites, 0, nullptr);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) &&
+            hasRange(ranges, reboundBuffer, 81, 7) &&
+            std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == reboundBuffer && range.offset == 81 && !range.mayWrite;
+            }), "dispatch scopes resolve live descriptor contents at collection time");
+
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.pipeline(proofCommand, allMembersPipeline);
+    proofTracker.descriptors(proofCommand, 1, &proofSet);
+    proofTracker.bufferRange(proofCommand, reboundBuffer, 100,
+                             sizeof(VkDispatchIndirectCommand), false);
+    proofTracker.dispatch(proofCommand);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) &&
+            hasRange(ranges, reboundBuffer, 100, sizeof(VkDispatchIndirectCommand)) &&
+            std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == reboundBuffer && range.offset == 100 && !range.mayWrite;
+            }), "indirect dispatch arguments remain read-only with scoped shader access");
+
+    const auto scopedSecondary = fakeHandle<VkCommandBuffer>(73);
+    VkCommandBufferAllocateInfo scopedSecondaryInfo = proofCommandInfo;
+    scopedSecondaryInfo.commandBufferCount = 1;
+    proofTracker.allocateCommands(&scopedSecondaryInfo, &scopedSecondary);
+    proofTracker.beginCommand(scopedSecondary);
+    proofTracker.pipeline(scopedSecondary, allMembersPipeline);
+    proofTracker.descriptors(scopedSecondary, 1, &proofSet);
+    proofTracker.dispatch(scopedSecondary);
+    proofTracker.beginCommand(proofCommand);
+    proofTracker.secondary(proofCommand, 1, &scopedSecondary);
+    require(proofTracker.collectRanges(1, proofCommands, ranges) &&
+            std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+                return range.buffer == reboundBuffer && range.offset == 81 && !range.mayWrite;
+            }), "secondary command dispatch uses its own scoped pipeline and descriptor set");
 
     const auto physicalPipeline = fakeHandle<VkPipeline>(32);
     pipelineInfo.stage.module = physicalShader;

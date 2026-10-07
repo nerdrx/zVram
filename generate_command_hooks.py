@@ -19,7 +19,6 @@ NO_ACTION = {
     "vkCmdSetEvent", "vkCmdResetEvent",
     "vkCmdBeginDebugUtilsLabelEXT", "vkCmdEndDebugUtilsLabelEXT",
     "vkCmdInsertDebugUtilsLabelEXT",
-    "vkCmdDispatch", "vkCmdDispatchBase", "vkCmdDispatchBaseKHR",
     "vkCmdPushConstants", "vkCmdPushConstants2", "vkCmdPushConstants2KHR",
     "vkCmdResetQueryPool", "vkCmdWriteTimestamp", "vkCmdWriteTimestamp2",
     "vkCmdWriteTimestamp2KHR",
@@ -135,11 +134,14 @@ def action(name, params):
     if name == "vkCmdUpdateBuffer":
         return ["bufferRange(commandBuffer, dstBuffer, dstOffset, dataSize);"]
     if name == "vkCmdBindDescriptorSets":
-        return ["descriptors(commandBuffer, descriptorSetCount, pDescriptorSets, firstSet);"]
+        return ["descriptors(commandBuffer, descriptorSetCount, pDescriptorSets, firstSet, pipelineBindPoint);"]
     if name == "vkCmdBindPipeline":
-        return ["pipeline(commandBuffer, pipeline);"]
+        return ["pipeline(commandBuffer, pipelineBindPoint, pipeline);"]
+    if name in ("vkCmdDispatch", "vkCmdDispatchBase", "vkCmdDispatchBaseKHR"):
+        return ["dispatch(commandBuffer);"]
     if name == "vkCmdDispatchIndirect":
-        return ["bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand), false);"]
+        return ["bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand), false);",
+                "dispatch(commandBuffer);"]
     if name == "vkCmdExecuteCommands":
         return ["secondary(commandBuffer, commandBufferCount, pCommandBuffers);"]
     if name in NO_ACTION:
@@ -262,7 +264,22 @@ def main():
                 raise ValueError(f"command without buffer access unexpectedly invalidates tracking: {name}")
         required = ("trackedvkCmdCopyBuffer", "trackedvkCmdCopyBuffer2",
                     "trackedvkCmdBindDescriptorSets", "trackedvkCmdDispatch",
+                    "trackedvkCmdDispatchBase", "trackedvkCmdDispatchIndirect",
                     "trackedvkCmdExecuteCommands")
+        for name in ("vkCmdDispatch", "vkCmdDispatchBase", "vkCmdDispatchBaseKHR",
+                     "vkCmdDispatchIndirect"):
+            if "dispatch(commandBuffer);" not in action(name, []):
+                raise ValueError(f"dispatch access scope is missing: {name}")
+        if action("vkCmdBindPipeline", []) != [
+                "pipeline(commandBuffer, pipelineBindPoint, pipeline);"]:
+            raise ValueError("pipeline bind point is missing from tracker hook")
+        if action("vkCmdBindDescriptorSets", []) != [
+                "descriptors(commandBuffer, descriptorSetCount, pDescriptorSets, firstSet, pipelineBindPoint);"]:
+            raise ValueError("descriptor bind point is missing from tracker hook")
+        if action("vkCmdDispatchIndirect", []) != [
+                "bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand), false);",
+                "dispatch(commandBuffer);"]:
+            raise ValueError("indirect dispatch access scope or argument read is missing")
         missing = [name for name in required if name not in content]
         if "VK_KHR_synchronization2" not in content:
             missing.append("VK_KHR_synchronization2 guard")

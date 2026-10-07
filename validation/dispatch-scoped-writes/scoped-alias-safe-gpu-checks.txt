@@ -1,0 +1,11 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/gdeflate-codec
+    Start 114: vulkan-gdeflate-gpu-idle-integrity
+1/3 Test #114: vulkan-gdeflate-gpu-idle-integrity ....   Passed    6.91 sec
+    Start 117: vulkan-gdeflate-gpu-range-synthetic
+2/3 Test #117: vulkan-gdeflate-gpu-range-synthetic ...   Passed    0.92 sec
+    Start 118: vulkan-gdeflate-gpu-range-native
+3/3 Test #118: vulkan-gdeflate-gpu-range-native ......   Passed    0.91 sec
+
+100% tests passed out of 3
+
+Total Test time (real) =   8.74 sec

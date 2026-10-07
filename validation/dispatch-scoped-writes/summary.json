@@ -1,0 +1,55 @@
+{
+  "scope": "CPU production tracker plus GPU buffer-integrity regressions; no token-throughput claim",
+  "source_sha256": {
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "submission_tracking_check.cpp": "0e261027fc34fb671217a33f5a42578ce1d1b8a9499462363581a17b1ec3f456",
+    "generate_command_hooks.py": "8d1a271244ff7a5280aabf4dd509320468a41656d1af703a93fe29b7a26ee847",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "gdeflate_gpu.hpp": "5b460f9ede4cd2cd42ff71df807b2398a2a66351c21812bdc40d7b9b93a6d9bd"
+  },
+  "default_cpu": {
+    "passed": 11,
+    "failed": 0,
+    "seconds": 3.46
+  },
+  "gdeflate_cpu": {
+    "passed": 13,
+    "failed": 0,
+    "seconds": 4.17
+  },
+  "gpu_buffer_checks": {
+    "passed": 3,
+    "failed": 0,
+    "seconds": 8.74,
+    "validation": true,
+    "full_byte_comparison": true,
+    "observed_gpu_decode_required": true,
+    "gpu_fallbacks_required": 0
+  },
+  "generator_hooks_checked": 309,
+  "optimized_language_modes": [
+    "C++17 -O3 -DNDEBUG",
+    "C++20 -O3 -DNDEBUG",
+    "CMake compiler default -O3 -DNDEBUG"
+  ],
+  "cases": [
+    "opposite binding-0 access in distinct compute descriptor sets",
+    "separate output writer preserves read-only weight range",
+    "same buffer referenced by read and write scopes remains writable",
+    "live descriptor updates resolved at collection",
+    "indirect arguments remain read-only",
+    "secondary dispatch collection",
+    "mixed graphics/compute keeps prior conservative attribution",
+    "unsupported command and unknown shader stay conservative"
+  ],
+  "decoder_cleanup": [
+    "stable input capacity updates only output descriptor",
+    "only encoded input padding is zeroed"
+  ],
+  "alias_safe_chain_walks": [
+    "pipeline robustness width",
+    "descriptor layout flags",
+    "pipeline chain support",
+    "shader stage chain support"
+  ]
+}

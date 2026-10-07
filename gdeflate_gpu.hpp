@@ -95,8 +95,8 @@ public:
         if (result != VK_SUCCESS) return result;
 
         auto* upload = static_cast<std::uint8_t*>(upload_.mapped);
-        std::memset(upload, 0, inputBytes);
         std::memcpy(upload, encoded, encodedSize);
+        std::memset(upload + encodedSize, 0, inputBytes - encodedSize);
         const std::uint32_t controlWords[3]{1u, 0u, 0u};
         std::memcpy(control_.mapped, controlWords, sizeof(controlWords));
         result = checked(api_.resetCommandPool(device_, commandPool_, 0));
@@ -343,7 +343,8 @@ private:
 
     VkResult ensureInputBuffers(std::size_t bytes, VkBuffer output,
                                 VkDeviceSize outputOffset, VkDeviceSize outputRange) {
-        if (bytes <= inputCapacity_) return updateDescriptors(output, outputOffset, outputRange);
+        if (bytes <= inputCapacity_)
+            return updateOutputDescriptor(output, outputOffset, outputRange);
         std::size_t capacity = 4096;
         while (capacity < bytes) capacity *= 2;
         Buffer newUpload{}, newInput{};
@@ -447,6 +448,19 @@ private:
             writes[i].pBufferInfo = &infos[i];
         }
         api_.updateDescriptorSets(device_, 4, writes, 0, nullptr);
+        return VK_SUCCESS;
+    }
+
+    VkResult updateOutputDescriptor(VkBuffer output, VkDeviceSize outputOffset,
+                                    VkDeviceSize outputRange) {
+        VkDescriptorBufferInfo info{output, outputOffset, outputRange};
+        VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        write.dstSet = descriptorSet_;
+        write.dstBinding = 2;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write.pBufferInfo = &info;
+        api_.updateDescriptorSets(device_, 1, &write, 0, nullptr);
         return VK_SUCCESS;
     }
 

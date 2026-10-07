@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
@@ -45,10 +46,12 @@ public:
         pipelineReadOnly_.erase(pipeline);
         if (safe) pipelineReadOnly_[pipeline] = shaders_.at(info.stage.module).readOnly;
         bool wide=false;
-        for(auto* p=static_cast<const VkBaseInStructure*>(info.pNext);p;p=p->pNext) {
+        for(const void* node=info.pNext;node;) {
+            VkStructureType type{};
+            const void* next=chainNext(node,type);
 #ifdef VK_EXT_pipeline_robustness
-            if(p->sType==VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT) {
-                const auto* robustness=reinterpret_cast<const VkPipelineRobustnessCreateInfoEXT*>(p);
+            if(type==VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT) {
+                const auto* robustness=static_cast<const VkPipelineRobustnessCreateInfoEXT*>(node);
                 switch(robustness->storageBuffers) {
                 case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DEVICE_DEFAULT_EXT:
                     wide=!boundedDefault_; break;
@@ -63,6 +66,7 @@ public:
                 }
             }
 #endif
+            node=next;
         }
         widePipelines_[pipeline]=wide;
     }
@@ -78,21 +82,26 @@ public:
         state.safe = info.flags == 0 && (!info.bindingCount || info.pBindings != nullptr);
         if (!state.safe) state.unsafeReason = "descriptor-layout-invalid";
         bool sawBindingFlags = false;
-        for (auto* p = static_cast<const VkBaseInStructure*>(info.pNext); p; p = p->pNext) {
-            if (p->sType != VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO || sawBindingFlags) {
+        for (const void* node = info.pNext; node;) {
+            VkStructureType type{};
+            const void* next = chainNext(node, type);
+            if (type != VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO || sawBindingFlags) {
                 state.safe = false;
                 state.unsafeReason = "descriptor-layout-chain-unsupported";
+                node = next;
                 continue;
             }
             sawBindingFlags = true;
-            const auto* flags = reinterpret_cast<const VkDescriptorSetLayoutBindingFlagsCreateInfo*>(p);
+            const auto* flags = static_cast<const VkDescriptorSetLayoutBindingFlagsCreateInfo*>(node);
             if (flags->bindingCount != info.bindingCount || (flags->bindingCount && !flags->pBindingFlags)) {
                 state.safe = false;
                 state.unsafeReason = "descriptor-layout-flags-invalid";
+                node = next;
                 continue;
             }
             for (std::uint32_t i = 0; i < flags->bindingCount; ++i)
                 if (flags->pBindingFlags[i] != 0) { state.safe = false; state.unsafeReason = "descriptor-layout-flags-unsupported"; }
+            node = next;
         }
         if (info.bindingCount && info.pBindings) {
             for (std::uint32_t i = 0; i < info.bindingCount; ++i) {
@@ -217,14 +226,24 @@ public:
         i->second.buffers.push_back({handle, offset, size, mayWrite});
     }
     void descriptors(VkCommandBuffer command, std::uint32_t count, const VkDescriptorSet* sets,
-                     std::uint32_t firstSet = 0) {
+                     std::uint32_t firstSet = 0,
+                     VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE) {
         auto i = commands_.find(command);
         if (i == commands_.end()) return;
         if (count && (!sets || count > UINT32_MAX - firstSet)) { markUnsafe(i->second,"descriptor-reference-invalid"); return; }
-        for (std::uint32_t j = 0; j < count; ++j)
+        for (std::uint32_t j = 0; j < count; ++j) {
             i->second.sets.emplace_back(firstSet + j, sets[j]);
+            if (bindPoint == VK_PIPELINE_BIND_POINT_COMPUTE)
+                i->second.computeSets[firstSet + j] = sets[j];
+            else
+                i->second.nonComputeBindings = true;
+        }
     }
     void pipeline(VkCommandBuffer command, VkPipeline pipelineHandle) {
+        pipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineHandle);
+    }
+    void pipeline(VkCommandBuffer command, VkPipelineBindPoint bindPoint,
+                  VkPipeline pipelineHandle) {
         auto c = commands_.find(command);
         if (c == commands_.end()) return;
         const auto p = pipelines_.find(pipelineHandle);
@@ -232,8 +251,20 @@ public:
         else if (!p->second) markUnsafe(c->second,pipelineReasons_[pipelineHandle]);
         else if (std::find(c->second.pipelines.begin(), c->second.pipelines.end(), pipelineHandle) ==
                  c->second.pipelines.end()) c->second.pipelines.push_back(pipelineHandle);
+        if (bindPoint == VK_PIPELINE_BIND_POINT_COMPUTE)
+            c->second.computePipeline = pipelineHandle;
+        else
+            c->second.nonComputeBindings = true;
         const auto wide=widePipelines_.find(pipelineHandle);
         if(wide!=widePipelines_.end() && wide->second) c->second.wideBuffers=true;
+    }
+    void dispatch(VkCommandBuffer command) {
+        auto c = commands_.find(command);
+        if (c == commands_.end()) return;
+        DispatchScope scope;
+        scope.pipeline = c->second.computePipeline;
+        scope.sets.assign(c->second.computeSets.begin(), c->second.computeSets.end());
+        c->second.dispatches.push_back(std::move(scope));
     }
     void secondary(VkCommandBuffer command, std::uint32_t count, const VkCommandBuffer* secondaryCommands) {
         auto i = commands_.find(command);
@@ -302,6 +333,10 @@ private:
         std::map<std::uint32_t, std::vector<VkDescriptorBufferInfo>> buffers;
         std::map<std::uint32_t, std::vector<bool>> written;
     };
+    struct DispatchScope {
+        VkPipeline pipeline{};
+        std::vector<std::pair<std::uint32_t, VkDescriptorSet>> sets;
+    };
     struct Command {
         explicit Command(VkCommandPool owner = VK_NULL_HANDLE) : pool(owner) {}
         VkCommandPool pool{};
@@ -311,6 +346,10 @@ private:
         bool wideBuffers{};
         std::vector<std::pair<std::uint32_t, VkDescriptorSet>> sets;
         std::vector<VkPipeline> pipelines;
+        VkPipeline computePipeline{};
+        std::map<std::uint32_t, VkDescriptorSet> computeSets;
+        std::vector<DispatchScope> dispatches;
+        bool nonComputeBindings{};
         std::vector<VkCommandBuffer> secondaries;
     };
     struct Slot { std::uint32_t binding, element; };
@@ -472,11 +511,14 @@ private:
     }
     static bool safeStageChain(const void* chain) {
         bool subgroupSize = false;
-        for (auto* p = static_cast<const VkBaseInStructure*>(chain); p; p = p->pNext) {
+        for (const void* node = chain; node;) {
+            VkStructureType type{};
+            const void* next = chainNext(node, type);
 #if defined(VK_VERSION_1_3) || defined(VK_EXT_subgroup_size_control)
-            if (p->sType == VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO) {
+            if (type == VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO) {
                 if (subgroupSize) return false;
                 subgroupSize = true;
+                node = next;
                 continue;
             }
 #endif
@@ -486,24 +528,34 @@ private:
     }
     static bool safePipelineChain(const void* chain) {
         bool robustness = false, flags2 = false;
-        for (auto* p = static_cast<const VkBaseInStructure*>(chain); p; p = p->pNext) {
+        for (const void* node = chain; node;) {
+            VkStructureType type{};
+            const void* next = chainNext(node, type);
 #ifdef VK_EXT_pipeline_robustness
-            if (p->sType == VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT) {
+            if (type == VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT) {
                 if (robustness) return false;
                 robustness = true;
+                node = next;
                 continue;
             }
 #endif
 #ifdef VK_KHR_maintenance5
-            if (p->sType == VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR) {
+            if (type == VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR) {
                 if (flags2) return false;
                 flags2 = true;
+                node = next;
                 continue;
             }
 #endif
             return false;
         }
         return true;
+    }
+    static const void* chainNext(const void* node, VkStructureType& type) {
+        VkBaseInStructure header{};
+        std::memcpy(&header, node, sizeof(header));
+        type = header.sType;
+        return header.pNext;
     }
     static bool isStorage(VkDescriptorType type) {
         return type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
@@ -619,15 +671,25 @@ private:
                     const auto buffer = descriptor.buffer;
                     if (!written->second[i]) { if(reason) *reason="descriptor-partial"; return false; }
                     if (!buffer) { if(reason) *reason="descriptor-uninitialized"; return false; }
-                    bool mayWrite = c->second.pipelines.empty();
-                    for (const auto pipeline : c->second.pipelines) {
+                    auto pipelineMayWrite = [&](VkPipeline pipeline) {
                         const auto proof = pipelineReadOnly_.find(pipeline);
-                        if (proof == pipelineReadOnly_.end()) { mayWrite = true; break; }
+                        if (proof == pipelineReadOnly_.end()) return true;
                         const auto access = proof->second.find({setIndex, binding.first});
-                        if (access == proof->second.end() || !access->second) {
-                            mayWrite = true;
-                            break;
-                        }
+                        return access == proof->second.end() || !access->second;
+                    };
+                    bool hasScopedAccess = false;
+                    bool mayWrite = false;
+                    for (const auto& scope : c->second.dispatches) {
+                        const auto bound = std::find(scope.sets.begin(), scope.sets.end(),
+                                                     std::make_pair(setIndex, setHandle));
+                        if (bound == scope.sets.end()) continue;
+                        hasScopedAccess = true;
+                        mayWrite |= pipelineMayWrite(scope.pipeline);
+                    }
+                    if (!hasScopedAccess || c->second.nonComputeBindings) {
+                        mayWrite = c->second.pipelines.empty();
+                        for (const auto pipeline : c->second.pipelines)
+                            mayWrite |= pipelineMayWrite(pipeline);
                     }
                     if (binding.second.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC || c->second.wideBuffers)
                         out.push_back({buffer, 0, VK_WHOLE_SIZE, mayWrite});
