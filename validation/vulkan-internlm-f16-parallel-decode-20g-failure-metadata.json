@@ -1,0 +1,34 @@
+{
+  "status": "stopped_by_memavailable_guard_during_automatic_warmup",
+  "model": "InternLM2.5-20B F16",
+  "guard": {
+    "minimum_available_mib": 12288,
+    "observed_available_mib": 12240
+  },
+  "automatic_run": {
+    "interactive_ready": false,
+    "stdout_empty": true,
+    "cold_fdinfo_captured": false,
+    "decode_throughput_available": false
+  },
+  "native_run": {
+    "decode_runs": 12,
+    "tokens_per_second": 1.5
+  },
+  "last_automatic_state": {
+    "resident_bytes": 32574734336,
+    "cold_logical_bytes": 6175064064,
+    "cold_stored_bytes": 4734386339,
+    "clean_cache_bytes": 18042643793,
+    "restores": 202,
+    "freezes": 250,
+    "failures": 0,
+    "copies": 452,
+    "copy_bytes": 58248527872,
+    "copy_nanoseconds": 7733934382,
+    "decode_bytes": 26036731904,
+    "decode_nanoseconds": 4032776145
+  },
+  "validation_vuid_count": 0,
+  "result_json": null
+}

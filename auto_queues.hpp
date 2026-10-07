@@ -283,14 +283,20 @@ public:
     }
 
     VkResult sparseBind(const VkSparseBufferMemoryBindInfo& buffer) {
+        return sparseBind(&buffer, 1);
+    }
+
+    VkResult sparseBind(const VkSparseBufferMemoryBindInfo* buffers, std::uint32_t count) {
         if(error_!=VK_SUCCESS) return error_;
+        if(!count) return VK_SUCCESS;
+        if(!buffers) return checked(VK_ERROR_INITIALIZATION_FAILED);
         VkSubmitInfo before{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         before.signalSemaphoreCount=1; before.pSignalSemaphores=&beforeSparse_;
         auto result=submit_(copy_,1,&before,VK_NULL_HANDLE); if(result!=VK_SUCCESS) return checked(result);
         VkBindSparseInfo bind{VK_STRUCTURE_TYPE_BIND_SPARSE_INFO};
         bind.waitSemaphoreCount=1; bind.pWaitSemaphores=&beforeSparse_;
         bind.signalSemaphoreCount=1; bind.pSignalSemaphores=&afterSparse_;
-        bind.bufferBindCount=1; bind.pBufferBinds=&buffer;
+        bind.bufferBindCount=count; bind.pBufferBinds=buffers;
         result=bindSparse_(copy_,1,&bind,VK_NULL_HANDLE); if(result!=VK_SUCCESS) return checked(result);
         const VkPipelineStageFlags stage=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         VkSubmitInfo after{VK_STRUCTURE_TYPE_SUBMIT_INFO};

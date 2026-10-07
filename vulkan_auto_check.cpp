@@ -1104,7 +1104,7 @@ void selectiveBindCheck(Context& context, bool api2) {
 }
 
 void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
-                      bool cacheQuota = false) {
+                      bool cacheQuota = false, bool cacheBootstrap = false) {
     const std::uint32_t chunkCount = cacheQuota ? 3u : 2u;
     const VkDeviceSize Bytes=static_cast<VkDeviceSize>(chunkCount)*ChunkBytes;
     Buffer pool; pool.device=context.device;
@@ -1129,6 +1129,69 @@ void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
     check(vkMapMemory(context.device,staging.memory,0,ChunkBytes,0,&staging.mapped),"map range staging");
     upload(context,pool.handle,staging,Bytes);
     check(computeCycle(context,pool.handle,0,0,false,Bytes),"initialize both range chunks");
+    if (cacheBootstrap) {
+        require(chunkCount == 2 && cleanCache && pressure,
+                "cache bootstrap requires two pressured clean-cache ranges");
+        const auto deadline=std::chrono::steady_clock::now()+ColdTimeout;
+        bool partialCold=false;
+        while(std::chrono::steady_clock::now()<deadline) {
+            const auto before=context.stats();
+            require(before.failures==0,"snapshot failed during cache bootstrap");
+            require(!(before.coldLogicalBytes==Bytes && before.residentBytes==0),
+                    "both ranges became cold before preserving one warm");
+            if(before.coldLogicalBytes==ChunkBytes && before.residentBytes==ChunkBytes) {
+                // Touch child 1. If it was the cold child, this also restores it,
+                // leaving child 0 cold while child 1 is now certainly resident.
+                readbackAndVerify(context,pool.handle,staging,0,false,ChunkBytes,0,1);
+                const auto after=context.stats();
+                if(after.coldLogicalBytes==ChunkBytes && after.residentBytes==ChunkBytes) {
+                    partialCold=true;
+                    break;
+                }
+            } else {
+                readbackAndVerify(context,pool.handle,staging,0,false,ChunkBytes,0,1);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        require(partialCold,"bootstrap did not keep child 1 warm while child 0 became cold");
+        const auto beforeBootstrapRestore=context.stats();
+        std::cout<<"CACHE_BOOTSTRAP_PREARM_BEGIN"<<std::endl;
+        readbackAndVerify(context,pool.handle,staging,0,false,ChunkBytes,0,0);
+        const auto afterBootstrapRestore=context.stats();
+        require(afterBootstrapRestore.restores>beforeBootstrapRestore.restores &&
+                afterBootstrapRestore.coldLogicalBytes==0 && afterBootstrapRestore.failures==0,
+                "pre-arm readback did not restore and verify the cold child");
+        std::cout<<"CACHE_BOOTSTRAP_PREARM_END"<<std::endl;
+
+        const auto fullColdDeadline=std::chrono::steady_clock::now()+ColdTimeout;
+        ZvramSnapshotStatsNX fullCold{};
+        while(std::chrono::steady_clock::now()<fullColdDeadline) {
+            fullCold=context.stats();
+            if(fullCold.coldLogicalBytes==Bytes && fullCold.residentBytes==0) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        require(fullCold.coldLogicalBytes==Bytes && fullCold.residentBytes==0 && fullCold.failures==0,
+                "bootstrap ranges did not reach full cold state");
+        std::cout<<"CACHE_BOOTSTRAP_ARMED_BEGIN"<<std::endl;
+        readbackAndVerify(context,pool.handle,staging,0,false,ChunkBytes,0,0);
+        const auto afterArmedRestore=context.stats();
+        require(afterArmedRestore.restores>fullCold.restores && afterArmedRestore.failures==0,
+                "first post-bootstrap readback did not restore a cold child");
+
+        const auto reuseDeadline=std::chrono::steady_clock::now()+ColdTimeout;
+        ZvramSnapshotStatsNX reused{};
+        while(std::chrono::steady_clock::now()<reuseDeadline) {
+            reused=context.stats();
+            if(reused.coldLogicalBytes==Bytes && reused.residentBytes==0 && reused.freezes>fullCold.freezes) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        require(reused.coldLogicalBytes==Bytes && reused.residentBytes==0 &&
+                reused.freezes>fullCold.freezes && reused.failures==0,
+                "clean cache did not refreeze after resident admission armed");
+        std::cout<<"CACHE_BOOTSTRAP_ARMED_END"<<std::endl;
+        std::cout<<"PASS: bootstrap discarded redundant clean copies, then retained and reused cache after arming"<<std::endl;
+        return;
+    }
     if (pressure) {
         auto requirePressure = [&] {
             const auto stats = context.stats();
@@ -1715,6 +1778,7 @@ int main(int argc, char** argv) try {
     bool rangeSubmit = false;
     bool rangePressure = false;
     bool rangeCache = false;
+    bool rangeCacheBootstrap = false;
     bool rangeCacheQuota = false, rangeCacheUnknown = false;
     bool robustCore = false;
     bool concurrentWait = false;
@@ -1748,6 +1812,9 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--range-cache") == 0) {
             rangeSubmit=true; rangePressure=true; rangeCache=true;
         }
+        else if (std::strcmp(argv[i], "--range-cache-bootstrap") == 0) {
+            rangeSubmit=true; rangePressure=true; rangeCache=true; rangeCacheBootstrap=true;
+        }
         else if (std::strcmp(argv[i], "--range-cache-quota") == 0) {
             rangeSubmit=true; rangePressure=true; rangeCache=true; rangeCacheQuota=true;
         }
@@ -1755,7 +1822,7 @@ int main(int argc, char** argv) try {
             rangeSubmit=true; rangeCache=true; rangeCacheUnknown=true;
         }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-pressure|--range-cache|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
     }
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||
@@ -1803,7 +1870,7 @@ int main(int argc, char** argv) try {
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind, activeSubmit, rangePressure && twoQueues, robustCore);
     if (rangeCacheUnknown) { rangeCacheUnknownCheck(context); return 0; }
-    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota); return 0; }
+    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
     if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }

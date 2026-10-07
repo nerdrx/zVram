@@ -1,0 +1,33 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 44
+    Start 44: vulkan-range-clean-cache-bootstrap
+
+44: Test command: /usr/bin/python3.14 "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_cache_bootstrap.py" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check"
+44: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+44: Environment variables: 
+44:  VK_LOADER_LAYERS_DISABLE=~implicit~
+44: Test timeout computed to be: 60
+44: CACHE_BOOTSTRAP_PREARM_BEGIN
+44: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=67108864 copy-ns=8072535 decode-bytes=33554432 decode-ns=2734379
+44: CACHE_BOOTSTRAP_PREARM_END
+44: CACHE_BOOTSTRAP_ARMED_BEGIN
+44: [zvram] resident admission armed after complete cold transition
+44: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=3 restores=2 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=0 copy-calls=5 copy-bytes=167772160 copy-ns=18672589 decode-bytes=67108864 decode-ns=5106856
+44: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=4 restores=2 failures=0 cache-stored=0 clean-reuses=1 cache-invalidations=0 copy-calls=5 copy-bytes=167772160 copy-ns=18672589 decode-bytes=67108864 decode-ns=5106856
+44: CACHE_BOOTSTRAP_ARMED_END
+44: PASS: bootstrap restores dropped clean copies; armed restores retained and reused them
+1/1 Test #44: vulkan-range-clean-cache-bootstrap ...   Passed    1.66 sec
+
+The following tests passed:
+	vulkan-range-clean-cache-bootstrap
+
+100% tests passed out of 1
+
+Total Test time (real) =   1.66 sec

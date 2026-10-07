@@ -193,6 +193,11 @@ foreach(range_cache_mode synthetic native)
     set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
+add_test(NAME vulkan-range-clean-cache-bootstrap
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_cache_bootstrap.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/zvram $<TARGET_FILE:zvram-vulkan-auto-check>)
+set_tests_properties(vulkan-range-clean-cache-bootstrap PROPERTIES TIMEOUT 60
+    ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 foreach(range_cache_mode synthetic native)
     set(range_cache_flags --range-cache)
     if(range_cache_mode STREQUAL "native")

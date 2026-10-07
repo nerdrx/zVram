@@ -1,0 +1,203 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+      Start  1: cpu-vulkan-ram-guard
+ 1/99 Test  #1: cpu-vulkan-ram-guard ..................................   Passed    0.14 sec
+      Start  2: cpu-vulkan-compression-options
+ 2/99 Test  #2: cpu-vulkan-compression-options ........................   Passed    0.24 sec
+      Start  3: cpu-vulkan-model-budget
+ 3/99 Test  #3: cpu-vulkan-model-budget ...............................   Passed    0.09 sec
+      Start  4: cpu-compression-policy
+ 4/99 Test  #4: cpu-compression-policy ................................   Passed    0.01 sec
+      Start  5: cpu-snapshot-decode
+ 5/99 Test  #5: cpu-snapshot-decode ...................................   Passed    0.03 sec
+      Start  6: vulkan-submission-tracking
+ 6/99 Test  #6: vulkan-submission-tracking ............................   Passed    0.00 sec
+      Start  7: cpu-active-refs
+ 7/99 Test  #7: cpu-active-refs .......................................   Passed    0.00 sec
+      Start  8: compression-roundtrip
+ 8/99 Test  #8: compression-roundtrip .................................   Passed    0.08 sec
+      Start  9: layer-capacity-integrity
+ 9/99 Test  #9: layer-capacity-integrity ..............................   Passed    0.08 sec
+      Start 10: vulkan-virtual-single-integrity
+10/99 Test #10: vulkan-virtual-single-integrity .......................   Passed    0.16 sec
+      Start 11: vulkan-virtual-api2-integrity
+11/99 Test #11: vulkan-virtual-api2-integrity .........................   Passed    0.16 sec
+      Start 12: vulkan-virtual-pool-legacy
+12/99 Test #12: vulkan-virtual-pool-legacy ............................   Passed    0.63 sec
+      Start 13: vulkan-automatic-pool-legacy
+13/99 Test #13: vulkan-automatic-pool-legacy ..........................   Passed    1.68 sec
+      Start 14: vulkan-virtual-pool-api2
+14/99 Test #14: vulkan-virtual-pool-api2 ..............................   Passed    0.60 sec
+      Start 15: vulkan-automatic-pool-api2
+15/99 Test #15: vulkan-automatic-pool-api2 ............................   Passed    1.74 sec
+      Start 16: vulkan-automatic-pool-bda
+16/99 Test #16: vulkan-automatic-pool-bda .............................   Passed    1.71 sec
+      Start 17: vulkan-automatic-native-pool-legacy
+17/99 Test #17: vulkan-automatic-native-pool-legacy ...................   Passed    1.73 sec
+      Start 18: vulkan-automatic-native-pool-api2
+18/99 Test #18: vulkan-automatic-native-pool-api2 .....................   Passed    1.69 sec
+      Start 19: vulkan-automatic-native-pool-bda
+19/99 Test #19: vulkan-automatic-native-pool-bda ......................   Passed    1.69 sec
+      Start 20: vulkan-automatic-native-pool-two-queues
+20/99 Test #20: vulkan-automatic-native-pool-two-queues ...............   Passed    1.65 sec
+      Start 21: vulkan-automatic-native-pool-two-families
+21/99 Test #21: vulkan-automatic-native-pool-two-families .............   Passed    1.72 sec
+      Start 22: vulkan-selective-submit-synthetic-legacy
+22/99 Test #22: vulkan-selective-submit-synthetic-legacy ..............   Passed    0.36 sec
+      Start 23: vulkan-selective-submit-synthetic-api2
+23/99 Test #23: vulkan-selective-submit-synthetic-api2 ................   Passed    0.37 sec
+      Start 24: vulkan-selective-submit-native-legacy
+24/99 Test #24: vulkan-selective-submit-native-legacy .................   Passed    0.37 sec
+      Start 25: vulkan-selective-submit-native-api2
+25/99 Test #25: vulkan-selective-submit-native-api2 ...................   Passed    0.37 sec
+      Start 26: vulkan-selective-submit-synthetic-unknown
+26/99 Test #26: vulkan-selective-submit-synthetic-unknown .............   Passed    0.34 sec
+      Start 27: vulkan-selective-submit-native-unknown
+27/99 Test #27: vulkan-selective-submit-native-unknown ................   Passed    0.34 sec
+      Start 28: vulkan-selective-submit-synthetic-bda
+28/99 Test #28: vulkan-selective-submit-synthetic-bda .................   Passed    0.35 sec
+      Start 29: vulkan-selective-submit-native-bda
+29/99 Test #29: vulkan-selective-submit-native-bda ....................   Passed    0.35 sec
+      Start 30: vulkan-range-residency-synthetic
+30/99 Test #30: vulkan-range-residency-synthetic ......................   Passed    0.41 sec
+      Start 31: vulkan-range-residency-native
+31/99 Test #31: vulkan-range-residency-native .........................   Passed    0.41 sec
+      Start 32: vulkan-rawrange-synthetic
+32/99 Test #32: vulkan-rawrange-synthetic .............................   Passed    0.40 sec
+      Start 33: vulkan-rawrange-native
+33/99 Test #33: vulkan-rawrange-native ................................   Passed    0.39 sec
+      Start 34: vulkan-range-pressure-synthetic-single
+34/99 Test #34: vulkan-range-pressure-synthetic-single ................   Passed    0.54 sec
+      Start 35: vulkan-range-pressure-synthetic-two-queues
+35/99 Test #35: vulkan-range-pressure-synthetic-two-queues ............   Passed    0.59 sec
+      Start 36: vulkan-range-pressure-native-single
+36/99 Test #36: vulkan-range-pressure-native-single ...................   Passed    0.53 sec
+      Start 37: vulkan-range-pressure-native-two-queues
+37/99 Test #37: vulkan-range-pressure-native-two-queues ...............   Passed    0.60 sec
+      Start 38: vulkan-transfer-batch-synthetic-0
+38/99 Test #38: vulkan-transfer-batch-synthetic-0 .....................   Passed    1.52 sec
+      Start 39: vulkan-transfer-batch-synthetic-100
+39/99 Test #39: vulkan-transfer-batch-synthetic-100 ...................   Passed    1.46 sec
+      Start 40: vulkan-transfer-batch-native-0
+40/99 Test #40: vulkan-transfer-batch-native-0 ........................   Passed    1.54 sec
+      Start 41: vulkan-transfer-batch-native-100
+41/99 Test #41: vulkan-transfer-batch-native-100 ......................   Passed    1.43 sec
+      Start 42: vulkan-range-clean-cache-synthetic
+42/99 Test #42: vulkan-range-clean-cache-synthetic ....................   Passed    0.62 sec
+      Start 43: vulkan-range-clean-cache-native
+43/99 Test #43: vulkan-range-clean-cache-native .......................   Passed    0.63 sec
+      Start 44: vulkan-range-clean-cache-bootstrap
+44/99 Test #44: vulkan-range-clean-cache-bootstrap ....................   Passed    1.66 sec
+      Start 45: vulkan-rawcache-synthetic
+45/99 Test #45: vulkan-rawcache-synthetic .............................   Passed    0.57 sec
+      Start 46: vulkan-rawcache-native
+46/99 Test #46: vulkan-rawcache-native ................................   Passed    0.55 sec
+      Start 47: vulkan-range-clean-cache-quota-synthetic
+47/99 Test #47: vulkan-range-clean-cache-quota-synthetic ..............   Passed    1.11 sec
+      Start 48: vulkan-range-clean-cache-quota-native
+48/99 Test #48: vulkan-range-clean-cache-quota-native .................   Passed    1.08 sec
+      Start 49: vulkan-range-mru-synthetic
+49/99 Test #49: vulkan-range-mru-synthetic ............................   Passed    0.63 sec
+      Start 50: vulkan-range-mru-quota-synthetic
+50/99 Test #50: vulkan-range-mru-quota-synthetic ......................   Passed    0.79 sec
+      Start 51: vulkan-range-mru-native
+51/99 Test #51: vulkan-range-mru-native ...............................   Passed    0.63 sec
+      Start 52: vulkan-range-mru-quota-native
+52/99 Test #52: vulkan-range-mru-quota-native .........................   Passed    0.86 sec
+      Start 53: vulkan-range-clean-cache-accepted-unknown-synthetic
+53/99 Test #53: vulkan-range-clean-cache-accepted-unknown-synthetic ...   Passed    2.22 sec
+      Start 54: vulkan-range-clean-cache-accepted-unknown-native
+54/99 Test #54: vulkan-range-clean-cache-accepted-unknown-native ......   Passed    2.20 sec
+      Start 55: vulkan-range-pressure-robust-synthetic
+55/99 Test #55: vulkan-range-pressure-robust-synthetic ................   Passed    0.54 sec
+      Start 56: vulkan-range-pressure-robust-native
+56/99 Test #56: vulkan-range-pressure-robust-native ...................   Passed    0.56 sec
+      Start 57: vulkan-active-eviction-synthetic
+57/99 Test #57: vulkan-active-eviction-synthetic ......................   Passed    0.26 sec
+      Start 58: vulkan-active-eviction-native
+58/99 Test #58: vulkan-active-eviction-native .........................   Passed    0.28 sec
+      Start 59: vulkan-active-eviction-synthetic-unknown
+59/99 Test #59: vulkan-active-eviction-synthetic-unknown ..............   Passed    0.45 sec
+      Start 60: vulkan-active-eviction-native-unknown
+60/99 Test #60: vulkan-active-eviction-native-unknown .................   Passed    0.43 sec
+      Start 61: vulkan-automatic-selective-bind-synthetic-legacy
+61/99 Test #61: vulkan-automatic-selective-bind-synthetic-legacy ......   Passed    0.35 sec
+      Start 62: vulkan-automatic-selective-bind-synthetic-api2
+62/99 Test #62: vulkan-automatic-selective-bind-synthetic-api2 ........   Passed    0.35 sec
+      Start 63: vulkan-automatic-selective-bind-native-legacy
+63/99 Test #63: vulkan-automatic-selective-bind-native-legacy .........   Passed    0.35 sec
+      Start 64: vulkan-automatic-selective-bind-native-api2
+64/99 Test #64: vulkan-automatic-selective-bind-native-api2 ...........   Passed    0.35 sec
+      Start 65: vulkan-automatic-idle-integrity
+65/99 Test #65: vulkan-automatic-idle-integrity .......................   Passed    1.96 sec
+      Start 66: vulkan-automatic-budget-refusal
+66/99 Test #66: vulkan-automatic-budget-refusal .......................   Passed    1.18 sec
+      Start 67: vulkan-automatic-budget-release
+67/99 Test #67: vulkan-automatic-budget-release .......................   Passed    0.93 sec
+      Start 68: vulkan-automatic-partial-freeze
+68/99 Test #68: vulkan-automatic-partial-freeze .......................   Passed    0.62 sec
+      Start 69: vulkan-automatic-partial-restore-retry
+69/99 Test #69: vulkan-automatic-partial-restore-retry ................   Passed    0.63 sec
+      Start 70: vulkan-automatic-bda-integrity
+70/99 Test #70: vulkan-automatic-bda-integrity ........................   Passed    1.95 sec
+      Start 71: vulkan-automatic-native-two-queues
+71/99 Test #71: vulkan-automatic-native-two-queues ....................   Passed    2.19 sec
+      Start 72: vulkan-automatic-native-two-families
+72/99 Test #72: vulkan-automatic-native-two-families ..................   Passed    1.92 sec
+      Start 73: vulkan-automatic-exclusive-families
+73/99 Test #73: vulkan-automatic-exclusive-families ...................   Passed    1.94 sec
+      Start 74: vulkan-virtual-pending-bind
+74/99 Test #74: vulkan-virtual-pending-bind ...........................   Passed    0.45 sec
+      Start 75: vulkan-virtual-concurrent-pending-wait
+75/99 Test #75: vulkan-virtual-concurrent-pending-wait ................   Passed    0.34 sec
+      Start 76: managed-compute-integrity
+76/99 Test #76: managed-compute-integrity .............................   Passed    0.28 sec
+      Start 77: managed-capacity-integrity
+77/99 Test #77: managed-capacity-integrity ............................   Passed    0.27 sec
+      Start 78: sparse-compute-integrity
+78/99 Test #78: sparse-compute-integrity ..............................   Passed    0.07 sec
+      Start 79: hip-native-integrity
+79/99 Test #79: hip-native-integrity ..................................   Passed    0.36 sec
+      Start 80: hip-spill-integrity
+80/99 Test #80: hip-spill-integrity ...................................   Passed    0.08 sec
+      Start 81: hip-procedure-native-query
+81/99 Test #81: hip-procedure-native-query ............................   Passed    0.09 sec
+      Start 82: hip-automatic-idle-integrity
+82/99 Test #82: hip-automatic-idle-integrity ..........................   Passed    0.79 sec
+      Start 83: hip-automatic-concurrent-integrity
+83/99 Test #83: hip-automatic-concurrent-integrity ....................   Passed    0.48 sec
+      Start 84: hip-automatic-local-integrity
+84/99 Test #84: hip-automatic-local-integrity .........................   Passed    0.78 sec
+      Start 85: hip-automatic-capture-guard
+85/99 Test #85: hip-automatic-capture-guard ...........................   Passed    0.63 sec
+      Start 86: hip-automatic-callback-guard
+86/99 Test #86: hip-automatic-callback-guard ..........................   Passed    0.62 sec
+      Start 87: hip-hibernation-integrity
+87/99 Test #87: hip-hibernation-integrity .............................   Passed    0.24 sec
+      Start 88: hip-hibernation-multisegment
+88/99 Test #88: hip-hibernation-multisegment ..........................   Passed    1.35 sec
+      Start 89: hip-vmm-integrity
+89/99 Test #89: hip-vmm-integrity .....................................   Passed    0.08 sec
+      Start 90: hip-vmm-host-integrity
+90/99 Test #90: hip-vmm-host-integrity ................................   Passed    0.08 sec
+      Start 91: hip-native-capacity-query
+91/99 Test #91: hip-native-capacity-query .............................   Passed    0.07 sec
+      Start 92: hip-virtual-capacity-query
+92/99 Test #92: hip-virtual-capacity-query ............................   Passed    0.07 sec
+      Start 93: hip-vmm-descriptor-lifetime
+93/99 Test #93: hip-vmm-descriptor-lifetime ...........................   Passed    0.10 sec
+      Start 94: hip-procedure-vmm-query
+94/99 Test #94: hip-procedure-vmm-query ...............................   Passed    0.09 sec
+      Start 95: hip-fallback-error-state
+95/99 Test #95: hip-fallback-error-state ..............................   Passed    0.08 sec
+      Start 96: hip-vmm-error-state
+96/99 Test #96: hip-vmm-error-state ...................................   Passed    0.08 sec
+      Start 97: hip-injected-oom-integrity
+97/99 Test #97: hip-injected-oom-integrity ............................   Passed    0.09 sec
+      Start 98: hip-hibernation-remap-recovery
+98/99 Test #98: hip-hibernation-remap-recovery ........................   Passed    0.22 sec
+      Start 99: hip-vmm-partial-failure-cleanup
+99/99 Test #99: hip-vmm-partial-failure-cleanup .......................   Passed    0.08 sec
+
+100% tests passed out of 99
+
+Total Test time (real) =  67.18 sec
