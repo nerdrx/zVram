@@ -13,6 +13,10 @@ unsigned sparseBinds{};
 int failAllocations{};
 int failSparseBinds{};
 unsigned frees{};
+unsigned budgetQueries{};
+VkDeviceSize mockHeapBudget{};
+VkDeviceSize mockHeapUsage{};
+VkDeviceSize mockNativeHeapSize{};
 std::uintptr_t nextHandle{0x1000};
 std::unordered_map<VkBuffer,VkDeviceSize> bufferSizes;
 std::unordered_set<VkDeviceMemory> liveAllocations;
@@ -45,6 +49,18 @@ VKAPI_ATTR VkResult VKAPI_CALL mockSparse(VkQueue,std::uint32_t,const VkBindSpar
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockQueueWait(VkQueue) { return VK_SUCCESS; }
 VKAPI_ATTR VkResult VKAPI_CALL mockDeviceWait(VkDevice) { return VK_SUCCESS; }
+VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDeviceMemoryProperties2* out) {
+    ++budgetQueries;
+    out->memoryProperties.memoryHeapCount=2;
+    out->memoryProperties.memoryHeaps[0].size=mockNativeHeapSize;
+    out->memoryProperties.memoryHeaps[0].flags=VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+    out->memoryProperties.memoryHeaps[1].size=64*MiB; // synthetic slot must not affect native budget
+    auto* budget=reinterpret_cast<VkPhysicalDeviceMemoryBudgetPropertiesEXT*>(out->pNext);
+    require(budget && budget->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT,
+            "production budget query omitted the budget structure");
+    budget->heapBudget[0]=mockHeapBudget; budget->heapUsage[0]=mockHeapUsage;
+    budget->heapBudget[1]=64*MiB; budget->heapUsage[1]=0;
+}
 
 struct Fixture {
     Device device{};
@@ -53,7 +69,8 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=frees=0; failAllocations=failSparseBinds=0; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear();
+        allocations=sparseBinds=frees=budgetQueries=0; failAllocations=failSparseBinds=0; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear();
+        mockHeapBudget=mockHeapUsage=mockNativeHeapSize=0;
         device.handle=handle; device.autoEnabled=true; device.lazyBacking=true;
         device.rangeChunkBytes=MiB; device.residentLimitBytes=limit; device.residentAdmissionArmed=true;
         device.activeEviction=true; device.allocate=mockAllocate; device.free=mockFree;
@@ -169,6 +186,48 @@ void checkUnknownSubmitAdmission() {
             "admitted unknown submit restored the wrong backing amount");
 }
 
+void checkResidentBudgetAccounting() {
+    Fixture f(4*MiB,12*MiB);
+    auto& d=f.device;
+    d.budgetProperties=mockBudgetProperties; d.budgetHeap=0; d.budgetReserveBytes=MiB;
+    d.memory.memoryHeapCount=2;
+    d.memory.memoryHeaps[0].size=10*MiB; // clamp budget to native heap size
+    d.memory.memoryHeaps[1].size=64*MiB; // synthetic Vulkan heap is deliberately much larger
+    d.memory.memoryTypes[0].heapIndex=0;
+    VirtualMemory tracked{}; tracked.size=3*MiB; tracked.nativeTypeBits=1;
+    tracked.children={tokenHandle<VkDeviceMemory>(11)};
+    tracked.childSizes={3*MiB}; tracked.childTypes={0};
+    d.virtualMemory.emplace(tokenHandle<VkDeviceMemory>(12),std::move(tracked));
+    mockNativeHeapSize=10*MiB; mockHeapBudget=12*MiB; mockHeapUsage=7*MiB;
+    VkDeviceSize limit{};
+    require(residentAdmissionLimit(d,limit)==VK_SUCCESS,"native budget query failed");
+    // Native total is min(12 MiB budget, 10 MiB heap); usage contains 3 MiB
+    // tracked + 4 MiB untracked. Reserve 1 MiB leaves 5 MiB for our backing.
+    require(limit==5*MiB && budgetQueries==1,
+            "native heap clamp, tracked subtraction, or untracked usage accounting is wrong");
+}
+
+void checkBudgetRefusalBeforeAllocation() {
+    Fixture f(2*MiB,2*MiB); auto& d=f.device;
+    f.bind(0,2*MiB);
+    d.budgetProperties=mockBudgetProperties; d.budgetHeap=0; d.budgetReserveBytes=MiB;
+    d.memory.memoryHeapCount=1; d.memory.memoryHeaps[0].size=8*MiB;
+    mockNativeHeapSize=8*MiB; mockHeapBudget=8*MiB; mockHeapUsage=7*MiB;
+    require(restoreColdLocked(f.handle,d,f.memory)==VK_ERROR_OUT_OF_DEVICE_MEMORY,
+            "raw budget did not refuse restore exceeding available backing budget");
+    require(allocations==0 && liveAllocations.empty() && d.residentBytes==0 &&
+            d.coldLogicalBytes==2*MiB && budgetQueries==1,
+            "raw-budget refusal allocated backing or changed cold accounting");
+}
+
+void checkDefaultBudgetDoesNotQuery() {
+    Fixture f(2*MiB,MiB);
+    f.device.budgetProperties=mockBudgetProperties; // zero reserve disables the optional query
+    VkDeviceSize limit{};
+    require(residentAdmissionLimit(f.device,limit)==VK_SUCCESS && limit==MiB && budgetQueries==0,
+            "default resident admission queried hardware budget or changed the hard cap");
+}
+
 void checkAllocationFailureRetry() {
     Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); auto& m=f.state();
     failAllocations=1;
@@ -206,9 +265,12 @@ int main() try {
     checkOneByteBelowCap();
     checkBootstrapAlignmentRollback();
     checkUnknownSubmitAdmission();
+    checkResidentBudgetAccounting();
+    checkBudgetRefusalBeforeAllocation();
+    checkDefaultBudgetDoesNotQuery();
     checkAllocationFailureRetry();
     checkBindFailureAccounting();
-    std::cout<<"PASS: pristine bootstrap, cold aliases, cap boundaries, rollback, and retry accounting\n";
+    std::cout<<"PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry\n";
     return 0;
 } catch(const std::exception& e) {
     std::cerr<<"FAIL: "<<e.what()<<'\n'; return 1;

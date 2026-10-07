@@ -371,20 +371,22 @@ VkResult admitTrackedSubmit(Device& d,const char* name,std::uint32_t count,const
             for(const auto& pair:d.virtualMemory)
                 for(std::size_t i=0;i<pair.second.childSizes.size();++i) selected.push_back({pair.first,i});
         }
+        VkDeviceSize limit{};
+        const auto budgetResult=residentAdmissionLimit(d,limit); if(budgetResult!=VK_SUCCESS) return budgetResult;
         VkDeviceSize needed=0,incoming=0;
         for(const auto& use:selected) {
             const auto p=d.virtualMemory.find(use.memory);
             if(p==d.virtualMemory.end() || use.child>=p->second.childSizes.size()) return VK_ERROR_UNKNOWN;
             const auto size=p->second.childSizes[use.child];
-            if(size>d.residentLimitBytes-needed) {
+            if(size>limit-needed) {
                 logf("resident admission refused: submission working set exceeds limit-bytes=%llu known=%d",
-                     static_cast<unsigned long long>(d.residentLimitBytes),known);
+                     static_cast<unsigned long long>(limit),known);
                 return VK_ERROR_OUT_OF_DEVICE_MEMORY;
             }
             needed+=size;
             if(!p->second.children[use.child]) incoming+=size;
         }
-        if(d.residentBytes<=d.residentLimitBytes-incoming) return VK_SUCCESS;
+        if(d.residentBytes<=limit-incoming) return VK_SUCCESS;
         if(!d.autoEnabled) {
             logf("resident admission refused: automatic paging disabled and full backing exceeds limit");
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
@@ -411,19 +413,19 @@ VkResult admitTrackedSubmit(Device& d,const char* name,std::uint32_t count,const
         });
         std::size_t evicted=0;
         for(const auto& victim:victims) {
-            if(d.residentBytes<=d.residentLimitBytes-incoming) break;
+            if(d.residentBytes<=limit-incoming) break;
             auto& memory=d.virtualMemory.at(victim.memory);
             const auto result=freezeChildLocked(d,memory,victim.child);
             if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
             if(result==VK_SUCCESS && memory.coldGroups[victim.child].cold) ++evicted;
         }
-        if(d.residentBytes>d.residentLimitBytes-incoming) {
+        if(d.residentBytes>limit-incoming) {
             logf("resident admission refused: completed evictable backing or cold budget unavailable");
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         }
         logf("resident admission selected-chunks=%zu evicted-chunks=%zu resident-before-restore=%llu incoming-bytes=%llu limit-bytes=%llu",
              selected.size(),evicted,static_cast<unsigned long long>(d.residentBytes),
-             static_cast<unsigned long long>(incoming),static_cast<unsigned long long>(d.residentLimitBytes));
+             static_cast<unsigned long long>(incoming),static_cast<unsigned long long>(limit));
         return VK_SUCCESS;
     } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
 }

@@ -59,6 +59,15 @@ with tempfile.TemporaryDirectory() as temporary:
                       ("--hip", "--vulkan-lazy-backing")):
         result = run(launcher, *arguments, "--", sys.executable, "-c", "pass")
         assert result.returncode == 2 and "requires immediate" in result.stderr, result.stderr
+    result = run(launcher, *lazy_base, "--vulkan-lazy-backing", "--vulkan-headroom-mib", "2048",
+                 "--", sys.executable, "-c", "import os; print(os.environ['ZVRAM_VULKAN_HEADROOM_MIB'])")
+    assert result.returncode == 0 and result.stdout == "2048\n", (result.stdout, result.stderr)
+    for extra in (("--vulkan-headroom-mib", "2048"),
+                  ("--vulkan-lazy-backing", "--vulkan-headroom-mib", "0"),
+                  ("--vulkan-lazy-backing", "--vulkan-headroom-mib", "-1"),
+                  ("--vulkan-lazy-backing", "--vulkan-headroom-mib", "17592186044416")):
+        result = run(launcher, *lazy_base, *extra, "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2 and "requires lazy backing" in result.stderr, result.stderr
     gpu_child = "import os; print(os.environ['ZVRAM_VULKAN_GDEFLATE_GPU']); print(os.environ['ZVRAM_GDEFLATE_SHADER_PATH'])"
     result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--vulkan-gdeflate-gpu", "--", sys.executable, "-c", gpu_child)
     assert result.returncode == 0 and result.stdout == "1\n" + str(build / "gdeflate-wave32.spv") + "\n", (result.stdout, result.stderr)

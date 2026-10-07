@@ -26,6 +26,7 @@
 #include "active_refs.hpp"
 #include "compression_policy.hpp"
 #include "snapshot_decode.hpp"
+#include "resident_budget.hpp"
 #include "snapshot_pipeline.hpp"
 #ifdef ZVRAM_HAVE_GDEFLATE
 #include "gdeflate_gpu.hpp"
@@ -70,6 +71,7 @@ struct Instance {
     PFN_vkGetPhysicalDeviceProperties properties{};
     PFN_vkGetPhysicalDeviceMemoryProperties memoryProperties{};
     PFN_vkGetPhysicalDeviceMemoryProperties2 memoryProperties2{};
+    bool properties2Enabled{};
     PFN_vkGetPhysicalDeviceFeatures features{};
     PFN_vkGetPhysicalDeviceQueueFamilyProperties queueFamilies{};
     std::mutex physicalMutex;
@@ -229,6 +231,10 @@ struct Device {
     bool activeEviction{};
     VkDeviceSize rangeChunkBytes{};
     VkDeviceSize residentLimitBytes{};
+    PFN_vkGetPhysicalDeviceMemoryProperties2 budgetProperties{};
+    std::uint32_t budgetHeap{UINT32_MAX};
+    VkDeviceSize budgetReserveBytes{};
+    VkDeviceSize lastBudgetLimit{std::numeric_limits<VkDeviceSize>::max()};
     bool lazyBacking{};
     bool residentAdmissionArmed{true};
     bool cleanCache{};
@@ -448,12 +454,17 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateInstance(const VkInstanceCreateInfo* c
     VkResult r=create(ci,allocator,out); if(r!=VK_SUCCESS) return r;
     try {
         auto s=std::make_shared<Instance>(); s->handle=*out; s->gipa=next; s->physProc=nextPhys;
+        s->properties2Enabled=ci->pApplicationInfo && ci->pApplicationInfo->apiVersion>=VK_API_VERSION_1_1;
+        for(std::uint32_t i=0;i<ci->enabledExtensionCount;++i)
+            if(std::strcmp(ci->ppEnabledExtensionNames[i],VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)==0)
+                s->properties2Enabled=true;
         s->destroy=reinterpret_cast<PFN_vkDestroyInstance>(next(*out,"vkDestroyInstance"));
         s->enumerateExtensions=reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(next(*out,"vkEnumerateDeviceExtensionProperties"));
         s->properties=reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(next(*out,"vkGetPhysicalDeviceProperties"));
         s->memoryProperties=reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties>(next(*out,"vkGetPhysicalDeviceMemoryProperties"));
-        s->memoryProperties2=reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties2>(next(*out,"vkGetPhysicalDeviceMemoryProperties2"));
-        if(!s->memoryProperties2) s->memoryProperties2=reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties2>(next(*out,"vkGetPhysicalDeviceMemoryProperties2KHR"));
+        const bool coreProperties2=ci->pApplicationInfo && ci->pApplicationInfo->apiVersion>=VK_API_VERSION_1_1;
+        s->memoryProperties2=reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties2>(next(*out,coreProperties2 ?
+            "vkGetPhysicalDeviceMemoryProperties2" : "vkGetPhysicalDeviceMemoryProperties2KHR"));
         s->features=reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures>(next(*out,"vkGetPhysicalDeviceFeatures"));
         s->queueFamilies=reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(next(*out,"vkGetPhysicalDeviceQueueFamilyProperties"));
         std::lock_guard<std::mutex> lock(mapsMutex); instances[key(*out)]=std::move(s); globalGipa=next;
@@ -509,7 +520,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     auto* info=link->u.pLayerInfo; auto nextGdpa=info->pfnNextGetDeviceProcAddr; auto nextGipa=info->pfnNextGetInstanceProcAddr;
     link->u.pLayerInfo=info->pNext;
     bool policy=hasPolicy(ci->pNext), supported=false;
-    bool robustness2Supported=false, subgroupControlSupported=false;
+    bool robustness2Supported=false, subgroupControlSupported=false, budgetSupported=false;
     if(in->enumerateExtensions) {
         uint32_t count=0; VkResult er=in->enumerateExtensions(physical,nullptr,&count,nullptr);
         if(er==VK_SUCCESS || er==VK_INCOMPLETE) {
@@ -517,12 +528,33 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 if(er==VK_SUCCESS || er==VK_INCOMPLETE) for(const auto& e:exts) {
                     if(std::strcmp(e.extensionName,VK_AMD_MEMORY_OVERALLOCATION_BEHAVIOR_EXTENSION_NAME)==0) supported=true;
                     if(std::strcmp(e.extensionName,VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME)==0) subgroupControlSupported=true;
+                    if(std::strcmp(e.extensionName,VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)==0) budgetSupported=true;
 #ifdef VK_EXT_robustness2
                     if(std::strcmp(e.extensionName,VK_EXT_ROBUSTNESS_2_EXTENSION_NAME)==0) robustness2Supported=true;
 #endif
                 }
             } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
         }
+    }
+    const bool budgetRequested=std::getenv("ZVRAM_VULKAN_HEADROOM_MIB")!=nullptr;
+    const auto reserveMiB=positiveEnv("ZVRAM_VULKAN_HEADROOM_MIB",std::numeric_limits<VkDeviceSize>::max()/(1024ull*1024ull));
+    std::uint32_t budgetHeap=UINT32_MAX;
+    if(budgetRequested) {
+        const char* lazy=std::getenv("ZVRAM_VULKAN_LAZY_BACKING");
+        const char* afterCold=std::getenv("ZVRAM_VULKAN_RESIDENT_AFTER_COLD");
+        if(!reserveMiB || !lazy || std::strcmp(lazy,"1") ||
+           (afterCold && std::strcmp(afterCold,"1")==0) ||
+           !positiveEnv("ZVRAM_VULKAN_RESIDENT_MIB") || !in->properties2Enabled ||
+           !in->memoryProperties2 || !budgetSupported) {
+            logf("VRAM headroom requires lazy immediate admission, valid reserve, memory_budget and enabled properties2");
+            return VK_ERROR_FEATURE_NOT_PRESENT;
+        }
+        for(std::uint32_t i=0;i<view.native.memoryHeapCount;++i)
+            if(view.native.memoryHeaps[i].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+                if(budgetHeap!=UINT32_MAX) { logf("VRAM headroom requires a single native local heap"); return VK_ERROR_FEATURE_NOT_PRESENT; }
+                budgetHeap=i;
+            }
+        if(budgetHeap==UINT32_MAX) return VK_ERROR_FEATURE_NOT_PRESENT;
     }
     bool inject=supported && !policy;
     if(!supported) logf("AMD overallocation extension unavailable; passing device creation through unchanged");
@@ -771,6 +803,15 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             gpuSubgroup.pNext=const_cast<void*>(copy.pNext); copy.pNext=&gpuSubgroup;
         }
     }
+    if(budgetRequested && !appEnabled(ci,VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) {
+        try {
+            if(extensions.empty() && ci->enabledExtensionCount)
+                extensions.assign(ci->ppEnabledExtensionNames,ci->ppEnabledExtensionNames+ci->enabledExtensionCount);
+            extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+            copy.enabledExtensionCount=static_cast<std::uint32_t>(extensions.size());
+            copy.ppEnabledExtensionNames=extensions.data();
+        } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+    }
     VkResult r=VK_ERROR_INITIALIZATION_FAILED;
     auto nextCreate=reinterpret_cast<PFN_vkCreateDevice>(nextGipa(in->handle,"vkCreateDevice"));
     if(!nextCreate) return VK_ERROR_INITIALIZATION_FAILED;
@@ -778,6 +819,10 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     try {
         auto d=std::make_shared<Device>(); d->handle=*out; d->physical=physical; d->gdpa=nextGdpa; d->setDeviceLoaderData=setDeviceLoaderData;
         d->gpuRestoreEnabled=gpuRestorePlanned;
+        if(budgetRequested) {
+            d->budgetProperties=in->memoryProperties2; d->budgetHeap=budgetHeap;
+            d->budgetReserveBytes=reserveMiB*1024ull*1024ull;
+        }
         if(gpuRestorePlanned) {
             d->gpuStorageAlignment=std::max<VkDeviceSize>(1,gpuProperties.limits.minStorageBufferOffsetAlignment);
             d->gpuStorageRange=gpuProperties.limits.maxStorageBufferRange;
@@ -946,6 +991,12 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                         logf("Vulkan snapshot codec=gdeflate decode=%s experimental=1",d->gpuRestoreEnabled?"GPU":"CPU");
                 }
             }
+        }
+        if(budgetRequested && (!d->autoEnabled || !d->lazyBacking || !d->rangeChunkBytes ||
+                               !d->residentLimitBytes || !d->residentAdmissionArmed)) {
+            logf("VRAM headroom refused: lazy immediate paging initialization unavailable");
+            layerDestroyDevice(*out,allocator); *out=VK_NULL_HANDLE;
+            return VK_ERROR_FEATURE_NOT_PRESENT;
         }
         if(virtualEnabled && !privateQueuePlanned)
             logf("virtual sparse binds use an application queue and wait synchronously: no unused sparse queue is available");
@@ -1364,6 +1415,43 @@ void trimCleanCacheLocked(Device& d,VkDeviceSize required) {
         }
     }
 }
+// Sample the raw native heap, never the public synthetic budget slot. Usage
+// already includes backing and private helper memory; subtract backing only.
+// Estimates can change immediately after a query: retain the hard cap too.
+VkResult residentAdmissionLimit(Device& d,VkDeviceSize& limit) {
+    limit=d.residentLimitBytes;
+    if(!d.budgetReserveBytes) return VK_SUCCESS;
+    if(!d.budgetProperties || d.budgetHeap>=d.memory.memoryHeapCount) return VK_ERROR_FEATURE_NOT_PRESENT;
+    VkDeviceSize tracked=0;
+    for(const auto& pair:d.virtualMemory) {
+        const auto& memory=pair.second;
+        if(memory.children.size()!=memory.childSizes.size() || memory.children.size()!=memory.childTypes.size())
+            return VK_ERROR_UNKNOWN;
+        for(std::size_t i=0;i<memory.children.size();++i) {
+            if(!memory.children[i]) continue;
+            if(memory.childTypes[i]>=d.memory.memoryTypeCount) return VK_ERROR_UNKNOWN;
+            if(d.memory.memoryTypes[memory.childTypes[i]].heapIndex!=d.budgetHeap) continue;
+            if(memory.childSizes[i]>std::numeric_limits<VkDeviceSize>::max()-tracked) return VK_ERROR_UNKNOWN;
+            tracked+=memory.childSizes[i];
+        }
+    }
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
+    VkPhysicalDeviceMemoryProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
+    properties.pNext=&budget;
+    d.budgetProperties(d.physical,&properties);
+    if(d.budgetHeap>=properties.memoryProperties.memoryHeapCount) return VK_ERROR_FEATURE_NOT_PRESENT;
+    const auto total=std::min(budget.heapBudget[d.budgetHeap],d.memory.memoryHeaps[d.budgetHeap].size);
+    const auto usage=budget.heapUsage[d.budgetHeap];
+    limit=zvram::residentBudgetLimit(limit,total,usage,tracked,d.budgetReserveBytes);
+    if(limit!=d.lastBudgetLimit) {
+        logf("resident budget native-heap=%u budget=%llu usage=%llu tracked-local=%llu reserve=%llu effective-limit=%llu hard-limit=%llu",
+             d.budgetHeap,static_cast<unsigned long long>(total),static_cast<unsigned long long>(usage),
+             static_cast<unsigned long long>(tracked),static_cast<unsigned long long>(d.budgetReserveBytes),
+             static_cast<unsigned long long>(limit),static_cast<unsigned long long>(d.residentLimitBytes));
+        d.lastBudgetLimit=limit;
+    }
+    return VK_SUCCESS;
+}
 VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::size_t childOnly,
                           VkBuffer preparedBuffer,VkDeviceSize preparedBytes) {
     if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
@@ -1375,6 +1463,8 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
     // configured tracked-backing cap. Preflight all missing children before any
     // allocation so a rejected full restore cannot materialize a partial model.
     if(d.residentLimitBytes && d.residentAdmissionArmed) {
+        VkDeviceSize limit{};
+        const auto result=residentAdmissionLimit(d,limit); if(result!=VK_SUCCESS) return result;
         VkDeviceSize incoming=0;
         for(const auto& pair:d.virtualMemory) {
             if(only && pair.first!=only) continue;
@@ -1386,11 +1476,11 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                 if(childOnly!=SIZE_MAX && i!=childOnly) continue;
                 if(!memory.coldGroups[i].cold || memory.children[i]) continue;
                 const auto amount=memory.childSizes[i];
-                if(amount>d.residentLimitBytes-incoming) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                if(amount>limit-incoming) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
                 incoming+=amount;
             }
         }
-        if(d.residentBytes>d.residentLimitBytes-incoming) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        if(d.residentBytes>limit-incoming) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
     }
     bool restoredAny=false;
     std::uint64_t restoredThisCall=0;

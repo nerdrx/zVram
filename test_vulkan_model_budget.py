@@ -58,7 +58,49 @@ time.sleep(0.05)
             idle_model.capture_backing = capture
 
 
+def check_launch_forwarding():
+    class Captured(Exception):
+        pass
+    captured = []
+    calls = []
+    original_run, original_argv = idle_model.run_interactive, sys.argv
+    def fake_run(label, command, *args, **kwargs):
+        calls.append(label)
+        if label == "native":
+            assert "--vulkan-lazy-backing" not in command
+            assert "--vulkan-gdeflate-workers" not in command
+            assert "--vulkan-headroom-mib" not in command
+            return {}
+        captured.extend(command)
+        raise Captured
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        model = root / "fixture.gguf"
+        model.write_bytes(b"CPU fixture only")
+        sys.argv = [str(MODULE), "--binary", sys.executable, "--model", str(model),
+                    "--output-dir", str(root / "output"), "--pressure-on-first-submit",
+                    "--range-mib", "128", "--resident-mib", "20480", "--lazy-backing",
+                    "--codec", "gdeflate", "--gdeflate-workers", "4", "--headroom-mib", "2048"]
+        idle_model.run_interactive = fake_run
+        try:
+            try:
+                idle_model.main()
+            except Captured:
+                pass
+            else:
+                raise AssertionError("automatic launch was not reached")
+        finally:
+            idle_model.run_interactive, sys.argv = original_run, original_argv
+    assert calls == ["native", "automatic"], calls
+    options = captured[:captured.index("--")]
+    assert "--vulkan-lazy-backing" in options, captured
+    assert options[options.index("--vulkan-gdeflate-workers") + 1] == "4", captured
+    assert options[options.index("--vulkan-headroom-mib") + 1] == "2048", captured
+    assert "--no-warmup" in captured, captured
+
+
 def main():
+    check_launch_forwarding()
     assert idle_model.has_decode_tokens({"decode_runs": 1, "tokens_per_second": 0.1})
     for metrics in ({"decode_runs": 0, "tokens_per_second": 1},
                     {"decode_runs": 1, "tokens_per_second": 0},
@@ -102,10 +144,20 @@ def main():
     result = subprocess.run(pressure + ["--byte-shuffle", "2", "--min-savings-percent", "100"],
                             capture_output=True, text=True)
     assert result.returncode == 2 and "cannot be verified" in result.stderr, result.stderr
+    result = subprocess.run(pressure[:6] + ["--lazy-backing"], capture_output=True, text=True)
+    assert result.returncode == 2 and "requires immediate" in result.stderr, result.stderr
+    for extra in (("--headroom-mib", "2048"), ("--lazy-backing", "--headroom-mib", "0"),
+                  ("--lazy-backing", "--headroom-mib", "17592186044416")):
+        result = subprocess.run(pressure + list(extra), capture_output=True, text=True)
+        assert result.returncode == 2 and "requires lazy backing" in result.stderr, result.stderr
     for stride in ("2", "4"):
         result = subprocess.run(pressure + ["--byte-shuffle", stride], capture_output=True, text=True)
         assert result.returncode == 2 and "existing executable" in result.stderr, result.stderr
-    for extra, expected in ((["--gdeflate-gpu"], "requires --codec gdeflate"),
+    for extra, expected in ((["--gdeflate-workers", "4"], "requires --codec gdeflate"),
+                            (["--codec", "gdeflate", "--gdeflate-workers", "0"], "invalid choice"),
+                            (["--codec", "gdeflate", "--gdeflate-workers", "5"], "invalid choice"),
+                            (["--lazy-backing", "--resident-after-cold"], "requires immediate"),
+                            (["--gdeflate-gpu"], "requires --codec gdeflate"),
                             (["--codec", "gdeflate", "--byte-shuffle", "2"], "requires the zstd codec")):
         result = subprocess.run(pressure + extra, capture_output=True, text=True)
         assert result.returncode == 2 and expected in result.stderr, result.stderr

@@ -263,6 +263,7 @@ def main():
     parser.add_argument("--model", required=True, type=Path)
     parser.add_argument("--build-dir", type=Path, help="select a zVram backend CMake build directory")
     parser.add_argument("--codec", choices=("zstd", "gdeflate"), help="select the snapshot codec explicitly")
+    parser.add_argument("--gdeflate-workers", type=int, choices=range(1,5), help="bounded CPU GDeflate encoding workers; requires --codec gdeflate")
     parser.add_argument("--gdeflate-gpu", action="store_true", help="require observable direct GPU GDeflate restoration")
     parser.add_argument("--tokens", type=int, default=128)
     parser.add_argument("--idle-ms", type=int, default=1000)
@@ -285,6 +286,8 @@ def main():
                         help="choose resident-range eviction order; requires --resident-mib")
     parser.add_argument("--strict-robustness", action="store_true", help="enable supported robustness2 for narrow descriptor ranges")
     parser.add_argument("--clean-cache", action="store_true", help="retain and reuse snapshots after proven read-only GPU work")
+    parser.add_argument("--lazy-backing", action="store_true", help="test pristine backing on demand; requires immediate first-submit pressure mode")
+    parser.add_argument("--headroom-mib", type=int, help="reserve native VRAM budget headroom; requires lazy backing")
     parser.add_argument("--resident-after-cold", action="store_true", help="allow bootstrap then arm pressure admission after all eligible backing is cold")
     parser.add_argument("--pressure-on-first-submit", action="store_true",
                         help="keep the resident cap active and prompt after full backing is tracked, before requiring full cold")
@@ -295,6 +298,8 @@ def main():
     parser.add_argument("--app-arg", action="append", default=[],
                         help="extra llama-completion option; repeat as --app-arg=VALUE")
     args = parser.parse_args()
+    if args.gdeflate_workers is not None and args.codec != "gdeflate":
+        parser.error("--gdeflate-workers requires --codec gdeflate")
     if args.gdeflate_gpu and args.codec != "gdeflate":
         parser.error("--gdeflate-gpu requires --codec gdeflate")
     if args.byte_shuffle and args.codec == "gdeflate":
@@ -321,6 +326,10 @@ def main():
         parser.error("--clean-cache requires --range-mib")
     if args.resident_after_cold and args.resident_mib is None:
         parser.error("--resident-after-cold requires --resident-mib")
+    if args.lazy_backing and (not args.pressure_on_first_submit or args.resident_after_cold):
+        parser.error("--lazy-backing requires immediate --pressure-on-first-submit mode")
+    if args.headroom_mib is not None and (not args.lazy_backing or not 0 < args.headroom_mib <= ((1 << 64)-1)//MiB):
+        parser.error("--headroom-mib requires lazy backing and positive 64-bit size")
     validate_pressure_options(args, parser)
     if args.max_nodes_per_submit is not None and not 1 <= args.max_nodes_per_submit <= (1 << 32) - 1:
         parser.error("--max-nodes-per-submit must fit a positive uint32")
@@ -366,6 +375,8 @@ def main():
         command += ["--build-dir", str(args.build_dir.expanduser().resolve())]
     if args.codec:
         command += ["--vulkan-codec", args.codec]
+    if args.gdeflate_workers is not None:
+        command += ["--vulkan-gdeflate-workers", str(args.gdeflate_workers)]
     if args.gdeflate_gpu:
         command.append("--vulkan-gdeflate-gpu")
     if args.min_savings_percent is not None:
@@ -382,6 +393,10 @@ def main():
         command += ["--vulkan-resident-mib", str(args.resident_mib)]
     if args.eviction_policy is not None:
         command += ["--vulkan-eviction-policy", args.eviction_policy]
+    if args.lazy_backing:
+        command.append("--vulkan-lazy-backing")
+    if args.headroom_mib is not None:
+        command += ["--vulkan-headroom-mib", str(args.headroom_mib)]
     if args.resident_after_cold:
         command.append("--vulkan-resident-after-cold")
     if args.strict_robustness:
@@ -508,6 +523,7 @@ def main():
               "gpu_restore_profile": (dict(zip(("calls", "bytes", "host_ns", "fallbacks"), gpu_profiles[-1]))
                                       if args.gdeflate_gpu and gpu_profiles else None),
               "snapshot_codec": args.codec or "zstd", "gdeflate_gpu_requested": args.gdeflate_gpu,
+              "gdeflate_encoding_workers": args.gdeflate_workers or 1, "lazy_backing_requested": args.lazy_backing, "headroom_mib": args.headroom_mib,
               "validation_enabled": args.validate,
               "binary": str(binary), "command": command,
               "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
