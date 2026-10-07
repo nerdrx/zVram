@@ -189,6 +189,18 @@ python3 check_vulkan_idle_model.py --binary build/third-party/llama-vulkan-build
 
 Evidence: [summary](validation/vulkan-27b-long-idle-result.json), [wrapped diagnostics](validation/vulkan-27b-long-idle-automatic.stderr.txt.gz), [native diagnostics](validation/vulkan-27b-long-idle-native.stderr.txt), [wrapped output](validation/vulkan-27b-long-idle-automatic.stdout.txt), [native output](validation/vulkan-27b-long-idle-native.stdout.txt), and [hot fdinfo](validation/vulkan-27b-long-idle-automatic-hot.fdinfo.txt)/[cold fdinfo](validation/vulkan-27b-long-idle-automatic-cold.fdinfo.txt)/[native hot fdinfo](validation/vulkan-27b-long-idle-native-hot.fdinfo.txt).
 
+## Vulkan compression-savings cutoff
+
+`--vulkan-min-savings-percent N` accepts **0–100** and requires automatic Vulkan snapshots. The default `0` preserves the existing behavior of keeping a compressed snapshot whenever compression saves space. When the saved percentage falls below `N`, zVram stores the snapshot losslessly as RAW instead. At `100`, it skips Zstd compression and decompression entirely and always retains RAW backing. This does not quantize or discard data. RAW snapshots use the same bounded cold and clean-cache quota, so they need more RAM and can be refused if the stored data will not fit. Accepted writes still invalidate affected clean-cache snapshots.
+
+The model helper exposes the cutoff as `--min-savings-percent N`. CPU checks in `compression_policy.hpp` passed the exact ceiling and `uint64_t` boundary cases. The focused gate passed **6/6** in **2.19 seconds**: two CPU cases and four synthetic/native Vulkan cases. Across 30 fresh GPU snapshots, all RAW entries had stored size equal to logical size, compressed bytes were zero, full-byte checks passed, and accepted writes invalidated cached copies as expected. The full CTest suite passed **92/92** in **58.81 seconds**, with zero validation errors or VUIDs. See the [focused checks](validation/vulkan-compression-cutoff-focused.txt) and [full-suite log](validation/vulkan-compression-cutoff-92-ctest.txt). These are correctness and accounting results, not a throughput benchmark or evidence for 40 GiB or game workloads.
+
+### Matched 135M model run
+
+The unchanged SmolLM2-135M F16 pair used the same binary, model, 1,000 ms idle interval, 32 MiB ranges, 192 MiB resident limit, MRU, clean cache, strict robustness, one node per submit, and validation; only the minimum savings cutoff changed. Both runs produced the same stdout (SHA-256 `40af802dfb2b6042c7e4ec011b0d82ed8057f634f9c724e68f23ca1917fef76b`), offloaded **31/31** layers, and had zero VUIDs. At **0%**, checks passed **27/27** with 15 compressed and 0 RAW fresh snapshots. At **100%**, checks passed **28/28** with 0 compressed and 32 RAW fresh snapshots. Each measured 44 decode runs: **8.26 tokens/s** at 0% and **17.53 tokens/s** at 100% in this single pair. Native references measured **121.84** and **125.63 tokens/s**, respectively, so neither mode approached native throughput. Stored cold backing increased from **207,000,847 bytes** (about **197.4 MiB**) at 0% to **308,084,736 bytes** (**293.8125 MiB**) at 100%; tracked peaks were **185.875 MiB** and **186.5625 MiB**, both below 192 MiB. This one small-model pair is a workload-specific observation, not a general speed claim or evidence for large models, 40 GiB, or games.
+
+See the [0% summary](validation/vulkan-cutoff-0-small-model-result.json), [100% summary](validation/vulkan-cutoff-100-small-model-result.json), and `validation/vulkan-cutoff-{0,100}-small-model-*` output and fdinfo captures.
+
 ## Managed Vulkan pool
 
 ### Mixed-data lifecycle check

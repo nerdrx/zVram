@@ -18,6 +18,7 @@ virtual_size.add_argument("--vulkan-virtual-mib", type=int, help="set the experi
 virtual_size.add_argument("--vulkan-virtual-gib", type=int, help="set the experimental Vulkan logical heap size at launch, in positive GiB (requires sparse binding)")
 parser.add_argument("--vulkan-auto-idle-ms", type=int, help="compress eligible idle Vulkan storage allocations after this delay (experimental)")
 parser.add_argument("--vulkan-cold-mib", type=int, help="limit retained Vulkan snapshots in MiB; requires --vulkan-auto-idle-ms")
+parser.add_argument("--vulkan-min-savings-percent", type=int, help="minimum snapshot savings 0..100; 0 keeps any saving, 100 uses raw snapshots; requires automatic snapshots")
 parser.add_argument("--vulkan-selective-restore", action="store_true", help="restore only allocations referenced by tracked Vulkan submissions; unknown access restores all (experimental)")
 parser.add_argument("--vulkan-active-eviction", action="store_true", help="compress unused whole Vulkan allocations while other tracked submissions remain active; requires selective restore (experimental)")
 parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residency and chunk native pools at this positive MiB granularity; requires active eviction (experimental)")
@@ -49,6 +50,10 @@ if args.vulkan_virtual_mib is not None:
 if args.vulkan_auto_idle_ms is not None:
     if args.hip or args.vulkan_virtual_mib is None or args.vulkan_cold_mib is None or not 1 <= args.vulkan_auto_idle_ms <= 60000:
         parser.error("Vulkan automatic snapshots require --vulkan-virtual-mib, --vulkan-cold-mib, and idle 1..60000 ms")
+if args.vulkan_min_savings_percent is not None and (
+        args.hip or args.vulkan_auto_idle_ms is None or
+        not 0 <= args.vulkan_min_savings_percent <= 100):
+    parser.error("--vulkan-min-savings-percent requires Vulkan automatic snapshots and a value 0..100")
 if args.vulkan_cold_mib is not None:
     if args.vulkan_auto_idle_ms is None or not 0 < args.vulkan_cold_mib <= ((1 << 64) - 1) // (1024 * 1024):
         parser.error("--vulkan-cold-mib requires automatic snapshots and a positive size fitting 64-bit bytes")
@@ -118,6 +123,8 @@ else:
     if args.vulkan_auto_idle_ms is not None:
         env["ZVRAM_VULKAN_AUTO_IDLE_MS"] = str(args.vulkan_auto_idle_ms)
         env["ZVRAM_VULKAN_COLD_MIB"] = str(args.vulkan_cold_mib)
+    if args.vulkan_min_savings_percent is not None:
+        env["ZVRAM_VULKAN_MIN_SAVINGS_PERCENT"] = str(args.vulkan_min_savings_percent)
     if args.vulkan_selective_restore:
         env["ZVRAM_VULKAN_SELECTIVE_RESTORE"] = "1"
     if args.vulkan_active_eviction:

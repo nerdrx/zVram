@@ -39,10 +39,15 @@ target_compile_definitions(zvram-vulkan-auto-check PRIVATE ZVRAM_BDA_SHADER_PATH
 target_link_libraries(zvram-vulkan-auto-check PRIVATE Vulkan::Vulkan Threads::Threads)
 add_executable(zvram-file-pool-check file_pool_check.cpp)
 target_link_libraries(zvram-file-pool-check PRIVATE zvram_pool)
+add_executable(zvram-compression-policy-check compression_policy_check.cpp)
+target_compile_features(zvram-compression-policy-check PRIVATE cxx_std_17)
 enable_testing()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME cpu-vulkan-ram-guard COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_ram_guard.py)
 set_tests_properties(cpu-vulkan-ram-guard PROPERTIES TIMEOUT 10)
+add_test(NAME cpu-vulkan-compression-options COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_compression_options.py)
+set_tests_properties(cpu-vulkan-compression-options PROPERTIES TIMEOUT 10)
+add_test(NAME cpu-compression-policy COMMAND zvram-compression-policy-check)
 add_executable(zvram-submission-tracking-check submission_tracking_check.cpp)
 target_compile_features(zvram-submission-tracking-check PRIVATE cxx_std_17)
 target_include_directories(zvram-submission-tracking-check PRIVATE ${Vulkan_INCLUDE_DIRS})
@@ -111,6 +116,20 @@ foreach(range_mode synthetic native)
     set_tests_properties(vulkan-range-residency-${range_mode} PROPERTIES TIMEOUT 60
         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
+foreach(range_mode synthetic native)
+    set(range_flags --range-submit)
+    if(range_mode STREQUAL "native")
+        list(APPEND range_flags --native-allocation)
+    endif()
+    add_test(NAME vulkan-rawrange-${range_mode}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 128
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-min-savings-percent 100 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${range_flags})
+    set_tests_properties(vulkan-rawrange-${range_mode} PROPERTIES TIMEOUT 60
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
 foreach(range_pressure_mode synthetic native)
     foreach(queue_mode single two-queues)
         set(range_pressure_flags --range-pressure)
@@ -149,6 +168,21 @@ foreach(range_cache_mode synthetic native)
             --vulkan-resident-mib 32 --vulkan-clean-cache --
             $<TARGET_FILE:zvram-vulkan-auto-check> ${range_cache_flags})
     set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
+foreach(range_cache_mode synthetic native)
+    set(range_cache_flags --range-cache)
+    if(range_cache_mode STREQUAL "native")
+        list(APPEND range_cache_flags --native-allocation)
+    endif()
+    add_test(NAME vulkan-rawcache-${range_cache_mode}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 32 --vulkan-clean-cache --vulkan-eviction-policy mru
+            --vulkan-min-savings-percent 100 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${range_cache_flags})
+    set_tests_properties(vulkan-rawcache-${range_cache_mode} PROPERTIES TIMEOUT 60
         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
 foreach(range_cache_mode synthetic native)

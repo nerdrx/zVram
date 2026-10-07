@@ -205,6 +205,8 @@ def main():
     parser.add_argument("--tokens", type=int, default=128)
     parser.add_argument("--idle-ms", type=int, default=1000)
     parser.add_argument("--cold-mib", type=int, default=512)
+    parser.add_argument("--min-savings-percent", type=int,
+                        help="minimum snapshot savings 0..100; 0 keeps any saving, 100 uses raw snapshots")
     parser.add_argument("--selective-restore", action="store_true",
                         help="test opt-in per-submission Vulkan restoration")
     parser.add_argument("--active-eviction", action="store_true",
@@ -235,6 +237,8 @@ def main():
         parser.error("--resident-mib requires --range-mib and positive size fitting 64-bit bytes")
     if args.min_available_mib is not None and not 0 < args.min_available_mib <= (1 << 64) - 1:
         parser.error("--min-available-mib must be positive and fit uint64")
+    if args.min_savings_percent is not None and not 0 <= args.min_savings_percent <= 100:
+        parser.error("--min-savings-percent must be 0..100")
     if args.eviction_policy is not None and args.resident_mib is None:
         parser.error("--eviction-policy requires --resident-mib")
     if args.strict_robustness and args.range_mib is None:
@@ -281,6 +285,8 @@ def main():
                              args.min_available_mib)
     command = [str(launcher), "--vulkan-virtual-gib", "96", "--vulkan-auto-idle-ms",
                str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib)]
+    if args.min_savings_percent is not None:
+        command += ["--vulkan-min-savings-percent", str(args.min_savings_percent)]
     if args.selective_restore:
         command.append("--vulkan-selective-restore")
     if args.active_eviction:
@@ -322,6 +328,15 @@ def main():
             (args.selective_restore or auto["cold_state"][1] == 0) and auto["cold_state"][4] > cold_state[4] and
             auto["cold_state"][5] == 0),
     }
+    if args.min_savings_percent is not None:
+        checks["minimum_savings_percent_configured"] = (
+            f"Vulkan snapshot minimum savings percent={args.min_savings_percent}" in auto_text)
+    encodings = [tuple(map(int, values)) for values in re.findall(
+        r"snapshot cold bytes=(\d+) stored=(\d+) compressed-chunks=(\d+) raw-chunks=(\d+)", auto_text)]
+    if args.min_savings_percent == 100:
+        checks["raw_only_snapshots"] = bool(encodings) and all(
+            logical == stored and compressed == 0 and raw > 0
+            for logical, stored, compressed, raw in encodings)
     selective_events = [tuple(map(int, values)) for values in re.findall(
         r"selective restore selected-pools=(\d+) restored-pools=(\d+) cold-pools-left=(\d+)", auto_text)]
     range_events = [tuple(map(int, values)) for values in re.findall(
@@ -365,6 +380,9 @@ def main():
               "binary": str(binary), "command": command,
               "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
               "eviction_policy": args.eviction_policy,
+              "min_savings_percent": args.min_savings_percent,
+              "snapshot_encoding_counts": {"compressed_chunks": sum(x[2] for x in encodings),
+                                            "raw_chunks": sum(x[3] for x in encodings)},
               "resident_admission_events": pressure_events,
               "tracked_resident_peak_after_arming": max(resident_states) if resident_states else None,
               "clean_cache_state": cache_states[-1] if cache_states else None,

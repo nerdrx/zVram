@@ -1,0 +1,385 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 2
+    Start  2: cpu-vulkan-compression-options
+
+2: Test command: /usr/bin/python3.14 "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_compression_options.py"
+2: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+2: Test timeout computed to be: 60
+1/6 Test  #2: cpu-vulkan-compression-options ...   Passed    0.22 sec
+test 3
+    Start  3: cpu-compression-policy
+
+3: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-compression-policy-check
+3: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+3: Test timeout computed to be: 60
+3: COMPRESSION_POLICY_OK including uint64 boundary checks
+2/6 Test  #3: cpu-compression-policy ...........   Passed    0.01 sec
+test 30
+    Start 30: vulkan-rawrange-synthetic
+
+30: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "128" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--vulkan-min-savings-percent" "100" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--range-submit"
+30: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+30: Environment variables: 
+30:  VK_LOADER_LAYERS_DISABLE=~implicit~
+30: Test timeout computed to be: 60
+30: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=134217728
+30: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+30: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+30: [zvram] Vulkan range residency enabled chunk-bytes=33554432
+30: [zvram] Vulkan snapshot minimum savings percent=100
+30: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+30: [zvram] virtual allocate bytes=67108864 heap-capacity=134217728
+30: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+30: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+30: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+30: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+30: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+30: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+30: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+30: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+30: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+30: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=3 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+30: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+30: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=4 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+30: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=4 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+30: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+30: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+30: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+30: [zvram] virtual free bytes=67108864
+30: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+30: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+30: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+30: PASS: two 32 MiB chunks in one live buffer restored independently; descriptor and transfer ranges preserved every byte across two cold cycles
+3/6 Test #30: vulkan-rawrange-synthetic ........   Passed    0.47 sec
+test 31
+    Start 31: vulkan-rawrange-native
+
+31: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "128" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--vulkan-min-savings-percent" "100" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--range-submit" "--native-allocation"
+31: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+31: Environment variables: 
+31:  VK_LOADER_LAYERS_DISABLE=~implicit~
+31: Test timeout computed to be: 60
+31: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=134217728
+31: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+31: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+31: [zvram] Vulkan range residency enabled chunk-bytes=33554432
+31: [zvram] Vulkan snapshot minimum savings percent=100
+31: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+31: [zvram] native allocation segmented bytes=67108864 children=2
+31: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+31: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+31: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+31: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+31: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+31: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+31: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+31: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+31: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+31: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=3 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+31: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+31: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=4 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+31: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=4 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+31: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+31: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+31: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+31: [zvram] virtual free bytes=67108864
+31: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+31: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+31: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+31: PASS: two 32 MiB chunks in one live buffer restored independently; descriptor and transfer ranges preserved every byte across two cold cycles
+4/6 Test #31: vulkan-rawrange-native ...........   Passed    0.38 sec
+test 38
+    Start 38: vulkan-rawcache-synthetic
+
+38: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "60000" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--vulkan-resident-mib" "32" "--vulkan-clean-cache" "--vulkan-eviction-policy" "mru" "--vulkan-min-savings-percent" "100" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--range-cache"
+38: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+38: Environment variables: 
+38:  VK_LOADER_LAYERS_DISABLE=~implicit~
+38: Test timeout computed to be: 60
+38: [zvram] automatic Vulkan snapshots enabled idle-ms=60000 cold-budget=67108864
+38: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+38: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+38: [zvram] Vulkan range residency enabled chunk-bytes=33554432
+38: [zvram] Vulkan resident admission enabled limit-bytes=33554432
+38: [zvram] Vulkan eviction policy=mru
+38: [zvram] Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget
+38: [zvram] Vulkan snapshot minimum savings percent=100
+38: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+38: [zvram] virtual allocate bytes=67108864 heap-capacity=134217728
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=33554432 incoming-bytes=0 limit-bytes=33554432
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=0
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=3 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=1
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=3 restores=2 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=1
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=4 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=2
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=4 restores=3 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=2
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+38: CLEAN_CACHE_READBACK_PHASE_BEGIN
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=5 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=3
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=5 restores=4 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=3
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_READBACK pass=0 chunk=0
+38: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+38: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=6 restores=4 failures=0 cache-stored=0 clean-reuses=1 cache-invalidations=3
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=6 restores=5 failures=0 cache-stored=33554432 clean-reuses=1 cache-invalidations=3
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_READBACK pass=0 chunk=1
+38: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+38: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=7 restores=5 failures=0 cache-stored=0 clean-reuses=2 cache-invalidations=3
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=7 restores=6 failures=0 cache-stored=33554432 clean-reuses=2 cache-invalidations=3
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_READBACK pass=1 chunk=0
+38: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+38: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=8 restores=6 failures=0 cache-stored=0 clean-reuses=3 cache-invalidations=3
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=8 restores=7 failures=0 cache-stored=33554432 clean-reuses=3 cache-invalidations=3
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_READBACK pass=1 chunk=1
+38: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+38: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=9 restores=7 failures=0 cache-stored=0 clean-reuses=4 cache-invalidations=3
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=9 restores=8 failures=0 cache-stored=33554432 clean-reuses=4 cache-invalidations=3
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_READBACK pass=2 chunk=0
+38: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+38: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=10 restores=8 failures=0 cache-stored=0 clean-reuses=5 cache-invalidations=3
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=10 restores=9 failures=0 cache-stored=33554432 clean-reuses=5 cache-invalidations=3
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_READBACK pass=2 chunk=1
+38: CLEAN_CACHE_READBACK_PHASE_END
+38: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+38: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=11 restores=9 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=3
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=11 restores=10 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=3
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_SHADER_WRITE cycle=1 chunk=0
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=12 restores=10 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=4
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=12 restores=11 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=4
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_SHADER_WRITE cycle=1 chunk=1
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=13 restores=11 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=5
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=13 restores=12 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=5
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_SHADER_WRITE cycle=2 chunk=0
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=14 restores=12 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=6
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=14 restores=13 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=6
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_SHADER_WRITE cycle=2 chunk=1
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=15 restores=13 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=7
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=15 restores=14 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=7
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_SHADER_WRITE cycle=3 chunk=0
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=16 restores=14 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=8
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=16 restores=15 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=8
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: CLEAN_CACHE_SHADER_WRITE cycle=3 chunk=1
+38: [zvram] resident admission refused: submission working set exceeds limit-bytes=33554432 known=1
+38: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=17 restores=15 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=9
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=17 restores=16 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=9
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+38: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=18 restores=16 failures=0 cache-stored=0 clean-reuses=7 cache-invalidations=9
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=18 restores=17 failures=0 cache-stored=33554432 clean-reuses=7 cache-invalidations=9
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: [zvram] resident admission refused: submission working set exceeds limit-bytes=33554432 known=0
+38: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+38: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=19 restores=17 failures=0 cache-stored=0 clean-reuses=8 cache-invalidations=9
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=19 restores=18 failures=0 cache-stored=33554432 clean-reuses=8 cache-invalidations=9
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+38: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=20 restores=18 failures=0 cache-stored=0 clean-reuses=9 cache-invalidations=9
+38: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+38: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=20 restores=19 failures=0 cache-stored=33554432 clean-reuses=9 cache-invalidations=9
+38: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+38: PASS: resident-cap range pressure evicted completed chunks, refused broad/unknown submissions, and preserved every byte
+38: [zvram] virtual free bytes=67108864
+38: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=20 restores=19 failures=0 cache-stored=0 clean-reuses=9 cache-invalidations=9
+38: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+5/6 Test #38: vulkan-rawcache-synthetic ........   Passed    0.55 sec
+test 39
+    Start 39: vulkan-rawcache-native
+
+39: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "60000" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--vulkan-resident-mib" "32" "--vulkan-clean-cache" "--vulkan-eviction-policy" "mru" "--vulkan-min-savings-percent" "100" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--range-cache" "--native-allocation"
+39: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+39: Environment variables: 
+39:  VK_LOADER_LAYERS_DISABLE=~implicit~
+39: Test timeout computed to be: 60
+39: [zvram] automatic Vulkan snapshots enabled idle-ms=60000 cold-budget=67108864
+39: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+39: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+39: [zvram] Vulkan range residency enabled chunk-bytes=33554432
+39: [zvram] Vulkan resident admission enabled limit-bytes=33554432
+39: [zvram] Vulkan eviction policy=mru
+39: [zvram] Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget
+39: [zvram] Vulkan snapshot minimum savings percent=100
+39: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+39: [zvram] native allocation segmented bytes=67108864 children=2
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=33554432 incoming-bytes=0 limit-bytes=33554432
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=0
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=3 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=1
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=3 restores=2 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=1
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=4 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=2
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=4 restores=3 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=2
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+39: CLEAN_CACHE_READBACK_PHASE_BEGIN
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=5 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=3
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=5 restores=4 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=3
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_READBACK pass=0 chunk=0
+39: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+39: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=6 restores=4 failures=0 cache-stored=0 clean-reuses=1 cache-invalidations=3
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=6 restores=5 failures=0 cache-stored=33554432 clean-reuses=1 cache-invalidations=3
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_READBACK pass=0 chunk=1
+39: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+39: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=7 restores=5 failures=0 cache-stored=0 clean-reuses=2 cache-invalidations=3
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=7 restores=6 failures=0 cache-stored=33554432 clean-reuses=2 cache-invalidations=3
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_READBACK pass=1 chunk=0
+39: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+39: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=8 restores=6 failures=0 cache-stored=0 clean-reuses=3 cache-invalidations=3
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=8 restores=7 failures=0 cache-stored=33554432 clean-reuses=3 cache-invalidations=3
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_READBACK pass=1 chunk=1
+39: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+39: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=9 restores=7 failures=0 cache-stored=0 clean-reuses=4 cache-invalidations=3
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=9 restores=8 failures=0 cache-stored=33554432 clean-reuses=4 cache-invalidations=3
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_READBACK pass=2 chunk=0
+39: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+39: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=10 restores=8 failures=0 cache-stored=0 clean-reuses=5 cache-invalidations=3
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=10 restores=9 failures=0 cache-stored=33554432 clean-reuses=5 cache-invalidations=3
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_READBACK pass=2 chunk=1
+39: CLEAN_CACHE_READBACK_PHASE_END
+39: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+39: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=11 restores=9 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=3
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=11 restores=10 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=3
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_SHADER_WRITE cycle=1 chunk=0
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=12 restores=10 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=4
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=12 restores=11 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=4
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_SHADER_WRITE cycle=1 chunk=1
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=13 restores=11 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=5
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=13 restores=12 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=5
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_SHADER_WRITE cycle=2 chunk=0
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=14 restores=12 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=6
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=14 restores=13 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=6
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_SHADER_WRITE cycle=2 chunk=1
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=15 restores=13 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=7
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=15 restores=14 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=7
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_SHADER_WRITE cycle=3 chunk=0
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=16 restores=14 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=8
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=16 restores=15 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=8
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: CLEAN_CACHE_SHADER_WRITE cycle=3 chunk=1
+39: [zvram] resident admission refused: submission working set exceeds limit-bytes=33554432 known=1
+39: [zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=17 restores=15 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=9
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=17 restores=16 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=9
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+39: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=18 restores=16 failures=0 cache-stored=0 clean-reuses=7 cache-invalidations=9
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=18 restores=17 failures=0 cache-stored=33554432 clean-reuses=7 cache-invalidations=9
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: [zvram] resident admission refused: submission working set exceeds limit-bytes=33554432 known=0
+39: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+39: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=19 restores=17 failures=0 cache-stored=0 clean-reuses=8 cache-invalidations=9
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=19 restores=18 failures=0 cache-stored=33554432 clean-reuses=8 cache-invalidations=9
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: [zvram] snapshot reused clean bytes=33554432 stored=33554432
+39: [zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=20 restores=18 failures=0 cache-stored=0 clean-reuses=9 cache-invalidations=9
+39: [zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+39: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=20 restores=19 failures=0 cache-stored=33554432 clean-reuses=9 cache-invalidations=9
+39: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+39: PASS: resident-cap range pressure evicted completed chunks, refused broad/unknown submissions, and preserved every byte
+39: [zvram] virtual free bytes=67108864
+39: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=20 restores=19 failures=0 cache-stored=0 clean-reuses=9 cache-invalidations=9
+39: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+6/6 Test #39: vulkan-rawcache-native ...........   Passed    0.56 sec
+
+The following tests passed:
+	cpu-vulkan-compression-options
+	cpu-compression-policy
+	vulkan-rawrange-synthetic
+	vulkan-rawrange-native
+	vulkan-rawcache-synthetic
+	vulkan-rawcache-native
+
+100% tests passed out of 6
+
+Total Test time (real) =   2.19 sec
