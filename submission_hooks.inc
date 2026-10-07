@@ -263,9 +263,18 @@ VkResult restoreForQueue(Device& d,const char*,std::uint32_t count,const VkSubmi
 template<class... Args>
 bool queueMemories(Device&,const char*,std::vector<ActiveRefs::Use>&,Args...) { return false; }
 bool commandMemories(Device& d,const std::vector<VkCommandBuffer>& commands,std::vector<ActiveRefs::Use>& memories,bool writesOnly) {
-    if(!d.selectiveRestore || unknownCommandProc) return false;
+    auto fallback=[&](const char* reason) {
+        if(!d.reportedAccessFallback) {
+            d.reportedAccessFallback=true;
+            logf("access tracking fallback reason=%s command-count=%zu",reason,commands.size());
+        }
+        return false;
+    };
+    if(!d.selectiveRestore) return fallback("selective-disabled");
+    if(unknownCommandProc) return fallback("unwrapped-command-procedure");
     std::vector<VkSubmissionTracker::BufferRange> ranges;
-    if(!d.submission.collectRanges(static_cast<std::uint32_t>(commands.size()),commands.data(),ranges)) return false;
+    const char* trackingReason=nullptr;
+    if(!d.submission.collectRanges(static_cast<std::uint32_t>(commands.size()),commands.data(),ranges,&trackingReason)) return fallback(trackingReason ? trackingReason : "command-resources-unknown");
     if(!d.rangeChunkBytes || !d.narrowDescriptorRanges)
         for(auto& range:ranges) { range.offset=0; range.size=VK_WHOLE_SIZE; }
     for(const auto& range:ranges) {
@@ -282,9 +291,9 @@ bool commandMemories(Device& d,const std::vector<VkCommandBuffer>& commands,std:
         if(!d.rangeChunkBytes) { add(SIZE_MAX); continue; }
         const auto binding=std::find_if(v->second.bindings.begin(),v->second.bindings.end(),
             [&](const auto& entry){return entry.buffer==range.buffer;});
-        if(binding==v->second.bindings.end() || range.offset>=p->second.size) return false;
+        if(binding==v->second.bindings.end() || range.offset>=p->second.size) return fallback("buffer-binding-or-offset-invalid");
         const auto bytes=range.size==VK_WHOLE_SIZE?p->second.size-range.offset:range.size;
-        if(!bytes || bytes>p->second.size-range.offset) return false;
+        if(!bytes || bytes>p->second.size-range.offset) return fallback("buffer-range-invalid");
         auto relativeStart=range.offset;
         auto relativeEnd=range.offset+bytes;
         const auto alignment=d.robustRangeAlignment;

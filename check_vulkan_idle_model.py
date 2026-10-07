@@ -44,6 +44,15 @@ def available_memory_mib():
     return int(match[1]) // 1024
 
 
+def used_swap_mib():
+    text = Path("/proc/meminfo").read_text()
+    total = re.search(r"^SwapTotal:\s+(\d+)\s+kB$", text, re.M)
+    free = re.search(r"^SwapFree:\s+(\d+)\s+kB$", text, re.M)
+    if not total or not free:
+        raise RuntimeError("/proc/meminfo has no complete swap values")
+    return max(0, int(total[1]) - int(free[1])) // 1024
+
+
 def pressure_prompt_ready(ready, model_mib):
     """Pressure mode prompts at readiness; first inference submit performs admission."""
     return bool(ready and model_mib)
@@ -107,7 +116,8 @@ def capture_backing(pid, path):
 
 
 def run_interactive(label, command, env, output_dir, timeout, automatic,
-                    min_available_mib=None, pressure_on_first_submit=False):
+                    min_available_mib=None, pressure_on_first_submit=False,
+                    max_swap_growth_mib=None):
     out_path = output_dir / f"{label}.stdout.txt"
     err_path = output_dir / f"{label}.stderr.txt"
     stdout = bytearray()
@@ -118,6 +128,8 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
     model_mib = []
     prompt_time = first_output_time = None
     prompt_sent = False
+    swap_baseline_mib = used_swap_mib()
+    swap_peak_mib = swap_baseline_mib
     proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, env=env, start_new_session=True,
                             bufsize=0)
@@ -127,15 +139,25 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
     pre_prompt_cold_state = None
     pre_prompt_state = None
     minimum_available_mib = None
+
+    def sample_resources():
+        nonlocal minimum_available_mib, swap_peak_mib
+        if min_available_mib is not None:
+            available = available_memory_mib()
+            minimum_available_mib = (available if minimum_available_mib is None
+                                     else min(minimum_available_mib, available))
+            if available < min_available_mib:
+                raise RuntimeError(f"{label}: MemAvailable {available} MiB below guard "
+                                   f"floor {min_available_mib} MiB")
+        swap_peak_mib = max(swap_peak_mib, used_swap_mib())
+        growth = swap_peak_mib - swap_baseline_mib
+        if max_swap_growth_mib is not None and growth > max_swap_growth_mib:
+            raise RuntimeError(f"{label}: swap growth {growth} MiB above guard limit "
+                               f"{max_swap_growth_mib} MiB")
+
     try:
         while time.monotonic() < deadline:
-            if min_available_mib is not None:
-                available = available_memory_mib()
-                minimum_available_mib = (available if minimum_available_mib is None
-                                          else min(minimum_available_mib, available))
-                if available < min_available_mib:
-                    raise RuntimeError(f"{label}: MemAvailable {available} MiB below guard "
-                                       f"floor {min_available_mib} MiB")
+            sample_resources()
             readable, _, _ = select.select([proc.stdout, proc.stderr], [], [], 0.05)
             for stream in readable:
                 chunk = os.read(stream.fileno(), 65536)
@@ -187,18 +209,14 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
                     break
         else:
             raise RuntimeError(f"{label} timed out waiting for ready model/snapshot")
+        sample_resources()
         prompt_time = time.monotonic()
         pressure_stderr_start = len(stderr)
         proc.stdin.write(Prompt)
         proc.stdin.close()
         prompt_sent = True
         while proc.poll() is None and time.monotonic() < deadline:
-            if min_available_mib is not None:
-                available = available_memory_mib()
-                minimum_available_mib = min(minimum_available_mib, available)
-                if available < min_available_mib:
-                    raise RuntimeError(f"{label}: MemAvailable {available} MiB below guard "
-                                       f"floor {min_available_mib} MiB")
+            sample_resources()
             readable, _, _ = select.select([proc.stdout, proc.stderr], [], [], 0.05)
             for stream in readable:
                 chunk = os.read(stream.fileno(), 65536)
@@ -253,6 +271,9 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
             "first_stdout_after_input_ms": ((first_output_time - prompt_time) * 1000
                                             if first_output_time and prompt_time else None),
             "minimum_available_mib": minimum_available_mib,
+            "swap_used_baseline_mib": swap_baseline_mib,
+            "swap_used_peak_mib": swap_peak_mib,
+            "swap_growth_mib": swap_peak_mib - swap_baseline_mib,
             "returncode": proc.returncode}
 
 
@@ -284,6 +305,8 @@ def main():
     parser.add_argument("--resident-mib", type=int, help="test pressure admission limit; requires --range-mib")
     parser.add_argument("--min-available-mib", type=int,
                         help="abort when /proc/meminfo MemAvailable falls below this positive MiB floor")
+    parser.add_argument("--max-swap-growth-mib", type=int,
+                        help="abort when system-wide used swap grows by more than this MiB during either run")
     parser.add_argument("--eviction-policy", choices=("lru", "mru"),
                         help="choose resident-range eviction order; requires --resident-mib")
     parser.add_argument("--strict-robustness", action="store_true", help="enable supported robustness2 for narrow descriptor ranges")
@@ -318,6 +341,8 @@ def main():
         parser.error("--resident-mib requires --range-mib and positive size fitting 64-bit bytes")
     if args.min_available_mib is not None and not 0 < args.min_available_mib <= (1 << 64) - 1:
         parser.error("--min-available-mib must be positive and fit uint64")
+    if args.max_swap_growth_mib is not None and not 0 < args.max_swap_growth_mib <= (1 << 64) - 1:
+        parser.error("--max-swap-growth-mib must be positive and fit uint64")
     if args.min_savings_percent is not None and not 0 <= args.min_savings_percent <= 100:
         parser.error("--min-savings-percent must be 0..100")
     if args.byte_shuffle is not None and args.min_savings_percent == 100:
@@ -372,7 +397,8 @@ def main():
         env["VK_VALIDATION_VALIDATE_SYNC"] = "1"
         env["VK_LOADER_LAYERS_DISABLE"] = "~implicit~"
     native = run_interactive("native", app, env, output, args.timeout, False,
-                             args.min_available_mib)
+                             args.min_available_mib,
+                             max_swap_growth_mib=args.max_swap_growth_mib)
     command = [str(launcher), "--vulkan-virtual-gib", "96", "--vulkan-auto-idle-ms",
                str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib)]
     if args.build_dir:
@@ -413,7 +439,8 @@ def main():
         command += ["--validate", "--isolate-layers"]
     command += ["--", *app]
     auto = run_interactive("automatic", command, env, output, args.timeout, True,
-                           args.min_available_mib, args.pressure_on_first_submit)
+                           args.min_available_mib, args.pressure_on_first_submit,
+                           args.max_swap_growth_mib)
     auto_text = auto["stderr"]
     auto_cold = auto["cold"]
     cleanup_fields = re.findall(r"\[zvram\].*(?:summary|automatic).*", auto_text, re.I)
@@ -546,6 +573,14 @@ def main():
               "async_compression_requested": args.async_compression,
               "async_compression_commits": async_commits,
               "validation_enabled": args.validate,
+              "max_swap_growth_mib": args.max_swap_growth_mib,
+              "swap_usage_mib": {
+                  "native": {"baseline": native["swap_used_baseline_mib"],
+                             "peak": native["swap_used_peak_mib"],
+                             "growth": native["swap_growth_mib"]},
+                  "automatic": {"baseline": auto["swap_used_baseline_mib"],
+                                "peak": auto["swap_used_peak_mib"],
+                                "growth": auto["swap_growth_mib"]}},
               "binary": str(binary), "command": command,
               "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
               "eviction_policy": args.eviction_policy,

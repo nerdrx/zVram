@@ -1,0 +1,19 @@
+{
+  "model": "InternLM2.5-20B F16, 39725643136 bytes",
+  "mmap_baseline": "manually stopped during loading after observed logical swap growth; no wrapped run",
+  "dio_native": {
+    "offload": "49/49",
+    "vulkan_model_mib": 36798.77,
+    "performance": {
+      "decode_ms": 7533.88,
+      "decode_runs": 12,
+      "tokens_per_second": 1.59,
+      "prompt_ms": 1571.86,
+      "restore_ms": []
+    }
+  },
+  "dio_wrapped": "exited before input; unknown submission requires whole model beyond native budget derived cap; no accepted wrapped token rate",
+  "diagnostic": "Runtime collectRanges fallback: untracked-command; a named-command diagnostic and core event tracking fix are CPU-tested, runtime retest pending.",
+  "next": "identify unsafe command/pipeline/descriptor while preserving conservative fallback",
+  "limits": "logical zram used swap is not physical RAM use; swappiness150 and120GiB zram capacity observed; no system settings changed"
+}

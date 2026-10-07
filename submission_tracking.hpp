@@ -33,11 +33,15 @@ public:
     }
 
     void computePipeline(VkPipeline pipeline, const VkComputePipelineCreateInfo& info) {
-        const bool safe = info.stage.stage == VK_SHADER_STAGE_COMPUTE_BIT &&
-                               safePipelineChain(info.pNext) &&
-                               safeStageChain(info.stage.pNext) &&
-                               shaderKind(info.stage.module) == ShaderKind::Logical;
+        const char* reason = nullptr;
+        if (!safePipelineChain(info.pNext)) reason = "pipeline-chain-unsupported";
+        else if (!safeStageChain(info.stage.pNext)) reason = "pipeline-stage-chain-unsupported";
+        else if (info.stage.stage != VK_SHADER_STAGE_COMPUTE_BIT ||
+                 shaderKind(info.stage.module) != ShaderKind::Logical) reason = "pipeline-access-unknown";
+        const bool safe = reason == nullptr;
         pipelines_[pipeline] = safe;
+        if (safe) pipelineReasons_.erase(pipeline);
+        else pipelineReasons_[pipeline] = reason;
         pipelineReadOnly_.erase(pipeline);
         if (safe) pipelineReadOnly_[pipeline] = shaders_.at(info.stage.module).readOnly;
         bool wide=false;
@@ -64,6 +68,7 @@ public:
     }
     void erasePipeline(VkPipeline pipeline) {
         pipelines_.erase(pipeline);
+        pipelineReasons_.erase(pipeline);
         widePipelines_.erase(pipeline);
         pipelineReadOnly_.erase(pipeline);
     }
@@ -71,20 +76,23 @@ public:
     void layout(VkDescriptorSetLayout handle, const VkDescriptorSetLayoutCreateInfo& info) {
         Layout state;
         state.safe = info.flags == 0 && (!info.bindingCount || info.pBindings != nullptr);
+        if (!state.safe) state.unsafeReason = "descriptor-layout-invalid";
         bool sawBindingFlags = false;
         for (auto* p = static_cast<const VkBaseInStructure*>(info.pNext); p; p = p->pNext) {
             if (p->sType != VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO || sawBindingFlags) {
                 state.safe = false;
+                state.unsafeReason = "descriptor-layout-chain-unsupported";
                 continue;
             }
             sawBindingFlags = true;
             const auto* flags = reinterpret_cast<const VkDescriptorSetLayoutBindingFlagsCreateInfo*>(p);
             if (flags->bindingCount != info.bindingCount || (flags->bindingCount && !flags->pBindingFlags)) {
                 state.safe = false;
+                state.unsafeReason = "descriptor-layout-flags-invalid";
                 continue;
             }
             for (std::uint32_t i = 0; i < flags->bindingCount; ++i)
-                if (flags->pBindingFlags[i] != 0) state.safe = false;
+                if (flags->pBindingFlags[i] != 0) { state.safe = false; state.unsafeReason = "descriptor-layout-flags-unsupported"; }
         }
         if (info.bindingCount && info.pBindings) {
             for (std::uint32_t i = 0; i < info.bindingCount; ++i) {
@@ -94,7 +102,7 @@ public:
                 if (!knownDescriptorType(binding.descriptorType) || !binding.descriptorCount ||
                     !state.bindings.emplace(binding.binding,
                         Binding{binding.descriptorType, binding.descriptorCount, storage}).second)
-                    state.safe = false;
+                    { state.safe = false; state.unsafeReason = "descriptor-layout-binding-invalid"; }
             }
         }
         layouts_[handle] = std::move(state);
@@ -111,9 +119,10 @@ public:
             Set state;
             state.pool = info->descriptorPool;
             const auto layoutIt = layouts_.find(info->pSetLayouts[i]);
-            if (layoutIt == layouts_.end()) state.safe = false;
+            if (layoutIt == layouts_.end()) { state.safe = false; state.unsafeReason = "descriptor-layout-not-tracked"; }
             else {
                 state.safe = layoutIt->second.safe;
+                state.unsafeReason = layoutIt->second.unsafeReason;
                 state.bindings = layoutIt->second.bindings;
                 for (const auto& entry : state.bindings) if (entry.second.storage) {
                     state.buffers[entry.first].resize(entry.second.count);
@@ -140,15 +149,16 @@ public:
             const auto& write = writes[i];
             auto set = sets_.find(write.dstSet);
             if (set == sets_.end()) continue;
-            if (!set->second.safe || write.pNext) { set->second.safe = false; continue; }
+            if (!set->second.safe || write.pNext) { set->second.safe = false; set->second.unsafeReason = "descriptor-update-unsupported"; continue; }
             std::vector<Slot> slots;
             if (!resolve(set->second.bindings, write.dstBinding, write.dstArrayElement,
                          write.descriptorCount, write.descriptorType, slots)) {
                 set->second.safe = false;
+                set->second.unsafeReason = "descriptor-update-invalid";
                 continue;
             }
             if (!isStorage(write.descriptorType)) continue;
-            if (!write.pBufferInfo) { set->second.safe = false; continue; }
+            if (!write.pBufferInfo) { set->second.safe = false; set->second.unsafeReason = "descriptor-buffer-info-missing"; continue; }
             for (std::uint32_t j = 0; j < write.descriptorCount; ++j) {
                 const auto& slot = slots[j];
                 set->second.buffers[slot.binding][slot.element] = write.pBufferInfo[j];
@@ -172,6 +182,7 @@ public:
             if (entry.second.pool == pool) {
                 entry.second = Command{pool};
                 entry.second.safe = false;
+                entry.second.unsafeReason = "command-buffer-reset";
             }
     }
     void resetCommand(VkCommandBuffer command) {
@@ -180,6 +191,7 @@ public:
         const auto pool = i->second.pool;
         i->second = Command{pool};
         i->second.safe = false;
+        i->second.unsafeReason = "command-buffer-reset";
     }
     void eraseCommandPool(VkCommandPool pool) {
         for (auto i = commands_.begin(); i != commands_.end();) {
@@ -189,7 +201,7 @@ public:
     }
     void beginCommand(VkCommandBuffer command) {
         auto i = commands_.find(command);
-        if (i == commands_.end()) { commands_[command].safe = false; return; }
+        if (i == commands_.end()) { auto& state=commands_[command]; state.safe=false; state.unsafeReason="command-buffer-not-tracked"; return; }
         const auto pool = i->second.pool;
         i->second = Command{pool};
     }
@@ -200,14 +212,15 @@ public:
                      VkDeviceSize size, bool mayWrite = true) {
         auto i = commands_.find(command);
         if (i == commands_.end()) return;
-        if (!handle) { i->second.safe = false; return; }
+        if (!handle) markUnsafe(i->second,"buffer-reference-invalid");
+        if (!handle) return;
         i->second.buffers.push_back({handle, offset, size, mayWrite});
     }
     void descriptors(VkCommandBuffer command, std::uint32_t count, const VkDescriptorSet* sets,
                      std::uint32_t firstSet = 0) {
         auto i = commands_.find(command);
         if (i == commands_.end()) return;
-        if (count && (!sets || count > UINT32_MAX - firstSet)) { i->second.safe = false; return; }
+        if (count && (!sets || count > UINT32_MAX - firstSet)) { markUnsafe(i->second,"descriptor-reference-invalid"); return; }
         for (std::uint32_t j = 0; j < count; ++j)
             i->second.sets.emplace_back(firstSet + j, sets[j]);
     }
@@ -215,7 +228,8 @@ public:
         auto c = commands_.find(command);
         if (c == commands_.end()) return;
         const auto p = pipelines_.find(pipelineHandle);
-        if (p == pipelines_.end() || !p->second) c->second.safe = false;
+        if (p == pipelines_.end()) markUnsafe(c->second,"pipeline-not-tracked");
+        else if (!p->second) markUnsafe(c->second,pipelineReasons_[pipelineHandle]);
         else if (std::find(c->second.pipelines.begin(), c->second.pipelines.end(), pipelineHandle) ==
                  c->second.pipelines.end()) c->second.pipelines.push_back(pipelineHandle);
         const auto wide=widePipelines_.find(pipelineHandle);
@@ -224,13 +238,13 @@ public:
     void secondary(VkCommandBuffer command, std::uint32_t count, const VkCommandBuffer* secondaryCommands) {
         auto i = commands_.find(command);
         if (i == commands_.end()) return;
-        if (count && !secondaryCommands) { i->second.safe = false; return; }
+        if (count && !secondaryCommands) { markUnsafe(i->second,"secondary-command-list-invalid"); return; }
         if (count) i->second.secondaries.insert(i->second.secondaries.end(), secondaryCommands,
                                                secondaryCommands + count);
     }
-    void unknown(VkCommandBuffer command) {
+    void unknown(VkCommandBuffer command,const char* reason="untracked-command") {
         auto i = commands_.find(command);
-        if (i != commands_.end()) i->second.safe = false;
+        if (i != commands_.end()) markUnsafe(i->second,reason);
     }
 
     bool collect(std::uint32_t count, const VkCommandBuffer* commands, std::vector<VkBuffer>& out) const {
@@ -244,13 +258,14 @@ public:
     }
 
     bool collectRanges(std::uint32_t count, const VkCommandBuffer* commands,
-                       std::vector<BufferRange>& out) const {
+                       std::vector<BufferRange>& out,const char** reason=nullptr) const {
         out.clear();
-        if (count && !commands) return false;
+        if(reason) *reason=nullptr;
+        if (count && !commands) { if(reason) *reason="command-buffer-list-null"; return false; }
         std::vector<BufferRange> found;
         std::unordered_set<VkCommandBuffer> visited, visiting;
         for (std::uint32_t i = 0; i < count; ++i)
-            if (!collectCommand(commands[i], found, visited, visiting)) return false;
+            if (!collectCommand(commands[i], found, visited, visiting,reason)) return false;
         out = std::move(found);
         return true;
     }
@@ -278,10 +293,11 @@ private:
         std::uint32_t binding{};
     };
     struct Binding { VkDescriptorType type; std::uint32_t count; bool storage; };
-    struct Layout { bool safe{true}; std::map<std::uint32_t, Binding> bindings; };
+    struct Layout { bool safe{true}; const char* unsafeReason{}; std::map<std::uint32_t, Binding> bindings; };
     struct Set {
         VkDescriptorPool pool{};
         bool safe{true};
+        const char* unsafeReason{};
         std::map<std::uint32_t, Binding> bindings;
         std::map<std::uint32_t, std::vector<VkDescriptorBufferInfo>> buffers;
         std::map<std::uint32_t, std::vector<bool>> written;
@@ -290,6 +306,7 @@ private:
         explicit Command(VkCommandPool owner = VK_NULL_HANDLE) : pool(owner) {}
         VkCommandPool pool{};
         bool safe{true};
+        const char* unsafeReason{};
         std::vector<BufferRange> buffers;
         bool wideBuffers{};
         std::vector<std::pair<std::uint32_t, VkDescriptorSet>> sets;
@@ -567,26 +584,32 @@ private:
             destination->second.written[dst[i].binding][dst[i].element] = values[i].second;
         }
     }
+    static void markUnsafe(Command& command,const char* reason) {
+        if(command.safe) command.unsafeReason=reason;
+        command.safe=false;
+    }
     bool collectCommand(VkCommandBuffer command, std::vector<BufferRange>& out,
                         std::unordered_set<VkCommandBuffer>& visited,
-                        std::unordered_set<VkCommandBuffer>& visiting) const {
+                        std::unordered_set<VkCommandBuffer>& visiting,const char** reason) const {
         if (visited.count(command)) return true;
-        if (!visiting.insert(command).second) return false;
+        if (!visiting.insert(command).second) { if(reason) *reason="cyclic-command-buffer-reference"; return false; }
         const auto c = commands_.find(command);
-        if (c == commands_.end() || !c->second.safe) return false;
+        if (c == commands_.end()) { if(reason) *reason="command-buffer-not-tracked"; return false; }
+        if (!c->second.safe) { if(reason) *reason=c->second.unsafeReason?c->second.unsafeReason:"command-unsafe"; return false; }
         out.insert(out.end(), c->second.buffers.begin(), c->second.buffers.end());
         for (const auto& setEntry : c->second.sets) {
             const auto setIndex = setEntry.first;
             const auto setHandle = setEntry.second;
             const auto set = sets_.find(setHandle);
-            if (set == sets_.end() || !set->second.safe) return false;
+            if (set == sets_.end()) { if(reason) *reason="descriptor-set-not-tracked"; return false; }
+            if (!set->second.safe) { if(reason) *reason=set->second.unsafeReason?set->second.unsafeReason:"descriptor-unsafe"; return false; }
             bool hasInitializedStorage = false;
             for (const auto& binding : set->second.bindings) if (binding.second.storage) {
                 const auto written = set->second.written.find(binding.first);
                 const auto buffers = set->second.buffers.find(binding.first);
                 if (written == set->second.written.end() || buffers == set->second.buffers.end() ||
                     written->second.size() != binding.second.count || buffers->second.size() != binding.second.count)
-                    return false;
+                    { if(reason) *reason="descriptor-state-invalid"; return false; }
                 const bool anyWritten = std::any_of(written->second.begin(), written->second.end(),
                                                     [](bool value) { return value; });
                 if (!anyWritten) continue;
@@ -594,7 +617,8 @@ private:
                 for (std::size_t i = 0; i < written->second.size(); ++i) {
                     const auto& descriptor = buffers->second[i];
                     const auto buffer = descriptor.buffer;
-                    if (!written->second[i] || !buffer) return false;
+                    if (!written->second[i]) { if(reason) *reason="descriptor-partial"; return false; }
+                    if (!buffer) { if(reason) *reason="descriptor-uninitialized"; return false; }
                     bool mayWrite = c->second.pipelines.empty();
                     for (const auto pipeline : c->second.pipelines) {
                         const auto proof = pipelineReadOnly_.find(pipeline);
@@ -611,19 +635,20 @@ private:
                         out.push_back({buffer, descriptor.offset, descriptor.range, mayWrite});
                 }
             }
-            if (!hasInitializedStorage) return false;
+            if (!hasInitializedStorage) { if(reason) *reason="descriptor-uninitialized"; return false; }
         }
         for (auto secondary : c->second.secondaries)
-            if (!collectCommand(secondary, out, visited, visiting)) return false;
+            if (!collectCommand(secondary, out, visited, visiting,reason)) return false;
         visiting.erase(command);
         visited.insert(command);
         return true;
     }
-    void poisonSets() { for (auto& set : sets_) set.second.safe = false; }
-    void poisonCommands() { for (auto& command : commands_) command.second.safe = false; }
+    void poisonSets() { for (auto& set : sets_) { set.second.safe = false; set.second.unsafeReason="descriptor-state-unsafe"; } }
+    void poisonCommands() { for (auto& command : commands_) markUnsafe(command.second,"command-state-unsafe"); }
 
     std::unordered_map<VkShaderModule, ShaderData> shaders_;
     std::unordered_map<VkPipeline, bool> pipelines_;
+    std::unordered_map<VkPipeline, const char*> pipelineReasons_;
     std::unordered_map<VkPipeline, bool> widePipelines_;
     std::unordered_map<VkPipeline, std::map<SetBinding, bool>> pipelineReadOnly_;
     bool boundedDefault_{};

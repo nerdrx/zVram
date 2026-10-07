@@ -1,0 +1,8 @@
+{
+  "phase": "native baseline model loading",
+  "reason": "manually stopped after system swap rose from6925MiB to18459MiB while MemAvailable stayed above16384MiB guard",
+  "outcome": "owned helper interrupted; child reaped; no wrapped run or accepted token rate",
+  "kernel": "no new matching AMDGPU fault/timeout/reset in targeted journal checks",
+  "next": "swap-growth guard and dio loading instead of mmap",
+  "stop_action": "SIGINT owned helper860314; existingfinally SIGKILL/reap ownedchildprocessgroup860317"
+}

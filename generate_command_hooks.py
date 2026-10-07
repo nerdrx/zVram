@@ -14,6 +14,11 @@ EXCLUDED = {
     "vkCmdBindTileMemoryQCOM",
 }
 NO_ACTION = {
+    # Core event state commands do not access application buffer contents.
+    # Their wait-side buffer dependencies are tracked separately.
+    "vkCmdSetEvent", "vkCmdResetEvent",
+    "vkCmdBeginDebugUtilsLabelEXT", "vkCmdEndDebugUtilsLabelEXT",
+    "vkCmdInsertDebugUtilsLabelEXT",
     "vkCmdDispatch", "vkCmdDispatchBase", "vkCmdDispatchBaseKHR",
     "vkCmdPushConstants", "vkCmdPushConstants2", "vkCmdPushConstants2KHR",
     "vkCmdResetQueryPool", "vkCmdWriteTimestamp", "vkCmdWriteTimestamp2",
@@ -139,7 +144,7 @@ def action(name, params):
         return ["secondary(commandBuffer, commandBufferCount, pCommandBuffers);"]
     if name in NO_ACTION:
         return []
-    return ["unknown(commandBuffer);"]
+    return [f'unknown(commandBuffer,"{name}");']
 
 
 def provider_expression(providers):
@@ -250,6 +255,11 @@ def main():
     args = parser.parse_args()
     content, count = generate(args.registry)
     if args.selfcheck:
+        for name in ("vkCmdSetEvent", "vkCmdResetEvent",
+                     "vkCmdBeginDebugUtilsLabelEXT", "vkCmdEndDebugUtilsLabelEXT",
+                     "vkCmdInsertDebugUtilsLabelEXT"):
+            if action(name, []) != []:
+                raise ValueError(f"command without buffer access unexpectedly invalidates tracking: {name}")
         required = ("trackedvkCmdCopyBuffer", "trackedvkCmdCopyBuffer2",
                     "trackedvkCmdBindDescriptorSets", "trackedvkCmdDispatch",
                     "trackedvkCmdExecuteCommands")

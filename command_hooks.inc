@@ -37,7 +37,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetPrimitiveRestartIndexEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPrimitiveRestartIndexEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -58,7 +58,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetAttachmentFeedbackLoopEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetAttachmentFeedbackLoopEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -81,7 +81,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetViewport(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetViewport");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -104,7 +104,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetScissor(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetScissor");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -125,7 +125,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLineWidth(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetLineWidth");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -148,7 +148,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthBias(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthBias");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -169,7 +169,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetBlendConstants(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetBlendConstants");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -191,7 +191,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthBounds(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthBounds");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -213,7 +213,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetStencilCompareMask(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetStencilCompareMask");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -235,7 +235,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetStencilWriteMask(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetStencilWriteMask");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -257,7 +257,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetStencilReference(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetStencilReference");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -307,7 +307,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindIndexBuffer(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindIndexBuffer");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -331,7 +331,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindVertexBuffers(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindVertexBuffers");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -355,7 +355,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDraw(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDraw");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -380,7 +380,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndexed(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndexed");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -405,7 +405,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMultiEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMultiEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -431,7 +431,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMultiIndexedEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMultiIndexedEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -455,7 +455,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndirect(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndirect");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -479,7 +479,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndexedIndirect(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndexedIndirect");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -543,7 +543,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSubpassShadingHUAWEI(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSubpassShadingHUAWEI");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -566,7 +566,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawClusterHUAWEI(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawClusterHUAWEI");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -588,7 +588,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawClusterIndirectHUAWEI(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawClusterIndirectHUAWEI");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -610,7 +610,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdUpdatePipelineIndirectBufferNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdUpdatePipelineIndirectBufferNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -664,7 +664,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyImage(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyImage");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -691,7 +691,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBlitImage(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBlitImage");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -716,7 +716,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBufferToImage(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyBufferToImage");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -741,7 +741,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyImageToBuffer(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyImageToBuffer");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -764,7 +764,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMemoryIndirectNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMemoryIndirectNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -785,7 +785,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMemoryIndirectKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMemoryIndirectKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -811,7 +811,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMemoryToImageIndirectNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMemoryToImageIndirectNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -832,7 +832,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMemoryToImageIndirectKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMemoryToImageIndirectKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -905,7 +905,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdClearColorImage(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdClearColorImage");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -930,7 +930,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdClearDepthStencilImage(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdClearDepthStencilImage");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -954,7 +954,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdClearAttachments(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdClearAttachments");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -980,7 +980,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdResolveImage(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdResolveImage");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1002,7 +1002,6 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetEvent(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1024,7 +1023,6 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdResetEvent(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1047,7 +1045,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginQuery(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginQuery");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1069,7 +1067,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndQuery(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndQuery");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1090,7 +1088,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginConditionalRenderingEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginConditionalRenderingEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1110,7 +1108,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndConditionalRenderingEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndConditionalRenderingEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1131,7 +1129,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginCustomResolveEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginCustomResolveEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1202,7 +1200,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyQueryPoolResults(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyQueryPoolResults");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1248,7 +1246,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginRenderPass(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginRenderPass");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1269,7 +1267,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdNextSubpass(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdNextSubpass");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1289,7 +1287,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndRenderPass(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndRenderPass");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1332,7 +1330,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDebugMarkerBeginEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDebugMarkerBeginEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1352,7 +1350,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDebugMarkerEndEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDebugMarkerEndEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1373,7 +1371,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDebugMarkerInsertEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDebugMarkerInsertEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1395,7 +1393,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdExecuteGeneratedCommandsNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdExecuteGeneratedCommandsNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1416,7 +1414,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPreprocessGeneratedCommandsNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPreprocessGeneratedCommandsNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1439,7 +1437,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindPipelineShaderGroupNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindPipelineShaderGroupNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1461,7 +1459,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdExecuteGeneratedCommandsEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdExecuteGeneratedCommandsEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1483,7 +1481,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPreprocessGeneratedCommandsEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPreprocessGeneratedCommandsEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1508,7 +1506,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPushDescriptorSet(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPushDescriptorSet");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1533,7 +1531,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPushDescriptorSetKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPushDescriptorSetKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1554,7 +1552,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDeviceMask(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDeviceMask");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1575,7 +1573,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDeviceMaskKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDeviceMaskKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1649,7 +1647,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPushDescriptorSetWithTemplate(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPushDescriptorSetWithTemplate");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1673,7 +1671,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPushDescriptorSetWithTemplateKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPushDescriptorSetWithTemplateKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1696,7 +1694,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetViewportWScalingNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetViewportWScalingNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1719,7 +1717,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDiscardRectangleEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDiscardRectangleEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1740,7 +1738,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDiscardRectangleEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDiscardRectangleEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1761,7 +1759,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDiscardRectangleModeEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDiscardRectangleModeEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1782,7 +1780,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetSampleLocationsEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetSampleLocationsEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1803,7 +1801,6 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginDebugUtilsLabelEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1823,7 +1820,6 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndDebugUtilsLabelEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1844,7 +1840,6 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdInsertDebugUtilsLabelEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1868,7 +1863,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdWriteBufferMarkerAMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdWriteBufferMarkerAMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1890,7 +1885,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginRenderPass2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginRenderPass2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1912,7 +1907,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginRenderPass2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginRenderPass2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1934,7 +1929,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdNextSubpass2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdNextSubpass2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1956,7 +1951,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdNextSubpass2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdNextSubpass2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1977,7 +1972,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndRenderPass2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndRenderPass2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -1998,7 +1993,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndRenderPass2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndRenderPass2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2024,7 +2019,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndirectCount(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndirectCount");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2050,7 +2045,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndirectCountKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndirectCountKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2076,7 +2071,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndirectCountAMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndirectCountAMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2102,7 +2097,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndexedIndirectCount(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndexedIndirectCount");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2128,7 +2123,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndexedIndirectCountKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndexedIndirectCountKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2154,7 +2149,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndexedIndirectCountAMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndexedIndirectCountAMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2175,7 +2170,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCheckpointNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCheckpointNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2200,7 +2195,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindTransformFeedbackBuffersEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindTransformFeedbackBuffersEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2224,7 +2219,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginTransformFeedbackEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginTransformFeedbackEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2248,7 +2243,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndTransformFeedbackEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndTransformFeedbackEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2272,7 +2267,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginQueryIndexedEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginQueryIndexedEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2295,7 +2290,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndQueryIndexedEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndQueryIndexedEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2321,7 +2316,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndirectByteCountEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndirectByteCountEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2344,7 +2339,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetExclusiveScissorNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetExclusiveScissorNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2367,7 +2362,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetExclusiveScissorEnableNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetExclusiveScissorEnableNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2389,7 +2384,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindShadingRateImageNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindShadingRateImageNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2412,7 +2407,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetViewportShadingRatePaletteNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetViewportShadingRatePaletteNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2435,7 +2430,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCoarseSampleOrderNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCoarseSampleOrderNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2457,7 +2452,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMeshTasksNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMeshTasksNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2481,7 +2476,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMeshTasksIndirectNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMeshTasksIndirectNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2507,7 +2502,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMeshTasksIndirectCountNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMeshTasksIndirectCountNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2530,7 +2525,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMeshTasksEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMeshTasksEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2554,7 +2549,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMeshTasksIndirectEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMeshTasksIndirectEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2580,7 +2575,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMeshTasksIndirectCountEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMeshTasksIndirectCountEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2602,7 +2597,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindInvocationMaskHUAWEI(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindInvocationMaskHUAWEI");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2625,7 +2620,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyAccelerationStructureNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyAccelerationStructureNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2646,7 +2641,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyAccelerationStructureKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyAccelerationStructureKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2667,7 +2662,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyAccelerationStructureToMemoryKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyAccelerationStructureToMemoryKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2688,7 +2683,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMemoryToAccelerationStructureKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMemoryToAccelerationStructureKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2713,7 +2708,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdWriteAccelerationStructuresPropertiesKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdWriteAccelerationStructuresPropertiesKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2738,7 +2733,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdWriteAccelerationStructuresPropertiesNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdWriteAccelerationStructuresPropertiesNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2766,7 +2761,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBuildAccelerationStructureNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBuildAccelerationStructureNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2793,7 +2788,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdTraceRaysKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdTraceRaysKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2827,7 +2822,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdTraceRaysNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdTraceRaysNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2852,7 +2847,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdTraceRaysIndirectKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdTraceRaysIndirectKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2873,7 +2868,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdTraceRaysIndirect2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdTraceRaysIndirect2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2894,7 +2889,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBuildClusterAccelerationStructureIndirect
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBuildClusterAccelerationStructureIndirectNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2915,7 +2910,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRayTracingPipelineStackSizeKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRayTracingPipelineStackSizeKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2936,7 +2931,7 @@ VKAPI_ATTR VkResult VKAPI_CALL trackedvkCmdSetPerformanceMarkerINTEL(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPerformanceMarkerINTEL");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2957,7 +2952,7 @@ VKAPI_ATTR VkResult VKAPI_CALL trackedvkCmdSetPerformanceStreamMarkerINTEL(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPerformanceStreamMarkerINTEL");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -2978,7 +2973,7 @@ VKAPI_ATTR VkResult VKAPI_CALL trackedvkCmdSetPerformanceOverrideINTEL(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPerformanceOverrideINTEL");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3000,7 +2995,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLineStipple(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetLineStipple");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3022,7 +3017,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLineStippleKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetLineStippleKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3044,7 +3039,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLineStippleEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetLineStippleEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3067,7 +3062,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBuildAccelerationStructuresKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBuildAccelerationStructuresKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3092,7 +3087,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBuildAccelerationStructuresIndirectKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBuildAccelerationStructuresIndirectKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3113,7 +3108,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCullMode(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCullMode");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3134,7 +3129,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCullModeEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCullModeEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3155,7 +3150,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetFrontFace(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetFrontFace");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3176,7 +3171,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetFrontFaceEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetFrontFaceEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3197,7 +3192,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetPrimitiveTopology(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPrimitiveTopology");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3218,7 +3213,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetPrimitiveTopologyEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPrimitiveTopologyEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3240,7 +3235,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetViewportWithCount(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetViewportWithCount");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3262,7 +3257,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetViewportWithCountEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetViewportWithCountEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3284,7 +3279,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetScissorWithCount(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetScissorWithCount");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3306,7 +3301,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetScissorWithCountEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetScissorWithCountEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3330,7 +3325,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindIndexBuffer2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindIndexBuffer2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3354,7 +3349,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindIndexBuffer2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindIndexBuffer2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3380,7 +3375,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindVertexBuffers2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindVertexBuffers2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3406,7 +3401,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindVertexBuffers2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindVertexBuffers2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3427,7 +3422,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthTestEnable(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthTestEnable");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3448,7 +3443,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthTestEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthTestEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3469,7 +3464,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthWriteEnable(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthWriteEnable");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3490,7 +3485,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthWriteEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthWriteEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3511,7 +3506,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthCompareOp(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthCompareOp");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3532,7 +3527,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthCompareOpEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthCompareOpEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3553,7 +3548,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthBoundsTestEnable(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthBoundsTestEnable");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3574,7 +3569,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthBoundsTestEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthBoundsTestEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3595,7 +3590,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetStencilTestEnable(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetStencilTestEnable");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3616,7 +3611,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetStencilTestEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetStencilTestEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3641,7 +3636,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetStencilOp(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetStencilOp");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3666,7 +3661,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetStencilOpEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetStencilOpEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3687,7 +3682,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetPatchControlPointsEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPatchControlPointsEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3708,7 +3703,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRasterizerDiscardEnable(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRasterizerDiscardEnable");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3729,7 +3724,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRasterizerDiscardEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRasterizerDiscardEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3750,7 +3745,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthBiasEnable(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthBiasEnable");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3771,7 +3766,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthBiasEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthBiasEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3792,7 +3787,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLogicOpEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetLogicOpEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3813,7 +3808,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetPrimitiveRestartEnable(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPrimitiveRestartEnable");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3834,7 +3829,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetPrimitiveRestartEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPrimitiveRestartEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3855,7 +3850,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetTessellationDomainOriginEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetTessellationDomainOriginEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3876,7 +3871,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthClampEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthClampEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3897,7 +3892,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetPolygonModeEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetPolygonModeEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3918,7 +3913,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRasterizationSamplesEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRasterizationSamplesEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3940,7 +3935,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetSampleMaskEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetSampleMaskEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3961,7 +3956,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetAlphaToCoverageEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetAlphaToCoverageEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3982,7 +3977,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetAlphaToOneEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetAlphaToOneEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4003,7 +3998,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLogicOpEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetLogicOpEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4026,7 +4021,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetColorBlendEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetColorBlendEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4049,7 +4044,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetColorBlendEquationEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetColorBlendEquationEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4072,7 +4067,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetColorWriteMaskEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetColorWriteMaskEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4093,7 +4088,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRasterizationStreamEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRasterizationStreamEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4114,7 +4109,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetConservativeRasterizationModeEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetConservativeRasterizationModeEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4135,7 +4130,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetExtraPrimitiveOverestimationSizeEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetExtraPrimitiveOverestimationSizeEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4156,7 +4151,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthClipEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthClipEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4177,7 +4172,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetSampleLocationsEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetSampleLocationsEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4200,7 +4195,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetColorBlendAdvancedEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetColorBlendAdvancedEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4221,7 +4216,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetProvokingVertexModeEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetProvokingVertexModeEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4242,7 +4237,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLineRasterizationModeEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetLineRasterizationModeEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4263,7 +4258,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLineStippleEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetLineStippleEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4284,7 +4279,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthClipNegativeOneToOneEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthClipNegativeOneToOneEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4305,7 +4300,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetViewportWScalingEnableNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetViewportWScalingEnableNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4328,7 +4323,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetViewportSwizzleNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetViewportSwizzleNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4349,7 +4344,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCoverageToColorEnableNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCoverageToColorEnableNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4370,7 +4365,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCoverageToColorLocationNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCoverageToColorLocationNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4391,7 +4386,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCoverageModulationModeNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCoverageModulationModeNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4412,7 +4407,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCoverageModulationTableEnableNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCoverageModulationTableEnableNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4434,7 +4429,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCoverageModulationTableNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCoverageModulationTableNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4455,7 +4450,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetShadingRateImageEnableNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetShadingRateImageEnableNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4476,7 +4471,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetCoverageReductionModeNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetCoverageReductionModeNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4497,7 +4492,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRepresentativeFragmentTestEnableNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRepresentativeFragmentTestEnableNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4586,7 +4581,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyImage2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyImage2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4607,7 +4602,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyImage2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyImage2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4628,7 +4623,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBlitImage2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBlitImage2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4649,7 +4644,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBlitImage2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBlitImage2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4670,7 +4665,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBufferToImage2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyBufferToImage2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4691,7 +4686,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBufferToImage2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyBufferToImage2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4712,7 +4707,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyImageToBuffer2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyImageToBuffer2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4733,7 +4728,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyImageToBuffer2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyImageToBuffer2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4754,7 +4749,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdResolveImage2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdResolveImage2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4775,7 +4770,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdResolveImage2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdResolveImage2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4797,7 +4792,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetFragmentShadingRateKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetFragmentShadingRateKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4819,7 +4814,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetFragmentShadingRateEnumNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetFragmentShadingRateEnumNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4843,7 +4838,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetVertexInputEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetVertexInputEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4865,7 +4860,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetColorWriteEnableEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetColorWriteEnableEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4887,7 +4882,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetEvent2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetEvent2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4909,7 +4904,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetEvent2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetEvent2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4931,7 +4926,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdResetEvent2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdResetEvent2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4953,7 +4948,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdResetEvent2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdResetEvent2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5021,7 +5016,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdWriteBufferMarker2AMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdWriteBufferMarker2AMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5042,7 +5037,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDecodeVideoKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDecodeVideoKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5063,7 +5058,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginVideoCodingKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginVideoCodingKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5084,7 +5079,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdControlVideoCodingKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdControlVideoCodingKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5105,7 +5100,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndVideoCodingKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndVideoCodingKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5126,7 +5121,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEncodeVideoKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEncodeVideoKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5148,7 +5143,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDecompressMemoryNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDecompressMemoryNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5171,7 +5166,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDecompressMemoryIndirectCountNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDecompressMemoryIndirectCountNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5192,7 +5187,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBuildPartitionedAccelerationStructuresNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBuildPartitionedAccelerationStructuresNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5213,7 +5208,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDecompressMemoryEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDecompressMemoryEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5238,7 +5233,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDecompressMemoryIndirectCountEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDecompressMemoryIndirectCountEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5259,7 +5254,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCuLaunchKernelNVX(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCuLaunchKernelNVX");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5281,7 +5276,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindDescriptorBuffersEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindDescriptorBuffersEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5307,7 +5302,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDescriptorBufferOffsetsEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDescriptorBufferOffsetsEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5330,7 +5325,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindDescriptorBufferEmbeddedSamplersEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindDescriptorBufferEmbeddedSamplersEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5351,7 +5346,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCudaLaunchKernelNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCudaLaunchKernelNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5372,7 +5367,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginRendering(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginRendering");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5393,7 +5388,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginRenderingKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginRenderingKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5413,7 +5408,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndRendering(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndRendering");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5434,7 +5429,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndRendering2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndRendering2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5455,7 +5450,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndRendering2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndRendering2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5475,7 +5470,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndRenderingKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndRenderingKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5497,7 +5492,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBuildMicromapsEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBuildMicromapsEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5518,7 +5513,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMicromapEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMicromapEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5539,7 +5534,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMicromapToMemoryEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMicromapToMemoryEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5560,7 +5555,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMemoryToMicromapEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMemoryToMicromapEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5585,7 +5580,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdWriteMicromapsPropertiesEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdWriteMicromapsPropertiesEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5607,7 +5602,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdOpticalFlowExecuteNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdOpticalFlowExecuteNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5628,7 +5623,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthBias2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthBias2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5651,7 +5646,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindShadersEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindShadersEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5674,7 +5669,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdInitializeGraphScratchMemoryAMDX(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdInitializeGraphScratchMemoryAMDX");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5697,7 +5692,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchGraphAMDX(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDispatchGraphAMDX");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5720,7 +5715,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchGraphIndirectAMDX(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDispatchGraphIndirectAMDX");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5743,7 +5738,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchGraphIndirectCountAMDX(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDispatchGraphIndirectCountAMDX");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5764,7 +5759,7 @@ VKAPI_ATTR VkResult VKAPI_CALL trackedvkCmdBeginGpaSessionAMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginGpaSessionAMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5785,7 +5780,7 @@ VKAPI_ATTR VkResult VKAPI_CALL trackedvkCmdEndGpaSessionAMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndGpaSessionAMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5808,7 +5803,7 @@ VKAPI_ATTR VkResult VKAPI_CALL trackedvkCmdBeginGpaSampleAMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginGpaSampleAMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5830,7 +5825,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndGpaSampleAMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndGpaSampleAMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5851,7 +5846,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyGpaSessionResultsAMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyGpaSessionResultsAMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5872,7 +5867,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindDescriptorSets2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindDescriptorSets2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5893,7 +5888,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindDescriptorSets2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindDescriptorSets2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5954,7 +5949,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPushDescriptorSet2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPushDescriptorSet2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5975,7 +5970,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPushDescriptorSet2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPushDescriptorSet2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -5996,7 +5991,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPushDescriptorSetWithTemplate2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPushDescriptorSetWithTemplate2");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6017,7 +6012,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPushDescriptorSetWithTemplate2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPushDescriptorSetWithTemplate2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6038,7 +6033,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDescriptorBufferOffsets2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDescriptorBufferOffsets2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6059,7 +6054,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindDescriptorBufferEmbeddedSamplers2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindDescriptorBufferEmbeddedSamplers2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6080,7 +6075,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRenderingAttachmentLocations(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRenderingAttachmentLocations");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6101,7 +6096,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRenderingAttachmentLocationsKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRenderingAttachmentLocationsKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6122,7 +6117,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRenderingInputAttachmentIndices(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRenderingInputAttachmentIndices");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6143,7 +6138,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetRenderingInputAttachmentIndicesKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetRenderingInputAttachmentIndicesKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6165,7 +6160,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDepthClampRangeEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDepthClampRangeEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6187,7 +6182,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdConvertCooperativeVectorMatrixNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdConvertCooperativeVectorMatrixNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6208,7 +6203,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchTileQCOM(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDispatchTileQCOM");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6229,7 +6224,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginPerTileExecutionQCOM(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginPerTileExecutionQCOM");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6250,7 +6245,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndPerTileExecutionQCOM(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndPerTileExecutionQCOM");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6271,7 +6266,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginShaderInstrumentationARM(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginShaderInstrumentationARM");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6291,7 +6286,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndShaderInstrumentationARM(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndShaderInstrumentationARM");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6312,7 +6307,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyTensorARM(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyTensorARM");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6334,7 +6329,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchDataGraphARM(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDispatchDataGraphARM");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6355,7 +6350,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetComputeOccupancyPriorityNV(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetComputeOccupancyPriorityNV");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6376,7 +6371,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindSamplerHeapEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindSamplerHeapEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6397,7 +6392,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindResourceHeapEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindResourceHeapEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6418,7 +6413,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdPushDataEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdPushDataEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6439,7 +6434,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMemoryKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMemoryKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6460,7 +6455,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyMemoryToImageKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyMemoryToImageKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6481,7 +6476,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyImageToMemoryKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyImageToMemoryKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6505,7 +6500,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdUpdateMemoryKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdUpdateMemoryKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6528,7 +6523,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdFillMemoryKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdFillMemoryKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6554,7 +6549,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyQueryPoolResultsToMemoryKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdCopyQueryPoolResultsToMemoryKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6575,7 +6570,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginConditionalRendering2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginConditionalRendering2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6598,7 +6593,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindTransformFeedbackBuffers2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindTransformFeedbackBuffers2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6621,7 +6616,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBeginTransformFeedback2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBeginTransformFeedback2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6644,7 +6639,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdEndTransformFeedback2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdEndTransformFeedback2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6669,7 +6664,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndirectByteCount2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndirectByteCount2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6690,7 +6685,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdWriteMarkerToMemoryAMD(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdWriteMarkerToMemoryAMD");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6711,7 +6706,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindIndexBuffer3KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindIndexBuffer3KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6734,7 +6729,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdBindVertexBuffers3KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdBindVertexBuffers3KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6755,7 +6750,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndirect2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndirect2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6776,7 +6771,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndexedIndirect2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndexedIndirect2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6797,7 +6792,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndirectCount2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndirectCount2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6818,7 +6813,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawIndexedIndirectCount2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawIndexedIndirectCount2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6839,7 +6834,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMeshTasksIndirect2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMeshTasksIndirect2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6860,7 +6855,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDrawMeshTasksIndirectCount2EXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDrawMeshTasksIndirectCount2EXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6881,7 +6876,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchIndirect2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdDispatchIndirect2KHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -6902,7 +6897,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetDispatchParametersARM(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer);
+                d->submission.unknown(commandBuffer,"vkCmdSetDispatchParametersARM");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;

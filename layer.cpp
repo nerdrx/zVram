@@ -234,6 +234,7 @@ struct Device {
     bool asyncFreezePending{};
     std::uint64_t nextVirtualIdentity{1};
     std::atomic<bool> selectiveRestore{false};
+    bool reportedAccessFallback{};
     VkSubmissionTracker submission;
     ActiveRefs activeRefs;
     bool activeEviction{};

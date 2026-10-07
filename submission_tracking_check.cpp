@@ -213,6 +213,9 @@ int main() {
             hasRange(ranges, bufferC, 33, 19), "descriptor offsets and ranges survive descriptor copy");
     require(hasRange(ranges, bufferD, 7, 9) && hasRange(ranges, bufferD, 0, VK_WHOLE_SIZE),
             "secondary range and direct whole-buffer reference both survive");
+    const char* diagnostic = "stale";
+    require(tracker.collectRanges(1, &primary, ranges, &diagnostic) && !diagnostic,
+            "successful diagnostic collection clears the reason");
 
     // Updates after recording resolve at submit; copying again preserves source's latest value.
     bufferInfos[2] = {bufferD, 44, 20};
@@ -319,6 +322,19 @@ int main() {
     tracker.beginCommand(primary);
     tracker.pipeline(primary, unknownPipeline);
     require(!tracker.collect(1, &primary, found), "unknown pipeline chain falls back");
+    diagnostic = nullptr;
+    require(!tracker.collectRanges(1, &primary, ranges, &diagnostic) &&
+            diagnostic && std::string(diagnostic) == "pipeline-chain-unsupported",
+            "unsafe pipeline diagnostic identifies unsupported pipeline chain");
+    tracker.beginCommand(primary);
+    tracker.pipeline(primary, fakeHandle<VkPipeline>(999));
+    require(!tracker.collectRanges(1, &primary, ranges, &diagnostic) &&
+            diagnostic && std::string(diagnostic) == "pipeline-not-tracked",
+            "untracked pipeline diagnostic is stable");
+    const auto missingCommand = fakeHandle<VkCommandBuffer>(998);
+    require(!tracker.collectRanges(1, &missingCommand, ranges, &diagnostic) &&
+            diagnostic && std::string(diagnostic) == "command-buffer-not-tracked",
+            "missing command buffer diagnostic is stable");
     pipelineInfo.pNext = nullptr;
 
     write.dstSet = partialSet;
@@ -328,6 +344,9 @@ int main() {
     tracker.pipeline(primary, pipeline);
     tracker.descriptors(primary, 1, &partialSet);
     require(!tracker.collect(1, &primary, found), "partially written storage array falls back");
+    require(!tracker.collectRanges(1, &primary, ranges, &diagnostic) &&
+            diagnostic && std::string(diagnostic) == "descriptor-partial",
+            "partial descriptor diagnostic is stable");
     write.dstSet = sourceSet;
     write.descriptorCount = 3;
 
@@ -335,11 +354,23 @@ int main() {
     tracker.pipeline(primary, pipeline);
     tracker.descriptors(primary, 1, &emptySet);
     require(!tracker.collect(1, &primary, found), "unwritten storage descriptor falls back");
+    require(!tracker.collectRanges(1, &primary, ranges, &diagnostic) &&
+            diagnostic && std::string(diagnostic) == "descriptor-uninitialized",
+            "uninitialized descriptor diagnostic is stable");
 
     tracker.beginCommand(primary);
     tracker.pipeline(primary, pipeline);
     tracker.unknown(primary);
     require(!tracker.collect(1, &primary, found), "unknown command falls back");
+    require(!tracker.collectRanges(1, &primary, ranges, &diagnostic) &&
+            diagnostic && std::string(diagnostic) == "untracked-command",
+            "untracked command diagnostic is stable");
+    tracker.beginCommand(primary);
+    tracker.unknown(primary,"vkCmdExampleUnsupported");
+    require(!tracker.collect(1, &primary, found), "named unknown command still falls back");
+    require(!tracker.collectRanges(1, &primary, ranges, &diagnostic) &&
+            diagnostic && std::string(diagnostic) == "vkCmdExampleUnsupported",
+            "unknown command keeps its stable command name");
     tracker.beginCommand(primary);
     tracker.pipeline(primary, pipeline);
     tracker.descriptors(primary, 1, &copiedSet);
@@ -517,6 +548,17 @@ int main() {
     tracker.beginCommand(primary);
     tracker.pipeline(primary, physicalPipeline);
     require(!tracker.collect(1, &primary, found), "physical-storage pipeline falls back");
+    require(!tracker.collectRanges(1, &primary, ranges, &diagnostic) &&
+            diagnostic && std::string(diagnostic) == "pipeline-access-unknown",
+            "unknown pipeline access diagnostic is stable");
+
+    tracker.beginCommand(primary); tracker.beginCommand(secondary);
+    tracker.secondary(primary, 1, &secondary);
+    tracker.secondary(secondary, 1, &primary);
+    require(!tracker.collect(1, &primary, found), "cyclic secondary command buffers fall back");
+    require(!tracker.collectRanges(1, &primary, ranges, &diagnostic) &&
+            diagnostic && std::string(diagnostic) == "cyclic-command-buffer-reference",
+            "cyclic command diagnostic is stable");
 
     const auto malformedPipeline = fakeHandle<VkPipeline>(33);
     pipelineInfo.stage.module = malformedShader;

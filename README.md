@@ -259,3 +259,6 @@ python3 check_model.py --binary /path/to/llama-completion --model /path/to/model
 ```
 
 For a model that exceeds physical VRAM, `--vmm-only` skips native comparison and explicitly makes no native-baseline claim. Set backing caps to match available resources; the configured total must also accommodate context and compute allocations. Logs and the JSON report default to `build/model-check`. A small F16 model passed the reproducible comparison. Two existing Odysseus models (30B and 27B) passed separate and concurrent VMM-only checks; their combined actual GPU model buffers were about 34.2 GB. See [the measured limits and logs](VALIDATION.md#existing-odysseus-models).
+
+
+The latest large-model lazy-loading attempt stopped safely before inference at an untracked command; its native direct-I/O reference measured 1.59 tokens/s, with no wrapped rate for this configuration. The test helper also offers an optional logical swap-growth guard. See [loading evidence and remaining gate](VALIDATION.md#internlm-lazy-loading-and-swap-growth-guard).
