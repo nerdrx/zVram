@@ -23,6 +23,7 @@ parser.add_argument("--vulkan-active-eviction", action="store_true", help="compr
 parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residency and chunk native pools at this positive MiB granularity; requires active eviction (experimental)")
 parser.add_argument("--vulkan-resident-mib", type=int, help="limit eligible resident backing at tracked submission admission; requires range mode (experimental, not a global VRAM cap)")
 parser.add_argument("--vulkan-resident-after-cold", action="store_true", help="arm resident admission after all eligible backing first becomes cold; startup can exceed limit")
+parser.add_argument("--vulkan-eviction-policy", choices=("lru", "mru"), help="choose pressure victims: oldest first (default lru), or newest first for cyclic scans; requires resident admission")
 parser.add_argument("--vulkan-strict-robustness", action="store_true", help="enable supported robustness2 bounds for narrow descriptor residency; requires range mode")
 parser.add_argument("--vulkan-clean-cache", action="store_true", help="reuse retained snapshots after proven read-only work; shares cold-store budget and requires range mode")
 parser.add_argument("--verbose", action="store_true", help="log each Vulkan allocation")
@@ -65,6 +66,8 @@ if args.vulkan_strict_robustness and args.vulkan_range_mib is None:
     parser.error("--vulkan-strict-robustness requires --vulkan-range-mib")
 if args.vulkan_resident_after_cold and args.vulkan_resident_mib is None:
     parser.error("--vulkan-resident-after-cold requires --vulkan-resident-mib")
+if args.vulkan_eviction_policy is not None and args.vulkan_resident_mib is None:
+    parser.error("--vulkan-eviction-policy requires --vulkan-resident-mib")
 if args.vulkan_clean_cache and args.vulkan_range_mib is None:
     parser.error("--vulkan-clean-cache requires --vulkan-range-mib")
 if not args.hip and (args.hip_vmm or args.hip_report_capacity or args.hip_local_mib is not None or args.hip_host_mib is not None or args.hip_auto_idle_ms is not None or args.hip_cold_mib is not None):
@@ -125,6 +128,8 @@ else:
         env["ZVRAM_VULKAN_RESIDENT_MIB"] = str(args.vulkan_resident_mib)
     if args.vulkan_resident_after_cold:
         env["ZVRAM_VULKAN_RESIDENT_AFTER_COLD"] = "1"
+    if args.vulkan_eviction_policy is not None:
+        env["ZVRAM_VULKAN_EVICTION_POLICY"] = args.vulkan_eviction_policy
     if args.vulkan_strict_robustness:
         env["ZVRAM_VULKAN_STRICT_ROBUSTNESS"] = "1"
     if args.vulkan_clean_cache:

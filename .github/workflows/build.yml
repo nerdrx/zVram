@@ -12,5 +12,7 @@ jobs:
       - name: Build
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j 2
       - name: Check launcher syntax
-        run: python3 -m py_compile zvram dmem_probe.py check_primbench.py check_model.py check_vulkan_idle_model.py && ./zvram --help && python3 check_vulkan_idle_model.py --help
+        run: python3 -m py_compile zvram dmem_probe.py check_primbench.py check_model.py check_vulkan_idle_model.py test_vulkan_ram_guard.py && ./zvram --help && python3 check_vulkan_idle_model.py --help
+      - name: Check low-memory abort cleanup
+        run: python3 test_vulkan_ram_guard.py
       # GPU integrity checks are run on the hardware documented in VALIDATION.md.

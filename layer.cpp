@@ -218,6 +218,7 @@ struct Device {
     VkDeviceSize residentLimitBytes{};
     bool residentAdmissionArmed{true};
     bool cleanCache{};
+    bool mruEviction{};
     bool narrowDescriptorRanges{};
     VkDeviceSize robustRangeAlignment{1};
     std::uint64_t restoreGeneration{};
@@ -776,6 +777,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 if(d->activeEviction && d->rangeChunkBytes) {
                     const auto residentMiB=positiveEnv("ZVRAM_VULKAN_RESIDENT_MIB",std::numeric_limits<std::uint64_t>::max()/(1024ull*1024ull));
                     d->residentLimitBytes=residentMiB*1024ull*1024ull;
+                    const char* eviction=std::getenv("ZVRAM_VULKAN_EVICTION_POLICY");
+                    d->mruEviction=d->residentLimitBytes && eviction && std::strcmp(eviction,"mru")==0;
                     const char* afterCold=std::getenv("ZVRAM_VULKAN_RESIDENT_AFTER_COLD");
                     d->residentAdmissionArmed=!(afterCold && std::strcmp(afterCold,"1")==0);
                 }
@@ -806,6 +809,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     if(d->autoEnabled && strictRobustnessEnabled) logf("bounded Vulkan robustness enabled alignment-bytes=%llu",static_cast<unsigned long long>(robustAlignment));
                     else if(strictRequested) logf("bounded Vulkan robustness unavailable: feature chain or device support");
                     if(d->autoEnabled && d->residentLimitBytes) logf("Vulkan resident admission enabled limit-bytes=%llu",static_cast<unsigned long long>(d->residentLimitBytes));
+                    if(d->autoEnabled && d->residentLimitBytes) logf("Vulkan eviction policy=%s",d->mruEviction?"mru":"lru");
                     if(d->autoEnabled && d->cleanCache) logf("Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget");
                 }
             }

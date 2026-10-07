@@ -27,6 +27,14 @@ VulkanBufferPattern = re.compile(
 OffloadPattern = re.compile(r"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers?\s+to GPU", re.I)
 
 
+def available_memory_mib():
+    match = re.search(r"^MemAvailable:\s+(\d+)\s+kB$",
+                      Path("/proc/meminfo").read_text(), re.M)
+    if not match:
+        raise RuntimeError("/proc/meminfo has no MemAvailable value")
+    return int(match[1]) // 1024
+
+
 def capture_backing(pid, path):
     clients = {}
     raw = []
@@ -53,7 +61,8 @@ def capture_backing(pid, path):
     return totals
 
 
-def run_interactive(label, command, env, output_dir, timeout, automatic):
+def run_interactive(label, command, env, output_dir, timeout, automatic,
+                    min_available_mib=None):
     out_path = output_dir / f"{label}.stdout.txt"
     err_path = output_dir / f"{label}.stderr.txt"
     stdout = bytearray()
@@ -71,8 +80,16 @@ def run_interactive(label, command, env, output_dir, timeout, automatic):
     ready = False
     last_cold_time = None
     pre_prompt_cold_state = None
+    minimum_available_mib = None
     try:
         while time.monotonic() < deadline:
+            if min_available_mib is not None:
+                available = available_memory_mib()
+                minimum_available_mib = (available if minimum_available_mib is None
+                                          else min(minimum_available_mib, available))
+                if available < min_available_mib:
+                    raise RuntimeError(f"{label}: MemAvailable {available} MiB below guard "
+                                       f"floor {min_available_mib} MiB")
             readable, _, _ = select.select([proc.stdout, proc.stderr], [], [], 0.05)
             for stream in readable:
                 chunk = os.read(stream.fileno(), 65536)
@@ -125,6 +142,12 @@ def run_interactive(label, command, env, output_dir, timeout, automatic):
         proc.stdin.close()
         prompt_sent = True
         while proc.poll() is None and time.monotonic() < deadline:
+            if min_available_mib is not None:
+                available = available_memory_mib()
+                minimum_available_mib = min(minimum_available_mib, available)
+                if available < min_available_mib:
+                    raise RuntimeError(f"{label}: MemAvailable {available} MiB below guard "
+                                       f"floor {min_available_mib} MiB")
             readable, _, _ = select.select([proc.stdout, proc.stderr], [], [], 0.05)
             for stream in readable:
                 chunk = os.read(stream.fileno(), 65536)
@@ -170,6 +193,7 @@ def run_interactive(label, command, env, output_dir, timeout, automatic):
             "performance": performance(text),
             "first_stdout_after_input_ms": ((first_output_time - prompt_time) * 1000
                                             if first_output_time and prompt_time else None),
+            "minimum_available_mib": minimum_available_mib,
             "returncode": proc.returncode}
 
 
@@ -189,12 +213,16 @@ def main():
                         help="test sparse range residency at this MiB chunk size; enables active eviction")
     parser.add_argument("--validate", action="store_true", help="enable Vulkan core/synchronization validation on both runs")
     parser.add_argument("--resident-mib", type=int, help="test pressure admission limit; requires --range-mib")
+    parser.add_argument("--min-available-mib", type=int,
+                        help="abort when /proc/meminfo MemAvailable falls below this positive MiB floor")
+    parser.add_argument("--eviction-policy", choices=("lru", "mru"),
+                        help="choose resident-range eviction order; requires --resident-mib")
     parser.add_argument("--strict-robustness", action="store_true", help="enable supported robustness2 for narrow descriptor ranges")
     parser.add_argument("--clean-cache", action="store_true", help="retain and reuse snapshots after proven read-only GPU work")
     parser.add_argument("--resident-after-cold", action="store_true", help="allow bootstrap then arm pressure admission after all eligible backing is cold")
     parser.add_argument("--max-nodes-per-submit", type=int, help="set llama.cpp graph batching identically for both runs")
     parser.add_argument("--serialize-submissions", action="store_true", help="use llama.cpp synchronous submissions identically for both runs")
-    parser.add_argument("--timeout", type=int, default=60)
+    parser.add_argument("--timeout", type=int, default=60, help="seconds allowed per run, including model loading")
     parser.add_argument("--output-dir", type=Path, default=Path("build/vulkan-idle-model-check"))
     parser.add_argument("--app-arg", action="append", default=[],
                         help="extra llama-completion option; repeat as --app-arg=VALUE")
@@ -205,6 +233,10 @@ def main():
         parser.error("--range-mib must be positive and fit 64-bit bytes")
     if args.resident_mib is not None and (args.range_mib is None or not 0 < args.resident_mib <= ((1 << 64) - 1) // (1024 * 1024)):
         parser.error("--resident-mib requires --range-mib and positive size fitting 64-bit bytes")
+    if args.min_available_mib is not None and not 0 < args.min_available_mib <= (1 << 64) - 1:
+        parser.error("--min-available-mib must be positive and fit uint64")
+    if args.eviction_policy is not None and args.resident_mib is None:
+        parser.error("--eviction-policy requires --resident-mib")
     if args.strict_robustness and args.range_mib is None:
         parser.error("--strict-robustness requires --range-mib")
     if args.clean_cache and args.range_mib is None:
@@ -226,8 +258,8 @@ def main():
         parser.error(f"--model must be an existing nonempty file: {model}")
     if not launcher.is_file():
         parser.error(f"zVram launcher missing: {launcher}")
-    if not 64 <= args.tokens <= 128 or not 1 <= args.idle_ms <= 60000 or not 1 <= args.cold_mib <= 40960 or not 1 <= args.timeout <= 120:
-        parser.error("tokens must be 64..128, idle-ms 1..60000, cold-mib 1..40960, timeout 1..120")
+    if not 64 <= args.tokens <= 128 or not 1 <= args.idle_ms <= 60000 or not 1 <= args.cold_mib <= 40960 or not 1 <= args.timeout <= (1 << 32) - 1:
+        parser.error("tokens must be 64..128, idle-ms 1..60000, cold-mib 1..40960, timeout a positive uint32")
     output.mkdir(parents=True, exist_ok=True)
     app = common_app_args(binary, model, args.tokens)[:-2]
     app += ["--conversation", "--interactive-first", "--single-turn", *args.app_arg]
@@ -245,7 +277,8 @@ def main():
         env["VK_INSTANCE_LAYERS"] = "VK_LAYER_KHRONOS_validation"
         env["VK_VALIDATION_VALIDATE_SYNC"] = "1"
         env["VK_LOADER_LAYERS_DISABLE"] = "~implicit~"
-    native = run_interactive("native", app, env, output, args.timeout, False)
+    native = run_interactive("native", app, env, output, args.timeout, False,
+                             args.min_available_mib)
     command = [str(launcher), "--vulkan-virtual-gib", "96", "--vulkan-auto-idle-ms",
                str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib)]
     if args.selective_restore:
@@ -256,6 +289,8 @@ def main():
         command += ["--vulkan-range-mib", str(args.range_mib)]
     if args.resident_mib is not None:
         command += ["--vulkan-resident-mib", str(args.resident_mib)]
+    if args.eviction_policy is not None:
+        command += ["--vulkan-eviction-policy", args.eviction_policy]
     if args.resident_after_cold:
         command.append("--vulkan-resident-after-cold")
     if args.strict_robustness:
@@ -265,7 +300,8 @@ def main():
     if args.validate:
         command += ["--validate", "--isolate-layers"]
     command += ["--", *app]
-    auto = run_interactive("automatic", command, env, output, args.timeout, True)
+    auto = run_interactive("automatic", command, env, output, args.timeout, True,
+                           args.min_available_mib)
     auto_text = auto["stderr"]
     auto_cold = auto["cold"]
     cleanup_fields = re.findall(r"\[zvram\].*(?:summary|automatic).*", auto_text, re.I)
@@ -323,9 +359,12 @@ def main():
             resident + incoming <= limit == args.resident_mib * MiB for _, _, resident, incoming, limit in pressure_events)
         checks["tracked_resident_peak_within_limit"] = bool(resident_states) and max(resident_states) <= args.resident_mib * MiB
         checks["no_admission_refusals"] = "resident admission refused:" not in auto_text
+    if args.eviction_policy is not None:
+        checks["eviction_policy_enabled"] = f"Vulkan eviction policy={args.eviction_policy}" in auto_text
     result = {"passed": all(checks.values()), "checks": checks, "model": str(model),
               "binary": str(binary), "command": command,
               "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
+              "eviction_policy": args.eviction_policy,
               "resident_admission_events": pressure_events,
               "tracked_resident_peak_after_arming": max(resident_states) if resident_states else None,
               "clean_cache_state": cache_states[-1] if cache_states else None,

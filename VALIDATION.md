@@ -165,6 +165,18 @@ python3 check_vulkan_idle_model.py --binary build/third-party/llama-vulkan-build
 
 The reuse rule follows SPIR-V's `NonWritable` decoration; see the [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#_decoration). This current model result is a narrow validation of cache retention and reuse, not proof of general active-working-set caching, unbounded memory savings, or faster large-pool compression.
 
+## Vulkan range eviction policy
+
+`--vulkan-eviction-policy lru|mru` requires `--vulkan-resident-mib`; the default is `lru`. LRU evicts the least-recently-used eligible completed chunk first. MRU evicts the newest eligible completed, unselected chunk first. Both policies retain the existing protection for selected or in-flight chunks and the same unknown-access fallback.
+
+The matched SmolLM2-135M F16 scan runs used a 1,000 ms idle interval, clean cache, 192 MiB resident limit, 32 MiB ranges, strict robustness, one node per submit, and full validation. Each passed **26/26** checks and the LRU/MRU outputs were identical. LRU measured **6.23 tokens/s**; MRU measured **8.36 tokens/s** in one run each, a **34.2%** higher observed rate. Their native references measured **122.04** and **119.43 tokens/s**, respectively. Tracked peak resident backing was **165.8125 MiB** for LRU and **185.875 MiB** for MRU, below the configured limit. MRU restored **8,640 MiB** across 270 chunk restores versus LRU's **13,056 MiB** across 408 restores (33.8% fewer bytes/calls). Clean reuses were 262 for MRU and 401 for LRU; the lower MRU count reflects fewer restore cycles, not a lower cache hit ratio. These are single-run, small-workload observations with throughput variance, not a general speedup or evidence for 40 GiB or game workloads.
+
+The focused policy gate passed **4/4** in **2.86 seconds**, and the full CTest suite passed **86/86** in **56.75 seconds**, both with zero Vulkan validation errors or VUIDs. See the [focused log](validation/vulkan-mru-focused.txt) and [full-suite log](validation/vulkan-mru-86-ctest.txt).
+
+The helper's `--eviction-policy lru|mru` selects the same policy. Optional `--min-available-mib N` aborts its child process group when system-wide Linux `MemAvailable` falls below the configured floor. It is a safety stop, not a hard allocation cap. Summaries and raw run evidence: [LRU](validation/vulkan-lru-scan-model-result.json), [MRU](validation/vulkan-mru-scan-model-result.json), and their `validation/vulkan-{lru,mru}-scan-model-*` output and fdinfo files.
+
+The paired result differs from the earlier clean-cache model check, which did not select a residency policy and established the historical LRU-path measurement. See [clean-snapshot cache evidence](#vulkan-clean-snapshot-cache) for its configuration and limits.
+
 ## Managed Vulkan pool
 
 ### Mixed-data lifecycle check

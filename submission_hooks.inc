@@ -339,7 +339,9 @@ VkResult admitTrackedSubmit(Device& d,const char* name,std::uint32_t count,const
                     victims.push_back({pair.first,i,memory.coldGroups[i].lastUse});
             }
         }
-        std::sort(victims.begin(),victims.end(),[](const auto& a,const auto& b){return a.used<b.used;});
+        std::sort(victims.begin(),victims.end(),[&](const auto& a,const auto& b){
+            return d.mruEviction?a.used>b.used:a.used<b.used;
+        });
         std::size_t evicted=0;
         for(const auto& victim:victims) {
             if(d.residentBytes<=d.residentLimitBytes-incoming) break;
