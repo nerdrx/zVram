@@ -142,6 +142,7 @@ bool prepareRangeDecode(Device& d,const ActiveRefs::Use& use,std::size_t slot,
     VkDeviceSize bytes=0;
     for(std::size_t i=0;i<group.chunks.size();++i) {
         const auto& chunk=group.chunks[i];
+        if(d.gpuRestoreEnabled && chunk.compressed && chunk.codec==zvram::snapshot::Codec::GDeflate) return false;
         if(!chunk.rawSize || chunk.rawSize>s.chunkSize || chunk.rawSize>group.logicalBytes-bytes) return false;
         bytes+=chunk.rawSize;
         chunks[i]={chunk.bytes.data(),chunk.bytes.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle,chunk.codec};

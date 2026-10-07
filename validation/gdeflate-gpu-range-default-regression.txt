@@ -1,0 +1,9 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+    Start 32: vulkan-range-residency-synthetic
+1/2 Test #32: vulkan-range-residency-synthetic ...   Passed    0.57 sec
+    Start 33: vulkan-range-residency-native
+2/2 Test #33: vulkan-range-residency-native ......   Passed    0.59 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =   1.15 sec

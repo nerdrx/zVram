@@ -22,7 +22,8 @@ parser.add_argument("--vulkan-auto-idle-ms", type=int, help="compress eligible i
 parser.add_argument("--vulkan-cold-mib", type=int, help="limit retained Vulkan snapshots in MiB; requires --vulkan-auto-idle-ms")
 parser.add_argument("--vulkan-min-savings-percent", type=int, help="minimum snapshot savings 0..100; 0 keeps any saving, 100 uses raw snapshots; requires automatic snapshots")
 parser.add_argument("--vulkan-byte-shuffle", type=int, choices=(2,4), help="losslessly reorder byte planes before Zstd; requires automatic snapshots (experimental)")
-parser.add_argument("--vulkan-codec", choices=("zstd", "gdeflate"), help="snapshot codec (default zstd); experimental gdeflate currently decodes on CPU and requires an optional build")
+parser.add_argument("--vulkan-codec", choices=("zstd", "gdeflate"), help="snapshot codec (default zstd); experimental gdeflate requires an optional build and decodes on CPU unless GPU restore is selected")
+parser.add_argument("--vulkan-gdeflate-gpu", action="store_true", help="restore GDeflate snapshots directly on a supported wave32 GPU (experimental, CPU fallback)")
 parser.add_argument("--vulkan-selective-restore", action="store_true", help="restore only allocations referenced by tracked Vulkan submissions; unknown access restores all (experimental)")
 parser.add_argument("--vulkan-active-eviction", action="store_true", help="compress unused whole Vulkan allocations while other tracked submissions remain active; requires selective restore (experimental)")
 parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residency and chunk native pools at this positive MiB granularity; requires active eviction (experimental)")
@@ -66,6 +67,11 @@ if args.vulkan_byte_shuffle is not None and (args.hip or args.vulkan_auto_idle_m
 if args.vulkan_codec is not None and (args.hip or args.vulkan_auto_idle_ms is None):
     parser.error("--vulkan-codec requires Vulkan automatic snapshots")
 effective_codec = args.vulkan_codec or os.environ.get("ZVRAM_VULKAN_CODEC", "zstd")
+gpu_restore = args.vulkan_gdeflate_gpu or os.environ.get("ZVRAM_VULKAN_GDEFLATE_GPU") == "1"
+if not args.hip and gpu_restore and (effective_codec != "gdeflate" or args.vulkan_auto_idle_ms is None):
+    parser.error("--vulkan-gdeflate-gpu requires the gdeflate codec and Vulkan automatic snapshots")
+if args.hip and args.vulkan_gdeflate_gpu:
+    parser.error("--vulkan-gdeflate-gpu requires the Vulkan backend")
 if not args.hip and effective_codec not in ("zstd", "gdeflate"):
     parser.error("invalid inherited ZVRAM_VULKAN_CODEC; expected zstd or gdeflate")
 if not args.hip and effective_codec == "gdeflate":
@@ -77,6 +83,8 @@ if not args.hip and effective_codec == "gdeflate":
         codecs = {}
     if not isinstance(codecs, dict) or codecs.get("gdeflate") is not True:
         parser.error("GDeflate codec missing; rebuild with -DZVRAM_ENABLE_GDEFLATE=ON")
+    if gpu_restore and (codecs.get("gdeflate_gpu") is not True or not (build / "gdeflate-wave32.spv").is_file()):
+        parser.error("GPU GDeflate decoder missing; rebuild with -DZVRAM_ENABLE_GDEFLATE=ON")
 if args.vulkan_selective_restore and (args.hip or args.vulkan_auto_idle_ms is None):
     parser.error("--vulkan-selective-restore requires Vulkan automatic snapshots")
 if args.vulkan_active_eviction and not args.vulkan_selective_restore:
@@ -148,6 +156,9 @@ else:
     if args.vulkan_byte_shuffle is not None:
         env["ZVRAM_VULKAN_BYTE_SHUFFLE"] = str(args.vulkan_byte_shuffle)
     env["ZVRAM_VULKAN_CODEC"] = effective_codec
+    if gpu_restore:
+        env["ZVRAM_VULKAN_GDEFLATE_GPU"] = "1"
+        env["ZVRAM_GDEFLATE_SHADER_PATH"] = str(build / "gdeflate-wave32.spv")
     if args.vulkan_selective_restore:
         env["ZVRAM_VULKAN_SELECTIVE_RESTORE"] = "1"
     if args.vulkan_active_eviction:

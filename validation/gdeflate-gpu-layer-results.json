@@ -1,0 +1,23 @@
+{
+  "recorded_at_utc": "2026-10-07T18:31:12.686760+00:00",
+  "boot_id": "ee3d796a-b543-44da-bc6f-1c6e83740fbb",
+  "scope": "Current focused GPU layer suite: five correctness cases, not throughput. Small-model result predates the final feature-gating guard and overlaps synthetic GPU tests; no speed claim. A clean benchmark is deferred at user request while a game runs.",
+  "gpu_layer_tests_passed": 5,
+  "gpu_layer_tests_total": 5,
+  "model_checks_passed": 14,
+  "model_gpu_layers": "31/31",
+  "gpu_restore_requested": true,
+  "default_codec": "zstd",
+  "hashes": {
+    "layer.cpp": "ff4022626ac72b15eeb21439a617bab4e0bd4529d86e8b835e6ecc1ad89bf578",
+    "gdeflate_gpu.hpp": "b2e743b426b01fa47469f2890816948618d58b2f04dbe0dfddbed7e1ecd5c961",
+    "submission_hooks.inc": "20142f77b2a18c7ae976edc8310e2e4c60e98ca6e2d25bec57d8891e7f3ebe72",
+    "vulkan_auto_check.cpp": "ca87526e9ec48d133bd7c8e5800204c6a46ef17d081cdc9248e5968a9743acba",
+    "test_gdeflate_gpu_layer.py": "909c4102989180ddf833636089a33eca35b5c0cc5d574cf48e6ede7211dba2a3",
+    "build/gdeflate-codec/libzvram_layer.so": "7464f7ff7fce042eb9cc09e289f4ed48b78a8b4dd4afa8b2894cd096f5ff2896",
+    "build/gdeflate-codec/zvram-vulkan-auto-check": "08dd3bec865881c64dbe50cf05b62331006195acb06def11df9b556095890d46",
+    "build/gdeflate-codec/gdeflate-wave32.spv": "dfa3a7f31bce2e3e6354e6d43ab8f7adb2cb67e3ad7060b73acbce8a77391996",
+    "validation/gdeflate-gpu-focused-ctest.txt": "f52e9846e207b310b388c37e86df7a7093f84868249fca50796e3b5c03bc37e7",
+    "validation/gdeflate-gpu-smollm-idle/result.json": "afe1ed8f462887b9a77674d18b4523179f75fad98e93325fc9c7ddc6f3ee433e"
+  }
+}

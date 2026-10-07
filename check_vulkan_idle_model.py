@@ -261,6 +261,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--model", required=True, type=Path)
+    parser.add_argument("--build-dir", type=Path, help="select a zVram backend CMake build directory")
+    parser.add_argument("--codec", choices=("zstd", "gdeflate"), help="select the snapshot codec explicitly")
+    parser.add_argument("--gdeflate-gpu", action="store_true", help="require observable direct GPU GDeflate restoration")
     parser.add_argument("--tokens", type=int, default=128)
     parser.add_argument("--idle-ms", type=int, default=1000)
     parser.add_argument("--cold-mib", type=int, default=512)
@@ -292,6 +295,10 @@ def main():
     parser.add_argument("--app-arg", action="append", default=[],
                         help="extra llama-completion option; repeat as --app-arg=VALUE")
     args = parser.parse_args()
+    if args.gdeflate_gpu and args.codec != "gdeflate":
+        parser.error("--gdeflate-gpu requires --codec gdeflate")
+    if args.byte_shuffle and args.codec == "gdeflate":
+        parser.error("--byte-shuffle requires the zstd codec")
     if not 32 <= args.tokens <= 128:
         parser.error("tokens must be 32..128")
     args.active_eviction = args.active_eviction or args.range_mib is not None
@@ -355,6 +362,12 @@ def main():
                              args.min_available_mib)
     command = [str(launcher), "--vulkan-virtual-gib", "96", "--vulkan-auto-idle-ms",
                str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib)]
+    if args.build_dir:
+        command += ["--build-dir", str(args.build_dir.expanduser().resolve())]
+    if args.codec:
+        command += ["--vulkan-codec", args.codec]
+    if args.gdeflate_gpu:
+        command.append("--vulkan-gdeflate-gpu")
     if args.min_savings_percent is not None:
         command += ["--vulkan-min-savings-percent", str(args.min_savings_percent)]
     if args.byte_shuffle is not None:
@@ -407,6 +420,14 @@ def main():
     if args.min_savings_percent is not None:
         checks["minimum_savings_percent_configured"] = (
             f"Vulkan snapshot minimum savings percent={args.min_savings_percent}" in auto_text)
+    if args.codec:
+        checks["snapshot_codec_selected"] = args.codec == "zstd" or "Vulkan snapshot codec=gdeflate" in auto_text
+    if args.gdeflate_gpu:
+        gpu_profiles = [tuple(map(int, values)) for values in re.findall(
+            r"gpu-decode-calls=(\d+) gpu-decode-bytes=(\d+) gpu-decode-ns=(\d+) gpu-decode-fallbacks=(\d+)", auto_text)]
+        checks["gpu_decoder_used"] = bool(gpu_profiles and gpu_profiles[-1][0] > 0 and gpu_profiles[-1][1] > 0 and
+            "GPU GDeflate restore enabled" in auto_text and "decode=GPU" in auto_text)
+        checks["no_gpu_decoder_fallback"] = bool(gpu_profiles and gpu_profiles[-1][3] == 0)
     encodings = [tuple(map(int, values)) for values in re.findall(
         r"snapshot cold bytes=(\d+) stored=(\d+) compressed-chunks=(\d+) raw-chunks=(\d+)", auto_text)]
     shuffled_counts = [int(value) for value in re.findall(
@@ -484,6 +505,10 @@ def main():
                 for values in re.findall(r"copy-calls=(\d+) copy-bytes=(\d+) copy-ns=(\d+) decode-bytes=(\d+) decode-ns=(\d+)", auto_text)]
     result = {"passed": all(checks.values()), "checks": checks, "model": str(model),
               "transfer_profile": profiles[-1] if profiles else None,
+              "gpu_restore_profile": (dict(zip(("calls", "bytes", "host_ns", "fallbacks"), gpu_profiles[-1]))
+                                      if args.gdeflate_gpu and gpu_profiles else None),
+              "snapshot_codec": args.codec or "zstd", "gdeflate_gpu_requested": args.gdeflate_gpu,
+              "validation_enabled": args.validate,
               "binary": str(binary), "command": command,
               "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
               "eviction_policy": args.eviction_policy,

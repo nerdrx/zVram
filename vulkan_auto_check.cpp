@@ -1206,7 +1206,8 @@ void selectiveBindCheck(Context& context, bool api2) {
 }
 
 void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
-                      bool cacheQuota = false, bool cacheBootstrap = false) {
+                      bool cacheQuota = false, bool cacheBootstrap = false,
+                      bool compressedInitial = false) {
     const std::uint32_t chunkCount = cacheQuota ? 3u : 2u;
     const VkDeviceSize Bytes=static_cast<VkDeviceSize>(chunkCount)*ChunkBytes;
     Buffer pool; pool.device=context.device;
@@ -1230,7 +1231,8 @@ void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
     check(vkBindBufferMemory(context.device,staging.buffer,staging.memory,0),"bind range staging");
     check(vkMapMemory(context.device,staging.memory,0,ChunkBytes,0,&staging.mapped),"map range staging");
     upload(context,pool.handle,staging,Bytes);
-    check(computeCycle(context,pool.handle,0,0,false,Bytes),"initialize both range chunks");
+    if (!compressedInitial)
+        check(computeCycle(context,pool.handle,0,0,false,Bytes),"initialize both range chunks");
     if (cacheBootstrap) {
         require(chunkCount == 2 && cleanCache && pressure,
                 "cache bootstrap requires two pressured clean-cache ranges");
@@ -1449,23 +1451,24 @@ void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
         throw std::runtime_error("range pool failed to reach two cold chunks");
     };
     const auto cold=waitCold();
-    check(computeCycle(context,pool.handle,1,0,false,ChunkBytes),"restore first descriptor range");
+    const int firstCycle = compressedInitial ? 0 : 1;
+    check(computeCycle(context,pool.handle,firstCycle,0,false,ChunkBytes),"restore first descriptor range");
     auto first=context.stats();
     require(first.coldLogicalBytes==ChunkBytes && first.residentBytes==ChunkBytes && first.restores==cold.restores+1 && !first.failures,
             "first descriptor range woke its cold neighbour");
-    readbackAndVerify(context,pool.handle,staging,1,false,ChunkBytes);
+    readbackAndVerify(context,pool.handle,staging,firstCycle,false,ChunkBytes);
     require(context.stats().coldLogicalBytes==ChunkBytes,"first transfer range woke its cold neighbour");
-    check(computeCycle(context,pool.handle,1,0,false,ChunkBytes,1),"restore second descriptor range");
+    check(computeCycle(context,pool.handle,firstCycle,0,false,ChunkBytes,1),"restore second descriptor range");
     auto both=context.stats();
     require(both.coldLogicalBytes==0 && both.residentBytes==Bytes && both.restores==cold.restores+2 && !both.failures,
             "second descriptor range did not restore independently");
-    readbackAndVerify(context,pool.handle,staging,1,false,Bytes);
+    readbackAndVerify(context,pool.handle,staging,firstCycle,false,Bytes);
     const auto again=waitCold();
-    check(computeCycle(context,pool.handle,2,0,false,ChunkBytes),"restore first range a second time");
+    check(computeCycle(context,pool.handle,firstCycle+1,0,false,ChunkBytes),"restore first range a second time");
     require(context.stats().coldLogicalBytes==ChunkBytes && context.stats().restores==again.restores+1,
             "repeated first-range wake restored neighbour");
-    readbackAndVerify(context,pool.handle,staging,2,false,ChunkBytes);
-    readbackAndVerify(context,pool.handle,staging,1,false,ChunkBytes,0,1);
+    readbackAndVerify(context,pool.handle,staging,firstCycle+1,false,ChunkBytes);
+    readbackAndVerify(context,pool.handle,staging,firstCycle,false,ChunkBytes,0,1);
     std::cout<<"PASS: two 32 MiB chunks in one live buffer restored independently; descriptor and transfer ranges preserved every byte across two cold cycles\n";
     vkDestroyBuffer(context.device,pool.handle,nullptr);pool.handle=VK_NULL_HANDLE;
     vkFreeMemory(context.device,pool.memory,nullptr);pool.memory=VK_NULL_HANDLE;
@@ -1879,6 +1882,7 @@ int main(int argc, char** argv) try {
     bool pendingWait = false, pendingBind = false;
     bool activeSubmit = false;
     bool rangeSubmit = false;
+    bool rangeCompressed = false;
     bool rangePressure = false;
     bool rangeCache = false;
     bool rangeCacheBootstrap = false;
@@ -1912,6 +1916,7 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--selective-submit-api2") == 0) { selectiveSubmit = true; selectiveSubmitApi2 = true; }
         else if (std::strcmp(argv[i], "--selective-submit-unknown") == 0) { selectiveSubmit = true; selectiveSubmitUnknown = true; }
         else if (std::strcmp(argv[i], "--range-submit") == 0) { rangeSubmit=true; selectiveSubmit=true; }
+        else if (std::strcmp(argv[i], "--range-compressed") == 0) { rangeSubmit=true; selectiveSubmit=true; rangeCompressed=true; }
         else if (std::strcmp(argv[i], "--robust-core") == 0) robustCore=true;
         else if (std::strcmp(argv[i], "--range-pressure") == 0) { rangeSubmit=true; rangePressure=true; }
         else if (std::strcmp(argv[i], "--range-cache") == 0) {
@@ -1955,6 +1960,8 @@ int main(int argc, char** argv) try {
             "range pressure requires descriptor-tracked range-submit mode");
     require(!rangePressure || !pendingWait,
             "range pressure manages its own pending timeline test");
+    require(!rangeCompressed || (!rangePressure && !rangeCache),
+            "compressible range initialization requires the independent range-submit check");
     require(!(rangeCacheQuota && rangeCacheUnknown),
             "choose only one clean-cache extension check");
     require(!(expectBudgetRefusal && exclusiveFamilies), "budget refusal mode does not use exclusive family transfers");
@@ -1989,7 +1996,7 @@ int main(int argc, char** argv) try {
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind, activeSubmit, rangePressure && twoQueues, robustCore);
     if (rangeCacheUnknown) { rangeCacheUnknownCheck(context); return 0; }
-    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap); return 0; }
+    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap, rangeCompressed); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
     if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }

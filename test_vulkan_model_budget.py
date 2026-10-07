@@ -105,6 +105,10 @@ def main():
     for stride in ("2", "4"):
         result = subprocess.run(pressure + ["--byte-shuffle", stride], capture_output=True, text=True)
         assert result.returncode == 2 and "existing executable" in result.stderr, result.stderr
+    for extra, expected in ((["--gdeflate-gpu"], "requires --codec gdeflate"),
+                            (["--codec", "gdeflate", "--byte-shuffle", "2"], "requires the zstd codec")):
+        result = subprocess.run(pressure + extra, capture_output=True, text=True)
+        assert result.returncode == 2 and expected in result.stderr, result.stderr
 
 
 if __name__ == "__main__":

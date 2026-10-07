@@ -1,6 +1,6 @@
 # Bounded GDeflate shader research fork
 
-This folder contains the standalone Vulkan shader research fork of Microsoft DirectStorage commit `c53f1499d5f67a61b69a1a348d22dcd2b4cb4ede`. It preserves the upstream Apache-2.0 notices in both HLSL files and includes `APACHE-2.0.txt`. The shader is not integrated into the layer. Separately, an optional CPU GDeflate codec adapter can be built into the layer; it is disabled by default, and Zstd remains the default codec. CMake exposes the standalone shader host only with `-DZVRAM_BUILD_GDEFLATE_RESEARCH=ON` (default off).
+This folder contains the bounded Vulkan shader research fork of Microsoft DirectStorage commit `c53f1499d5f67a61b69a1a348d22dcd2b4cb4ede`. It preserves the upstream Apache-2.0 notices in both HLSL files and includes `APACHE-2.0.txt`. The optional GDeflate build includes CPU encoding/decoding and a separately selected layer GPU restore path; Zstd remains the default codec. CMake exposes the standalone shader host only with `-DZVRAM_BUILD_GDEFLATE_RESEARCH=ON` (default off).
 
 ## Optional CPU snapshot codec
 
@@ -13,7 +13,7 @@ cmake --build build/gdeflate-codec -j2
 ctest --test-dir build/gdeflate-codec -R '^cpu-' --output-on-failure
 ```
 
-The launcher selects the snapshot codec with `--vulkan-codec zstd|gdeflate`; omitting it keeps Zstd. Codec selection requires Vulkan automatic snapshots. GDeflate selection is rejected before launching the application if the optional codec was not built, and it cannot be combined with `--vulkan-byte-shuffle`. A chunk's codec tag is retained through direct restore and decode-ahead dispatch. The optional adapter runs GDeflate encoding and decoding on the CPU; the shader described below is not used for layer restore.
+The launcher selects the snapshot codec with `--vulkan-codec zstd|gdeflate`; omitting it keeps Zstd. Codec selection requires Vulkan automatic snapshots. GDeflate selection is rejected before launching the application if the optional codec was not built, and it cannot be combined with `--vulkan-byte-shuffle`. A chunk's codec tag is retained through direct restore and decode-ahead dispatch. Without `--vulkan-gdeflate-gpu`, GDeflate encoding and decoding run on CPU.
 
 One CPU-only 32 MiB F16 slice encoded and round-tripped exactly with the optional codec. In a single CPU component run, GDeflate produced **27,219,160 bytes** versus Zstd's **26,673,213 bytes**; GDeflate encode/`decodeOne` took **355.970/114.457 ms** versus **19.194/13.907 ms** for Zstd. This was slightly larger and much slower, so it is format/correctness groundwork, not a speedup. It does not measure model throughput or token speed. The [codec model result](../../validation/gdeflate-codec-model.json), [text summary](../../validation/gdeflate-codec-model.txt), and [codec-enabled CPU CTest log](../../validation/gdeflate-codec-cpu-ctest.txt) record the checks.
 
@@ -26,6 +26,16 @@ A separate synthetic Vulkan-layer test exercised this CPU codec with actual GPU-
 ```
 
 [Layer test log](../../validation/gdeflate-layer-auto-restore.txt).
+
+## Opt-in layer GPU restore
+
+Add `--vulkan-gdeflate-gpu` to the launch above to select direct GPU decoding on supported wave32 hardware. The layer uploads each compressed chunk and decodes at most 32 MiB into its private sparse backing view before rebinding application buffers. RAW chunks retain the CPU/copy path; encoding remains on CPU. Recoverable decode errors use counted CPU fallback. A failed fence wait stops reuse and retains potentially in-flight resources until device teardown. Decoder input/upload/scratch memory is outside the tracked backing cap.
+
+The five focused GPU layer tests passed with full-byte application checks, observed GPU decoding, zero fallback, and zero validation diagnostics. They cover idle restore, native allocation with two queues, partial-restore retry, and independent synthetic/native ranges. One unchanged SmolLM2-135M F16 run passed 14/14 checks with matching output and 31/31 layers; it observed 11 GPU calls restoring 308,084,736 bytes. Its timings overlapped other GPU tests, so no throughput comparison is established. Large-model GPU paging, game compatibility, and speed gains remain unverified. See [layer evidence](../../VALIDATION.md#opt-in-gpu-gdeflate-restore).
+
+```sh
+ctest --test-dir build/gdeflate-codec -R '^vulkan-gdeflate-gpu-' --output-on-failure
+```
 
 ## Shader ABI
 
@@ -88,4 +98,4 @@ After reboot, all four bounded RX 7900 XTX wave32 cases passed exact-byte checks
 
 File limits are 4 MiB for SPIR-V, 64 MiB for encoded bytes, and 32 MiB for expected bytes. Host envelope checks bound offsets, tile table ranges and padded output lengths. The shader additionally bounds payload reads, decoded writes and loops. Any nonzero scratch error rejects the result before comparison. An outer runner timeout terminates its owned software process; a fence timeout cannot cancel work already dispatched to a hardware GPU. These constraints reduce the scope of a research test and are not a proof against hangs or driver bugs.
 
-The earlier unbounded real-sample shader experiment triggered an AMDGPU ring timeout. The bounded wave32 tests above passed after reboot; this does not establish general watchdog safety or application integration. The standalone Vulkan shader remains outside zVram's layer. Separately, the optional CPU codec passed the narrow synthetic layer restore test above; real model restore, general app compatibility, active compressed paging, and token-speed gains remain unverified.
+The earlier unbounded real-sample shader experiment triggered an AMDGPU ring timeout. The bounded wave32 tests above passed after reboot; this does not establish general watchdog safety. The opt-in layer GPU restore path has separate small-model and synthetic correctness evidence above. General app compatibility, large-model active compressed paging, and token-speed gains remain unverified.

@@ -1,0 +1,39 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/gdeflate-codec
+    Start 109: vulkan-gdeflate-gpu-idle-integrity
+1/5 Test #109: vulkan-gdeflate-gpu-idle-integrity ......   Passed    8.27 sec
+    Start 110: vulkan-gdeflate-gpu-native-two-queues
+2/5 Test #110: vulkan-gdeflate-gpu-native-two-queues ...   Passed    8.30 sec
+    Start 111: vulkan-gdeflate-gpu-partial-restore
+3/5 Test #111: vulkan-gdeflate-gpu-partial-restore .....***Failed    0.95 sec
+[zvram] Vulkan snapshot transfer staging bytes=33554432
+[zvram] Vulkan snapshot decode max-workers=1
+[zvram] GPU GDeflate restore enabled: wave32, compressed upload, direct backing output
+[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+[zvram] Vulkan snapshot minimum savings percent=0
+[zvram] Vulkan snapshot codec=gdeflate decode=GPU experimental=1
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+[zvram] snapshot state event=bootstrap-bind resident=335544320 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=268435456 stored=13882144 compressed-chunks=8 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=13882144 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=8 copy-bytes=268435456 copy-ns=33477679 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=67108864 stored=3470652 compressed-chunks=2 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=17352796 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=10 copy-bytes=335544320 copy-ns=45126148 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+fault-retry cold baseline: logical=335544320 stored=17352796 freezes=2
+[zvram] virtual free bytes=335544320
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=10 copy-bytes=335544320 copy-ns=45126148 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot transfer profile copy-calls=10 copy-bytes=335544320 copy-ns=45126148 decode-bytes=0 decode-ns=0
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+error: restore fault-arm interface unavailable
+
+    Start 112: vulkan-gdeflate-gpu-range-synthetic
+4/5 Test #112: vulkan-gdeflate-gpu-range-synthetic .....   Passed    1.53 sec
+    Start 113: vulkan-gdeflate-gpu-range-native
+5/5 Test #113: vulkan-gdeflate-gpu-range-native ........   Passed    1.51 sec
+
+80% tests passed, 1 tests failed out of 5
+
+Total Test time (real) =  20.57 sec
+
+The following tests FAILED:
+	111 - vulkan-gdeflate-gpu-partial-restore (Failed)

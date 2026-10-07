@@ -1,0 +1,33 @@
+[zvram] Vulkan snapshot transfer staging bytes=33554432
+[zvram] Vulkan snapshot decode max-workers=1
+[zvram] GPU GDeflate restore enabled: wave32, compressed upload, direct backing output
+[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+[zvram] Vulkan snapshot minimum savings percent=0
+[zvram] Vulkan snapshot codec=gdeflate decode=GPU experimental=1
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+[zvram] snapshot state event=bootstrap-bind resident=335544320 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+[zvram] snapshot cold bytes=268435456 stored=13882144 compressed-chunks=8 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=13882144 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=8 copy-bytes=268435456 copy-ns=32829854 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+[zvram] snapshot cold bytes=67108864 stored=3470652 compressed-chunks=2 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=17352796 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=10 copy-bytes=335544320 copy-ns=40579029 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+cold snapshot: logical=335544320 stored=17352796 freezes=2
+[zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=10 copy-bytes=335544320 copy-ns=40579029 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+wake cycle 1: verified 335544320 bytes
+[zvram] snapshot cold bytes=268435456 stored=268435456 compressed-chunks=0 raw-chunks=8 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=268435456 freezes=3 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=18 copy-bytes=603979776 copy-ns=74399570 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+[zvram] snapshot cold bytes=67108864 stored=67108864 compressed-chunks=0 raw-chunks=2 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=4 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=20 copy-bytes=671088640 copy-ns=82543526 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+[zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=30 copy-bytes=1006632960 copy-ns=125782707 decode-bytes=335544320 decode-ns=22499663 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+wake cycle 2: verified 335544320 bytes
+[zvram] snapshot cold bytes=268435456 stored=268435456 compressed-chunks=0 raw-chunks=8 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=268435456 freezes=5 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=38 copy-bytes=1275068416 copy-ns=158549183 decode-bytes=335544320 decode-ns=22499663 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+[zvram] snapshot cold bytes=67108864 stored=67108864 compressed-chunks=0 raw-chunks=2 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=6 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=40 copy-bytes=1342177280 copy-ns=166767670 decode-bytes=335544320 decode-ns=22499663 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+[zvram] virtual free bytes=335544320
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=6 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=40 copy-bytes=1342177280 copy-ns=166767670 decode-bytes=335544320 decode-ns=22499663 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0
+[zvram] GPU GDeflate restore calls=10 bytes=335544320 host-ns=62754474 fallbacks=0
+[zvram] snapshot transfer profile copy-calls=40 copy-bytes=1342177280 copy-ns=166767670 decode-bytes=335544320 decode-ns=22499663
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+PASS: two cold/wake compute cycles, full readback, metadata stayed cold, cold free did not restore

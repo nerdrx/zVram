@@ -12,7 +12,7 @@ jobs:
       - name: Build
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j 2
       - name: Check launcher syntax
-        run: python3 -m py_compile zvram dmem_probe.py check_primbench.py check_model.py check_vulkan_idle_model.py test_vulkan_ram_guard.py test_vulkan_compression_options.py test_vulkan_pipeline.py && ./zvram --help && python3 check_vulkan_idle_model.py --help
+        run: python3 -m py_compile zvram dmem_probe.py check_primbench.py check_model.py check_vulkan_idle_model.py test_vulkan_ram_guard.py test_vulkan_compression_options.py test_vulkan_pipeline.py test_gdeflate_gpu_layer.py && ./zvram --help && python3 check_vulkan_idle_model.py --help
       - name: Check low-memory abort cleanup
         run: python3 test_vulkan_ram_guard.py
       - name: Check Vulkan compression options and CPU policy
@@ -32,7 +32,7 @@ jobs:
           python3 research/gdeflate/test_software.py --binary build/research/zvram-gdeflate-research
       - name: Check bounded snapshot decode look-ahead
         run: ctest --test-dir build -R cpu-snapshot-pipeline --output-on-failure
-      - name: Build optional GDeflate CPU codec and check mixed snapshot restoration
+      - name: Build optional GDeflate codec and GPU decoder, run CPU checks
         run: |
           cmake -S . -B build/codecs -DZVRAM_ENABLE_GDEFLATE=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build build/codecs -j 2

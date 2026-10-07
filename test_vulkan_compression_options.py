@@ -33,7 +33,16 @@ with tempfile.TemporaryDirectory() as temporary:
     assert missing_auto_codec.returncode == 2, missing_auto_codec.stderr
     missing_codec = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--", sys.executable, "-c", "pass")
     assert missing_codec.returncode == 2 and "GDeflate codec missing" in missing_codec.stderr
+    missing_gpu_codec = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-gdeflate-gpu", "--", sys.executable, "-c", "pass")
+    assert missing_gpu_codec.returncode == 2 and "requires the gdeflate codec" in missing_gpu_codec.stderr
     (build / "zvram-codecs.json").write_text('{"gdeflate": true}')
+    missing_gpu = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--vulkan-gdeflate-gpu", "--", sys.executable, "-c", "pass")
+    assert missing_gpu.returncode == 2 and "GPU GDeflate decoder missing" in missing_gpu.stderr
+    (build / "zvram-codecs.json").write_text('{"gdeflate": true, "gdeflate_gpu": true}')
+    (build / "gdeflate-wave32.spv").touch()
+    gpu_child = "import os; print(os.environ['ZVRAM_VULKAN_GDEFLATE_GPU']); print(os.environ['ZVRAM_GDEFLATE_SHADER_PATH'])"
+    result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--vulkan-gdeflate-gpu", "--", sys.executable, "-c", gpu_child)
+    assert result.returncode == 0 and result.stdout == "1\n" + str(build / "gdeflate-wave32.spv") + "\n", (result.stdout, result.stderr)
     for codec in ("zstd", "gdeflate"):
         result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", codec, "--", sys.executable, "-c", codec_child)
         assert result.returncode == 0 and result.stdout == codec + "\n", (result.stdout, result.stderr)
