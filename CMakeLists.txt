@@ -656,6 +656,11 @@ if(ZVRAM_ENABLE_BP16_GPU_TESTS)
         set_tests_properties(${bp16_test} PROPERTIES TIMEOUT 60
             ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
     endforeach()
+    add_test(NAME vulkan-bp16-gpu-zero-pattern COMMAND ${bp16_gpu_launch}
+        --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+        -- $<TARGET_FILE:zvram-vulkan-auto-check> --range-compressed --zero-pattern)
+    set_tests_properties(vulkan-bp16-gpu-zero-pattern PROPERTIES TIMEOUT 60
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
     foreach(bp16_pressure_mode synthetic native)
         set(bp16_pressure_flags --range-pressure)
         if(bp16_pressure_mode STREQUAL "native")

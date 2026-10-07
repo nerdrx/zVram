@@ -40,6 +40,7 @@ public:
     ~Decoder() { destroy(); }
     bool unsafe() const noexcept { return poisoned_; }
     bool profilingEnabled() const noexcept { return profileEnabled_; }
+    bool hostInputEnabled() const noexcept { return bp16HostInput_; }
     Profile profile() const noexcept { return profile_; }
 
     // GDeflate requires shaderInt64, subgroup-size-control, computeFullSubgroups,
@@ -60,6 +61,9 @@ public:
             return VK_ERROR_INITIALIZATION_FAILED;
         if (format != Format::GDeflate && format != Format::BP16)
             return VK_ERROR_VALIDATION_FAILED_EXT;
+        const char* hostInputEnv = std::getenv("ZVRAM_VULKAN_BP16_HOST_INPUT");
+        bp16HostInput_ = format == Format::BP16 && hostInputEnv &&
+                         std::strcmp(hostInputEnv, "1") == 0;
         if (format == Format::BP16 && (!properties ||
             properties->limits.maxComputeWorkGroupInvocations < 256 ||
             properties->limits.maxComputeWorkGroupSize[0] < 256 ||
@@ -95,9 +99,16 @@ public:
                 gpuProfileEnabled_ = true;
             }
         }
-        if (result == VK_SUCCESS) result = createBuffer(4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0, upload_);
-        if (result == VK_SUCCESS) result = createBuffer(4,
+        const auto uploadUsage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+            (bp16HostInput_ ? VkBufferUsageFlags(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+                            : VkBufferUsageFlags(0));
+        const auto uploadForbidden = bp16HostInput_
+            ? VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+            : VkMemoryPropertyFlags(0);
+        if (result == VK_SUCCESS) result = createBuffer(4, uploadUsage,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            uploadForbidden, upload_);
+        if (result == VK_SUCCESS && !bp16HostInput_) result = createBuffer(4,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, input_);
         if (result == VK_SUCCESS) result = createBuffer(12, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -207,9 +218,13 @@ public:
             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &reuse, 0, nullptr, 0, nullptr);
 
         const VkBufferCopy uploadRegion{0, 0, static_cast<VkDeviceSize>(inputBytes)};
-        api_.cmdCopyBuffer(commandBuffer_, upload_.buffer, input_.buffer, 1, &uploadRegion);
+        if (!bp16HostInput_)
+            api_.cmdCopyBuffer(commandBuffer_, upload_.buffer, input_.buffer, 1, &uploadRegion);
         api_.cmdFillBuffer(commandBuffer_, scratch_.buffer, 0, 4, 0);
-        api_.cmdFillBuffer(commandBuffer_, output, offset, static_cast<VkDeviceSize>(paddedRaw), 0);
+        // Canonical BP16 frames cover every output word. Avoid a redundant
+        // full-range transfer write; scratch clearing still detects errors.
+        if (format_ != Format::BP16)
+            api_.cmdFillBuffer(commandBuffer_, output, offset, static_cast<VkDeviceSize>(paddedRaw), 0);
         if (gpuProfileEnabled_)
             api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_TRANSFER_BIT, queryPool_, 1);
 
@@ -467,6 +482,10 @@ private:
         timestampValidBits_ = 0;
     }
 
+    VkBuffer shaderInputBuffer() const noexcept {
+        return bp16HostInput_ ? upload_.buffer : input_.buffer;
+    }
+
     VkResult createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                          VkMemoryPropertyFlags required, VkMemoryPropertyFlags forbidden,
                          Buffer& out) {
@@ -518,9 +537,16 @@ private:
         std::size_t capacity = format_ == Format::BP16 ? bytes : 4096;
         while (capacity < bytes) capacity *= 2;
         Buffer newUpload{}, newInput{};
-        VkResult result = createBuffer(static_cast<VkDeviceSize>(capacity), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0, newUpload);
-        if (result == VK_SUCCESS) result = createBuffer(static_cast<VkDeviceSize>(capacity),
+        const auto uploadUsage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+            (bp16HostInput_ ? VkBufferUsageFlags(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+                            : VkBufferUsageFlags(0));
+        const auto uploadForbidden = bp16HostInput_
+            ? VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+            : VkMemoryPropertyFlags(0);
+        VkResult result = createBuffer(static_cast<VkDeviceSize>(capacity), uploadUsage,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            uploadForbidden, newUpload);
+        if (result == VK_SUCCESS && !bp16HostInput_) result = createBuffer(static_cast<VkDeviceSize>(capacity),
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, newInput);
         if (result != VK_SUCCESS) {
@@ -608,7 +634,7 @@ private:
     VkResult updateDescriptors(VkBuffer output, VkDeviceSize outputOffset,
                                VkDeviceSize inputRange, VkDeviceSize outputRange) {
         VkDescriptorBufferInfo infos[4]{};
-        infos[0] = {input_.buffer, 0, inputRange};
+        infos[0] = {shaderInputBuffer(), 0, inputRange};
         infos[1] = {control_.buffer, 0, 12};
         infos[2] = {output, outputOffset, outputRange};
         infos[3] = {scratch_.buffer, 0, 4};
@@ -626,7 +652,7 @@ private:
     }
 
     VkResult updateInputDescriptor(VkDeviceSize inputRange) {
-        VkDescriptorBufferInfo info{input_.buffer, 0, inputRange};
+        VkDescriptorBufferInfo info{shaderInputBuffer(), 0, inputRange};
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         write.dstSet = descriptorSet_;
         write.dstBinding = 0;
@@ -709,6 +735,7 @@ private:
         format_ = Format::GDeflate;
         maxDispatchGroupsX_ = 0;
         maxStorageBufferRange_ = 0;
+        bp16HostInput_ = false;
         queryPool_ = VK_NULL_HANDLE;
         gpuProfileEnabled_ = false;
         timestampValidBits_ = 0;
@@ -740,6 +767,7 @@ private:
     bool poisoned_{};
     bool profileEnabled_{};
     bool gpuProfileEnabled_{};
+    bool bp16HostInput_{};
     std::uint32_t timestampValidBits_{};
     double timestampPeriod_{};
     Profile profile_{};

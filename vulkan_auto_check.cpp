@@ -26,6 +26,7 @@ constexpr VkDeviceSize ChunkBytes = 32 * MiB;
 constexpr std::uint32_t ChunkWords = static_cast<std::uint32_t>(ChunkBytes / 4);
 constexpr std::uint32_t TotalWords = static_cast<std::uint32_t>(TotalBytes / 4);
 constexpr auto ColdTimeout = std::chrono::seconds(45);
+bool zeroPattern = false;
 
 void check(VkResult result, const char* operation) {
     if (result != VK_SUCCESS)
@@ -40,6 +41,7 @@ std::uint32_t mix32(std::uint32_t value) {
     return value ^ (value >> 16);
 }
 std::uint32_t initialWord(std::uint32_t index) {
+    if (zeroPattern && (index & 31u) == 0) return 0;
     return (index & 31u) == 0 ? mix32(index ^ 0x7a565241u) : 0xa5a5a5a5u;
 }
 std::uint32_t cycleSalt(std::uint32_t cycle, std::uint32_t chunk) {
@@ -1891,6 +1893,7 @@ int main(int argc, char** argv) try {
     bool activeSubmit = false;
     bool rangeSubmit = false;
     bool rangeCompressed = false;
+    bool useZeroPattern = false;
     bool rangePressure = false;
     bool rangeCache = false;
     bool rangeCacheBootstrap = false;
@@ -1925,6 +1928,7 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--selective-submit-unknown") == 0) { selectiveSubmit = true; selectiveSubmitUnknown = true; }
         else if (std::strcmp(argv[i], "--range-submit") == 0) { rangeSubmit=true; selectiveSubmit=true; }
         else if (std::strcmp(argv[i], "--range-compressed") == 0) { rangeSubmit=true; selectiveSubmit=true; rangeCompressed=true; }
+        else if (std::strcmp(argv[i], "--zero-pattern") == 0) useZeroPattern=true;
         else if (std::strcmp(argv[i], "--robust-core") == 0) robustCore=true;
         else if (std::strcmp(argv[i], "--range-pressure") == 0) { rangeSubmit=true; rangePressure=true; }
         else if (std::strcmp(argv[i], "--range-cache") == 0) {
@@ -1940,8 +1944,11 @@ int main(int argc, char** argv) try {
             rangeSubmit=true; rangeCache=true; rangeCacheUnknown=true;
         }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
     }
+    require(!useZeroPattern || rangeCompressed,
+            "--zero-pattern requires --range-compressed");
+    zeroPattern = useZeroPattern;
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
                                       expectPipelineRestore || expectPipelinePartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||

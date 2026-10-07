@@ -89,3 +89,15 @@ timestamps are supported, it also records GPU transfer, compute and finish
 intervals. Counters are cumulative, and sparse-bind time includes its existing
 wait. GPU query failure disables GPU timing; restoration safety and its normal
 fallback behavior remain unchanged.
+
+The production BP16 decoder now omits its redundant full-output clear: canonical
+frames are CPU-validated, and every output word is overwritten. GDeflate keeps
+its clear, and both paths retain the sticky error check and poisoned lifetimes.
+The opt-in `ZVRAM_VULKAN_BP16_HOST_INPUT=1` makes BP16 restoration read a coherent
+host storage buffer directly, instead of copying compressed input to VRAM.
+It requires a host-visible/coherent memory type without DEVICE_LOCAL; unsupported
+hardware retains the existing CPU fallback. Default BP16 still uses device input.
+GPU decode timing in this mode includes reads from host memory. Eight GPU checks
+passed in each mode, including zero/nonzero output, native/synthetic range,
+resident-pressure, queue lifetime and partial-restore cases.
+[Regression evidence](../../validation/bp16-host-input/summary.json).

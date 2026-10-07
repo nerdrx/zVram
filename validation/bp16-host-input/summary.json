@@ -1,0 +1,21 @@
+{
+  "scope": "BP16-only redundant output-fill removal plus opt-in direct coherent non-device-local input; small full-byte GPU regressions, not full-model speed evidence",
+  "records": {
+    "device-upload": {
+      "gpu_tests": 8,
+      "passed": 8,
+      "validation_diagnostics": false,
+      "last_device_profile": "samples=3 transfer-ns=7274200 decode-ns=356200 finish-ns=22120",
+      "host_input_enabled": false,
+      "includes_zero_output_fixture": true
+    },
+    "direct-host": {
+      "gpu_tests": 8,
+      "passed": 8,
+      "validation_diagnostics": false,
+      "last_device_profile": "samples=3 transfer-ns=20560 decode-ns=2453200 finish-ns=30760",
+      "host_input_enabled": true,
+      "includes_zero_output_fixture": true
+    }
+  }
+}

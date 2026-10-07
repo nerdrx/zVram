@@ -1491,7 +1491,8 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
             d.gpuRestoreEnabled=false; d.gpuDecoder.reset();
             logf("GPU %s restore unavailable result=%d; retaining CPU codec",codecName,result);
             if(result==VK_ERROR_DEVICE_LOST) { d.gpuGateError=result; return false; }
-        } else logf("GPU %s restore enabled: %s, compressed upload, direct backing output",codecName,bp16?"256-thread":"wave32");
+        } else logf("GPU %s restore enabled: %s, %s, direct backing output",codecName,bp16?"256-thread":"wave32",
+            d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
     }
     return true;
 }
