@@ -1,0 +1,5 @@
+Command: ./zvram --validate --isolate-layers -- ./build/zvram-sparse-check ./build/managed_check.spv
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=2097152 live-nonlocal=0 peak-nonlocal=524288 allocation-failures=0
+PASS: stable sparse VkBuffer handles and GPU data survived two eviction/restore cycles; evictions=15 restores=12; pinning, failed dirty eviction, and 3-byte alignment checked
+Exit=0

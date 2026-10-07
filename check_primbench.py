@@ -55,7 +55,7 @@ def main():
     wrapped = [str(root / "zvram"), "--hip", "--hip-vmm", "--hip-report-capacity",
                "--hip-local-mib", "32", "--hip-host-mib", "512", "--"] + application
     for name, command in (("native", application), ("vmm", wrapped)):
-        result = subprocess.run(command, env=environment, stdout=subprocess.PIPE,
+        result = subprocess.run(command, cwd=directory, env=environment, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, timeout=30)
         log = root / f"build/primbench-{name}.txt"
         log.write_text(f"Upstream commit: {REVISION}\nCommand: {command!r}\n"

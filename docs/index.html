@@ -35,7 +35,7 @@
         <div class="card-top"><span>MEMORY PATH</span><span class="live-label"><i></i> EXPERIMENTAL</span></div>
         <div class="memory-label"><span>GPU MEMORY</span><span>DEVICE LOCAL</span></div>
         <div class="memory-stripe gpu-stripe" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
-        <div class="bridge"><span class="bridge-line"></span><span>native driver spillover</span><span class="bridge-line"></span></div>
+        <div class="bridge"><span class="bridge-line"></span><span>backing beyond VRAM</span><span class="bridge-line"></span></div>
         <div class="memory-label"><span>SYSTEM MEMORY</span><span>HOST VISIBLE</span></div>
         <div class="memory-stripe system-stripe" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
         <div class="card-foot"><span class="legend"><i class="legend-vram"></i> Allocation</span><span class="legend"><i class="legend-spill"></i> Driver managed</span></div>
@@ -44,12 +44,12 @@
 
     <section class="notice wrap" aria-label="Important limitation">
       <span class="notice-icon" aria-hidden="true">i</span>
-      <p><strong>Experimental boundary:</strong> compression applies only to buffers explicitly managed by the Vulkan pool. The HIP fallback uses pinned host RAM. Neither path claims transparent arbitrary-app compression or a gain over native driver behavior.</p>
+      <p><strong>Experimental boundary:</strong> compression applies to buffers explicitly managed by the Vulkan pool. HIP can expand allocations with mapped host RAM or GTT backing; the GTT path verified a 40 GiB single allocation that native HIP rejected on this machine. Transparent arbitrary-app compression remains future work.</p>
     </section>
 
     <section class="results wrap" aria-labelledby="results-title">
-      <div><p class="eyebrow">Measured on hardware</p><h2 id="results-title">40 GiB data. 256 MiB budget.</h2></div>
-      <p>The managed pool verified every word after GPU mutation, eviction, and restoration. Its highly compressible constant pattern stored 3,998,720 bytes under a 256 MiB resident budget; this is not representative of model weights. A report-enabled HIP VMM/GTT check verified one 40 GiB pointer backed by 20 GiB VRAM and 20 GiB GTT, with logical free capacity returning from 40 GiB to zero while allocated and back after free. An 80 MiB check agreed across three HIP APIs. By default HIP still reports physical capacity. These synthetic checks do not establish model compatibility, a native HIP capacity gain, or transparent paging.</p>
+      <div><p class="eyebrow">Measured on hardware</p><h2 id="results-title">Capacity verified. Compression measured.</h2></div>
+      <p>One 40 GiB HIP pointer passed full GPU-write verification using 20 GiB VRAM and 20 GiB GTT; native HIP rejected that single allocation. A small unmodified llama.cpp run produced identical native and zVram output. Separately, a 270.9 MB F16 model file compressed losslessly to 207.3 MB (23.5% saved), with every byte restored under a 16 MiB resident budget. These checks cover specific paths; a 40 GiB model and transparent application compression remain untested.</p>
       <a class="text-link" href="https://github.com/nerdrx/zVram/blob/main/VALIDATION.md">Read the test evidence <span aria-hidden="true">↗</span></a>
     </section>
 
@@ -65,13 +65,13 @@
         <article class="feature-card">
           <span class="feature-index">02 / VULKAN POOL</span>
           <h3>Evict and restore safely</h3>
-          <p>A C++ API owns explicit buffers, pins them while in use, and stores lossless zstd or raw snapshots under a host budget. Applications refresh VkBuffer references after restore.</p>
+          <p>A C++ API owns explicit buffers, pins them while in use, and stores lossless zstd or raw snapshots under a host budget. Default buffers need refreshed references after restore; an optional sparse mode preserves their handles at explicit acquire/release boundaries.</p>
           <span class="tag">Bounded host store</span><span class="tag">C++17 API</span>
         </article>
         <article class="feature-card">
           <span class="feature-index">03 / HIP FALLBACK</span>
           <h3>Route capped allocations</h3>
-          <p>An optional hipMalloc shim supports native device allocations, mapped pinned host fallback, and an experimental one-pointer VMM/GTT provider. Logical capacity reporting is opt-in and limited to three HIP APIs; these paths are not compressed and broader application integration remains untested.</p>
+          <p>An optional hipMalloc shim supports native device allocations, mapped pinned host fallback, and an experimental one-pointer VMM/GTT provider. A small unmodified llama.cpp model and a ROCm copy example passed; logical capacity reporting is limited to three HIP APIs, and broader application integration remains untested.</p>
           <span class="tag">Opt-in</span><span class="tag">Pinned host RAM</span>
         </article>
       </div>
@@ -80,11 +80,11 @@
     <section class="content-section roadmap wrap" id="roadmap" aria-labelledby="roadmap-title">
       <div class="section-heading"><p class="eyebrow">Research direction</p><h2 id="roadmap-title">Prototype today. Learn what’s next.</h2></div>
       <div class="milestones">
-        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>Managed Vulkan pool</h3><p>Chunked lossless snapshots, LRU eviction, and compute integrity verified under a 16 MiB resident budget.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
-        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>Optional HIP allocation fallback</h3><p>GPU-write integrity verified across native and host tiers; an unchanged ROCm copy example also passed. A 40 GiB native HIP baseline and model workloads remain untested.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
+        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>Managed Vulkan pool</h3><p>Chunked snapshots and LRU compute checks passed; optional sparse backing also preserved buffer handles under a 2 MiB resident budget.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
+        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>Optional HIP allocation fallback</h3><p>GPU-write integrity verified across native and host tiers; an unchanged ROCm copy example and small llama.cpp model also passed. Native HIP rejected one 40 GiB allocation; VMM/GTT accepted it. A 40 GiB model remains untested.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
         <article class="milestone"><span class="milestone-state">RESEARCH</span><div><h3>Native Linux paging</h3><p>TTM has a shmem backing path for eligible BOs. A scoped dmem pressure probe is prepared; its privileged run is pending.</p></div><span class="milestone-mark" aria-hidden="true">○</span></article>
-        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>HIP VMM with GTT backing</h3><p>One 40 GiB pointer passed GPU-write/CPU-verify using 20 GiB VRAM and 20 GiB GTT; model and application integration remain untested.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
-        <article class="milestone"><span class="milestone-state">NEXT</span><div><h3>Broader workloads</h3><p>Validate model-like data and real application behavior before making wider claims.</p></div><span class="milestone-mark" aria-hidden="true">○</span></article>
+        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>HIP VMM with GTT backing</h3><p>One 40 GiB pointer passed GPU-write/CPU-verify using 20 GiB VRAM and 20 GiB GTT; a small llama.cpp model also ran, while 40 GiB model loading remains untested.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
+        <article class="milestone"><span class="milestone-state">NEXT</span><div><h3>Broader workloads</h3><p>Test larger models and application paths; current model evidence covers one 135M-parameter run only.</p></div><span class="milestone-mark" aria-hidden="true">○</span></article>
       </div>
     </section>
 

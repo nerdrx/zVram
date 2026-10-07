@@ -120,7 +120,7 @@ The all-GTT descriptor test kept **256 × 4 KiB allocations** live, filled each 
   ./build/hip_check --single-allocation --mib 40960
 ```
 
-An earlier HIP host-location VMM provider is a separate, superseded path: its 40 GiB attempt failed during host-segment creation, and a host-only probe showed each 256 MiB allocation consuming matching VRAM with GTT unchanged at creation. Its historical failure log is [`validation/hip-vmm-40gib-failed.txt`](validation/hip-vmm-40gib-failed.txt); those findings do not describe the current GTT BO provider. For comparison, the non-VMM `hipMalloc` mapped-host fallback also passed a separate 40 GiB test using pinned host memory. These are synthetic pointer/data-integrity checks. These capacity checks do not establish a native 40 GiB HIP baseline, model workloads, compression, or transparent paging. A separate unmodified-application check is documented below. The VMM/GTT build needs ROCm/HIP and libdrm AMDGPU development files.
+An earlier HIP host-location VMM provider is a separate, superseded path: its 40 GiB attempt failed during host-segment creation, and a host-only probe showed each 256 MiB allocation consuming matching VRAM with GTT unchanged at creation. Its historical failure log is [`validation/hip-vmm-40gib-failed.txt`](validation/hip-vmm-40gib-failed.txt); those findings do not describe the current GTT BO provider. For comparison, the non-VMM `hipMalloc` mapped-host fallback also passed a separate 40 GiB test using pinned host memory. These are synthetic pointer/data-integrity checks. A native HIP baseline requested one 40 GiB allocation on the same discrete GPU and returned `hipErrorOutOfMemory` (2), exit 1, in 0.033 s; it reported 24 GiB total capacity. The VMM/GTT single-allocation pass therefore demonstrates extra usable allocation capacity on this stack. This baseline does not test 40 GiB across multiple native HIP allocations. [Native single-allocation log](validation/hip-native-single-40gib.txt). These checks do not establish model workloads, compression, or transparent paging. A separate unmodified-application check is documented below. The VMM/GTT build needs ROCm/HIP and libdrm AMDGPU development files.
 
 ## Linux TTM paging probe
 
@@ -135,7 +135,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Tests require compatible GPU hardware and the relevant runtime. This report distinguishes completed integrity checks from untested application, model, performance, and transparent paging claims.
+Tests require compatible GPU hardware and the relevant runtime. A small llama.cpp model passed, while 40 GiB model loading, broader application compatibility, performance gains, compression ratios for larger models, and transparent paging remain unverified.
 
 ## Unmodified ROCm application
 
@@ -143,4 +143,33 @@ The unchanged official ROCm [primbench HIP copy example](https://github.com/ROCm
 
 Both the native process and `./zvram --hip --hip-vmm --hip-report-capacity --hip-local-mib 32 --hip-host-mib 512 -- copy_benchmark --size 32MiB --min-secs 0.1 --noise-timeout-secs 1` exited 0 for `char` and `long long`. The example allocates two 32 MiB data buffers plus its library's internal 256 MiB cache buffer. Under zVram these exceeded the 32 MiB local cap: peak tracked backing was 32 MiB VRAM and 288 MiB GTT, with six VMM allocations over the run. Tracked/local/host/pending/orphan/failure counters returned to zero.
 
-The upstream copy assertion verifies only the first three values (`0, 1, 2`), so this does not replace the full-word integrity checks above. Both short runs reached primbench's statistical noise timeout, which is distinct from the subprocess timeout and assertion failure; no stable performance comparison is claimed. An initial 256 MiB host cap correctly refused another allocation because the internal cache had already consumed most of it; the successful run used 512 MiB. No model or broader HIP API compatibility follows from this example. Logs: [native](validation/primbench-native.txt), [VMM/GTT](validation/primbench-vmm.txt).
+The upstream copy assertion verifies only the first three values (`0, 1, 2`), so this does not replace the full-word integrity checks above. Both short runs reached primbench's statistical noise timeout, which is distinct from the subprocess timeout and assertion failure; no stable performance comparison is claimed. An initial 256 MiB host cap correctly refused another allocation because the internal cache had already consumed most of it; the successful run used 512 MiB. Logs: [native](validation/primbench-native.txt), [VMM/GTT](validation/primbench-vmm.txt).
+
+## Small llama.cpp model check
+
+An unmodified `llama-completion` from llama.cpp commit `c479922ac520a08969b4c1dc154d7bbb3c386d85` ran the F16 GGUF `SmolLM2-135M-Instruct` (270,885,952 bytes; SHA-256 `f535f83ec568d040f88ddc04a199fa6da90923bbb41d4dcaed02caa924d6ef57`) on the RX 7900 XTX. The model was not additionally quantized. Both native and VMM/GTT runs exited 0, offloaded 31/31 model layers, and produced byte-identical stdout (SHA-256 `087087260916ca2af13b0c97b12bd4cd9945c05fa3149c1a484667d130873cc8`). The run used `-ngl 999`, context 512, batch 128, 32 generated tokens, greedy sampling (`temp 0`, seed 1); it is an application compatibility check, not a benchmark.
+
+The VMM/GTT run used a 64 MiB local cap and 2 GiB GTT cap. zVram tracked a 64 MiB peak local allocation, 240,599,040 bytes peak host/GTT backing, and three VMM allocations; tracked allocations, pending frees, and orphaned cleanup returned to zero, with no failures. The native run used llama.cpp's normal HIP host-registration/mapped path (its logged model-buffer allocation was 0.00), so this does not establish that the native run placed all model weights in local VRAM or that VMM improved capacity or performance. A 40 GiB model and broader model/application behavior remain untested.
+
+The exact model source, hash, build configuration, and command metadata are in [`validation/llama-small-model.json`](validation/llama-small-model.json); captured logs are [native](validation/llama-small-native.txt) and [VMM/GTT](validation/llama-small-vmm.txt), with [native stdout](validation/llama-small-native.stdout.txt) and [VMM/GTT stdout](validation/llama-small-vmm.stdout.txt).
+
+## Stable sparse Vulkan buffers
+
+The optional `ManagedBufferPool::Config::stableSparseBuffers` path retained three 1 MiB logical buffers under a 2 MiB resident budget. The GPU mutated every word across two cycles; full readback verified the values after compression and restoration while `VkBuffer` handles stayed identical. The run recorded 15 evictions and 12 restores. It also verified that pinned buffers cannot be evicted/erased, an incompressible GPU-mutated buffer remains intact when a 128-byte host-store cap refuses eviction, and a 3-byte logical buffer survives aligned sparse binding with a stable handle. Final pool accounting was zero.
+
+The feature-enabled sparse compute run exited 0 without core or synchronization validation diagnostics; the layer recorded a 2 MiB peak local allocation and 512 KiB peak nonlocal allocation across sequential pool instances. [Raw sparse validation](validation/sparse-compute.txt). This is a cooperative API with synchronized acquire/release boundaries, not an unmodified Vulkan application test or fault-driven paging. The default pool path and HIP backend remain separate.
+
+## Real F16 model-file compression
+
+The same 270,885,952-byte SmolLM2 F16 GGUF documented above was streamed through the pool in 8 MiB logical buffers, with a 16 MiB resident budget, 512 MiB host-store cap, and 1 MiB staging buffer. All chunks were evicted, restored, read back from the GPU, and compared byte for byte against the source file, then erased. Both default and stable sparse modes passed without Vulkan core or synchronization validation diagnostics. Sparse handles stayed identical.
+
+Both modes retained **207,311,475 bytes** in cold snapshots: **23.47% saved**, or about **1.307:1**, for this one file. Each recorded 66 evictions, 33 restores, zero raw fallbacks, and zero resident/host bytes after cleanup. The layer measured peak local allocation at 16,777,216 bytes and peak nonlocal staging at 1,048,576 bytes. Codec scratch, metadata, and caller readback vectors are outside these storage budgets. This tests real file bytes, including model metadata; it does not execute inference from compressed weights, predict other model ratios, or demonstrate automatic application compression.
+
+```sh
+./zvram --validate --isolate-layers -- \
+  ./build/zvram-file-pool-check --file /path/to/SmolLM2-135M-Instruct-f16.gguf
+./zvram --validate --isolate-layers -- \
+  ./build/zvram-file-pool-check --file /path/to/SmolLM2-135M-Instruct-f16.gguf --sparse
+```
+
+The checker accepts nonempty files up to 512 MiB. Raw logs: [default](validation/model-file-default.txt), [sparse](validation/model-file-sparse.txt). Single-run elapsed times (0.876 s / 0.795 s) are integrity-check observations, not a performance benchmark.

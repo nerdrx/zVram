@@ -1,0 +1,49 @@
+command: ['./zvram', '--validate', '--isolate-layers', '--', './build/zvram-file-pool-check', '--file', '/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/models/SmolLM2-135M-Instruct-f16.gguf']
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+mode: default managed buffers
+loaded 8388608 / 270885952 bytes
+loaded 16777216 / 270885952 bytes
+loaded 25165824 / 270885952 bytes
+loaded 33554432 / 270885952 bytes
+loaded 41943040 / 270885952 bytes
+loaded 50331648 / 270885952 bytes
+loaded 58720256 / 270885952 bytes
+loaded 67108864 / 270885952 bytes
+loaded 75497472 / 270885952 bytes
+loaded 83886080 / 270885952 bytes
+loaded 92274688 / 270885952 bytes
+loaded 100663296 / 270885952 bytes
+loaded 109051904 / 270885952 bytes
+loaded 117440512 / 270885952 bytes
+loaded 125829120 / 270885952 bytes
+loaded 134217728 / 270885952 bytes
+loaded 142606336 / 270885952 bytes
+loaded 150994944 / 270885952 bytes
+loaded 159383552 / 270885952 bytes
+loaded 167772160 / 270885952 bytes
+loaded 176160768 / 270885952 bytes
+loaded 184549376 / 270885952 bytes
+loaded 192937984 / 270885952 bytes
+loaded 201326592 / 270885952 bytes
+loaded 209715200 / 270885952 bytes
+loaded 218103808 / 270885952 bytes
+loaded 226492416 / 270885952 bytes
+loaded 234881024 / 270885952 bytes
+loaded 243269632 / 270885952 bytes
+loaded 251658240 / 270885952 bytes
+loaded 260046848 / 270885952 bytes
+loaded 268435456 / 270885952 bytes
+loaded 270885952 / 270885952 bytes
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=16777216 live-nonlocal=0 peak-nonlocal=1048576 allocation-failures=0
+
+verified 67108864 / 270885952 bytes
+verified 134217728 / 270885952 bytes
+verified 201326592 / 270885952 bytes
+verified 268435456 / 270885952 bytes
+verified 270885952 / 270885952 bytes
+cold-store input_bytes=270885952 host_stored_bytes=207311475 host_stored_peak_bytes=207311475 resident_cold_bytes=0 evictions=66 restores=33 raw_fallbacks=0 verified_bytes=270885952 stable_handles=no
+PASS: every input byte restored and compared; pool storage cleaned up
+
+exit_code=0
+elapsed_seconds=0.8756708329892717

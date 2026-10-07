@@ -4,7 +4,7 @@
 
 zVram tests explicit strategies for GPU memory beyond local VRAM: native driver migration, a managed Vulkan buffer pool with lossless zstd snapshots, and an opt-in HIP `hipMalloc` spillover layer.
 
-**Status: experimental v0.2.0.** The managed pool only controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing. The VMM/GTT provider passed one 40 GiB single-pointer integrity check using 20 GiB of VRAM and 20 GiB of GTT on this machine. This is explicit integration research, not transparent arbitrary-application paging or compression; an unmodified ROCm copy example also passed, while model workloads and a native 40 GiB HIP baseline remain untested.
+**Status: experimental v0.2.0.** The managed pool only controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing. The VMM/GTT provider passed one 40 GiB single-pointer integrity check using 20 GiB of VRAM and 20 GiB of GTT on this machine. An unmodified ROCm copy example and a small 135M-parameter llama.cpp HIP run both passed; the latter produced identical output on the native and VMM/GTT paths. These are explicit integration checks, not transparent arbitrary-application paging or compression. Native HIP rejected one 40 GiB allocation with out-of-memory; the VMM/GTT provider accepted and verified that size. A 40 GiB model and broader application compatibility remain untested.
 
 ## What works today
 
@@ -19,15 +19,15 @@ RADV already migrates allocations between VRAM and GPU-accessible system memory.
 
 ## Managed Vulkan buffer pool
 
-Include [`managed_pool.hpp`](managed_pool.hpp) and link `zvram_pool`. The pool owns each Vulkan buffer and allocation. `upload` creates a stable logical ID; `acquire` returns the current `VkBuffer` and pins it; `release` is valid only after the caller has synchronized all GPU work using that buffer. A restored allocation can have a different `VkBuffer`, so refresh descriptors and other references after every acquire. The supplied queue must be externally synchronized with pool calls.
+Include [`managed_pool.hpp`](managed_pool.hpp) and link `zvram_pool`. The pool owns each Vulkan buffer and allocation. `upload` creates a stable logical ID; `acquire` returns the current `VkBuffer` and pins it; `release` is valid only after the caller has synchronized all GPU work using that buffer. By default a restored allocation can have a different `VkBuffer`, so refresh descriptors and other references after every acquire. With `Config::stableSparseBuffers = true`, each buffer keeps its handle while physical backing is removed and restored through sparse binding. That mode requires `sparseBinding` and `sparseResidencyBuffer` enabled at device creation, plus a sparse-binding transfer queue; physical support checks cannot verify what the caller enabled on an existing device. It still requires the same explicit acquire/release boundaries. The supplied queue must be externally synchronized with pool calls.
 
-The pool assumes resident data can be modified by GPU work and reads it back before eviction. Host storage uses zstd when smaller and raw bytes otherwise. Snapshot encoding and restoration stream by staging chunk; temporary codec scratch is bounded by the configured chunk and zstd compression bound, while caller-owned readbacks are outside the pool budget. The pool is an explicit application integration API, not a transparent Vulkan layer or virtual-memory implementation.
+The pool assumes resident data can be modified by GPU work and reads it back before eviction. Host storage uses zstd when smaller and raw bytes otherwise. Snapshot encoding and restoration stream by staging chunk; temporary codec scratch is bounded by the configured chunk and zstd compression bound, while caller-owned readbacks are outside the pool budget. The pool is an explicit application integration API. Sparse mode rebinds memory at synchronized application boundaries; it does not supply fault-driven paging or discover arbitrary application buffer use. After an uncertain queue operation the pool retains backing and stops further acquire/upload operations.
 
 ## HIP allocation layer
 
 Builds when HIP/ROCm development files are available. The `--hip` shim covers `hipMalloc`/`hipFree`; it is not a general HIP memory manager, and asynchronous free of a mapped-host fallback is rejected. `--hip-local-mib` caps native device allocation bytes; without `--hip-vmm`, overflow uses mapped pinned host memory, while `--hip-host-mib` sets its cap. Mapped host is system RAM, not compressed storage.
 
-With `--hip-vmm`, overflow is backed by AMDGPU GTT buffer objects exported through libdrm and imported into one HIP VMM virtual address range. This experimental path requires the `libdrm_amdgpu` development files in addition to ROCm/HIP. One 40 GiB synthetic integrity check passed with 20 GiB each of local VRAM and GTT backing. An earlier HIP host-location VMM provider failed and consumed VRAM in a separate probe; that superseded path is not the current GTT provider. Neither result establishes model compatibility, performance gain, or transparent paging.
+With `--hip-vmm`, overflow is backed by AMDGPU GTT buffer objects exported through libdrm and imported into one HIP VMM virtual address range. This experimental path requires the `libdrm_amdgpu` development files in addition to ROCm/HIP. One 40 GiB synthetic integrity check passed with 20 GiB each of local VRAM and GTT backing. An earlier HIP host-location VMM provider failed and consumed VRAM in a separate probe; that superseded path is not the current GTT provider. A native HIP 40 GiB single-allocation baseline returned out-of-memory, so the current GTT provider demonstrated extra single-allocation capacity on this stack. A small unmodified llama.cpp HIP run also passed on both native and VMM/GTT paths; this does not establish 40 GiB model loading, performance gain, or broad application compatibility.
 
 By default HIP capacity queries keep reporting native physical capacity. `--hip-report-capacity` opts into reporting the configured local cap plus available GTT-backed tier through `hipMemGetInfo`, `hipDeviceTotalMem`, and the installed `hipGetDeviceProperties` ABI. Use it only with `--hip-vmm`, an explicit `--hip-local-mib`, and a positive `--hip-host-mib`; it does not change physical VRAM, external queries, or older property-query ABIs. This logical report passed both an 80 MiB three-query consistency check and a 40 GiB single-pointer GPU integrity run. It applies only to those HIP entry points and does not reserve memory or promise general application compatibility. See [validation details](VALIDATION.md#hip-vmm-research-probe).
 
@@ -46,6 +46,12 @@ cmake --build build -j
 
 # Managed Vulkan compute, eviction, restoration, and integrity check.
 ./zvram --validate --isolate-layers -- ./build/zvram-managed-check
+
+# Stable-buffer sparse compute and negative integrity checks.
+./zvram --validate --isolate-layers -- ./build/zvram-sparse-check ./build/managed_check.spv
+
+# Real-file lossless roundtrip, bounded to files up to 512 MiB.
+./zvram --validate --isolate-layers -- ./build/zvram-file-pool-check --file model.gguf --sparse
 
 # Optional HIP probe: 40 GiB live with 20 GiB local and 20 GiB mapped-host caps.
 ./zvram --hip --hip-local-mib 20480 --hip-host-mib 20480 -- \
@@ -80,7 +86,7 @@ The run creates one temporary cgroup, limits the selected AMDGPU VRAM region to 
 
 ## Validation
 
-The current hardware evidence and exact commands are in [VALIDATION.md](VALIDATION.md). Results include 40 GiB native Vulkan integrity, a 40 GiB managed-pool check under a 256 MiB resident budget using highly compressible synthetic data, two smaller mixed-data compute/readback cycles, and an independent 40 GiB HIP mapped-host fallback check. None is an inference benchmark, representative model-weight compression ratio, or proof of universal application compatibility.
+The current hardware evidence and exact commands are in [VALIDATION.md](VALIDATION.md). Results include 40 GiB native Vulkan integrity, a 40 GiB managed-pool check under a 256 MiB resident budget using highly compressible synthetic data, two smaller mixed-data compute/readback cycles, a 40 GiB HIP mapped-host fallback check, and a small llama.cpp model run through native and VMM/GTT paths. A separate full-file roundtrip of the 270,885,952-byte SmolLM2 F16 GGUF stored 207,311,475 bytes (23.47% saved) under a 16 MiB resident budget, in both default and sparse modes. That is one measured file, not a prediction for other models. These checks are not an inference benchmark, 40 GiB model test, or proof of universal application compatibility.
 
 ## Development
 

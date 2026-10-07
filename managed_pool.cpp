@@ -81,27 +81,46 @@ struct ManagedBufferPool::Impl {
     struct Entry {
         VkDeviceSize size{};
         VkBufferUsageFlags usage{};
+        VkMemoryRequirements sparseRequirements{};
         Allocation gpu;
         Snapshot host;
         std::uint32_t pins{};
         std::uint64_t lastUse{};
         bool resident{};
+        bool contentsReady{};
+        bool transitionUncertain{};
     };
 
     Config config;
     VkPhysicalDeviceMemoryProperties memory{};
     VkCommandPool commandPool{};
     Allocation staging;
+    std::unique_ptr<Allocation> uncertainAllocation;
     void* mapped{};
     std::unordered_map<Id, Entry> entries;
     Id nextId{1};
     std::uint64_t clock{};
     Statistics stats;
+    bool poisoned{};
 
     explicit Impl(const Config& c) : config(c) {
         if (!c.physicalDevice || !c.device || !c.queue || c.residentBudget == 0 || c.hostBudget == 0 || c.stagingChunkSize == 0)
             throw std::invalid_argument("ManagedBufferPool requires valid Vulkan handles and nonzero budgets");
         vkGetPhysicalDeviceMemoryProperties(c.physicalDevice, &memory);
+        if (c.stableSparseBuffers) {
+            VkPhysicalDeviceFeatures features{};
+            vkGetPhysicalDeviceFeatures(c.physicalDevice, &features);
+            if (!features.sparseBinding || !features.sparseResidencyBuffer)
+                throw std::invalid_argument("stable sparse buffers require sparseBinding and sparseResidencyBuffer support");
+            std::uint32_t count = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(c.physicalDevice, &count, nullptr);
+            if (c.queueFamily >= count) throw std::invalid_argument("sparse queue family is out of range");
+            std::vector<VkQueueFamilyProperties> queues(count);
+            vkGetPhysicalDeviceQueueFamilyProperties(c.physicalDevice, &count, queues.data());
+            const auto flags = queues[c.queueFamily].queueFlags;
+            if ((flags & VK_QUEUE_SPARSE_BINDING_BIT) == 0 || (flags & VK_QUEUE_TRANSFER_BIT) == 0)
+                throw std::invalid_argument("stable sparse buffers require a sparse-binding transfer queue");
+        }
         config.stagingChunkSize = std::min<VkDeviceSize>(c.stagingChunkSize,
             static_cast<VkDeviceSize>(std::numeric_limits<std::size_t>::max()));
         config.stagingChunkSize &= ~VkDeviceSize{3};
@@ -131,6 +150,17 @@ struct ManagedBufferPool::Impl {
         entries.clear();
         staging.reset();
         if (commandPool) vkDestroyCommandPool(config.device, commandPool, nullptr);
+    }
+
+    void retainUncertain(Allocation& allocation, std::unique_ptr<Allocation>& reserved) noexcept {
+        *reserved = std::move(allocation);
+        stats.residentAllocationBytes += reserved->allocationSize;
+        uncertainAllocation = std::move(reserved);
+        poisoned = true;
+    }
+
+    void ensureHealthy() const {
+        if (poisoned) throw std::runtime_error("buffer pool stopped after an uncertain sparse queue operation");
     }
 
     Allocation makeBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
@@ -168,12 +198,82 @@ struct ManagedBufferPool::Impl {
         return result;
     }
 
+    Allocation makeSparseBuffer(VkDeviceSize logicalSize, VkBufferUsageFlags usage,
+                                VkMemoryRequirements& requirements) {
+        if (!logicalSize) throw std::invalid_argument("zero-size sparse Vulkan buffer");
+        Allocation result;
+        result.device = config.device;
+        result.logicalSize = logicalSize;
+        VkDeviceSize bufferSize = logicalSize;
+        for (int attempt = 0; attempt < 4; ++attempt) {
+            VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            bci.flags = VK_BUFFER_CREATE_SPARSE_BINDING_BIT | VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT;
+            bci.size = bufferSize;
+            bci.usage = usage;
+            bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            check(vkCreateBuffer(config.device, &bci, nullptr, &result.buffer), "vkCreateBuffer(sparse)");
+            vkGetBufferMemoryRequirements(config.device, result.buffer, &requirements);
+            if (!requirements.alignment) throw std::runtime_error("sparse buffer has zero binding alignment");
+            const VkDeviceSize remainder = logicalSize % requirements.alignment;
+            if (logicalSize > std::numeric_limits<VkDeviceSize>::max() - (remainder ? requirements.alignment - remainder : 0))
+                throw std::length_error("sparse buffer size alignment overflow");
+            const VkDeviceSize alignedLogical = logicalSize + (remainder ? requirements.alignment - remainder : 0);
+            const VkDeviceSize targetSize = std::max(alignedLogical, requirements.size);
+            if (targetSize == bufferSize && targetSize == requirements.size && targetSize % requirements.alignment == 0) {
+                result.allocationSize = requirements.size;
+                return result;
+            }
+            vkDestroyBuffer(config.device, result.buffer, nullptr);
+            result.buffer = VK_NULL_HANDLE;
+            if (targetSize <= bufferSize) throw std::runtime_error("sparse buffer requirements are not binding-aligned");
+            bufferSize = targetSize;
+        }
+        throw std::runtime_error("sparse buffer size did not converge to binding alignment");
+    }
+
+    VkDeviceMemory allocateSparseMemory(const VkMemoryRequirements& requirements) {
+        std::uint32_t selected = UINT32_MAX;
+        for (std::uint32_t i = 0; i < memory.memoryTypeCount; ++i) {
+            const auto flags = memory.memoryTypes[i].propertyFlags;
+            if ((requirements.memoryTypeBits & (1u << i)) && (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+                selected = i;
+                break;
+            }
+        }
+        if (selected == UINT32_MAX) throw std::runtime_error("no device-local memory type for sparse buffer");
+        VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        ai.allocationSize = requirements.size;
+        ai.memoryTypeIndex = selected;
+        VkDeviceMemory memoryHandle{};
+        check(vkAllocateMemory(config.device, &ai, nullptr, &memoryHandle), "vkAllocateMemory(sparse)");
+        return memoryHandle;
+    }
+
+    void bindSparse(VkBuffer buffer, VkDeviceMemory memoryHandle, VkDeviceSize size,
+                    bool& submitted) {
+        submitted = false;
+        VkSparseMemoryBind bind{};
+        bind.size = size;
+        bind.memory = memoryHandle;
+        VkSparseBufferMemoryBindInfo bufferInfo{};
+        bufferInfo.buffer = buffer;
+        bufferInfo.bindCount = 1;
+        bufferInfo.pBinds = &bind;
+        VkBindSparseInfo info{VK_STRUCTURE_TYPE_BIND_SPARSE_INFO};
+        info.bufferBindCount = 1;
+        info.pBufferBinds = &bufferInfo;
+        check(vkQueueBindSparse(config.queue, 1, &info, VK_NULL_HANDLE), "vkQueueBindSparse");
+        submitted = true;
+        check(vkQueueWaitIdle(config.queue), "vkQueueWaitIdle(sparse bind)");
+    }
+
     void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize srcOffset,
                     VkDeviceSize dstOffset, VkDeviceSize bytes) {
         VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
         ai.commandPool = commandPool; ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; ai.commandBufferCount = 1;
         VkCommandBuffer cmd{};
         check(vkAllocateCommandBuffers(config.device, &ai, &cmd), "vkAllocateCommandBuffers");
+        bool submitted = false;
         try {
             VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
             bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -193,9 +293,11 @@ struct ManagedBufferPool::Impl {
             check(vkEndCommandBuffer(cmd), "vkEndCommandBuffer");
             VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO}; si.commandBufferCount = 1; si.pCommandBuffers = &cmd;
             check(vkQueueSubmit(config.queue, 1, &si, VK_NULL_HANDLE), "vkQueueSubmit");
+            submitted = true;
             check(vkQueueWaitIdle(config.queue), "vkQueueWaitIdle");
         } catch (...) {
-            vkFreeCommandBuffers(config.device, commandPool, 1, &cmd);
+            if (submitted) poisoned = true;
+            else vkFreeCommandBuffers(config.device, commandPool, 1, &cmd);
             throw;
         }
         vkFreeCommandBuffers(config.device, commandPool, 1, &cmd);
@@ -248,27 +350,49 @@ struct ManagedBufferPool::Impl {
 
     void evictEntry(Entry& entry) {
         if (entry.pins) throw std::logic_error("cannot evict a pinned buffer");
+        if (entry.transitionUncertain) throw std::runtime_error("sparse binding state is uncertain after a queue failure");
         bool raw = false;
         Snapshot updated;
-        // Compression scratch is bounded by the staging chunk, regardless of
-        // buffer size. Keep the GPU copy until every chunk is safely retained.
-        for (VkDeviceSize offset = 0; offset < entry.size;) {
-            const VkDeviceSize chunk = std::min(config.stagingChunkSize, entry.size - offset);
-            copyBuffer(entry.gpu.buffer, staging.buffer, offset, 0, (chunk + 3) & ~VkDeviceSize{3});
-            Stored stored = encode(static_cast<const std::uint8_t*>(mapped), static_cast<std::size_t>(chunk), raw);
-            if (stored.bytes.capacity() > std::numeric_limits<std::size_t>::max() - updated.storedBytes)
-                throw std::overflow_error("host store size overflow");
-            updated.storedBytes += stored.bytes.capacity();
-            if (!hostFits(entry.host.storedBytes, updated.storedBytes))
-                throw std::runtime_error("host store budget cannot retain buffer readback");
-            updated.chunks.push_back(std::move(stored));
-            offset += chunk;
+        if (entry.contentsReady) {
+            // Keep GPU data authoritative until every snapshot chunk is safe.
+            for (VkDeviceSize offset = 0; offset < entry.size;) {
+                const VkDeviceSize chunk = std::min(config.stagingChunkSize, entry.size - offset);
+                copyBuffer(entry.gpu.buffer, staging.buffer, offset, 0, (chunk + 3) & ~VkDeviceSize{3});
+                Stored stored = encode(static_cast<const std::uint8_t*>(mapped), static_cast<std::size_t>(chunk), raw);
+                if (stored.bytes.capacity() > std::numeric_limits<std::size_t>::max() - updated.storedBytes)
+                    throw std::overflow_error("host store size overflow");
+                updated.storedBytes += stored.bytes.capacity();
+                if (!hostFits(entry.host.storedBytes, updated.storedBytes))
+                    throw std::runtime_error("host store budget cannot retain buffer readback");
+                updated.chunks.push_back(std::move(stored));
+                offset += chunk;
+            }
         }
-        installHost(entry, std::move(updated));
-        // Every readback chunk already waited for the supplied queue.
-        stats.residentAllocationBytes -= entry.gpu.allocationSize;
-        entry.gpu.reset();
+        if (config.stableSparseBuffers) {
+            if (entry.contentsReady) installHost(entry, std::move(updated));
+            bool submitted = false;
+            try {
+                bindSparse(entry.gpu.buffer, VK_NULL_HANDLE, entry.sparseRequirements.size, submitted);
+            } catch (...) {
+                if (submitted) {
+                    entry.transitionUncertain = true;
+                    poisoned = true;
+                }
+                throw;
+            }
+            vkFreeMemory(config.device, entry.gpu.memory, nullptr);
+            entry.gpu.memory = VK_NULL_HANDLE;
+            stats.residentAllocationBytes -= entry.gpu.allocationSize;
+            entry.gpu.allocationSize = 0;
+        } else {
+            installHost(entry, std::move(updated));
+            stats.residentAllocationBytes -= entry.gpu.allocationSize;
+            entry.gpu.reset();
+        }
+        // The sparse VkBuffer itself stays alive, but its backing is now cold.
+        if (!config.stableSparseBuffers) entry.gpu.buffer = VK_NULL_HANDLE;
         entry.resident = false;
+        entry.contentsReady = false;
         ++stats.evictions;
         if (raw) ++stats.rawFallbacks;
     }
@@ -287,30 +411,93 @@ struct ManagedBufferPool::Impl {
     }
 
     void restore(Entry& entry) {
-        if (entry.resident) return;
+        if (entry.transitionUncertain) throw std::runtime_error("sparse binding state is uncertain after a queue failure");
+        if (entry.resident && entry.contentsReady) return;
         if (entry.host.chunks.empty()) throw std::runtime_error("buffer has no retained host snapshot");
+        if (config.stableSparseBuffers) {
+            if (!entry.resident) {
+                makeRoom(entry.sparseRequirements.size);
+                entry.gpu.memory = allocateSparseMemory(entry.sparseRequirements);
+                entry.gpu.allocationSize = entry.sparseRequirements.size;
+                bool submitted = false;
+                try {
+                    bindSparse(entry.gpu.buffer, entry.gpu.memory, entry.sparseRequirements.size, submitted);
+                } catch (...) {
+                    if (submitted) {
+                        stats.residentAllocationBytes += entry.gpu.allocationSize;
+                        entry.resident = true;
+                        entry.transitionUncertain = true;
+                        poisoned = true;
+                    } else {
+                        vkFreeMemory(config.device, entry.gpu.memory, nullptr);
+                        entry.gpu.memory = VK_NULL_HANDLE;
+                        entry.gpu.allocationSize = 0;
+                    }
+                    throw;
+                }
+                stats.residentAllocationBytes += entry.gpu.allocationSize;
+                entry.resident = true;
+            }
+            VkDeviceSize offset = 0;
+            try {
+                for (const auto& stored : entry.host.chunks) {
+                    if (offset >= entry.size) throw std::runtime_error("host snapshot chunk count mismatch");
+                    const std::size_t size = static_cast<std::size_t>(std::min(config.stagingChunkSize, entry.size - offset));
+                    if (stored.compressed) {
+                        std::vector<std::uint8_t> decoded(size);
+                        const std::size_t n = ZSTD_decompress(decoded.data(), decoded.size(), stored.bytes.data(), stored.bytes.size());
+                        if (ZSTD_isError(n) || n != size) throw std::runtime_error("zstd restore failed");
+                        uploadTo(entry.gpu, decoded.data(), size, offset);
+                    } else {
+                        if (stored.bytes.size() != size) throw std::runtime_error("raw restore size mismatch");
+                        uploadTo(entry.gpu, stored.bytes.data(), size, offset);
+                    }
+                    offset += size;
+                }
+                if (offset != entry.size) throw std::runtime_error("host snapshot size mismatch");
+            } catch (...) {
+                // Retain the snapshot and backing; callers cannot acquire
+                // partial contents after this operation fails.
+                entry.contentsReady = false;
+                poisoned = true;
+                throw;
+            }
+            entry.contentsReady = true;
+            stats.hostStoredBytes -= entry.host.storedBytes;
+            entry.host = Snapshot{};
+            entry.lastUse = ++clock;
+            ++stats.restores;
+            return;
+        }
         const VkDeviceSize gpuSize = (entry.size + 3) & ~VkDeviceSize{3};
         Allocation gpu = makeBuffer(gpuSize, entry.usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, true);
         if (stats.residentAllocationBytes > config.residentBudget - gpu.allocationSize)
             throw std::runtime_error("Vulkan allocation exceeds remaining resident budget");
-        VkDeviceSize offset = 0;
-        for (const auto& stored : entry.host.chunks) {
-            if (offset >= entry.size) throw std::runtime_error("host snapshot chunk count mismatch");
-            const std::size_t size = static_cast<std::size_t>(std::min(config.stagingChunkSize, entry.size - offset));
-            if (stored.compressed) {
-                std::vector<std::uint8_t> decoded(size);
-                const std::size_t n = ZSTD_decompress(decoded.data(), decoded.size(), stored.bytes.data(), stored.bytes.size());
-                if (ZSTD_isError(n) || n != size) throw std::runtime_error("zstd restore failed");
-                uploadTo(gpu, decoded.data(), size, offset);
-            } else {
-                if (stored.bytes.size() != size) throw std::runtime_error("raw restore size mismatch");
-                uploadTo(gpu, stored.bytes.data(), size, offset);
+        auto retained = std::make_unique<Allocation>();
+        try {
+            VkDeviceSize offset = 0;
+            for (const auto& stored : entry.host.chunks) {
+                if (offset >= entry.size) throw std::runtime_error("host snapshot chunk count mismatch");
+                const std::size_t size = static_cast<std::size_t>(std::min(config.stagingChunkSize, entry.size - offset));
+                if (stored.compressed) {
+                    std::vector<std::uint8_t> decoded(size);
+                    const std::size_t n = ZSTD_decompress(decoded.data(), decoded.size(), stored.bytes.data(), stored.bytes.size());
+                    if (ZSTD_isError(n) || n != size) throw std::runtime_error("zstd restore failed");
+                    uploadTo(gpu, decoded.data(), size, offset);
+                } else {
+                    if (stored.bytes.size() != size) throw std::runtime_error("raw restore size mismatch");
+                    uploadTo(gpu, stored.bytes.data(), size, offset);
+                }
+                offset += size;
             }
-            offset += size;
+            if (offset != entry.size) throw std::runtime_error("host snapshot size mismatch");
+        } catch (...) {
+            if (poisoned) retainUncertain(gpu, retained);
+            throw;
         }
-        if (offset != entry.size) throw std::runtime_error("host snapshot size mismatch");
         entry.gpu = std::move(gpu);
         entry.resident = true;
+        entry.contentsReady = true;
         stats.residentAllocationBytes += entry.gpu.allocationSize;
         stats.hostStoredBytes -= entry.host.storedBytes;
         entry.host = Snapshot{};
@@ -326,23 +513,57 @@ ManagedBufferPool& ManagedBufferPool::operator=(ManagedBufferPool&&) noexcept = 
 
 ManagedBufferPool::Id ManagedBufferPool::upload(const void* data, std::size_t size, VkBufferUsageFlags usage) {
     if (!impl_) throw std::logic_error("moved-from buffer pool");
+    impl_->ensureHealthy();
     if (!data || !size) throw std::invalid_argument("upload requires nonempty data");
+    if (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
+        throw std::invalid_argument("the buffer pool does not support device-address allocations");
     if (size > std::numeric_limits<VkDeviceSize>::max()) throw std::length_error("upload size overflows VkDeviceSize");
     if (size > std::numeric_limits<VkDeviceSize>::max() - 3) throw std::length_error("aligned upload size overflows VkDeviceSize");
     const VkDeviceSize gpuSize = (static_cast<VkDeviceSize>(size) + 3) & ~VkDeviceSize{3};
     if (gpuSize > impl_->config.residentBudget)
         throw std::length_error("upload exceeds resident budget");
-    Allocation gpu = impl_->makeBuffer(gpuSize,
-        usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, true);
-    impl_->uploadTo(gpu, static_cast<const std::uint8_t*>(data), static_cast<VkDeviceSize>(size));
     if (!impl_->nextId) throw std::overflow_error("buffer ID space exhausted");
+    const VkBufferUsageFlags fullUsage = usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    Allocation gpu;
+    VkMemoryRequirements sparseRequirements{};
+    if (impl_->config.stableSparseBuffers) {
+        gpu = impl_->makeSparseBuffer(gpuSize, fullUsage, sparseRequirements);
+        impl_->makeRoom(sparseRequirements.size);
+        gpu.memory = impl_->allocateSparseMemory(sparseRequirements);
+        auto retained = std::make_unique<Allocation>();
+        bool submitted = false;
+        try {
+            impl_->bindSparse(gpu.buffer, gpu.memory, sparseRequirements.size, submitted);
+        } catch (...) {
+            if (submitted) {
+                impl_->retainUncertain(gpu, retained);
+            }
+            throw;
+        }
+        try {
+            impl_->uploadTo(gpu, static_cast<const std::uint8_t*>(data), static_cast<VkDeviceSize>(size));
+        } catch (...) {
+            impl_->retainUncertain(gpu, retained);
+            throw;
+        }
+    } else {
+        gpu = impl_->makeBuffer(gpuSize, fullUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, true);
+        auto retained = std::make_unique<Allocation>();
+        try {
+            impl_->uploadTo(gpu, static_cast<const std::uint8_t*>(data), static_cast<VkDeviceSize>(size));
+        } catch (...) {
+            if (impl_->poisoned) impl_->retainUncertain(gpu, retained);
+            throw;
+        }
+    }
     const Id id = impl_->nextId++;
     Impl::Entry entry;
     entry.size = static_cast<VkDeviceSize>(size);
-    entry.usage = usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    entry.usage = fullUsage;
+    entry.sparseRequirements = sparseRequirements;
     entry.gpu = std::move(gpu);
     entry.resident = true;
+    entry.contentsReady = true;
     entry.lastUse = ++impl_->clock;
     auto inserted = impl_->entries.emplace(id, std::move(entry));
     if (!inserted.second) throw std::logic_error("duplicate buffer ID");
@@ -352,6 +573,7 @@ ManagedBufferPool::Id ManagedBufferPool::upload(const void* data, std::size_t si
 
 ManagedBufferPool::BufferView ManagedBufferPool::acquire(Id id) {
     if (!impl_) throw std::logic_error("moved-from buffer pool");
+    impl_->ensureHealthy();
     auto it = impl_->find(id);
     if (it == impl_->entries.end()) throw std::out_of_range("unknown buffer ID");
     impl_->restore(it->second);
@@ -371,6 +593,7 @@ void ManagedBufferPool::release(Id id) {
 
 std::vector<std::uint8_t> ManagedBufferPool::readback(Id id) {
     if (!impl_) throw std::logic_error("moved-from buffer pool");
+    impl_->ensureHealthy();
     auto it = impl_->find(id);
     if (it == impl_->entries.end()) throw std::out_of_range("unknown buffer ID");
     if (it->second.pins) throw std::logic_error("release buffer after synchronizing GPU work before readback");
@@ -382,6 +605,7 @@ std::vector<std::uint8_t> ManagedBufferPool::readback(Id id) {
 
 bool ManagedBufferPool::evict(Id id) {
     if (!impl_) throw std::logic_error("moved-from buffer pool");
+    impl_->ensureHealthy();
     auto it = impl_->find(id);
     if (it == impl_->entries.end()) throw std::out_of_range("unknown buffer ID");
     if (it->second.pins) return false;
@@ -391,6 +615,7 @@ bool ManagedBufferPool::evict(Id id) {
 
 bool ManagedBufferPool::erase(Id id) {
     if (!impl_) throw std::logic_error("moved-from buffer pool");
+    impl_->ensureHealthy();
     auto it = impl_->find(id);
     if (it == impl_->entries.end()) return false;
     if (it->second.pins) return false;

@@ -1,0 +1,10 @@
+Command: ./build/hip_check --single-allocation --mib 40960
+Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+Workload=40960 MiB; one live allocation, checked in 8 MiB chunks.
+small allocation cycle 1: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7eff42600000
+small allocation cycle 2: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7eff42600000
+HIP capacity before: total=25753026560 free=25526534144
+single-allocation hipMalloc: out of memory (2)
+HIP capacity freed: total=25753026560 free=25526534144
+This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+Exit=1; elapsed=0.033s
