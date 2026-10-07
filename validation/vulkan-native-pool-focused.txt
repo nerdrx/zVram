@@ -1,0 +1,216 @@
+Focused native-pool tests extracted unchanged from final 49-test CTest run.
+test 10
+      Start 10: vulkan-automatic-native-pool-legacy
+
+10: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation"
+10: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+10: Environment variables: 
+10:  VK_LOADER_LAYERS_DISABLE=~implicit~
+10: Test timeout computed to be: 60
+10: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+10: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+10: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+10: pool memory type=0 native
+10: [zvram] native allocation adopted bytes=536870912 type=0
+10: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+10: [zvram] virtual free bytes=1048576
+10: [zvram] snapshot cold bytes=536870912 stored=336776617
+10: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+10: shared pool cold: logical=536870912 stored=336776617
+10: native adoption refused after prior ordinary buffer binding
+10: native adoption refused after prior image binding
+10: cold adopted pool refused ordinary buffer/image bindings without waking
+10: native token probes bound with distinct allocations; original cold token unchanged
+10: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+10: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+10: [zvram] virtual free bytes=1048576
+10: shared pool range contents survived buffer destruction/rebind
+10: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+10: [zvram] virtual free bytes=1048576
+10: [zvram] snapshot cold bytes=536870912 stored=369103967
+10: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+10: shared pool cold: logical=536870912 stored=369103967
+10: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+10: shared pool cold contents survived destruction of every buffer
+10: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+10: [zvram] virtual free bytes=1048576
+10: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+10: [zvram] virtual free bytes=1048576
+10: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+10: [zvram] virtual free bytes=1048576
+10: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+10: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+10: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+10/49 Test #10: vulkan-automatic-native-pool-legacy .........   Passed    1.72 sec
+test 11
+      Start 11: vulkan-automatic-native-pool-api2
+
+11: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation" "--suballocation-api2"
+11: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+11: Environment variables: 
+11:  VK_LOADER_LAYERS_DISABLE=~implicit~
+11: Test timeout computed to be: 60
+11: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+11: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+11: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+11: pool memory type=0 native
+11: [zvram] native allocation adopted bytes=536870912 type=0
+11: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+11: [zvram] virtual free bytes=1048576
+11: [zvram] snapshot cold bytes=536870912 stored=336776617
+11: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+11: shared pool cold: logical=536870912 stored=336776617
+11: native adoption refused after prior ordinary buffer binding
+11: native adoption refused after prior image binding
+11: cold adopted pool refused ordinary buffer/image bindings without waking
+11: native token probes bound with distinct allocations; original cold token unchanged
+11: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+11: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+11: [zvram] virtual free bytes=1048576
+11: shared pool range contents survived buffer destruction/rebind
+11: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+11: [zvram] virtual free bytes=1048576
+11: [zvram] snapshot cold bytes=536870912 stored=369103967
+11: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+11: shared pool cold: logical=536870912 stored=369103967
+11: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+11: shared pool cold contents survived destruction of every buffer
+11: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+11: [zvram] virtual free bytes=1048576
+11: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+11: [zvram] virtual free bytes=1048576
+11: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+11: [zvram] virtual free bytes=1048576
+11: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+11: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+11: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+11/49 Test #11: vulkan-automatic-native-pool-api2 ...........   Passed    1.74 sec
+test 12
+      Start 12: vulkan-automatic-native-pool-bda
+
+12: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation" "--suballocation-api2" "--bda"
+12: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+12: Environment variables: 
+12:  VK_LOADER_LAYERS_DISABLE=~implicit~
+12: Test timeout computed to be: 60
+12: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+12: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+12: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+12: pool memory type=0 native
+12: [zvram] native allocation adopted bytes=536870912 type=0
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: [zvram] snapshot cold bytes=536870912 stored=336776617
+12: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+12: shared pool cold: logical=536870912 stored=336776617
+12: native adoption refused after prior ordinary buffer binding
+12: native adoption refused after prior image binding
+12: cold adopted pool refused ordinary buffer/image bindings without waking
+12: native token probes bound with distinct allocations; original cold token unchanged
+12: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: shared pool range contents survived buffer destruction/rebind
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: [zvram] snapshot cold bytes=536870912 stored=369103967
+12: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+12: shared pool cold: logical=536870912 stored=369103967
+12: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+12: shared pool cold contents survived destruction of every buffer
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+12: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+12: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+12/49 Test #12: vulkan-automatic-native-pool-bda ............   Passed    1.77 sec
+test 13
+      Start 13: vulkan-automatic-native-pool-two-queues
+
+13: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation" "--two-queues"
+13: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+13: Environment variables: 
+13:  VK_LOADER_LAYERS_DISABLE=~implicit~
+13: Test timeout computed to be: 60
+13: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+13: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+13: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+13: pool memory type=0 native
+13: [zvram] native allocation adopted bytes=536870912 type=0
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: [zvram] snapshot cold bytes=536870912 stored=336776617
+13: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+13: shared pool cold: logical=536870912 stored=336776617
+13: native adoption refused after prior ordinary buffer binding
+13: native adoption refused after prior image binding
+13: cold adopted pool refused ordinary buffer/image bindings without waking
+13: native token probes bound with distinct allocations; original cold token unchanged
+13: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: shared pool range contents survived buffer destruction/rebind
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: [zvram] snapshot cold bytes=536870912 stored=369103967
+13: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+13: shared pool cold: logical=536870912 stored=369103967
+13: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+13: shared pool cold contents survived destruction of every buffer
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+13: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+13: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+13/49 Test #13: vulkan-automatic-native-pool-two-queues .....   Passed    1.75 sec
+test 14
+      Start 14: vulkan-automatic-native-pool-two-families
+
+14: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation" "--two-families" "--bda"
+14: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+14: Environment variables: 
+14:  VK_LOADER_LAYERS_DISABLE=~implicit~
+14: Test timeout computed to be: 60
+14: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+14: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+14: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+14: pool memory type=0 native
+14: [zvram] native allocation adopted bytes=536870912 type=0
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: [zvram] snapshot cold bytes=536870912 stored=336776617
+14: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+14: shared pool cold: logical=536870912 stored=336776617
+14: native adoption refused after prior ordinary buffer binding
+14: native adoption refused after prior image binding
+14: cold adopted pool refused ordinary buffer/image bindings without waking
+14: native token probes bound with distinct allocations; original cold token unchanged
+14: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: shared pool range contents survived buffer destruction/rebind
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: [zvram] snapshot cold bytes=536870912 stored=369103967
+14: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+14: shared pool cold: logical=536870912 stored=369103967
+14: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+14: shared pool cold contents survived destruction of every buffer
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+14: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+14: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+14/49 Test #14: vulkan-automatic-native-pool-two-families ...   Passed    1.72 sec

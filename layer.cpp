@@ -1316,8 +1316,7 @@ VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer 
         const auto props=d->memory.memoryTypes[ai->second.type].propertyFlags;
         const bool gpuOnlyLocal=ai->second.local &&
             (props&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT|VK_MEMORY_PROPERTY_PROTECTED_BIT))==0;
-        const bool adopt=d->autoEnabled && d->nativeWrappingAllowed && gpuOnlyLocal && ai->second.adoptable &&
-            memoryOffset==0 && ai->second.size==promoted.requirements.size;
+        const bool adopt=d->autoEnabled && d->nativeWrappingAllowed && gpuOnlyLocal && ai->second.adoptable;
         if(adopt) {
             VirtualMemory adopted{}; adopted.size=ai->second.size; adopted.allocationFlags=ai->second.flags;
             adopted.priority=ai->second.priority; adopted.hasPriority=ai->second.hasPriority;
@@ -1333,7 +1332,7 @@ VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer 
                 adopted.children.push_back(ai->second.nativeHandle); adopted.childSizes.push_back(ai->second.size);
                 adopted.childTypes.push_back(ai->second.type);
                 adopted.coldGroups.resize(1);
-                adopted.bindings.push_back({buffer,0,promoted.requirements.size,promoted.requirements.alignment});
+                adopted.bindings.push_back({buffer,memoryOffset,promoted.requirements.size,promoted.requirements.alignment});
                 adopted.backingMemoryTypeBits=promoted.requirements.memoryTypeBits;
                 if(d->autoEnabled) {
                     const auto views=createPoolViews(*d,adopted,adopted.childSizes);
@@ -1345,6 +1344,8 @@ VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer 
                         return VK_ERROR_FEATURE_NOT_PRESENT;
                     }
                 }
+                // Preserve the application's chosen native memory type for future pool ranges.
+                adopted.backingMemoryTypeBits=1u<<ai->second.type;
                 auto inserted=d->virtualMemory.emplace(memory,std::move(adopted));
                 if(!inserted.second) { cleanupAdoptedView(); return VK_ERROR_FEATURE_NOT_PRESENT; }
                 vi=inserted.first;
@@ -1352,19 +1353,20 @@ VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer 
             }
             catch(const std::bad_alloc&) { cleanupAdoptedView(); return VK_ERROR_OUT_OF_HOST_MEMORY; }
             VkSparseMemoryBind bind{}; bind.size=promoted.requirements.size; bind.memory=ai->second.nativeHandle;
+            bind.memoryOffset=memoryOffset;
             const VkResult r=bindSparse(device,*d,buffer,&bind,1);
             if(r!=VK_SUCCESS) {
                 if(d->gpuGateError!=VK_SUCCESS) {
-                    vi->second.bound=true; vi->second.residentBytes=promoted.requirements.size;
+                    vi->second.bound=true; vi->second.residentBytes=ai->second.size;
                     d->residentBytes+=vi->second.residentBytes;
                     d->allocations.erase(ai); promoted.memory=memory; promoted.synthetic=true;
                 } else { destroyPoolViews(*d,vi->second); d->virtualMemory.erase(vi); }
                 return r;
             }
-            vi->second.bound=true; vi->second.residentBytes=promoted.requirements.size;
+            vi->second.bound=true; vi->second.residentBytes=ai->second.size;
             d->residentBytes+=vi->second.residentBytes;
             d->allocations.erase(ai); promoted.memory=memory; promoted.synthetic=true;
-            logf("native allocation adopted bytes=%llu type=%u",static_cast<unsigned long long>(promoted.requirements.size),vi->second.childTypes.front());
+            logf("native allocation adopted bytes=%llu type=%u",static_cast<unsigned long long>(vi->second.size),vi->second.childTypes.front());
             return VK_SUCCESS;
         }
         VkSparseMemoryBind bind{}; bind.size=promoted.requirements.size; bind.memory=ai->second.nativeHandle; bind.memoryOffset=memoryOffset;

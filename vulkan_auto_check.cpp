@@ -470,7 +470,8 @@ std::uint32_t gpuOnlyNativeType(const Context& context, std::uint32_t bits) {
         const auto flags = context.memory.memoryTypes[i].propertyFlags;
         if (i != context.virtualType && (bits & (1u << i)) &&
             (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
-            !(flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) return i;
+            !(flags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT |
+                       VK_MEMORY_PROPERTY_PROTECTED_BIT))) return i;
     }
     return UINT32_MAX;
 }
@@ -504,7 +505,7 @@ void probeNativeTokenLifetimes(Context& context, VkDeviceMemory original,
     require(bufferType != UINT32_MAX, "probe buffer has no compatible native GPU-only type");
     VkMemoryAllocateFlagsInfo flags{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-    allocation.pNext = &flags; allocation.allocationSize = bufferRequirements.size;
+    allocation.pNext = &flags; allocation.allocationSize = 2 * MiB;
     allocation.memoryTypeIndex = bufferType;
     check(vkAllocateMemory(context.device, &allocation, nullptr, &probe.bufferMemory),
           "allocate native probe buffer memory");
@@ -531,13 +532,46 @@ void probeNativeTokenLifetimes(Context& context, VkDeviceMemory original,
     vkGetImageMemoryRequirements(context.device, probe.image, &imageRequirements);
     const auto imageType = gpuOnlyNativeType(context, imageRequirements.memoryTypeBits);
     require(imageType != UINT32_MAX, "probe image has no compatible native GPU-only type");
-    allocation.allocationSize = imageRequirements.size; allocation.memoryTypeIndex = imageType;
+    allocation.allocationSize = std::max(imageRequirements.size, VkDeviceSize{2 * MiB}); allocation.memoryTypeIndex = imageType;
     check(vkAllocateMemory(context.device, &allocation, nullptr, &probe.imageMemory),
           "allocate native probe image memory");
     VkBindImageMemoryInfo imageBind{VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO};
     imageBind.image = probe.image; imageBind.memory = probe.imageMemory;
     check(vkBindImageMemory2(context.device, 1, &imageBind), "bind native probe image memory2");
     require(probe.imageMemory != original, "tiny native image reused original cold allocation token");
+
+    auto rejectPriorResource = [&](VkDeviceMemory memory, const char* kind) {
+        for (bool api2 : {false, true}) {
+            Buffer storage; storage.device = context.device;
+            VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            info.size = MiB; info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            check(vkCreateBuffer(context.device, &info, nullptr, &storage.handle), "create mixed-pool storage probe");
+            VkMemoryRequirements requirements{};
+            vkGetBufferMemoryRequirements(context.device, storage.handle, &requirements);
+            require(requirements.size <= MiB && requirements.alignment && MiB % requirements.alignment == 0,
+                    "mixed-pool probe does not fit its native allocation");
+            VkBindBufferMemoryInfo bind{VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO};
+            bind.buffer = storage.handle; bind.memory = memory; bind.memoryOffset = MiB;
+            const auto result = api2 ? vkBindBufferMemory2(context.device, 1, &bind)
+                                    : vkBindBufferMemory(context.device, storage.handle, memory, MiB);
+            require(result == VK_ERROR_FEATURE_NOT_PRESENT, "adopted native pool after an untracked resource bind");
+        }
+        std::cout << "native adoption refused after prior " << kind << " binding" << std::endl;
+    };
+    rejectPriorResource(probe.bufferMemory, "ordinary buffer");
+    rejectPriorResource(probe.imageMemory, "image");
+    Probe rejected; rejected.device = context.device;
+    check(vkCreateBuffer(context.device, &bufferInfo, nullptr, &rejected.buffer), "create post-adoption ordinary buffer");
+    require(vkBindBufferMemory(context.device, rejected.buffer, original, 0) == VK_ERROR_FEATURE_NOT_PRESENT,
+            "ordinary buffer entered an adopted cold pool");
+    check(vkCreateImage(context.device, &imageInfo, nullptr, &rejected.image), "create post-adoption image");
+    VkBindImageMemoryInfo rejectedImage{VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO};
+    rejectedImage.image = rejected.image; rejectedImage.memory = original;
+    require(vkBindImageMemory2(context.device, 1, &rejectedImage) == VK_ERROR_FEATURE_NOT_PRESENT,
+            "image entered an adopted cold pool");
+    rejected.cleanup();
+    std::cout << "cold adopted pool refused ordinary buffer/image bindings without waking" << std::endl;
 
     const auto during = context.stats();
     require(during.coldLogicalBytes == cold.coldLogicalBytes &&
@@ -721,20 +755,30 @@ void suballocationCheck(Context& context, bool automatic, bool api2) {
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     allocation.allocationSize = PoolBytes; allocation.memoryTypeIndex = context.virtualType;
     if (context.bdaMode) allocation.pNext = &flags;
-    check(vkAllocateMemory(context.device, &allocation, nullptr, &pool.memory), "allocate shared virtual pool");
     auto quotaCharged = [&] {
         VkMemoryAllocateInfo probe = allocation; probe.allocationSize = MiB;
+        probe.memoryTypeIndex = context.virtualType;
         VkDeviceMemory extra{};
         const auto result = vkAllocateMemory(context.device, &probe, nullptr, &extra);
         if (result == VK_SUCCESS) vkFreeMemory(context.device, extra, nullptr);
-        require(result == VK_ERROR_OUT_OF_DEVICE_MEMORY, "shared pool stopped charging its logical heap quota");
+        if (context.nativeAllocation) {
+            require(result == VK_SUCCESS, "native pool consumed synthetic heap quota");
+            const auto stats = context.stats();
+            require(stats.residentBytes + stats.coldLogicalBytes == PoolBytes,
+                    "native pool accounting lost the retained allocation");
+        } else require(result == VK_ERROR_OUT_OF_DEVICE_MEMORY, "shared pool stopped charging its logical heap quota");
     };
-    quotaCharged();
     Buffer a, b, c;
+    std::uint32_t commonTypes = UINT32_MAX;
     auto create = [&](Buffer& buffer, VkDeviceSize size) {
         buffer.device = context.device;
         VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         info.size = size; info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        const std::uint32_t families[]{context.family, context.secondFamily};
+        if (context.twoFamilies) {
+            info.sharingMode = VK_SHARING_MODE_CONCURRENT;
+            info.queueFamilyIndexCount = 2; info.pQueueFamilyIndices = families;
+        }
         info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         if (context.bdaMode) info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         check(vkCreateBuffer(context.device, &info, nullptr, &buffer.handle), "create pool buffer");
@@ -742,6 +786,7 @@ void suballocationCheck(Context& context, bool automatic, bool api2) {
         vkGetBufferMemoryRequirements(context.device, buffer.handle, &requirements);
         require(requirements.size == size && (requirements.memoryTypeBits & (1u << context.virtualType)),
                 "pool buffer has incompatible requirements");
+        commonTypes &= requirements.memoryTypeBits;
     };
     auto bind = [&](VkBuffer buffer, VkDeviceSize offset) {
         if (!api2) return vkBindBufferMemory(context.device, buffer, pool.memory, offset);
@@ -750,6 +795,13 @@ void suballocationCheck(Context& context, bool automatic, bool api2) {
         return vkBindBufferMemory2(context.device, 1, &info);
     };
     create(a, ABytes); create(b, BBytes); create(c, ChunkBytes);
+    if (context.nativeAllocation) {
+        allocation.memoryTypeIndex = gpuOnlyNativeType(context, commonTypes);
+        require(allocation.memoryTypeIndex != UINT32_MAX, "no shared native GPU-only pool memory type");
+    }
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &pool.memory), "allocate shared pool");
+    std::cout << "pool memory type=" << allocation.memoryTypeIndex
+              << (context.nativeAllocation ? " native" : " synthetic") << std::endl;
     if (api2) {
         VkBindBufferMemoryInfo infos[2]{};
         for (auto& info : infos) { info.sType = VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO; info.memory = pool.memory; }
@@ -762,7 +814,11 @@ void suballocationCheck(Context& context, bool automatic, bool api2) {
     }
     require(bind(c.handle, AOffset + ChunkBytes) == VK_ERROR_FEATURE_NOT_PRESENT,
             "live overlapping sparse pool ranges were not rejected");
-    check(bind(c.handle, 0), "bind previously rejected buffer to unused pool range");
+    // A failed API2 bind can leave its buffer indeterminate; recreate before retrying.
+    vkDestroyBuffer(context.device, c.handle, nullptr); c.handle = VK_NULL_HANDLE;
+    create(c, ChunkBytes);
+    check(bind(c.handle, 0), "bind replacement buffer to unused pool range");
+    quotaCharged();
 
     Staging staging; staging.device = context.device;
     VkBufferCreateInfo stagingInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -786,7 +842,8 @@ void suballocationCheck(Context& context, bool automatic, bool api2) {
     };
     auto compute = [&](VkBuffer buffer, std::uint32_t cycle, VkDeviceSize size) {
         context.bufferAddress = address(buffer);
-        check(computeCycle(context, buffer, cycle, 0, false, size), "compute pool slice");
+        check(computeCycle(context, buffer, cycle, (context.twoQueues || context.twoFamilies) ? 1u : 0u,
+                           false, size), "compute pool slice");
     };
     const auto aAddress = address(a.handle), bAddress = address(b.handle), cAddress = address(c.handle);
     upload(context, a.handle, staging, ABytes); upload(context, b.handle, staging, BBytes);
@@ -811,6 +868,7 @@ void suballocationCheck(Context& context, bool automatic, bool api2) {
         waitCold();
         require(address(a.handle) == aAddress && address(b.handle) == bAddress && address(c.handle) == cAddress,
                 "cold pool changed a buffer device address");
+        if (context.nativeAllocation) probeNativeTokenLifetimes(context, pool.memory, context.stats());
     }
     compute(a.handle, 1, ABytes); compute(b.handle, 2, BBytes); compute(c.handle, 0, ChunkBytes);
     readbackAndVerify(context, a.handle, staging, 1, false, ABytes);
@@ -849,8 +907,9 @@ void suballocationCheck(Context& context, bool automatic, bool api2) {
         require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 && empty.coldStoredBytes == 0,
                 "shared pool cleanup retained resident or cold bytes");
     }
-    check(vkAllocateMemory(context.device, &allocation, nullptr, &pool.memory), "reuse all virtual heap quota after pool cleanup");
-    std::cout << "PASS: shared 512 MiB allocation, nonzero offsets, child-boundary compute/readback, overlap refusal, rebind persistence, quota recovery" << std::endl;
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &pool.memory), "reuse pool allocation after cleanup");
+    std::cout << "PASS: shared 512 MiB " << (context.nativeAllocation ? "native" : "synthetic")
+              << " allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery" << std::endl;
 }
 } // namespace
 
@@ -899,8 +958,10 @@ int main(int argc, char** argv) try {
             "--pending-bind requires --native-allocation and a multi-queue mode");
     Context context;
     require(!suballocation || !(expectBudgetRefusal || expectBudgetRelease || expectPartialFreeze || expectPartialRestore ||
-                               nativeAllocation || twoQueues || twoFamilies || exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
-            "suballocation mode uses an independent synthetic single-queue allocation path");
+                               exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
+            "suballocation mode is independent of refusal, retry, exclusive-family and pending-work checks");
+    require(!suballocation || !nativeAllocation || suballocationAuto,
+            "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind);
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }
