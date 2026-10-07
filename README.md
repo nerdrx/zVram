@@ -11,6 +11,7 @@ zVram tests explicit strategies for GPU memory beyond local VRAM: native driver 
 | Component | Behavior |
 |---|---|
 | Vulkan launcher and layer | Opt-in allocation telemetry; requests AMD `ALLOWED` overallocation when available and preserves an explicit application policy. |
+| Vulkan segmented memory | Experimental virtual GPU-only memory type for eligible storage buffers. Sparse binding backs one logical allocation with native chunks; a 40 GiB single-buffer transfer/readback check passed on the tested RADV driver. |
 | Managed Vulkan pool | Logical IDs, pinned acquire/release, LRU eviction, zstd snapshots with raw fallback, and restore/readback under resident and host-store budgets. |
 | HIP allocation layer | Opt-in `hipMalloc` routing to native device memory, mapped pinned host memory, or experimental imported GTT BOs through HIP VMM. |
 | HIP cold snapshots | Explicit userspace hibernate/resume for owned VMM allocations: lossless Zstd/raw backing, reserved GPU pointers, and retryable restore. |
@@ -18,6 +19,23 @@ zVram tests explicit strategies for GPU memory beyond local VRAM: native driver 
 | Integrity checks | Vulkan transfer and compute readback, compression round trips, and HIP GPU-write/CPU-verify tests. |
 
 RADV already migrates allocations between VRAM and GPU-accessible system memory. Successful native checks demonstrate that driver behavior; they do not attribute extra capacity to zVram. The layer's counters report API allocation requests, not physical residency.
+
+## Experimental Vulkan virtual memory
+
+```bash
+# Unchanged memtest sees the configured 48 GiB virtual heap; tests 2 GiB.
+./zvram --verbose --isolate-layers --vulkan-virtual-mib 49152 -- memtest_vulkan 1 2147483648
+
+# Verify every byte of one 40 GiB logical allocation with chunked staging.
+./zvram --validate --isolate-layers --vulkan-virtual-mib 49152 -- \
+  ./build/zvram-capacity-check --single-allocation --api2 --mib 40960
+```
+
+This userspace mode adds a GPU-only virtual heap/type while preserving native heaps and memory types. On the tested discrete RADV device, it enables sparse binding and promotes storage buffers of at least 1 MiB with only storage/transfer usage, no creation flags, and no buffer `pNext` chain. Synthetic allocations are backed at bind time by aligned native chunks of at most 256 MiB; native local allocation types are preferred, with compatible system types as fallback. RADV remains responsible for migration between VRAM and RAM. The 40 GiB transfer check verified one logical allocation, one buffer, and 160 native chunks; unchanged memtest completed a bounded 2 GiB compute check with eight chunks and displayed 40 GB.
+
+The configured heap is a logical cap, not reserved memory or a free-capacity guarantee. Binding can fail if actual backing cannot be allocated. This phase supports one bind per synthetic allocation, with zero offset; it retains backing until allocation free. It requires an application-created sparse-capable queue and currently injects sparse features through legacy features or a head `VkPhysicalDeviceFeatures2` chain. Other feature-chain layouts keep this mode disabled. Images, external/protected memory, device addresses, synthetic host mapping, and synthetic suballocation are unsupported. Native buffer/allocation limits remain unchanged; the 40 GiB check used Vulkan 1.1 on this particular RADV driver. This mode does **not** compress Vulkan allocations yet. Ctrl+C stops memtest.
+
+Choose the heap size at each launch with `--vulkan-virtual-mib`: `49152` is 48 GiB, `98304` is 96 GiB. There is no artificial upper cap; only positivity and Vulkan's 64-bit byte-size overflow are checked. The heap remains a logical budget. Full 40 GiB backing is verified; 48 GiB was displayed in a 2 GiB memtest smoke check, not a full 48 GiB capacity test.
 
 ## Managed Vulkan buffer pool
 

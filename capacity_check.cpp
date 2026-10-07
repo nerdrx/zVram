@@ -101,12 +101,16 @@ void sysfsSnapshot(const VkPhysicalDeviceDrmPropertiesEXT& drm, const char* labe
 
 int main(int argc, char** argv) try {
     uint64_t totalMiB = 64, chunkMiB = 64;
+    bool singleAllocation = false;
+    bool useApi2 = false;
     for (int i=1; i<argc; ++i) {
         const std::string arg(argv[i]);
         if ((arg == "--mib" || arg == "--chunk-mib") && i+1 < argc) {
             const uint64_t n = parseMiB(argv[++i], arg.c_str(), arg == "--mib" ? MaxMiB : 256);
             if (arg == "--mib") totalMiB=n; else chunkMiB=n;
-        } else throw std::runtime_error("usage: zvram-capacity-check [--mib 1..40960] [--chunk-mib 1..256]");
+        } else if (arg == "--single-allocation") singleAllocation = true;
+        else if (arg == "--api2") useApi2 = true;
+        else throw std::runtime_error("usage: zvram-capacity-check [--mib 1..40960] [--chunk-mib 1..256] [--single-allocation] [--api2]");
     }
     const uint64_t total = totalMiB * MiB, chunk = chunkMiB * MiB;
     const uint64_t hostAvail = memAvailableBytes(), hostBudget = hostAvail > 8*1024ull*MiB ? hostAvail-8*1024ull*MiB : 0;
@@ -173,35 +177,61 @@ int main(int argc, char** argv) try {
         if(localHeap==UINT32_MAX) throw std::runtime_error("AMD Vulkan device has no device-local heap");
         sysfsSnapshot(drm,"baseline");
         uint64_t gttTotal=0,gttUsed=0;
+        uint64_t physicalVramTotal=0,physicalVramUsed=0;
         bool hasGtt=false;
         if(drm.hasPrimary && drm.primaryMajor) {
             const std::string link="/sys/dev/char/"+std::to_string(drm.primaryMajor)+":"+std::to_string(drm.primaryMinor)+"/device";
             char resolved[4096];
-            if(realpath(link.c_str(),resolved)) hasGtt=readNumber(std::string(resolved)+"/mem_info_gtt_total",gttTotal)&&readNumber(std::string(resolved)+"/mem_info_gtt_used",gttUsed);
+            if(realpath(link.c_str(),resolved)) {
+                hasGtt=readNumber(std::string(resolved)+"/mem_info_gtt_total",gttTotal)&&readNumber(std::string(resolved)+"/mem_info_gtt_used",gttUsed);
+                if(readNumber(std::string(resolved)+"/mem_info_vram_total",physicalVramTotal) && readNumber(std::string(resolved)+"/mem_info_vram_used",physicalVramUsed))
+                    freeVram=std::min(freeVram,physicalVramTotal>physicalVramUsed?physicalVramTotal-physicalVramUsed:0);
+            }
         }
         if(!hasBudget || !freeVram) throw std::runtime_error("cannot estimate conservative free VRAM (VK_EXT_memory_budget unavailable or reports none)");
         if(!hasGtt) throw std::runtime_error("cannot estimate AMD GTT capacity from matched DRM sysfs device");
         const uint64_t gttFree=gttTotal>gttUsed?gttTotal-gttUsed:0;
         const uint64_t capacity=freeVram+std::min(gttFree,hostBudget);
         std::cout<<"GPU: "<<props.deviceName<<"\nlocal heap="<<localBytes<<" B; VRAM free="<<freeVram<<" B; GTT free="<<gttFree<<" B; host MemAvailable="<<hostAvail<<" B; conservative capacity estimate="<<capacity<<" B\n";
-        std::cout<<"requested="<<total<<" B in "<<((total+chunk-1)/chunk)<<" chunks; staging="<<std::min(total,chunk)<<" B\n";
+        std::cout<<"requested="<<total<<" B in "<<(singleAllocation?1:((total+chunk-1)/chunk))<<" allocations; staging="<<std::min(total,chunk)<<" B\n";
         if(total>capacity) throw std::runtime_error("request exceeds conservative capacity estimate; refusing allocation");
 
         VkPhysicalDeviceMemoryProperties mp{}; vkGetPhysicalDeviceMemoryProperties(gpu,&mp);
         auto make=[&](VkDeviceSize size,VkBufferUsageFlags usage,VkMemoryPropertyFlags flags,bool lowPriority) {
             Buffer b; b.device=device; VkBufferCreateInfo ci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; ci.size=size; ci.usage=usage; ci.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
-            check(vkCreateBuffer(device,&ci,nullptr,&b.buffer),"vkCreateBuffer"); VkMemoryRequirements req{}; vkGetBufferMemoryRequirements(device,b.buffer,&req);
+            check(vkCreateBuffer(device,&ci,nullptr,&b.buffer),"vkCreateBuffer"); VkMemoryRequirements req{};
+            if(useApi2) {
+                VkBufferMemoryRequirementsInfo2 query{VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2}; query.buffer=b.buffer;
+                VkMemoryRequirements2 requirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2}; vkGetBufferMemoryRequirements2(device,&query,&requirements); req=requirements.memoryRequirements;
+            } else vkGetBufferMemoryRequirements(device,b.buffer,&req);
             uint32_t type=UINT32_MAX;
-            for(uint32_t i=0;i<mp.memoryTypeCount;++i) if((req.memoryTypeBits&(1u<<i)) && (mp.memoryTypes[i].propertyFlags&flags)==flags &&
+            // The single-allocation check selects the largest compatible local
+            // heap, matching unchanged applications that rank heaps by size.
+            if(singleAllocation && (flags&VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
+                for(uint32_t i=0;i<mp.memoryTypeCount;++i)
+                    if((req.memoryTypeBits&(1u<<i)) && (mp.memoryTypes[i].propertyFlags&flags)==flags &&
+                       (type==UINT32_MAX || mp.memoryHeaps[mp.memoryTypes[i].heapIndex].size>mp.memoryHeaps[mp.memoryTypes[type].heapIndex].size)) type=i;
+            if(type==UINT32_MAX) for(uint32_t i=0;i<mp.memoryTypeCount;++i) if((req.memoryTypeBits&(1u<<i)) && (mp.memoryTypes[i].propertyFlags&flags)==flags &&
                 (!(flags&VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) || !(mp.memoryTypes[i].propertyFlags&VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))){if(type==UINT32_MAX) type=i; if(!(flags&VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) || (mp.memoryTypes[i].propertyFlags&VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {type=i;break;}}
             if(type==UINT32_MAX) throw std::runtime_error("no compatible Vulkan memory type");
             VkMemoryPriorityAllocateInfoEXT pi{VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT}; pi.priority=lowPriority?0.0f:1.0f;
             VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; ai.allocationSize=req.size; ai.memoryTypeIndex=type; if(usePriority) ai.pNext=&pi;
-            try { check(vkAllocateMemory(device,&ai,nullptr,&b.memory),"vkAllocateMemory"); check(vkBindBufferMemory(device,b.buffer,b.memory,0),"vkBindBufferMemory"); }
+            const bool allocateFirst=singleAllocation && (usage&VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            // memtest queries a disposable buffer, allocates memory, then creates
+            // its final storage buffer. Exercise that unchanged call order.
+            if(allocateFirst) { vkDestroyBuffer(device,b.buffer,nullptr); b.buffer=VK_NULL_HANDLE; }
+            try {
+                check(vkAllocateMemory(device,&ai,nullptr,&b.memory),"vkAllocateMemory");
+                if(allocateFirst) check(vkCreateBuffer(device,&ci,nullptr,&b.buffer),"vkCreateBuffer after allocation");
+                if(useApi2) {
+                    VkBindBufferMemoryInfo bind{VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO}; bind.buffer=b.buffer; bind.memory=b.memory;
+                    check(vkBindBufferMemory2(device,1,&bind),"vkBindBufferMemory2");
+                } else check(vkBindBufferMemory(device,b.buffer,b.memory,0),"vkBindBufferMemory");
+            }
             catch(...) { b.reset(); throw; }
             return b;
         };
-        auto copy=[&](VkBuffer src,VkBuffer dst,VkDeviceSize size) {
+        auto copy=[&](VkBuffer src,VkBuffer dst,VkDeviceSize size,VkDeviceSize srcOffset=0,VkDeviceSize dstOffset=0) {
             VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO}; ai.commandPool=pool; ai.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY; ai.commandBufferCount=1;
             VkCommandBuffer cmd{}; check(vkAllocateCommandBuffers(device,&ai,&cmd),"allocate command buffer");
             try {
@@ -209,7 +239,7 @@ int main(int argc, char** argv) try {
                 check(vkBeginCommandBuffer(cmd,&bi),"begin command buffer");
                 VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER}; barrier.srcAccessMask=VK_ACCESS_HOST_WRITE_BIT|VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
                 vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_HOST_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&barrier,0,nullptr,0,nullptr);
-                VkBufferCopy region{0,0,size}; vkCmdCopyBuffer(cmd,src,dst,1,&region);
+                VkBufferCopy region{srcOffset,dstOffset,size}; vkCmdCopyBuffer(cmd,src,dst,1,&region);
                 barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
                 vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&barrier,0,nullptr,0,nullptr);
                 check(vkEndCommandBuffer(cmd),"end command buffer"); VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO}; si.commandBufferCount=1; si.pCommandBuffers=&cmd;
@@ -221,15 +251,16 @@ int main(int argc, char** argv) try {
         const uint64_t stageBytes=std::min(total,chunk);
         Buffer staging=make(stageBytes,VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,false);
         void* mapped=nullptr; check(vkMapMemory(device,staging.memory,0,stageBytes,0,&mapped),"map staging");
-        std::vector<Buffer> resident; resident.reserve(static_cast<size_t>((total+chunk-1)/chunk));
+        std::vector<Buffer> resident; resident.reserve(singleAllocation?1:static_cast<size_t>((total+chunk-1)/chunk));
         const auto start=Clock::now();
+        if(singleAllocation) resident.push_back(make(total,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,true));
         for(uint64_t offset=0;offset<total;) {
             const uint64_t bytes=std::min(chunk,total-offset);
-            resident.push_back(make(bytes,VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,true));
+            if(!singleAllocation) resident.push_back(make(bytes,VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,true));
             auto* words=static_cast<uint64_t*>(mapped);
             const uint64_t seed=0x7a5652414dull ^ (offset/chunk);
             for(uint64_t i=0;i<bytes/8;++i) words[i]=splitmix64((offset/8+i)^seed);
-            copy(staging.buffer,resident.back().buffer,bytes);
+            copy(staging.buffer,resident.back().buffer,bytes,0,singleAllocation?offset:0);
             offset+=bytes;
             if(offset==total || offset%(1024*MiB)<bytes) std::cout<<"uploaded "<<offset<<" / "<<total<<" B\n";
         }
@@ -237,10 +268,11 @@ int main(int argc, char** argv) try {
         std::vector<uint64_t> readback(stageBytes/8);
         sysfsSnapshot(drm,"all chunks uploaded");
         uint64_t verified=0, chunkIndex=0;
-        for(auto& b:resident) {
+        while(verified<total) {
             const uint64_t offset=chunkIndex*chunk;
             const uint64_t bytes=std::min(chunk,total-offset);
-            copy(b.buffer,staging.buffer,bytes);
+            auto& b=resident[singleAllocation?0:chunkIndex];
+            copy(b.buffer,staging.buffer,bytes,singleAllocation?offset:0,0);
             std::memcpy(readback.data(),mapped,bytes);
             const auto* words=readback.data();
             const uint64_t seed=0x7a5652414dull ^ chunkIndex;
@@ -255,7 +287,7 @@ int main(int argc, char** argv) try {
         if(verified!=total) throw std::runtime_error("verification byte count mismatch");
         vkUnmapMemory(device,staging.memory); staging.reset(); resident.clear();
         sysfsSnapshot(drm,"after cleanup");
-        std::cout<<"PASS: verified "<<verified<<" bytes across "<<chunkIndex<<" resident device-local allocations\n";
+        std::cout<<"PASS: verified "<<verified<<" bytes across "<<(singleAllocation?1:chunkIndex)<<" resident device-local allocations\n";
     } catch(...) { cleanup(); throw; }
     cleanup(); return 0;
 } catch(const std::exception& e) { std::cerr<<"error: "<<e.what()<<"\n"; return 1; }

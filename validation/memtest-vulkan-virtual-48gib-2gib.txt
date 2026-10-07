@@ -1,0 +1,16 @@
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+vkCreateShaderModule(): pCreateInfo->pCode (spirv-val produced an error):
+AtomicIAdd: Memory Semantics with at least one Vulkan-supported storage class semantics bit set (UniformMemory, WorkgroupMemory, ImageMemory, or OutputMemory) must use a non-relaxed memory order (Acquire, Release, or AcquireRelease)
+  %134 = OpAtomicIAdd %uint %135 %int_1 %uint_64 %uint_1
+
+Command to reproduce:
+	spirv-val <input.spv> --relax-block-layout --target-env vulkan1.1
+
+The Vulkan spec states: MemorySemantics with at least one Vulkan-supported storage class semantics bit set (UniformMemory, WorkgroupMemory, ImageMemory, or OutputMemory) must use a non-relaxed memory order (Acquire, Release, or AcquireRelease) (https://docs.vulkan.org/spec/latest/appendices/spirvenv.html#VUID-StandaloneSpirv-MemorySemantics-10871)
+[zvram] allocate local bytes=432
+[zvram] virtual allocate bytes=2147483648 heap-capacity=51539607552
+[zvram] virtual bind bytes=2147483648 segments=8 local=8 system=0
+Standard 5-minute test of 1: Bus=0x03:00 DevId=0x744C   48GB AMD Radeon RX 7900 XTX (RADV NAVI31)
+      1 iteration. Passed  0.0131 seconds  written:    1.0GB 248.2GB/sec        checked:    2.0GB 221.3GB/sec
+     96 iteration. Passed  1.0067 seconds  written:   95.0GB 285.7GB/sec        checked:  190.0GB 281.8GB/sec
+    560 iteration. Passed  5.0070 seconds  written:  464.0GB 281.0GB/sec        checked:  928.0GB 276.5GB/sec

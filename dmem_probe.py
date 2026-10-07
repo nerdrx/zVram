@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 
 
 CGROUP = Path("/sys/fs/cgroup")
@@ -262,7 +263,7 @@ def run_probe(limit_mib, command, args):
     if not command and limit_mib > 256:
         raise RuntimeError("built-in probe --gpu-limit-mib must be 1..256")
 
-    cgroup = CGROUP / f"zvram-probe-{os.getpid()}"
+    cgroup = CGROUP / f"zvram-probe-{os.getpid()}-{uuid.uuid4().hex[:12]}"
     old_handlers = {}
     def interrupt(signum, _frame):
         raise ProbeSignal(signum)
@@ -281,6 +282,12 @@ def run_probe(limit_mib, command, args):
         swap_max = args.swap_max_mib * MIB
         memory_high = None if args.memory_high_mib is None else args.memory_high_mib * MIB
         set_child_limits(cgroup, region, gpu_limit, memory_max, swap_max, memory_high)
+        # A process group cannot contain descendants that call setsid(). Require
+        # the kernel's complete cgroup kill mechanism before launching anything.
+        try:
+            (cgroup / "cgroup.kill").write_text("1\n")
+        except OSError as error:
+            raise RuntimeError("working cgroup.kill is required for bounded cleanup") from error
         baseline = sample(cgroup, region)
         baseline_stats = cgroup_stats(cgroup, region)
         zram_before = system_zram_stats()

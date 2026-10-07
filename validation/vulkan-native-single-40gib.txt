@@ -1,0 +1,11 @@
+sysfs baseline: VRAM=3655614464/25753026560 B GTT=3393331200/32411705344 B
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+local heap=25753026560 B; VRAM free=22097412096 B; GTT free=29018374144 B; host MemAvailable=35913158656 B; conservative capacity estimate=49420636160 B
+requested=42949672960 B in 1 allocations; staging=67108864 B
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+radv/amdgpu: Failed to allocate a buffer:
+radv/amdgpu:    size      : 42949672960 bytes
+radv/amdgpu:    alignment : 262144 bytes
+radv/amdgpu:    domains   : 4
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=67108864 allocation-failures=1
+error: vkAllocateMemory failed: -2

@@ -1,0 +1,18 @@
+sysfs baseline: VRAM=3580456960/25753026560 B GTT=3374231552/32411705344 B
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+local heap=42949672960 B; VRAM free=22172569600 B; GTT free=29037473792 B; host MemAvailable=35624226816 B; conservative capacity estimate=49206861824 B
+requested=335544320 B in 1 allocations; staging=67108864 B
+uploaded 335544320 / 335544320 B
+sysfs all chunks uploaded: VRAM=3948732416/25753026560 B GTT=3441340416/32411705344 B
+verified 335544320 / 335544320 B
+elapsed generation+verification=0.127174 s
+sysfs after readback: VRAM=3948728320/25753026560 B GTT=3441340416/32411705344 B
+sysfs after cleanup: VRAM=3948728320/25753026560 B GTT=3441340416/32411705344 B
+PASS: verified 335544320 bytes across 1 resident device-local allocations
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] allocate nonlocal bytes=67108864
+[zvram] virtual allocate bytes=335544320 heap-capacity=42949672960
+[zvram] virtual bind bytes=335544320 segments=2 local=2 system=0
+[zvram] free bytes=67108864
+[zvram] virtual free bytes=335544320
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=67108864 allocation-failures=0

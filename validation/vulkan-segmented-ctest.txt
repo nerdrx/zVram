@@ -1,0 +1,61 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+      Start  1: compression-roundtrip
+ 1/28 Test  #1: compression-roundtrip ................   Passed    0.09 sec
+      Start  2: layer-capacity-integrity
+ 2/28 Test  #2: layer-capacity-integrity .............   Passed    0.08 sec
+      Start  3: vulkan-virtual-single-integrity
+ 3/28 Test  #3: vulkan-virtual-single-integrity ......   Passed    0.18 sec
+      Start  4: vulkan-virtual-api2-integrity
+ 4/28 Test  #4: vulkan-virtual-api2-integrity ........   Passed    0.17 sec
+      Start  5: managed-compute-integrity
+ 5/28 Test  #5: managed-compute-integrity ............   Passed    0.50 sec
+      Start  6: managed-capacity-integrity
+ 6/28 Test  #6: managed-capacity-integrity ...........   Passed    0.38 sec
+      Start  7: sparse-compute-integrity
+ 7/28 Test  #7: sparse-compute-integrity .............   Passed    0.11 sec
+      Start  8: hip-native-integrity
+ 8/28 Test  #8: hip-native-integrity .................   Passed    0.22 sec
+      Start  9: hip-spill-integrity
+ 9/28 Test  #9: hip-spill-integrity ..................   Passed    0.08 sec
+      Start 10: hip-procedure-native-query
+10/28 Test #10: hip-procedure-native-query ...........   Passed    0.09 sec
+      Start 11: hip-automatic-idle-integrity
+11/28 Test #11: hip-automatic-idle-integrity .........   Passed    0.88 sec
+      Start 12: hip-automatic-concurrent-integrity
+12/28 Test #12: hip-automatic-concurrent-integrity ...   Passed    0.51 sec
+      Start 13: hip-automatic-local-integrity
+13/28 Test #13: hip-automatic-local-integrity ........   Passed    0.83 sec
+      Start 14: hip-automatic-capture-guard
+14/28 Test #14: hip-automatic-capture-guard ..........   Passed    0.65 sec
+      Start 15: hip-automatic-callback-guard
+15/28 Test #15: hip-automatic-callback-guard .........   Passed    0.64 sec
+      Start 16: hip-hibernation-integrity
+16/28 Test #16: hip-hibernation-integrity ............   Passed    0.27 sec
+      Start 17: hip-hibernation-multisegment
+17/28 Test #17: hip-hibernation-multisegment .........   Passed    1.91 sec
+      Start 18: hip-vmm-integrity
+18/28 Test #18: hip-vmm-integrity ....................   Passed    0.14 sec
+      Start 19: hip-vmm-host-integrity
+19/28 Test #19: hip-vmm-host-integrity ...............   Passed    0.09 sec
+      Start 20: hip-native-capacity-query
+20/28 Test #20: hip-native-capacity-query ............   Passed    0.08 sec
+      Start 21: hip-virtual-capacity-query
+21/28 Test #21: hip-virtual-capacity-query ...........   Passed    0.08 sec
+      Start 22: hip-vmm-descriptor-lifetime
+22/28 Test #22: hip-vmm-descriptor-lifetime ..........   Passed    0.11 sec
+      Start 23: hip-procedure-vmm-query
+23/28 Test #23: hip-procedure-vmm-query ..............   Passed    0.10 sec
+      Start 24: hip-fallback-error-state
+24/28 Test #24: hip-fallback-error-state .............   Passed    0.11 sec
+      Start 25: hip-vmm-error-state
+25/28 Test #25: hip-vmm-error-state ..................   Passed    0.08 sec
+      Start 26: hip-injected-oom-integrity
+26/28 Test #26: hip-injected-oom-integrity ...........   Passed    0.12 sec
+      Start 27: hip-hibernation-remap-recovery
+27/28 Test #27: hip-hibernation-remap-recovery .......   Passed    0.27 sec
+      Start 28: hip-vmm-partial-failure-cleanup
+28/28 Test #28: hip-vmm-partial-failure-cleanup ......   Passed    0.09 sec
+
+100% tests passed out of 28
+
+Total Test time (real) =   8.87 sec
