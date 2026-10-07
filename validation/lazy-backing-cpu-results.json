@@ -1,0 +1,41 @@
+{
+  "status": "PASS CPU-only; hardware/game/model verification pending",
+  "utc": "2026-10-07T19:59:01.114421+00:00",
+  "base_head": "c759a8797f8a6ad4f526249ba92782b08e8194ff",
+  "working_changes": true,
+  "suite": {
+    "cpu_tests_passed": 11,
+    "cpu_tests_total": 11,
+    "elapsed_seconds": 2.08,
+    "additional_unknown_submit_admission_check": "PASS after full suite; focused resident-bootstrap rerun"
+  },
+  "checks": [
+    "lazy pristine startup without backing allocation",
+    "disjoint buffer bind while cold without forced restore",
+    "exact-cap full restore and one-byte-over refusal before allocation",
+    "single pristine materialization without snapshot copying",
+    "initial-bind failure clears cold metadata/accounting",
+    "child allocation failure preserves pristine state for retry",
+    "sparse-bind failure retains uncertain backing and blocks retry through poisoned gate",
+    "unknown submit admission refuses over-cap working set and restores all at exact cap",
+    "parallel GDeflate workers 2 and 4 produce serial-identical streams on odd-tail, random and maximum-size inputs",
+    "CLI constraints and worker environment forwarding"
+  ],
+  "not_verified": [
+    "Vulkan hardware lazy binding/alias/BDA behavior",
+    "swapchain presentation",
+    "40GB inference with lazy backing or parallel encoder",
+    "game stalls root cause or elimination",
+    "encoder performance benefit"
+  ],
+  "sha256": {
+    "layer.cpp": "85d3b27ac0e168bf2da6d421e7c6f06930afdd76fb638f3a00bd716c2249cafd",
+    "resident_bootstrap_check.cpp": "2b603799c1ffebd9990b79c6d71743733f06c523a025eed417cf9d40cb6a25fd",
+    "gdeflate_codec.hpp": "bd2d32640ad80fb4c4282334b5488eb6cd281f3d9cd5699b3ec3fa1b5842b2f9",
+    "gdeflate_codec_check.cpp": "d4be458d84fca41b7f65087bfbeea7f5119ec16340750549aa9b64eb6224c853",
+    "zvram": "eab0933ec3a7aa279a070b147fad70bb55200dd63d4d9caf8ebd3603583e9c72",
+    "test_vulkan_compression_options.py": "e35867f658b053e3926a0e7b907ac6b27cb92fe22d93bb0aa688f9ab50f6eddc",
+    "build/gdeflate-codec/zvram-resident-bootstrap-check": "d5d04e74631843a3e314429169ed4c14cf6fa826630d6ffac506fd63bd9c572b",
+    "build/gdeflate-codec/libzvram_layer.so": "279f011bb2608b3e2e4a29b663351b8cab54327ed2f80a44146fc0ee0cc1395a"
+  }
+}

@@ -1,0 +1,300 @@
+{
+  "passed": true,
+  "checks": {
+    "same_nonempty_stdout": true,
+    "both_runs_decode_tokens": true,
+    "full_gpu_offload_matches": true,
+    "automatic_enabled": true,
+    "model_buffer_cold_before_prompt": true,
+    "hot_and_cold_fdinfo_captured": true,
+    "resident_vram_captured": true,
+    "no_snapshot_errors": true,
+    "nonempty_cold_data": true,
+    "successful_restore": true,
+    "snapshot_codec_selected": true
+  },
+  "model": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/models/SmolLM2-135M-Instruct-f16.gguf",
+  "transfer_profile": {
+    "copy_calls": 22,
+    "copy_bytes": 616169472,
+    "copy_ns": 77410672,
+    "decode_bytes": 308084736,
+    "decode_ns": 1025439149
+  },
+  "gpu_restore_profile": null,
+  "snapshot_codec": "gdeflate",
+  "gdeflate_gpu_requested": false,
+  "validation_enabled": false,
+  "binary": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/llama-completion",
+  "command": [
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram",
+    "--vulkan-virtual-gib",
+    "96",
+    "--vulkan-auto-idle-ms",
+    "1000",
+    "--vulkan-cold-mib",
+    "512",
+    "--build-dir",
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/gdeflate-codec",
+    "--vulkan-codec",
+    "gdeflate",
+    "--",
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/llama-completion",
+    "--model",
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/models/SmolLM2-135M-Instruct-f16.gguf",
+    "--gpu-layers",
+    "999",
+    "--ctx-size",
+    "512",
+    "--batch-size",
+    "128",
+    "--predict",
+    "96",
+    "--temp",
+    "0",
+    "--seed",
+    "1",
+    "--load-mode",
+    "none",
+    "--fit",
+    "off",
+    "--flash-attn",
+    "off",
+    "--verbose",
+    "--simple-io",
+    "--no-display-prompt",
+    "--conversation",
+    "--interactive-first",
+    "--single-turn"
+  ],
+  "batching": {
+    "max_nodes_per_submit": null,
+    "serialize_submissions": null
+  },
+  "eviction_policy": null,
+  "min_savings_percent": null,
+  "byte_shuffle": null,
+  "snapshot_encoding_counts": {
+    "compressed_chunks": 11,
+    "raw_chunks": 0,
+    "shuffled_chunks": 0
+  },
+  "resident_admission_events": [],
+  "tracked_resident_peak_after_arming": 308084736,
+  "tracked_resident_peak_at_completed_restore": null,
+  "tracked_resident_peak_observed_since_first_admission": null,
+  "clean_cache_state": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "native": {
+    "model_buffers_mib": [
+      256.63
+    ],
+    "cold": [],
+    "cold_state": null,
+    "pre_prompt_cold_state": null,
+    "pre_prompt_state": null,
+    "state_events": [],
+    "backing": {
+      "hot": {
+        "resident-vram": 319741952,
+        "memory-vram": 319741952,
+        "resident-gtt": 60596224,
+        "memory-gtt": 60596224,
+        "unique_drm_clients": 1,
+        "resident_vram_present": true
+      }
+    },
+    "offload": [
+      31,
+      31
+    ],
+    "performance": {
+      "decode_ms": 240.53,
+      "decode_runs": 76,
+      "tokens_per_second": 315.97,
+      "prompt_ms": 8.2,
+      "restore_ms": []
+    },
+    "first_stdout_after_input_ms": 8.473646000311419,
+    "minimum_available_mib": 41474,
+    "returncode": 0
+  },
+  "automatic": {
+    "model_buffers_mib": [
+      256.63
+    ],
+    "cold": [
+      [
+        11796480,
+        88160
+      ],
+      [
+        27131904,
+        275780
+      ],
+      [
+        269156352,
+        213264420
+      ]
+    ],
+    "cold_state": [
+      308084736,
+      0,
+      0,
+      3,
+      3,
+      0
+    ],
+    "pre_prompt_cold_state": [
+      0,
+      308084736,
+      213628360,
+      3,
+      0,
+      0
+    ],
+    "pre_prompt_state": [
+      0,
+      308084736,
+      213628360,
+      3,
+      0,
+      0
+    ],
+    "state_events": [
+      [
+        "freeze",
+        296288256,
+        11796480,
+        88160,
+        1,
+        0,
+        0
+      ],
+      [
+        "freeze",
+        269156352,
+        38928384,
+        363940,
+        2,
+        0,
+        0
+      ],
+      [
+        "freeze",
+        0,
+        308084736,
+        213628360,
+        3,
+        0,
+        0
+      ],
+      [
+        "restore",
+        308084736,
+        0,
+        0,
+        3,
+        3,
+        0
+      ]
+    ],
+    "backing": {
+      "hot": {
+        "resident-vram": 319938560,
+        "memory-vram": 319938560,
+        "resident-gtt": 94248960,
+        "memory-gtt": 94248960,
+        "unique_drm_clients": 1,
+        "resident_vram_present": true
+      },
+      "cold": {
+        "resident-vram": 12115968,
+        "memory-vram": 12115968,
+        "resident-gtt": 94248960,
+        "memory-gtt": 94248960,
+        "unique_drm_clients": 1,
+        "resident_vram_present": true
+      }
+    },
+    "offload": [
+      31,
+      31
+    ],
+    "performance": {
+      "decode_ms": 243.2,
+      "decode_runs": 76,
+      "tokens_per_second": 312.49,
+      "prompt_ms": 1077.52,
+      "restore_ms": []
+    },
+    "first_stdout_after_input_ms": 1077.8750549998222,
+    "minimum_available_mib": 41262,
+    "returncode": 0
+  },
+  "automatic_cold_state_before_prompt": [
+    0,
+    308084736,
+    213628360,
+    3,
+    0,
+    0
+  ],
+  "automatic_pre_prompt_state": [
+    0,
+    308084736,
+    213628360,
+    3,
+    0,
+    0
+  ],
+  "automatic_pre_prompt_state_kind": "fully-cold",
+  "automatic_cold_logical_bytes": 308084736,
+  "automatic_cold_stored_bytes": 213628360,
+  "automatic_snapshot_events": [
+    [
+      11796480,
+      88160
+    ],
+    [
+      27131904,
+      275780
+    ],
+    [
+      269156352,
+      213264420
+    ]
+  ],
+  "selective_restore_events": [],
+  "selective_range_restore_events": [],
+  "selective_restore_fallbacks": 0,
+  "backing_bytes": {
+    "hot": {
+      "resident-vram": 319938560,
+      "memory-vram": 319938560,
+      "resident-gtt": 94248960,
+      "memory-gtt": 94248960,
+      "unique_drm_clients": 1,
+      "resident_vram_present": true
+    },
+    "cold": {
+      "resident-vram": 12115968,
+      "memory-vram": 12115968,
+      "resident-gtt": 94248960,
+      "memory-gtt": 94248960,
+      "unique_drm_clients": 1,
+      "resident_vram_present": true
+    }
+  },
+  "cleanup_log_lines": [
+    "[zvram] automatic Vulkan snapshots enabled idle-ms=1000 cold-budget=536870912"
+  ],
+  "resident_vram_freed_bytes": 307822592,
+  "resident_vram_pressure_delta_bytes": null,
+  "stdout_sha256": "82fd50695699819fc81432c40c99e7d1e8a3c847ac2e4bc4229948aa50405968",
+  "timing_scope": "Short sequential post-game SmolLM2-135M F16 comparison; validation disabled for timing. No other owned GPU tests ran concurrently. Desktop remains active, clocks were not fixed, and between-pair native generation timing varied; not sustained throughput or 40 GB pressure evidence."
+}

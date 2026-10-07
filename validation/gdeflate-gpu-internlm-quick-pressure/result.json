@@ -1,0 +1,45 @@
+{
+  "status": "TIMEOUT; not accepted inference or token-throughput evidence",
+  "source_head": "c759a8797f8a6ad4f526249ba92782b08e8194ff",
+  "model": "build/third-party/models/internlm2_5-20b-chat-fp16.gguf",
+  "model_bytes": 39725643136,
+  "tokens_requested": 32,
+  "timeout_seconds_per_run": 240,
+  "ram_guard_mib": 12288,
+  "tracked_resident_limit_mib": 20480,
+  "cold_budget_mib": 24576,
+  "range_mib": 128,
+  "codec": "gdeflate",
+  "gpu_restore": true,
+  "idle_ms": 300000,
+  "pressure_on_first_submit": true,
+  "min_savings_percent": 5,
+  "eviction_policy": "mru",
+  "strict_robustness": true,
+  "clean_cache": true,
+  "max_nodes_per_submit": 1,
+  "load_mode": "mmap",
+  "validation": false,
+  "native_performance": {
+    "decode_ms": 8142.44,
+    "decode_runs": 12,
+    "tokens_per_second": 1.47,
+    "prompt_ms": 1667.63,
+    "restore_ms": []
+  },
+  "native_output_bytes": 67,
+  "native_output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "wrapped_output_bytes": 0,
+  "wrapped_token_rate": null,
+  "wrapped_failure": "timed out waiting for ready model/snapshot; terminated owned process group",
+  "last_gpu_profile": {
+    "calls": 388,
+    "bytes": 12882149376,
+    "host_ns": 1857456999,
+    "fallbacks": 0
+  },
+  "last_snapshot_state": [
+    "[zvram] snapshot state event=restore resident=21397831680 cold-logical=17189961728 cold-stored=10183999564 freezes=232 restores=99 failures=0 cache-stored=286016 clean-reuses=0 cache-invalidations=98 copy-calls=232 copy-bytes=30072111104 copy-ns=4969473013 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=388 gpu-decode-bytes=12882149376 gpu-decode-ns=1857456999 gpu-decode-fallbacks=0"
+  ],
+  "scope": "GPU restores occurred under 40 GB model startup pressure. No wrapped prompt/inference completed; no claim of model-output equivalence or speed improvement. Repeated startup freezes/restores and cache invalidations observed. CPU encoding and loader churn are the next investigation; elapsed time is not generation throughput."
+}

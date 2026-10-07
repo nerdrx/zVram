@@ -23,11 +23,13 @@ parser.add_argument("--vulkan-cold-mib", type=int, help="limit retained Vulkan s
 parser.add_argument("--vulkan-min-savings-percent", type=int, help="minimum snapshot savings 0..100; 0 keeps any saving, 100 uses raw snapshots; requires automatic snapshots")
 parser.add_argument("--vulkan-byte-shuffle", type=int, choices=(2,4), help="losslessly reorder byte planes before Zstd; requires automatic snapshots (experimental)")
 parser.add_argument("--vulkan-codec", choices=("zstd", "gdeflate"), help="snapshot codec (default zstd); experimental gdeflate requires an optional build and decodes on CPU unless GPU restore is selected")
+parser.add_argument("--vulkan-gdeflate-workers", type=int, choices=range(1,5), help="bounded CPU GDeflate encoding workers (default 1); requires the GDeflate codec and automatic snapshots")
 parser.add_argument("--vulkan-gdeflate-gpu", action="store_true", help="restore GDeflate snapshots directly on a supported wave32 GPU (experimental, CPU fallback)")
 parser.add_argument("--vulkan-selective-restore", action="store_true", help="restore only allocations referenced by tracked Vulkan submissions; unknown access restores all (experimental)")
 parser.add_argument("--vulkan-active-eviction", action="store_true", help="compress unused whole Vulkan allocations while other tracked submissions remain active; requires selective restore (experimental)")
 parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residency and chunk native pools at this positive MiB granularity; requires active eviction (experimental)")
 parser.add_argument("--vulkan-resident-mib", type=int, help="limit eligible resident backing at tracked submission admission; requires range mode (experimental, not a global VRAM cap)")
+parser.add_argument("--vulkan-lazy-backing", action="store_true", help="defer pristine range backing until admitted use; requires immediate resident admission (experimental)")
 parser.add_argument("--vulkan-resident-after-cold", action="store_true", help="arm resident admission after all eligible backing first becomes cold; startup can exceed limit")
 parser.add_argument("--vulkan-eviction-policy", choices=("lru", "mru"), help="choose pressure victims: oldest first (default lru), or newest first for cyclic scans; requires resident admission")
 parser.add_argument("--vulkan-strict-robustness", action="store_true", help="enable supported robustness2 bounds for narrow descriptor residency; requires range mode")
@@ -67,6 +69,8 @@ if args.vulkan_byte_shuffle is not None and (args.hip or args.vulkan_auto_idle_m
 if args.vulkan_codec is not None and (args.hip or args.vulkan_auto_idle_ms is None):
     parser.error("--vulkan-codec requires Vulkan automatic snapshots")
 effective_codec = args.vulkan_codec or os.environ.get("ZVRAM_VULKAN_CODEC", "zstd")
+if args.vulkan_gdeflate_workers is not None and (args.hip or args.vulkan_auto_idle_ms is None or effective_codec != "gdeflate"):
+    parser.error("--vulkan-gdeflate-workers requires the GDeflate codec and Vulkan automatic snapshots")
 gpu_restore = args.vulkan_gdeflate_gpu or os.environ.get("ZVRAM_VULKAN_GDEFLATE_GPU") == "1"
 if not args.hip and gpu_restore and (effective_codec != "gdeflate" or args.vulkan_auto_idle_ms is None):
     parser.error("--vulkan-gdeflate-gpu requires the gdeflate codec and Vulkan automatic snapshots")
@@ -95,6 +99,8 @@ if args.vulkan_range_mib is not None and (not args.vulkan_active_eviction or
 if args.vulkan_resident_mib is not None and (args.vulkan_range_mib is None or
         not 0 < args.vulkan_resident_mib <= ((1 << 64) - 1) // (1024 * 1024)):
     parser.error("--vulkan-resident-mib requires range mode and a positive size fitting 64-bit bytes")
+if args.vulkan_lazy_backing and (args.hip or args.vulkan_resident_mib is None or args.vulkan_resident_after_cold):
+    parser.error("--vulkan-lazy-backing requires immediate --vulkan-resident-mib admission")
 if args.vulkan_strict_robustness and args.vulkan_range_mib is None:
     parser.error("--vulkan-strict-robustness requires --vulkan-range-mib")
 if args.vulkan_resident_after_cold and args.vulkan_resident_mib is None:
@@ -156,6 +162,8 @@ else:
     if args.vulkan_byte_shuffle is not None:
         env["ZVRAM_VULKAN_BYTE_SHUFFLE"] = str(args.vulkan_byte_shuffle)
     env["ZVRAM_VULKAN_CODEC"] = effective_codec
+    if args.vulkan_gdeflate_workers is not None:
+        env["ZVRAM_VULKAN_GDEFLATE_WORKERS"] = str(args.vulkan_gdeflate_workers)
     if gpu_restore:
         env["ZVRAM_VULKAN_GDEFLATE_GPU"] = "1"
         env["ZVRAM_GDEFLATE_SHADER_PATH"] = str(build / "gdeflate-wave32.spv")
@@ -167,6 +175,8 @@ else:
         env["ZVRAM_VULKAN_RANGE_MIB"] = str(args.vulkan_range_mib)
     if args.vulkan_resident_mib is not None:
         env["ZVRAM_VULKAN_RESIDENT_MIB"] = str(args.vulkan_resident_mib)
+    if args.vulkan_lazy_backing:
+        env["ZVRAM_VULKAN_LAZY_BACKING"] = "1"
     if args.vulkan_resident_after_cold:
         env["ZVRAM_VULKAN_RESIDENT_AFTER_COLD"] = "1"
     if args.vulkan_eviction_policy is not None:

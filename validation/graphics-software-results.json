@@ -1,0 +1,43 @@
+{
+  "scope": "Graphics storage-buffer cold restore and exact image/full-buffer readback; not image paging, game performance or swapchain presentation.",
+  "precommit_head": "c759a8797f8a6ad4f526249ba92782b08e8194ff",
+  "software_native": {
+    "status": "PASS",
+    "device": "llvmpipe LLVM23.1.1",
+    "type": 4,
+    "frames": 3,
+    "buffer_bytes": 33554432,
+    "pixels": "16x16 RGBA8 exact",
+    "validation": "enabled with synchronization checks"
+  },
+  "hardware": {
+    "status": "PASS",
+    "ctest_count": 3,
+    "elapsed_seconds": 2.96,
+    "modes": [
+      "synthetic idle",
+      "synthetic selective/active",
+      "adopted native allocation selective/active"
+    ],
+    "checks": "Each draw starts fully cold; compressed backing smaller than logical; restore counter grows; exact pixels and full32MiBbytes; full buffer returns cold between3frames; validation callbacks including teardown",
+    "device": "RX7900XTX"
+  },
+  "pending": [
+    "headless gamescope presentation",
+    "image or texture paging",
+    "broad app compatibility",
+    "40 GB sustained performance"
+  ],
+  "sha256": {
+    "vulkan_graphics_check.cpp": "6014b42bb44b8f9312e28a7c3449907d03b121fd39a3d342b4a05e50b7bce368",
+    "graphics_check.vert": "7fcdd2465f6aa04d5103f482532772b8d7edb02126e8ddf1990c1308e6f355a0",
+    "graphics_check.frag": "8f54fb8c964d7bcc2571d45d1d64dfa654a31032ec61eb45915495e3b43f2537",
+    "test_graphics_software.py": "201dc1e22d7d5e16e957666a6caebfbd7e285079d9390034b2e8f7bd693cf1e1",
+    "build/zvram-vulkan-graphics-check": "eb69896ce38feb6c79f91dfb909fdc9f3f2f30e084d56151e8cfb5f908a87f5f",
+    "build/graphics_check.vert.spv": "21db37d83995f86f3acebb7f970154cd0a3a7b1d7f7a6c5e5ad848afe6d0dd03",
+    "build/graphics_check.frag.spv": "501a25ea0a37468f65cca8d69e5756794bdab55e0feb3ae239a31e0a532a2b1d",
+    "build/libzvram_layer.so": "3971de3c8083159eff1ff3af04abc72c1b12d704ad9c2fe53ceb0647dc0b595d",
+    "validation/graphics-software-native.txt": "1a2fe67e772a80af94657d85f077e7d58662491799dfb2db2181b1e5ad9811f2",
+    "validation/graphics-hardware-ctest.txt": "1fb9d1998e8e77ad25420ce49e0ec63e9ef5a60b807df53e90f10112b3ad968e"
+  }
+}

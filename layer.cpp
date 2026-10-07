@@ -109,6 +109,7 @@ struct VirtualMemory {
         std::uint64_t failedBudgetGeneration{};
         std::uint64_t failedBudgetSubmissionGeneration{};
         bool cold{};
+        bool pristine{}; // Never submitted: undefined contents need no snapshot.
         bool restoreBound{};
         bool budgetBlocked{};
         std::chrono::steady_clock::time_point lastUse{std::chrono::steady_clock::now()};
@@ -228,12 +229,14 @@ struct Device {
     bool activeEviction{};
     VkDeviceSize rangeChunkBytes{};
     VkDeviceSize residentLimitBytes{};
+    bool lazyBacking{};
     bool residentAdmissionArmed{true};
     bool cleanCache{};
     bool mruEviction{};
     unsigned minSavingsPercent{};
     unsigned byteShuffle{};
     zvram::snapshot::Codec snapshotCodec{zvram::snapshot::Codec::Zstd};
+    unsigned gdeflateWorkers{1};
     bool gpuRestoreEnabled{}, gpuRestoreUnsafe{};
     VkDeviceSize gpuStorageAlignment{1};
     VkDeviceSize gpuStorageRange{};
@@ -887,6 +890,13 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                         autoResult=VK_ERROR_FEATURE_NOT_PRESENT; logf("invalid Vulkan snapshot codec");
                     }
                 }
+                if(const char* workers=std::getenv("ZVRAM_VULKAN_GDEFLATE_WORKERS")) {
+                    const auto count=positiveEnv("ZVRAM_VULKAN_GDEFLATE_WORKERS",4);
+                    if(!count || d->snapshotCodec!=zvram::snapshot::Codec::GDeflate) {
+                        autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
+                        logf("GDeflate workers require the GDeflate codec and a count from 1 to 4");
+                    } else d->gdeflateWorkers=static_cast<unsigned>(count);
+                }
                 if(d->activeEviction && d->rangeChunkBytes) {
                     const auto residentMiB=positiveEnv("ZVRAM_VULKAN_RESIDENT_MIB",std::numeric_limits<std::uint64_t>::max()/(1024ull*1024ull));
                     d->residentLimitBytes=residentMiB*1024ull*1024ull;
@@ -894,6 +904,12 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     d->mruEviction=d->residentLimitBytes && eviction && std::strcmp(eviction,"mru")==0;
                     const char* afterCold=std::getenv("ZVRAM_VULKAN_RESIDENT_AFTER_COLD");
                     d->residentAdmissionArmed=!(afterCold && std::strcmp(afterCold,"1")==0);
+                    const char* lazy=std::getenv("ZVRAM_VULKAN_LAZY_BACKING");
+                    d->lazyBacking=lazy && std::strcmp(lazy,"1")==0;
+                    if(d->lazyBacking && (!d->residentLimitBytes || !d->residentAdmissionArmed)) {
+                        autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
+                        logf("lazy backing requires immediate resident admission");
+                    }
                 }
                 try {
                     handles=d->appQueues; handles.push_back(d->copyQueue);
@@ -1045,7 +1061,9 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
     auto discardFirstBacking=[&] {
         if(!initializedNow) return;
         d.residentBytes-=std::min<std::uint64_t>(d.residentBytes,m.residentBytes);
+        d.coldBytes-=m.coldStoredBytes; d.coldLogicalBytes-=m.coldLogicalSize;
         releaseChildren(d,m);
+        m.coldStoredBytes=0; m.coldLogicalSize=0; m.cold=false;
         m.backingMemoryTypeBits=0; m.everBound=false; m.bound=false; m.trackPhysicalStats=false;
     };
     const VkDeviceSize end=memoryOffset+req.size;
@@ -1053,7 +1071,11 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
         const auto bEnd=b.memoryOffset+b.size;
         if(memoryOffset<bEnd && b.memoryOffset<end) return VK_ERROR_FEATURE_NOT_PRESENT;
     }
-    if(m.cold) { const auto r=restoreColdLocked(device,d,handle); if(r!=VK_SUCCESS) return r; }
+    // Range bindings describe aliases even when some children are cold. Their
+    // pages are bound only after queue admission selects and restores them.
+    if(m.cold && !(d.lazyBacking && d.rangeChunkBytes)) {
+        const auto r=restoreColdLocked(device,d,handle); if(r!=VK_SUCCESS) return r;
+    }
     if(m.everBound && m.backingMemoryTypeBits==0) return VK_ERROR_FEATURE_NOT_PRESENT;
     if(!m.everBound) {
         m.backingMemoryTypeBits=req.memoryTypeBits&(m.nativeTypeBits?m.nativeTypeBits:UINT32_MAX);
@@ -1077,13 +1099,22 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
         try { VkMemoryRequirements all{}; all.memoryTypeBits=m.backingMemoryTypeBits; types=backingMemoryTypes(d,all); }
         catch(const std::bad_alloc&) { discardFirstBacking(); return VK_ERROR_OUT_OF_HOST_MEMORY; }
         if(types.empty()) { discardFirstBacking(); return VK_ERROR_OUT_OF_DEVICE_MEMORY; }
+        const bool lazy=d.lazyBacking && d.autoEnabled && d.rangeChunkBytes &&
+            d.residentLimitBytes && d.residentAdmissionArmed;
+        m.trackPhysicalStats=true;
         for(std::size_t i=0;i<sizes.size();i++) {
+            if(lazy) {
+                auto& group=m.coldGroups[i];
+                group.cold=true; group.pristine=true; group.logicalBytes=sizes[i];
+                m.cold=true; m.coldLogicalSize+=sizes[i]; d.coldLogicalBytes+=sizes[i];
+                continue;
+            }
             VkResult r=VK_ERROR_OUT_OF_DEVICE_MEMORY;
             for(auto type:types) { r=allocateBackingChild(d,device,sizes[i],type,m.allocationFlags,m.hasPriority,m.priority,&m.children[i]); if(r==VK_SUCCESS) { m.childTypes[i]=type; break; } }
             if(r!=VK_SUCCESS) { discardFirstBacking(); return r; }
             trackBackingAllocation(d,m.childTypes[i],sizes[i]); m.trackPhysicalStats=true;
         }
-        for(auto n:sizes) { m.residentBytes+=n; d.residentBytes+=n; }
+        if(!lazy) for(auto n:sizes) { m.residentBytes+=n; d.residentBytes+=n; }
         m.everBound=true;
     }
     const auto compatibleTypeBits=m.backingMemoryTypeBits&req.memoryTypeBits;
@@ -1091,7 +1122,7 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
     for(std::size_t i=0;i<m.children.size();i++) {
         VkDeviceSize base=0; for(std::size_t j=0;j<i;j++) base+=m.childSizes[j];
         const auto lo=std::max(memoryOffset,base), hi=std::min(end,base+m.childSizes[i]);
-        if(lo<hi && ((req.memoryTypeBits&(1u<<m.childTypes[i]))==0 ||
+        if(lo<hi && ((m.children[i] && (req.memoryTypeBits&(1u<<m.childTypes[i]))==0) ||
            (lo-memoryOffset)%req.alignment || (lo-base)%req.alignment || (hi-lo)%req.alignment)) { discardFirstBacking(); return VK_ERROR_FEATURE_NOT_PRESENT; }
     }
     VirtualMemory::Binding binding{buffer,memoryOffset,req.size,req.alignment};
@@ -1101,7 +1132,7 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
     for(std::size_t i=0;i<m.children.size();i++) {
         const auto childEnd=childBase+m.childSizes[i];
         const auto lo=std::max(memoryOffset,childBase), hi=std::min(end,childEnd);
-        if(lo<hi) {
+        if(lo<hi && m.children[i] && !m.coldGroups[i].cold) {
             VkSparseMemoryBind bind{}; bind.resourceOffset=lo-memoryOffset; bind.size=hi-lo;
             bind.memory=m.children[i]; bind.memoryOffset=lo-childBase;
             const auto r=bindSparseLocked(device,d,buffer,&bind,1);
@@ -1110,7 +1141,7 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
                 for(std::size_t j=0;j<i;j++) {
                     VkDeviceSize base=0; for(std::size_t k=0;k<j;k++) base+=m.childSizes[k];
                     const auto a=std::max(memoryOffset,base), z=std::min(end,base+m.childSizes[j]);
-                    if(a<z) { VkSparseMemoryBind undo{}; undo.resourceOffset=a-memoryOffset; undo.size=z-a; if(bindSparseLocked(device,d,buffer,&undo,1)!=VK_SUCCESS) rollbackFailed=true; }
+                    if(a<z && m.children[j] && !m.coldGroups[j].cold) { VkSparseMemoryBind undo{}; undo.resourceOffset=a-memoryOffset; undo.size=z-a; if(bindSparseLocked(device,d,buffer,&undo,1)!=VK_SUCCESS) rollbackFailed=true; }
                 }
                 if(rollbackFailed || d.gpuGateError!=VK_SUCCESS) {
                     d.gpuGateError=r; d.autoEnabled=false; d.stopWorker.store(true); m.bound=true; return r;
@@ -1339,6 +1370,28 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
     auto& s=d.snapshot;
     if(preparedBuffer && (!only || childOnly==SIZE_MAX || !preparedBytes || preparedBytes>s.stagingSize))
         return VK_ERROR_UNKNOWN;
+    // Guard every restore entry, including conservative fallback and non-submit
+    // calls. Admission must evict first; restoration never silently exceeds the
+    // configured tracked-backing cap. Preflight all missing children before any
+    // allocation so a rejected full restore cannot materialize a partial model.
+    if(d.residentLimitBytes && d.residentAdmissionArmed) {
+        VkDeviceSize incoming=0;
+        for(const auto& pair:d.virtualMemory) {
+            if(only && pair.first!=only) continue;
+            const auto& memory=pair.second;
+            if(!memory.cold) continue;
+            if(memory.children.size()!=memory.childSizes.size() ||
+               memory.children.size()!=memory.coldGroups.size()) return VK_ERROR_UNKNOWN;
+            for(std::size_t i=0;i<memory.children.size();++i) {
+                if(childOnly!=SIZE_MAX && i!=childOnly) continue;
+                if(!memory.coldGroups[i].cold || memory.children[i]) continue;
+                const auto amount=memory.childSizes[i];
+                if(amount>d.residentLimitBytes-incoming) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                incoming+=amount;
+            }
+        }
+        if(d.residentBytes>d.residentLimitBytes-incoming) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    }
     bool restoredAny=false;
     std::uint64_t restoredThisCall=0;
     for(auto& pair:d.virtualMemory) {
@@ -1366,6 +1419,9 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             const auto amount=memory.childSizes[i];
             if(!group.cold) continue;
             if(preparedBuffer && preparedBytes!=group.logicalBytes) return VK_ERROR_UNKNOWN;
+            if(group.pristine && (preparedBuffer || group.logicalBytes!=amount ||
+               group.storedBytes || !group.chunks.empty())) return VK_ERROR_UNKNOWN;
+            bool allocatedNow=false;
             if(!memory.children[i]) {
                 VkDeviceMemory child{}; std::uint32_t used=UINT32_MAX; r=VK_ERROR_OUT_OF_DEVICE_MEMORY;
                 for(auto type:types) {
@@ -1376,14 +1432,15 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                 memory.children[i]=child; memory.childTypes[i]=used;
                 if(memory.trackPhysicalStats) trackBackingAllocation(d,used,amount);
                 memory.residentBytes+=amount; d.residentBytes+=amount;
+                allocatedNow=true;
             }
-            if(!group.restoreBound) {
+            if(!group.pristine && !group.restoreBound) {
                 VkSparseMemoryBind bind{}; bind.size=amount; bind.memory=memory.children[i];
                 r=bindSparseLocked(device,d,memory.poolViews[i],&bind,1);
                 if(r!=VK_SUCCESS) return r;
                 group.restoreBound=true;
             }
-            VkDeviceSize offset=0;
+            VkDeviceSize offset=group.pristine?group.logicalBytes:0;
             if(preparedBuffer) {
                 r=copyChunkLocked(d,preparedBuffer,memory.poolViews[i],0,0,preparedBytes,true);
                 if(r==VK_SUCCESS) offset=preparedBytes;
@@ -1444,17 +1501,24 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             if(r==VK_SUCCESS && offset!=group.logicalBytes) r=VK_ERROR_UNKNOWN;
             if(r!=VK_SUCCESS) {
                 VkSparseMemoryBind unbind{}; unbind.size=amount;
-                if(bindSparseLocked(device,d,memory.poolViews[i],&unbind,1)!=VK_SUCCESS) d.gpuGateError=VK_ERROR_DEVICE_LOST;
+                if(group.restoreBound && bindSparseLocked(device,d,memory.poolViews[i],&unbind,1)!=VK_SUCCESS) d.gpuGateError=VK_ERROR_DEVICE_LOST;
                 group.restoreBound=false;
                 return r;
             }
-            VkSparseMemoryBind unbindView{}; unbindView.size=amount;
-            r=bindSparseLocked(device,d,memory.poolViews[i],&unbindView,1);
-            if(r!=VK_SUCCESS) { d.gpuGateError=r; return r; }
-            group.restoreBound=false;
+            if(group.restoreBound) {
+                VkSparseMemoryBind unbindView{}; unbindView.size=amount;
+                r=bindSparseLocked(device,d,memory.poolViews[i],&unbindView,1);
+                if(r!=VK_SUCCESS) { d.gpuGateError=r; return r; }
+                group.restoreBound=false;
+            }
             r=bindChildAppsLocked(device,d,memory,i,false);
             if(r!=VK_SUCCESS) {
-                if(bindChildAppsLocked(device,d,memory,i,true)!=VK_SUCCESS) d.gpuGateError=VK_ERROR_DEVICE_LOST;
+                const auto rollback=bindChildAppsLocked(device,d,memory,i,true);
+                if(rollback!=VK_SUCCESS) d.gpuGateError=VK_ERROR_DEVICE_LOST;
+                else if(allocatedNow && group.pristine && d.gpuGateError==VK_SUCCESS) {
+                    releaseBackingChild(d,memory,i);
+                    memory.residentBytes-=amount; d.residentBytes-=amount;
+                }
                 return r;
             }
             memory.bound=!memory.bindings.empty();
@@ -1462,7 +1526,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             // Bootstrap admission permits the whole model to remain resident.
             // Keep no redundant snapshots until the resident cap is armed;
             // the cold chunks remain intact until restore has fully succeeded.
-            const bool retainClean=d.cleanCache && d.residentAdmissionArmed;
+            const bool retainClean=d.cleanCache && d.residentAdmissionArmed && !group.pristine;
             if(retainClean) {
                 d.cacheBytes+=group.storedBytes; memory.cacheStoredBytes+=group.storedBytes;
             } else if(group.storedBytes) {
@@ -1470,7 +1534,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             }
             memory.coldStoredBytes-=group.storedBytes; memory.coldLogicalSize-=group.logicalBytes;
             if(!retainClean) { group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0; }
-            group.cold=false; group.restoreBound=false;
+            group.cold=false; group.pristine=false; group.restoreBound=false;
             restoredAny=true; ++d.restoreCount; ++restoredThisCall;
             memory.cold=std::any_of(memory.coldGroups.begin(),memory.coldGroups.end(),[](const auto& entry){return entry.cold;});
             const bool coldRemains=std::any_of(d.virtualMemory.begin(),d.virtualMemory.end(),
@@ -1557,7 +1621,7 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
             if(d.minSavingsPercent<100) {
 #ifdef ZVRAM_HAVE_GDEFLATE
                 if(d.snapshotCodec==zvram::snapshot::Codec::GDeflate) {
-                    if(!zvram::gdeflate::encode(source,static_cast<std::size_t>(amount),encoded)) {
+                    if(!zvram::gdeflate::encode(source,static_cast<std::size_t>(amount),encoded,d.gdeflateWorkers)) {
                         okay=false; r=VK_ERROR_UNKNOWN; break;
                     }
                     compressed=encoded.size();

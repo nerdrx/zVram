@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install development packages
-        run: sudo apt-get update && sudo apt-get install -y libvulkan-dev libzstd-dev glslc mesa-vulkan-drivers vulkan-validationlayers spirv-tools
+        run: sudo apt-get update && sudo apt-get install -y libvulkan-dev libzstd-dev libsdl2-dev glslc mesa-vulkan-drivers vulkan-validationlayers spirv-tools
       - name: Build
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j 2
       - name: Check launcher syntax
@@ -16,7 +16,7 @@ jobs:
       - name: Check low-memory abort cleanup
         run: python3 test_vulkan_ram_guard.py
       - name: Check Vulkan compression options and CPU policy
-        run: python3 test_vulkan_compression_options.py && ctest --test-dir build -R cpu-compression-policy --output-on-failure
+        run: python3 test_vulkan_compression_options.py && ctest --test-dir build -R '^cpu-(compression-policy|resident-bootstrap)$' --output-on-failure
       - name: Check bounded model evidence
         run: python3 test_vulkan_model_budget.py
       - name: Check lossless parallel snapshot decoding
@@ -32,6 +32,8 @@ jobs:
           python3 research/gdeflate/test_software.py --binary build/research/zvram-gdeflate-research
       - name: Check bounded snapshot decode look-ahead
         run: ctest --test-dir build -R cpu-snapshot-pipeline --output-on-failure
+      - name: Check offscreen graphics fixture on CPU Vulkan
+        run: python3 test_graphics_software.py --binary build/zvram-vulkan-graphics-check
       - name: Build optional GDeflate codec and GPU decoder, run CPU checks
         run: |
           cmake -S . -B build/codecs -DZVRAM_ENABLE_GDEFLATE=ON -DCMAKE_BUILD_TYPE=Release

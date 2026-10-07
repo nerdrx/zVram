@@ -1,0 +1,20 @@
+Start testing: Oct 07 21:59 CEST
+----------------------------------------------------------
+1/117 Testing: cpu-resident-bootstrap
+1/117 Test: cpu-resident-bootstrap
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/gdeflate-codec/zvram-resident-bootstrap-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/gdeflate-codec
+"cpu-resident-bootstrap" start time: Oct 07 21:59 CEST
+Output:
+----------------------------------------------------------
+[zvram] resident admission refused: submission working set exceeds limit-bytes=2097152 known=0
+PASS: pristine bootstrap, cold aliases, cap boundaries, rollback, and retry accounting
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-resident-bootstrap" end time: Oct 07 21:59 CEST
+"cpu-resident-bootstrap" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 07 21:59 CEST

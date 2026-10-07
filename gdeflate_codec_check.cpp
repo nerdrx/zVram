@@ -83,17 +83,40 @@ void checkOutputReuse() {
     const auto capacity = reused.capacity();
     for (const auto size : {2 * Tile + 123, std::size_t(1), Tile, Tile + 19}) {
         const auto input = pattern(size);
-        std::vector<std::uint8_t> fresh, decoded(size);
+        std::vector<std::uint8_t> fresh, requested, decoded(size);
         require(zvram::gdeflate::encode(input.data(), size, fresh) &&
-                zvram::gdeflate::encode(input.data(), size, reused), "reused encode failed");
+                zvram::gdeflate::encode(input.data(), size, reused) &&
+                zvram::gdeflate::encode(input.data(), size, requested, 4), "reused encode failed");
         require(reused.data() == storage && reused.capacity() == capacity,
                 "encoder discarded caller output storage");
-        require(reused == fresh, "reused encoder retained stale bytes or tile metadata");
+        require(reused == fresh && requested == fresh,
+                "reused or small-request worker encoder changed bytes or retained stale metadata");
         require(zvram::gdeflate::decode(reused.data(), reused.size(), decoded.data(), size) &&
                 decoded == input, "reused output failed exact roundtrip");
     }
     require(!zvram::gdeflate::encode(nullptr, Tile, reused) && reused.empty() &&
             reused.capacity() == capacity, "failed encode retained bytes or discarded capacity");
+    for (const unsigned workers : {0u, 5u}) {
+        reused.assign(16, 0x5a);
+        require(!zvram::gdeflate::encode(reinterpret_cast<const std::uint8_t*>("input"), 5,
+                                         reused, workers) && reused.empty() &&
+                reused.capacity() == capacity,
+                "invalid worker count did not clear output while preserving capacity");
+    }
+}
+
+void checkParallelEquivalent(const std::vector<std::uint8_t>& input) {
+    std::vector<std::uint8_t> serial;
+    require(zvram::gdeflate::encode(input.data(), input.size(), serial),
+            "serial reference encode failed");
+    for (const unsigned workers : {2u, 4u}) {
+        std::vector<std::uint8_t> parallel, decoded(input.size());
+        require(zvram::gdeflate::encode(input.data(), input.size(), parallel, workers),
+                "parallel encode failed");
+        require(parallel == serial, "parallel worker count changed encoded bytes");
+        require(zvram::gdeflate::decode(parallel.data(), parallel.size(), decoded.data(), decoded.size()) &&
+                decoded == input, "parallel output failed exact decode");
+    }
 }
 
 std::filesystem::path fixtureDirectory(const char* requested) {
@@ -147,6 +170,13 @@ int main(int argc, char** argv) try {
     std::vector<std::uint8_t> entropy(Tile + 19);
     for (auto& byte : entropy) byte = static_cast<std::uint8_t>(rng());
     roundtrip(entropy);
+    checkParallelEquivalent(pattern(17 * Tile + 123)); // Multitile odd tail.
+    std::vector<std::uint8_t> randomMulti(17 * Tile + 7);
+    for (auto& byte : randomMulti) byte = static_cast<std::uint8_t>(rng());
+    checkParallelEquivalent(randomMulti);
+    std::vector<std::uint8_t> randomMaximum(zvram::gdeflate::MaxRawBytes);
+    for (auto& byte : randomMaximum) byte = static_cast<std::uint8_t>(rng());
+    checkParallelEquivalent(randomMaximum);
     checkOutputReuse();
 
     std::uint8_t oneByte = 7;

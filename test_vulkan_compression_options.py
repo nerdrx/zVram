@@ -40,6 +40,25 @@ with tempfile.TemporaryDirectory() as temporary:
     assert missing_gpu.returncode == 2 and "GPU GDeflate decoder missing" in missing_gpu.stderr
     (build / "zvram-codecs.json").write_text('{"gdeflate": true, "gdeflate_gpu": true}')
     (build / "gdeflate-wave32.spv").touch()
+    for workers in (1, 2, 4):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate",
+                     "--vulkan-gdeflate-workers", str(workers), "--", sys.executable, "-c",
+                     "import os; print(os.environ['ZVRAM_VULKAN_GDEFLATE_WORKERS'])")
+        assert result.returncode == 0 and result.stdout == str(workers) + "\n", (result.stdout, result.stderr)
+    for extra in (("--vulkan-gdeflate-workers", "0"), ("--vulkan-gdeflate-workers", "5"),
+                  ("--vulkan-gdeflate-workers", "2", "--vulkan-codec", "zstd")):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", *extra, "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2, result.stderr
+    lazy_base = [*BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-selective-restore",
+                 "--vulkan-active-eviction", "--vulkan-range-mib", "32", "--vulkan-resident-mib", "32"]
+    result = run(launcher, *lazy_base, "--vulkan-lazy-backing", "--", sys.executable, "-c",
+                 "import os; print(os.environ['ZVRAM_VULKAN_LAZY_BACKING'])")
+    assert result.returncode == 0 and result.stdout == "1\n", (result.stdout, result.stderr)
+    for arguments in ((*BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-lazy-backing"),
+                      (*lazy_base, "--vulkan-lazy-backing", "--vulkan-resident-after-cold"),
+                      ("--hip", "--vulkan-lazy-backing")):
+        result = run(launcher, *arguments, "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2 and "requires immediate" in result.stderr, result.stderr
     gpu_child = "import os; print(os.environ['ZVRAM_VULKAN_GDEFLATE_GPU']); print(os.environ['ZVRAM_GDEFLATE_SHADER_PATH'])"
     result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--vulkan-gdeflate-gpu", "--", sys.executable, "-c", gpu_child)
     assert result.returncode == 0 and result.stdout == "1\n" + str(build / "gdeflate-wave32.spv") + "\n", (result.stdout, result.stderr)

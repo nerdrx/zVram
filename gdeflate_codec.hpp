@@ -5,10 +5,12 @@
 #include <libdeflate.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <thread>
 #include <vector>
 
 namespace zvram::gdeflate {
@@ -35,14 +37,104 @@ inline void storeLe32(std::uint8_t* p, std::uint32_t value) noexcept {
     for (unsigned i = 0; i < 4; ++i) p[i] = static_cast<std::uint8_t>(value >> (8 * i));
 }
 
-// Emits the pinned DirectStorage TileStream envelope using one level-1
-// compressor, one reusable worst-case page buffer, and one bounded output.
-// Input and output storage must not overlap. Output capacity survives calls;
-// every failure clears its logical size.
+namespace detail {
+struct JoinThreads {
+    std::vector<std::thread>& threads;
+    void join() noexcept {
+        for (auto& thread : threads) if (thread.joinable()) thread.join();
+    }
+    ~JoinThreads() { join(); }
+};
+
+inline bool encodeParallel(const std::uint8_t* raw, std::size_t rawSize,
+                           std::size_t count, std::size_t headerBytes,
+                           std::vector<std::uint8_t>& encoded,
+                           unsigned workers) noexcept {
+    try {
+        std::unique_ptr<libdeflate_gdeflate_compressor, CompressorDeleter> boundCompressor(
+            libdeflate_alloc_gdeflate_compressor(1));
+        if (!boundCompressor) return false;
+        std::vector<std::size_t> bounds(count), offsets(count), lengths(count);
+        std::size_t boundTotal = 0;
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto amount = std::min<std::size_t>(TileBytes, rawSize - i * TileBytes);
+            std::size_t pages = 0;
+            const auto bound = libdeflate_gdeflate_compress_bound(boundCompressor.get(), amount, &pages);
+            if (!bound || pages != 1 || headerBytes > MaxEncodedBytes ||
+                bound > MaxEncodedBytes - headerBytes - boundTotal) return false;
+            bounds[i] = bound;
+            offsets[i] = boundTotal;
+            boundTotal += bound;
+        }
+        boundCompressor.reset();
+
+        encoded.reserve(headerBytes + boundTotal);
+        encoded.resize(headerBytes + boundTotal, 0);
+        encoded[0] = static_cast<std::uint8_t>(CodecId);
+        encoded[1] = static_cast<std::uint8_t>(Magic);
+        storeLe16(encoded.data() + 2, static_cast<std::uint16_t>(count));
+        const auto tail = static_cast<std::uint32_t>(rawSize % TileBytes);
+        storeLe32(encoded.data() + 4, 1u | (tail << 2));
+
+        const auto threadCount = std::min<std::size_t>(workers, count);
+        std::atomic<bool> failed{false};
+        std::vector<std::thread> threads;
+        threads.reserve(threadCount);
+        JoinThreads joiner{threads};
+        for (std::size_t worker = 0; worker < threadCount; ++worker) {
+            const auto begin = count * worker / threadCount;
+            const auto end = count * (worker + 1) / threadCount;
+            threads.emplace_back([&, begin, end] {
+                std::unique_ptr<libdeflate_gdeflate_compressor, CompressorDeleter> compressor(
+                    libdeflate_alloc_gdeflate_compressor(1));
+                if (!compressor) { failed.store(true, std::memory_order_relaxed); return; }
+                for (std::size_t i = begin; i < end; ++i) {
+                    if (failed.load(std::memory_order_relaxed)) return;
+                    const auto amount = std::min<std::size_t>(TileBytes, rawSize - i * TileBytes);
+                    libdeflate_gdeflate_out_page page{
+                        encoded.data() + headerBytes + offsets[i], bounds[i]};
+                    const auto compressed = libdeflate_gdeflate_compress(
+                        compressor.get(), raw + i * TileBytes, amount, &page, 1);
+                    if (!compressed || compressed != page.nbytes || page.nbytes > bounds[i] ||
+                        page.nbytes < 4 || (page.nbytes & 3u)) {
+                        failed.store(true, std::memory_order_relaxed);
+                        return;
+                    }
+                    lengths[i] = page.nbytes;
+                }
+            });
+        }
+        joiner.join();
+        if (failed.load(std::memory_order_relaxed)) { encoded.clear(); return false; }
+
+        std::size_t payloadBytes = 0;
+        for (std::size_t i = 0; i < count; ++i) {
+            if (i) storeLe32(encoded.data() + 8 + i * 4, static_cast<std::uint32_t>(payloadBytes));
+            std::memmove(encoded.data() + headerBytes + payloadBytes,
+                         encoded.data() + headerBytes + offsets[i], lengths[i]);
+            payloadBytes += lengths[i];
+        }
+        storeLe32(encoded.data() + 8, static_cast<std::uint32_t>(lengths.back()));
+        encoded.resize(headerBytes + payloadBytes);
+        Limits limits{MaxEncodedBytes, MaxRawBytes, rawSize, 0, 0, MaxTiles};
+        if (!validateEnvelope(encoded.data(), encoded.size(), limits)) { encoded.clear(); return false; }
+        return true;
+    } catch (...) {
+        encoded.clear();
+        return false;
+    }
+}
+} // namespace detail
+
+// Emits the pinned DirectStorage TileStream envelope. The default serial path
+// uses one level-1 compressor and one reusable page buffer; optional workers
+// compress independent pages into bounded disjoint output slices. Input and
+// output storage must not overlap. Output capacity survives calls; every
+// failure clears its logical size.
 inline bool encode(const std::uint8_t* raw, std::size_t rawSize,
-                   std::vector<std::uint8_t>& encoded) noexcept {
+                   std::vector<std::uint8_t>& encoded, unsigned workers = 1) noexcept {
     encoded.clear();
-    if (!raw || !rawSize || rawSize > MaxRawBytes) return false;
+    if (!raw || !rawSize || rawSize > MaxRawBytes || workers < 1 || workers > 4) return false;
     try {
         const auto count = (rawSize + TileBytes - 1) / TileBytes;
         if (!count || count > MaxTiles) return false;
@@ -61,6 +153,11 @@ inline bool encode(const std::uint8_t* raw, std::size_t rawSize,
             boundTotal += bound;
             pageScratchSize = std::max(pageScratchSize, bound);
             offset += amount;
+        }
+
+        if (workers > 1 && count > 16) {
+            compressor.reset();
+            return detail::encodeParallel(raw, rawSize, count, headerBytes, encoded, workers);
         }
 
         auto& result = encoded;
