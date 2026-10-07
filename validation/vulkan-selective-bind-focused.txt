@@ -1,0 +1,107 @@
+test 15
+      Start 15: vulkan-automatic-selective-bind-synthetic-legacy
+
+15: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-bind"
+15: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+15: Environment variables: 
+15:  VK_LOADER_LAYERS_DISABLE=~implicit~
+15:  ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1
+15: Test timeout computed to be: 60
+15: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+15: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+15: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+15: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+15: [zvram] snapshot cold bytes=33554432 stored=33554432
+15: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+15: [zvram] snapshot cold bytes=33554432 stored=33554432
+15: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+15: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+15: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+15: [zvram] virtual free bytes=33554432
+15: [zvram] virtual free bytes=33554432
+15: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+15: PASS: synthetic legacy independent pools froze cold, woke selectively, and preserved distinct full-byte patterns
+15: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+15: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+15/53 Test #15: vulkan-automatic-selective-bind-synthetic-legacy ...   Passed    0.35 sec
+
+test 16
+      Start 16: vulkan-automatic-selective-bind-synthetic-api2
+
+16: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-bind" "--selective-bind-api2"
+16: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+16: Environment variables: 
+16:  VK_LOADER_LAYERS_DISABLE=~implicit~
+16:  ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1
+16: Test timeout computed to be: 60
+16: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+16: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+16: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+16: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+16: [zvram] snapshot cold bytes=33554432 stored=33554432
+16: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+16: [zvram] snapshot cold bytes=33554432 stored=33554432
+16: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+16: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+16: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+16: [zvram] virtual free bytes=33554432
+16: [zvram] virtual free bytes=33554432
+16: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+16: PASS: synthetic API2 independent pools froze cold, woke selectively, and preserved distinct full-byte patterns
+16: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+16: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+16/53 Test #16: vulkan-automatic-selective-bind-synthetic-api2 .....   Passed    0.35 sec
+
+test 17
+      Start 17: vulkan-automatic-selective-bind-native-legacy
+
+17: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-bind" "--native-allocation"
+17: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+17: Environment variables: 
+17:  VK_LOADER_LAYERS_DISABLE=~implicit~
+17:  ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1
+17: Test timeout computed to be: 60
+17: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+17: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+17: [zvram] native allocation adopted bytes=33554432 type=0
+17: [zvram] native allocation adopted bytes=33554432 type=0
+17: [zvram] snapshot cold bytes=33554432 stored=33554432
+17: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+17: [zvram] snapshot cold bytes=33554432 stored=33554432
+17: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+17: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+17: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+17: [zvram] virtual free bytes=33554432
+17: [zvram] virtual free bytes=33554432
+17: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+17: PASS: native legacy independent pools froze cold, woke selectively, and preserved distinct full-byte patterns
+17: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+17: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+17/53 Test #17: vulkan-automatic-selective-bind-native-legacy ......   Passed    0.34 sec
+
+test 18
+      Start 18: vulkan-automatic-selective-bind-native-api2
+
+18: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-bind" "--selective-bind-api2" "--native-allocation"
+18: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+18: Environment variables: 
+18:  VK_LOADER_LAYERS_DISABLE=~implicit~
+18:  ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1
+18: Test timeout computed to be: 60
+18: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+18: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+18: [zvram] native allocation adopted bytes=33554432 type=0
+18: [zvram] native allocation adopted bytes=33554432 type=0
+18: [zvram] snapshot cold bytes=33554432 stored=33554432
+18: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+18: [zvram] snapshot cold bytes=33554432 stored=33554432
+18: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+18: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+18: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+18: [zvram] virtual free bytes=33554432
+18: [zvram] virtual free bytes=33554432
+18: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+18: PASS: native API2 independent pools froze cold, woke selectively, and preserved distinct full-byte patterns
+18: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+18: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+18/53 Test #18: vulkan-automatic-selective-bind-native-api2 ........   Passed    0.35 sec

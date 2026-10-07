@@ -446,6 +446,14 @@ void metadataWhileCold(Context& context, VkBuffer buffer,
                        const ZvramSnapshotStatsNX& cold,
                        std::uint64_t expectedColdBytes = TotalBytes,
                        VkDeviceSize minimumBufferBytes = TotalBytes) {
+    auto requireStillCold = [&] {
+        const auto current = context.stats();
+        require(current.restores == cold.restores &&
+                current.coldLogicalBytes == expectedColdBytes &&
+                current.coldStoredBytes == cold.coldStoredBytes &&
+                current.residentBytes == cold.residentBytes,
+                "idle wait woke or changed the cold allocation");
+    };
     if (context.bdaMode) {
         VkBufferDeviceAddressInfo addressInfo{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
         addressInfo.buffer = buffer;
@@ -463,6 +471,15 @@ void metadataWhileCold(Context& context, VkBuffer buffer,
         require(current.restores == cold.restores && current.coldLogicalBytes == expectedColdBytes,
                 "metadata query woke the cold allocation");
     }
+    requireStillCold();
+    check(vkQueueWaitIdle(context.queue), "wait idle on primary queue while cold");
+    requireStillCold();
+    if (context.secondQueue && context.secondQueue != context.queue) {
+        check(vkQueueWaitIdle(context.secondQueue), "wait idle on second queue while cold");
+        requireStillCold();
+    }
+    check(vkDeviceWaitIdle(context.device), "wait idle on device while cold");
+    requireStillCold();
 }
 
 std::uint32_t gpuOnlyNativeType(const Context& context, std::uint32_t bits) {
@@ -911,6 +928,131 @@ void suballocationCheck(Context& context, bool automatic, bool api2) {
     std::cout << "PASS: shared 512 MiB " << (context.nativeAllocation ? "native" : "synthetic")
               << " allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery" << std::endl;
 }
+
+void selectiveBindCheck(Context& context, bool api2) {
+    Buffer a, b;
+    a.device = b.device = context.device;
+    auto create = [&](Buffer& buffer) {
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = ChunkBytes;
+        info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                     VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        check(vkCreateBuffer(context.device, &info, nullptr, &buffer.handle), "create selective-bind buffer");
+        VkMemoryRequirements req{};
+        vkGetBufferMemoryRequirements(context.device, buffer.handle, &req);
+        require(req.size == ChunkBytes && req.alignment && ChunkBytes % req.alignment == 0,
+                "selective-bind buffer requirements are not one aligned chunk");
+        require(req.memoryTypeBits & (1u << context.virtualType),
+                "selective-bind buffer lacks virtual memory type");
+        return req;
+    };
+    const auto reqA = create(a), reqB = create(b);
+    VkMemoryAllocateFlagsInfo flags{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.pNext = &flags;
+    allocation.allocationSize = reqA.size;
+    allocation.memoryTypeIndex = context.nativeAllocation
+        ? gpuOnlyNativeType(context, reqA.memoryTypeBits & reqB.memoryTypeBits)
+        : context.virtualType;
+    require(allocation.memoryTypeIndex != UINT32_MAX, "no compatible selective-bind allocation type");
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &a.memory), "allocate first selective pool");
+    allocation.allocationSize = reqB.size;
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &b.memory), "allocate second selective pool");
+    auto bind = [&](VkBuffer buffer, VkDeviceMemory memory) {
+        if (!api2) return vkBindBufferMemory(context.device, buffer, memory, 0);
+        VkBindBufferMemoryInfo info{VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO};
+        info.buffer = buffer; info.memory = memory;
+        return vkBindBufferMemory2(context.device, 1, &info);
+    };
+    check(bind(a.handle, a.memory), "bind first selective pool");
+    check(bind(b.handle, b.memory), "bind second selective pool");
+
+    Staging staging; staging.device = context.device;
+    VkBufferCreateInfo stagingInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    stagingInfo.size = ChunkBytes;
+    stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    check(vkCreateBuffer(context.device, &stagingInfo, nullptr, &staging.buffer), "create selective staging buffer");
+    VkMemoryRequirements stagingReq{};
+    vkGetBufferMemoryRequirements(context.device, staging.buffer, &stagingReq);
+    VkMemoryAllocateInfo stagingAlloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    stagingAlloc.allocationSize = stagingReq.size;
+    stagingAlloc.memoryTypeIndex = hostCoherentType(context, stagingReq.memoryTypeBits);
+    require(stagingAlloc.memoryTypeIndex != UINT32_MAX, "no selective-bind staging type");
+    check(vkAllocateMemory(context.device, &stagingAlloc, nullptr, &staging.memory), "allocate selective staging");
+    check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0), "bind selective staging");
+    check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped), "map selective staging");
+
+    upload(context, a.handle, staging, ChunkBytes);
+    upload(context, b.handle, staging, ChunkBytes);
+    check(computeCycle(context, a.handle, 0, 0, false, ChunkBytes), "write first distinct pattern");
+    check(computeCycle(context, b.handle, 0, 0, false, ChunkBytes), "start second distinct pattern");
+    check(computeCycle(context, b.handle, 1, 0, false, ChunkBytes), "finish second distinct pattern");
+    readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
+    readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+
+    const auto beforeCold = context.stats();
+    vkDestroyBuffer(context.device, a.handle, nullptr); a.handle = VK_NULL_HANDLE;
+    vkDestroyBuffer(context.device, b.handle, nullptr); b.handle = VK_NULL_HANDLE;
+    const auto deadline = std::chrono::steady_clock::now() + ColdTimeout;
+    ZvramSnapshotStatsNX cold{};
+    do {
+        cold = context.stats();
+        if (cold.coldLogicalBytes == reqA.size + reqB.size && cold.residentBytes == 0 &&
+            cold.freezes >= beforeCold.freezes + 2) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    } while (std::chrono::steady_clock::now() < deadline);
+    require(cold.coldLogicalBytes == reqA.size + reqB.size && cold.residentBytes == 0 &&
+            cold.freezes >= beforeCold.freezes + 2,
+            "destroyed selective pools did not both reach cold snapshots");
+
+    Buffer reboundA; reboundA.device = context.device;
+    const auto reboundReqA = create(reboundA);
+    require(reboundReqA.size == reqA.size, "first pool rebind requirements changed");
+    require(context.armRestoreFailure != nullptr, "selective restore fault-arm interface unavailable");
+    check(context.armRestoreFailure(context.device, 1), "arm selective restore failure check");
+    check(bind(reboundA.handle, a.memory), "bind first cold pool only");
+    const auto firstAwake = context.stats();
+    require(firstAwake.residentBytes == reqA.size && firstAwake.coldLogicalBytes == reqB.size &&
+            firstAwake.restores > cold.restores,
+            "binding the first pool did not wake only its own allocation");
+    require(firstAwake.failures == cold.failures,
+            "restore fault was incorrectly attributed to the other cold allocation");
+
+    Buffer metadata; metadata.device = context.device;
+    const auto metadataReq = create(metadata);
+    metadataWhileCold(context, metadata.handle, firstAwake, reqB.size, metadataReq.size);
+    vkDestroyBuffer(context.device, metadata.handle, nullptr); metadata.handle = VK_NULL_HANDLE;
+    const auto stillSelective = context.stats();
+    require(stillSelective.residentBytes == reqA.size && stillSelective.coldLogicalBytes == reqB.size &&
+            stillSelective.restores == firstAwake.restores,
+            "metadata or idle waits woke the independent cold pool");
+
+    Buffer reboundB; reboundB.device = context.device;
+    const auto reboundReqB = create(reboundB);
+    require(reboundReqB.size == reqB.size, "second pool rebind requirements changed");
+    check(bind(reboundB.handle, b.memory), "bind second cold pool");
+    const auto bothAwake = context.stats();
+    require(bothAwake.residentBytes == reqA.size + reqB.size && bothAwake.coldLogicalBytes == 0 &&
+            bothAwake.restores > stillSelective.restores,
+            "binding the second pool did not restore its allocation");
+    check(computeCycle(context, reboundA.handle, 1, 0, false, ChunkBytes), "verify first pool after both restores");
+    check(computeCycle(context, reboundB.handle, 2, 0, false, ChunkBytes), "verify second pool after restore");
+    readbackAndVerify(context, reboundA.handle, staging, 1, false, ChunkBytes);
+    readbackAndVerify(context, reboundB.handle, staging, 2, false, ChunkBytes);
+
+    vkDestroyBuffer(context.device, reboundA.handle, nullptr); reboundA.handle = VK_NULL_HANDLE;
+    vkDestroyBuffer(context.device, reboundB.handle, nullptr); reboundB.handle = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, a.memory, nullptr); a.memory = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, b.memory, nullptr); b.memory = VK_NULL_HANDLE;
+    const auto empty = context.stats();
+    require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 && empty.coldStoredBytes == 0,
+            "selective-bind cleanup retained pool bytes");
+    std::cout << "PASS: " << (context.nativeAllocation ? "native" : "synthetic")
+              << (api2 ? " API2" : " legacy")
+              << " independent pools froze cold, woke selectively, and preserved distinct full-byte patterns" << std::endl;
+}
 } // namespace
 
 int main(int argc, char** argv) try {
@@ -921,6 +1063,7 @@ int main(int argc, char** argv) try {
     bool pendingWait = false, pendingBind = false;
     bool concurrentWait = false;
     bool suballocation = false, suballocationAuto = false, suballocationApi2 = false;
+    bool selectiveBind = false, selectiveBindApi2 = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--expect-budget-refusal") == 0) expectBudgetRefusal = true;
         else if (std::strcmp(argv[i], "--expect-budget-release") == 0) expectBudgetRelease = true;
@@ -937,7 +1080,9 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--suballocation") == 0) suballocation = true;
         else if (std::strcmp(argv[i], "--suballocation-auto") == 0) { suballocation = true; suballocationAuto = true; }
         else if (std::strcmp(argv[i], "--suballocation-api2") == 0) { suballocation = true; suballocationApi2 = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2]");
+        else if (std::strcmp(argv[i], "--selective-bind") == 0) selectiveBind = true;
+        else if (std::strcmp(argv[i], "--selective-bind-api2") == 0) { selectiveBind = true; selectiveBindApi2 = true; }
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2]");
     }
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||
@@ -954,6 +1099,10 @@ int main(int argc, char** argv) try {
     require(!(pendingWait && pendingBind), "choose only one pending queue test");
     require(!concurrentWait || (pendingWait && twoQueues),
             "--concurrent-wait requires --pending-wait and --two-queues");
+    require(!selectiveBind || !(suballocation || expectBudgetRefusal || expectBudgetRelease ||
+                                expectPartialFreeze || expectPartialRestore || bdaMode || twoQueues ||
+                                twoFamilies || exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
+            "selective-bind mode is independent of other Vulkan checks");
     require(!pendingBind || (nativeAllocation && (twoQueues || twoFamilies || exclusiveFamilies)),
             "--pending-bind requires --native-allocation and a multi-queue mode");
     Context context;
@@ -964,6 +1113,7 @@ int main(int argc, char** argv) try {
             "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind);
+    if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }
     if (pendingWait || pendingBind) {
         VkTimelineSemaphoreSubmitInfo waitValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};

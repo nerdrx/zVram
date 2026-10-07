@@ -69,6 +69,21 @@ foreach(native_pool_mode legacy api2 bda two-queues two-families)
     add_test(NAME vulkan-automatic-native-pool-${native_pool_mode} COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${native_pool_flags})
     set_tests_properties(vulkan-automatic-native-pool-${native_pool_mode} PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
+foreach(selective_mode synthetic-legacy synthetic-api2 native-legacy native-api2)
+    set(selective_flags --selective-bind)
+    if(selective_mode MATCHES "api2$")
+        list(APPEND selective_flags --selective-bind-api2)
+    endif()
+    if(selective_mode MATCHES "^native-")
+        list(APPEND selective_flags --native-allocation)
+    endif()
+    add_test(NAME vulkan-automatic-selective-bind-${selective_mode}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> ${selective_flags})
+    set_tests_properties(vulkan-automatic-selective-bind-${selective_mode}
+        PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1")
+endforeach()
 add_test(NAME vulkan-automatic-idle-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check>)
 add_test(NAME vulkan-automatic-budget-refusal COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 98304 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 1 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-budget-refusal)
 add_test(NAME vulkan-automatic-budget-release COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 98304 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 14 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-budget-release)

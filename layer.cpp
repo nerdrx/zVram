@@ -296,7 +296,7 @@ VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice,VkDeviceMemory,const VkAlloc
 bool initSnapshotResources(Device&,std::uint32_t);
 void releaseSnapshotResources(Device&);
 void snapshotWorkerLoop(const std::shared_ptr<Device>&);
-VkResult restoreColdLocked(VkDevice,Device&);
+VkResult restoreColdLocked(VkDevice,Device&,VkDeviceMemory only=VK_NULL_HANDLE);
 std::vector<std::uint32_t> backingMemoryTypes(const Device&,const VkMemoryRequirements&);
 VkResult allocateBackingChild(Device&,VkDevice,VkDeviceSize,std::uint32_t,VkMemoryAllocateFlags,bool,float,VkDeviceMemory*);
 void releaseChildren(Device&,VirtualMemory&);
@@ -791,7 +791,6 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
        memoryOffset%req.alignment || memoryOffset>it->second.size || req.size>it->second.size-memoryOffset)
         return VK_ERROR_FEATURE_NOT_PRESENT;
     auto& m=it->second;
-    if(m.cold) { const auto r=restoreColdLocked(device,d); if(r!=VK_SUCCESS) return r; }
     bool initializedNow=false;
     auto discardFirstBacking=[&] {
         if(!initializedNow) return;
@@ -804,6 +803,7 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
         const auto bEnd=b.memoryOffset+b.size;
         if(memoryOffset<bEnd && b.memoryOffset<end) return VK_ERROR_FEATURE_NOT_PRESENT;
     }
+    if(m.cold) { const auto r=restoreColdLocked(device,d,handle); if(r!=VK_SUCCESS) return r; }
     if(m.everBound && m.backingMemoryTypeBits==0) return VK_ERROR_FEATURE_NOT_PRESENT;
     if(!m.everBound) {
         m.backingMemoryTypeBits=req.memoryTypeBits;
@@ -1004,12 +1004,13 @@ VkResult copyChunkLocked(Device& d,VkBuffer source,VkBuffer destination,VkDevice
     const auto queue=d.copyQueue?d.copyQueue:d.sparseQueue;
     return r==VK_SUCCESS?d.queueWaitIdle(queue):r;
 }
-VkResult restoreColdLocked(VkDevice device,Device& d) {
+VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only) {
     if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
     auto& s=d.snapshot;
     bool restoredAny=false;
     std::uint64_t restoredThisCall=0;
     for(auto& pair:d.virtualMemory) {
+        if(only && pair.first!=only) continue;
         auto& memory=pair.second;
         if(!memory.cold) continue;
         VkResult r=s.deviceWaitIdle(device); if(r!=VK_SUCCESS) return r;
@@ -1080,7 +1081,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d) {
             restoredAny=true; ++d.restoreCount; ++restoredThisCall;
             memory.cold=std::any_of(memory.coldGroups.begin(),memory.coldGroups.end(),[](const auto& entry){return entry.cold;});
             const bool coldRemains=std::any_of(d.virtualMemory.begin(),d.virtualMemory.end(),
-                [](const auto& entry){return entry.second.cold;});
+                [only](const auto& entry){return (!only || entry.first==only) && entry.second.cold;});
             if(coldRemains && d.restoreFailureAfterGroups && !d.restoreFailureInjected &&
                restoredThisCall>=d.restoreFailureAfterGroups) {
                 d.restoreFailureInjected=true; ++d.snapshotFailures; d.lastSnapshotError=VK_ERROR_OUT_OF_DEVICE_MEMORY;
@@ -1823,7 +1824,10 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     if(d->virtualEnabled) { deviceLock.lock(); queueLock.lock(); }
     if(d->gpuGateError!=VK_SUCCESS) return d->gpuGateError;
     const bool hasCold=std::any_of(d->virtualMemory.begin(),d->virtualMemory.end(),[](const auto& pair){return pair.second.cold;});
-    if(hasCold) { const auto r=restoreColdLocked(d->handle,*d); if(r!=VK_SUCCESS) return r; }
+    // An idle wait executes no application memory accesses. Keep cold pools asleep.
+    if(hasCold && std::strcmp(name,"vkQueueWaitIdle")!=0) {
+        const auto r=restoreColdLocked(d->handle,*d); if(r!=VK_SUCCESS) return r;
+    }
     const bool unsupportedOrdering=std::strcmp(name,"vkQueueBindSparse")==0 || std::strcmp(name,"vkQueuePresentKHR")==0;
     if(unsupportedOrdering && d->autoEnabled) {
         d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
@@ -1974,8 +1978,6 @@ VKAPI_ATTR VkResult VKAPI_CALL layerDeviceWaitIdle(VkDevice device) {
     std::unique_lock<std::mutex> queueLock(d->queueMutex,std::defer_lock);
     if(d->virtualEnabled) { deviceLock.lock(); queueLock.lock(); }
     if(d->gpuGateError!=VK_SUCCESS) return d->gpuGateError;
-    const bool hasCold=std::any_of(d->virtualMemory.begin(),d->virtualMemory.end(),[](const auto& pair){return pair.second.cold;});
-    if(hasCold) { const auto r=restoreColdLocked(device,*d); if(r!=VK_SUCCESS) return r; }
     const auto r=next(device);
     if(d->autoEnabled) { d->lastActivity=std::chrono::steady_clock::now(); d->activity.notify_all(); }
     return r;
