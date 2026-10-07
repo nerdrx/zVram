@@ -298,9 +298,10 @@ def main():
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--model", required=True, type=Path)
     parser.add_argument("--build-dir", type=Path, help="select a zVram backend CMake build directory")
-    parser.add_argument("--codec", choices=("zstd", "gdeflate"), help="select the snapshot codec explicitly")
+    parser.add_argument("--codec", choices=("zstd", "gdeflate", "bp16"), help="select the snapshot codec explicitly")
     parser.add_argument("--gdeflate-workers", type=int, choices=range(1,33), help="bounded CPU GDeflate encoding workers; requires --codec gdeflate")
     parser.add_argument("--gdeflate-gpu", action="store_true", help="require observable direct GPU GDeflate restoration")
+    parser.add_argument("--bp16-gpu", action="store_true", help="require observable direct GPU BP16 restoration")
     parser.add_argument("--tokens", type=int, default=128)
     parser.add_argument("--idle-ms", type=int, default=1000)
     parser.add_argument("--cold-mib", type=int, default=512)
@@ -342,7 +343,11 @@ def main():
         parser.error("--gdeflate-workers requires --codec gdeflate")
     if args.gdeflate_gpu and args.codec != "gdeflate":
         parser.error("--gdeflate-gpu requires --codec gdeflate")
-    if args.byte_shuffle and args.codec == "gdeflate":
+    if args.bp16_gpu and args.codec != "bp16":
+        parser.error("--bp16-gpu requires --codec bp16")
+    if args.gdeflate_gpu and args.bp16_gpu:
+        parser.error("--gdeflate-gpu and --bp16-gpu are mutually exclusive")
+    if args.byte_shuffle and args.codec in ("gdeflate", "bp16"):
         parser.error("--byte-shuffle requires the zstd codec")
     if not 32 <= args.tokens <= 128:
         parser.error("tokens must be 32..128")
@@ -424,6 +429,8 @@ def main():
         command += ["--vulkan-gdeflate-workers", str(args.gdeflate_workers)]
     if args.gdeflate_gpu:
         command.append("--vulkan-gdeflate-gpu")
+    if args.bp16_gpu:
+        command.append("--vulkan-bp16-gpu")
     if args.min_savings_percent is not None:
         command += ["--vulkan-min-savings-percent", str(args.min_savings_percent)]
     if args.byte_shuffle is not None:
@@ -484,12 +491,14 @@ def main():
         checks["minimum_savings_percent_configured"] = (
             f"Vulkan snapshot minimum savings percent={args.min_savings_percent}" in auto_text)
     if args.codec:
-        checks["snapshot_codec_selected"] = args.codec == "zstd" or "Vulkan snapshot codec=gdeflate" in auto_text
-    if args.gdeflate_gpu:
+        checks["snapshot_codec_selected"] = args.codec == "zstd" or f"Vulkan snapshot codec={args.codec}" in auto_text
+    if args.gdeflate_gpu or args.bp16_gpu:
+        gpu_codec = "BP16" if args.bp16_gpu else "GDeflate"
         gpu_profiles = [tuple(map(int, values)) for values in re.findall(
-            r"gpu-decode-calls=(\d+) gpu-decode-bytes=(\d+) gpu-decode-ns=(\d+) gpu-decode-fallbacks=(\d+)", auto_text)]
+            rf"GPU {gpu_codec} restore calls=(\d+) bytes=(\d+) host-ns=(\d+) fallbacks=(\d+)", auto_text)]
+        enabled_text = f"GPU {gpu_codec} restore enabled"
         checks["gpu_decoder_used"] = bool(gpu_profiles and gpu_profiles[-1][0] > 0 and gpu_profiles[-1][1] > 0 and
-            "GPU GDeflate restore enabled" in auto_text and "decode=GPU" in auto_text)
+            enabled_text in auto_text and "decode=GPU" in auto_text)
         checks["no_gpu_decoder_fallback"] = bool(gpu_profiles and gpu_profiles[-1][3] == 0)
     encodings = [tuple(map(int, values)) for values in re.findall(
         r"snapshot cold bytes=(\d+) stored=(\d+) compressed-chunks=(\d+) raw-chunks=(\d+)", auto_text)]
@@ -582,8 +591,9 @@ def main():
     result = {"passed": all(checks.values()), "checks": checks, "model": str(model),
               "transfer_profile": profiles[-1] if profiles else None,
               "gpu_restore_profile": (dict(zip(("calls", "bytes", "host_ns", "fallbacks"), gpu_profiles[-1]))
-                                      if args.gdeflate_gpu and gpu_profiles else None),
+                                      if (args.gdeflate_gpu or args.bp16_gpu) and gpu_profiles else None),
               "snapshot_codec": args.codec or "zstd", "gdeflate_gpu_requested": args.gdeflate_gpu,
+              "bp16_gpu_requested": args.bp16_gpu,
               "gdeflate_encoding_workers": args.gdeflate_workers or 1, "lazy_backing_requested": args.lazy_backing, "headroom_mib": args.headroom_mib,
               "async_compression_requested": args.async_compression,
               "async_compression_commits": async_commits,

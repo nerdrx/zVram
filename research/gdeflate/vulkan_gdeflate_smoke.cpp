@@ -2,6 +2,7 @@
 // not production code. Run only with trusted shader/input/expected files.
 #include <vulkan/vulkan.h>
 #include "gdeflate_envelope.hpp"
+#include "../bp16/bp16.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -176,7 +177,7 @@ struct Runtime {
         }
     }
 
-    void pickDevice() {
+    void pickDevice(bool simpleShader = false) {
         std::uint32_t count = 0;
         check(vkEnumeratePhysicalDevices(instance, &count, nullptr), "enumerate physical device count");
         if (!count) throw std::runtime_error("no Vulkan physical device");
@@ -206,23 +207,26 @@ struct Runtime {
         }
         if (!physical) throw std::runtime_error("no Vulkan compute queue");
         vkGetPhysicalDeviceMemoryProperties(physical, &memoryProperties);
-        if (!hasDeviceExtension(physical, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
+        const bool subgroupSizeControl =
+            hasDeviceExtension(physical, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
+        if (!simpleShader && !subgroupSizeControl)
             throw std::runtime_error("selected device lacks VK_EXT_subgroup_size_control");
         subgroupProperties.pNext = &subgroupSizeProperties;
+        if (!subgroupSizeControl) subgroupProperties.pNext = nullptr;
         VkPhysicalDeviceProperties2 props2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
         props2.pNext = &subgroupProperties;
         vkGetPhysicalDeviceProperties2(physical, &props2);
         VkPhysicalDeviceSubgroupSizeControlFeatures subgroupFeatures{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES};
         VkPhysicalDeviceFeatures2 supported{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-        supported.pNext = &subgroupFeatures;
+        if (subgroupSizeControl) supported.pNext = &subgroupFeatures;
         vkGetPhysicalDeviceFeatures2(physical, &supported);
-        if (!supported.features.shaderInt64)
+        if (!simpleShader && !supported.features.shaderInt64)
             throw std::runtime_error("selected device lacks shaderInt64 required by the pinned SPIR-V OpCapability Int64");
         constexpr VkSubgroupFeatureFlags requiredSubgroupOps =
             VK_SUBGROUP_FEATURE_BALLOT_BIT | VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
             VK_SUBGROUP_FEATURE_SHUFFLE_BIT;
-        if (!software && (!subgroupFeatures.subgroupSizeControl || !subgroupFeatures.computeFullSubgroups ||
+        if (!simpleShader && !software && (!subgroupFeatures.subgroupSizeControl || !subgroupFeatures.computeFullSubgroups ||
             !(subgroupProperties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) ||
             (subgroupProperties.supportedOperations & requiredSubgroupOps) != requiredSubgroupOps ||
             !(subgroupSizeProperties.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) ||
@@ -232,10 +236,15 @@ struct Runtime {
             properties.limits.maxComputeWorkGroupSize[0] < ShaderThreads))
             throw std::runtime_error("selected device lacks the compute subgroup size 32 / ballot, arithmetic, "
                                      "or shuffle contract required by this shader");
+        if (simpleShader && (properties.limits.maxComputeWorkGroupInvocations < 256 ||
+                             properties.limits.maxComputeWorkGroupSize[0] < 256))
+            throw std::runtime_error("selected device cannot run the 256-thread BP16 workgroup");
         std::cout << "device=" << properties.deviceName << " vendor=0x" << std::hex
                   << properties.vendorID << std::dec << " type=" << properties.deviceType
-                  << " queue-family=" << queueFamily << " shaderInt64=enabled"
-                  << " execution=" << (software ? "CPU-software" : "GPU-wave32")
+                  << " queue-family=" << queueFamily
+                  << " shaderInt64=" << (!simpleShader ? "enabled" : "not-required")
+                  << " execution=" << (software ? "CPU-software" :
+                                         (simpleShader ? "GPU-compute" : "GPU-wave32"))
                   << " default-subgroup=" << subgroupProperties.subgroupSize
                   << " supported-stages=0x" << std::hex << subgroupProperties.supportedStages
                   << " supported-operations=0x" << subgroupProperties.supportedOperations
@@ -248,20 +257,20 @@ struct Runtime {
         const float priority = 1.0f;
         queueInfo.pQueuePriorities = &priority;
         VkPhysicalDeviceFeatures enabled{};
-        enabled.shaderInt64 = VK_TRUE;
+        enabled.shaderInt64 = simpleShader ? VK_FALSE : VK_TRUE;
         VkPhysicalDeviceSubgroupSizeControlFeatures enabledSubgroup{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES};
-        enabledSubgroup.subgroupSizeControl = VK_TRUE;
-        enabledSubgroup.computeFullSubgroups = software ? VK_FALSE : VK_TRUE;
+        enabledSubgroup.subgroupSizeControl = simpleShader ? VK_FALSE : VK_TRUE;
+        enabledSubgroup.computeFullSubgroups = (software || simpleShader) ? VK_FALSE : VK_TRUE;
         VkDeviceCreateInfo deviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         deviceInfo.queueCreateInfoCount = 1;
         deviceInfo.pQueueCreateInfos = &queueInfo;
         const char* deviceExtensions[]{VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME};
-        deviceInfo.enabledExtensionCount = 1;
-        deviceInfo.ppEnabledExtensionNames = deviceExtensions;
+        deviceInfo.enabledExtensionCount = simpleShader ? 0u : 1u;
+        deviceInfo.ppEnabledExtensionNames = simpleShader ? nullptr : deviceExtensions;
         VkPhysicalDeviceFeatures2 enabledFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
         enabledFeatures.features = enabled;
-        enabledFeatures.pNext = &enabledSubgroup;
+        enabledFeatures.pNext = simpleShader ? nullptr : &enabledSubgroup;
         deviceInfo.pNext = &enabledFeatures;
         deviceInfo.pEnabledFeatures = nullptr;
         check(vkCreateDevice(physical, &deviceInfo, nullptr, &device), "create Vulkan device");
@@ -273,7 +282,8 @@ struct Runtime {
         timestampValidBits = families[queueFamily].timestampValidBits;
     }
 
-    void initPipeline(const std::vector<std::uint8_t>& code, std::uint32_t iterations) {
+    void initPipeline(const std::vector<std::uint8_t>& code, std::uint32_t iterations,
+                      bool simpleShader = false) {
         if (code.size() % sizeof(std::uint32_t)) throw std::runtime_error("SPIR-V size is not word aligned");
         VkDescriptorSetLayoutBinding bindings[4]{};
         for (std::uint32_t i = 0; i < 4; ++i) {
@@ -300,8 +310,8 @@ struct Runtime {
             VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO};
         subgroupSize.requiredSubgroupSize = ShaderThreads;
         pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        pipelineInfo.stage.flags = software ? 0 : VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
-        pipelineInfo.stage.pNext = software ? nullptr : &subgroupSize;
+        pipelineInfo.stage.flags = (software || simpleShader) ? 0 : VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+        pipelineInfo.stage.pNext = (software || simpleShader) ? nullptr : &subgroupSize;
         pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
         pipelineInfo.stage.module = shader;
         pipelineInfo.stage.pName = "CSMain";
@@ -392,14 +402,33 @@ struct Buffer {
     }
 };
 
+std::uint32_t researchIterations() {
+    const char* text = std::getenv("ZVRAM_RESEARCH_ITERATIONS");
+    if (!text) return 1;
+    if (!*text) throw std::runtime_error("ZVRAM_RESEARCH_ITERATIONS must be a decimal integer from 1 to 16");
+    std::uint32_t value = 0;
+    for (; *text; ++text) {
+        if (*text < '0' || *text > '9')
+            throw std::runtime_error("ZVRAM_RESEARCH_ITERATIONS must be a decimal integer from 1 to 16");
+        const auto digit = static_cast<std::uint32_t>(*text - '0');
+        if (value > (16u - digit) / 10u)
+            throw std::runtime_error("ZVRAM_RESEARCH_ITERATIONS must be from 1 to 16");
+        value = value * 10u + digit;
+    }
+    if (!value) throw std::runtime_error("ZVRAM_RESEARCH_ITERATIONS must be from 1 to 16");
+    return value;
+}
+
 void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
-         const std::vector<std::uint8_t>& expected, std::uint32_t iterations) {
+         const std::vector<std::uint8_t>& expected, std::uint32_t iterations,
+         bool bp16 = false) {
     const auto rawSize = expected.size();
     if (!rawSize || rawSize > UINT32_MAX || encoded.size() > UINT32_MAX - 3u)
         throw std::runtime_error("shader input and output must fit nonzero uint32 byte offsets");
-    const auto tiles = (rawSize + TileBytes - 1) / TileBytes;
-    if (!tiles || tiles > runtime.properties.limits.maxComputeWorkGroupCount[0])
-        throw std::runtime_error("tile dispatch exceeds maxComputeWorkGroupCount[0]");
+    const auto groups = bp16 ? (rawSize / 4 + 255) / 256 : (rawSize + TileBytes - 1) / TileBytes;
+    if (!groups || groups > runtime.properties.limits.maxComputeWorkGroupCount[0])
+        throw std::runtime_error(bp16 ? "BP16 dispatch exceeds maxComputeWorkGroupCount[0]"
+                                      : "tile dispatch exceeds maxComputeWorkGroupCount[0]");
     const auto inputSize = (encoded.size() + 3u) & ~std::size_t(3u);
     const auto outputSize = (rawSize + 3u) & ~std::size_t(3u);
     if (inputSize > runtime.properties.limits.maxStorageBufferRange ||
@@ -486,7 +515,7 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.pipeline);
         vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.pipelineLayout,
                                 0, 1, &set, 0, nullptr);
-        vkCmdDispatch(command, static_cast<std::uint32_t>(tiles), 1, 1);
+        vkCmdDispatch(command, static_cast<std::uint32_t>(groups), 1, 1);
         if (runtime.timestampPool)
             vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                 runtime.timestampPool, queryBase + 3);
@@ -540,7 +569,10 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         const auto* actual = static_cast<const std::uint8_t*>(readback.mapped);
         std::uint32_t shaderError{};
         std::memcpy(&shaderError, actual + outputSize, sizeof(shaderError));
-        if (shaderError) throw std::runtime_error("bounded shader rejected tile, error mask=" + std::to_string(shaderError));
+        if (shaderError)
+            throw std::runtime_error(std::string(bp16 ? "BP16 shader rejected input, error mask="
+                                                      : "bounded shader rejected tile, error mask=") +
+                                     std::to_string(shaderError));
         const auto mismatch = std::mismatch(expected.begin(), expected.end(), actual);
         if (mismatch.first != expected.end()) {
             const auto* controlWords = static_cast<const std::uint32_t*>(control.mapped);
@@ -557,7 +589,8 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
                 std::cerr << " scratch0=" << *static_cast<const std::uint32_t*>(scratch.mapped);
             else
                 std::cerr << " scratch0=unmapped";
-            std::cerr << " tiles=" << tiles << "\nexpected=" << std::hex << std::setfill('0');
+            std::cerr << (bp16 ? " groups=" : " tiles=") << groups
+                      << "\nexpected=" << std::hex << std::setfill('0');
             for (std::size_t i = 0; i < shown; ++i)
                 std::cerr << (i ? " " : "") << std::setw(2) << static_cast<unsigned>(expected[i]);
             std::cerr << "\nactual=";
@@ -598,56 +631,77 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
     } else {
         std::cout << "gpu-timing unavailable: compute queue has no timestamp bits\n";
     }
-    std::cout << "PASS: decoded " << rawSize << " exact bytes in " << tiles
-              << " tile workgroups across " << iterations << " iterations\n";
+    std::cout << "PASS: decoded " << rawSize << " exact bytes in " << groups
+              << (bp16 ? " BP16 workgroups" : " tile workgroups")
+              << " across " << iterations << " iterations\n";
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
     std::cout.setf(std::ios::unitbuf);
-    if (argc != 5 || (std::strcmp(argv[1], "--preflight-only") != 0 &&
-                      std::strcmp(argv[1], "--gpu-smoke") != 0 &&
-                      std::strcmp(argv[1], "--gpu-bounded-smoke") != 0 &&
-                      std::strcmp(argv[1], "--software-smoke") != 0)) {
-        std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n";
+    const bool bp16 = argc == 7 && std::strcmp(argv[1], "--codec") == 0 &&
+                      std::strcmp(argv[2], "bp16") == 0 &&
+                      (std::strcmp(argv[3], "--preflight-only") == 0 ||
+                       std::strcmp(argv[3], "--gpu-bounded-smoke") == 0);
+    const bool regular = argc == 5 &&
+                         (std::strcmp(argv[1], "--preflight-only") == 0 ||
+                          std::strcmp(argv[1], "--gpu-smoke") == 0 ||
+                          std::strcmp(argv[1], "--gpu-bounded-smoke") == 0 ||
+                          std::strcmp(argv[1], "--software-smoke") == 0);
+    if (!bp16 && !regular) {
+        std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n"
+                     "       vulkan_gdeflate_smoke --codec bp16 --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
         return 2;
     }
-    const bool singleTile = std::strcmp(argv[1], "--gpu-smoke") == 0;
-    const bool gpu = singleTile || std::strcmp(argv[1], "--gpu-bounded-smoke") == 0;
-    const bool software = std::strcmp(argv[1], "--software-smoke") == 0;
+    const int arg = bp16 ? 3 : 1;
+    const bool singleTile = !bp16 && std::strcmp(argv[arg], "--gpu-smoke") == 0;
+    const bool gpu = singleTile || std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0;
+    const bool software = !bp16 && std::strcmp(argv[arg], "--software-smoke") == 0;
     ValidationCounts validation;
     int status = 1;
     try {
-        const auto shader = readFile(argv[2], 4u * 1024u * 1024u);
-        const auto encoded = readFile(argv[3], 64u * 1024u * 1024u);
-        const auto expected = readFile(argv[4], 32u * 1024u * 1024u);
+        const auto shader = readFile(argv[arg + 1], 4u * 1024u * 1024u);
+        const auto encoded = readFile(argv[arg + 2], 64u * 1024u * 1024u);
+        const auto expected = readFile(argv[arg + 3], 32u * 1024u * 1024u);
         if (shader.size() < 20 || shader.size() % 4 ||
             zvram::gdeflate::loadLe32(shader.data()) != 0x07230203u)
             throw std::runtime_error("invalid SPIR-V envelope");
-        const zvram::gdeflate::Limits limits{64u * 1024u * 1024u,
-            32u * 1024u * 1024u, expected.size(), 0, 0, 512};
-        zvram::gdeflate::Info envelope;
-        if (!zvram::gdeflate::validateEnvelope(encoded.data(), encoded.size(), limits, &envelope))
-            throw std::runtime_error("invalid GDeflate envelope");
-        std::cout << "preflight tiles=" << envelope.tileCount << " decoded-bytes="
-                  << envelope.decodedBytes << " payload-bytes=" << envelope.payloadBytes << '\n';
+        if (bp16) {
+            zvram::bp16::FrameInfo frame{};
+            if (!zvram::bp16::validate(encoded.data(), encoded.size(),
+                                       static_cast<std::uint32_t>(expected.size()), &frame))
+                throw std::runtime_error("invalid BP16 frame or expected raw size");
+            std::cout << "preflight codec=BP16 blocks=" << frame.blockCount
+                      << " decoded-bytes=" << frame.rawBytes
+                      << " payload-bytes=" << (encoded.size() - frame.payloadBegin) << '\n';
+        } else {
+            const zvram::gdeflate::Limits limits{64u * 1024u * 1024u,
+                32u * 1024u * 1024u, expected.size(), 0, 0, 512};
+            zvram::gdeflate::Info envelope;
+            if (!zvram::gdeflate::validateEnvelope(encoded.data(), encoded.size(), limits, &envelope))
+                throw std::runtime_error("invalid GDeflate envelope");
+            std::cout << "preflight tiles=" << envelope.tileCount << " decoded-bytes="
+                      << envelope.decodedBytes << " payload-bytes=" << envelope.payloadBytes << '\n';
+            if (singleTile && (envelope.tileCount != 1 || expected.size() > TileBytes))
+                throw std::runtime_error("--gpu-smoke is restricted to one tile; use --gpu-bounded-smoke for up to 32 MiB");
+        }
         if (!gpu && !software) {
-            std::cout << "CPU-only envelope preflight; compressed payload and GPU decoder are unverified\n";
+            std::cout << (bp16 ? "CPU-only BP16 frame preflight; shader decode is unverified\n"
+                               : "CPU-only envelope preflight; compressed payload and GPU decoder are unverified\n");
             return 0;
         }
-        if (singleTile && (envelope.tileCount != 1 || expected.size() > TileBytes))
-            throw std::runtime_error("--gpu-smoke is restricted to one tile; use --gpu-bounded-smoke for up to 32 MiB");
         if (software) {
             const auto* driver = std::getenv("VK_DRIVER_FILES");
             if (!driver || !*driver || std::strchr(driver, ':'))
                 throw std::runtime_error("software mode requires one explicitly isolated VK_DRIVER_FILES manifest");
         }
+        const auto iterations = researchIterations();
         Runtime runtime(validation, software);
         runtime.initInstance();
-        runtime.pickDevice();
-        runtime.initPipeline(shader, 1);
-        run(runtime, encoded, expected, 1);
+        runtime.pickDevice(bp16);
+        runtime.initPipeline(shader, iterations, bp16);
+        run(runtime, encoded, expected, iterations, bp16);
         status = 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';

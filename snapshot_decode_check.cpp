@@ -66,6 +66,41 @@ struct Fixture {
     }
 };
 
+struct Bp16Fixture {
+    std::vector<std::uint8_t> source = std::vector<std::uint8_t>(4 * 256);
+    std::vector<std::uint8_t> encoded;
+    EncodedChunk chunk{};
+
+    Bp16Fixture() {
+        std::mt19937 rng(0xb016u);
+        for (std::size_t word = 0; word < 4 * 128; ++word) {
+            std::uint16_t value{};
+            const auto block = word / 128;
+            if (block == 0) value = 0x3c3cu;
+            else if (block == 1) value = static_cast<std::uint16_t>(
+                0x2400u | (rng() & 0x0185u));
+            else if (block == 2) value = static_cast<std::uint16_t>(rng());
+            else value = static_cast<std::uint16_t>(0x8010u | (rng() & 0x0204u));
+            zvram::bp16::store16(source.data() + word * 2, value);
+        }
+        // Ensure the sparse masks' every variable bit occurs in the block.
+        const auto forceBits = [&](std::size_t block, std::uint16_t base,
+                                   std::uint16_t mask) {
+            for (unsigned bit = 0; bit < 16; ++bit) {
+                if (mask & (std::uint16_t(1u) << bit))
+                    zvram::bp16::store16(source.data() + block * 256 + bit * 2,
+                        static_cast<std::uint16_t>(base | (1u << bit)));
+            }
+        };
+        forceBits(1, 0x2400u, 0x0185u);
+        forceBits(3, 0x8010u, 0x0204u);
+        require(zvram::bp16::encodeFast(source.data(), source.size(), encoded),
+                "BP16 fixture encode failed");
+        chunk = {encoded.data(), encoded.size(), source.size(), true, 0,
+                 zvram::snapshot::Codec::BP16};
+    }
+};
+
 std::vector<std::uint8_t> guardedOutput() {
     return std::vector<std::uint8_t>(Total + 2 * Guard, 0xa5);
 }
@@ -85,10 +120,60 @@ void expectFailure(const EncodedChunk* chunks, std::size_t count,
                                            capacity, chunkLimit), message);
     require(guardsIntact(output), "failed decode damaged staging canary");
 }
+
+void testBp16Batch(Fixture& fixture) {
+    Bp16Fixture bp16;
+    const std::array<EncodedChunk, 3> mixed{
+        fixture.mixed[0], bp16.chunk, fixture.mixed[2]};
+    const auto expected = Sizes[0] + bp16.source.size() + Sizes[2];
+    auto matches = [&](const std::uint8_t* output) {
+        return std::equal(fixture.source[0].begin(), fixture.source[0].end(), output) &&
+            std::equal(bp16.source.begin(), bp16.source.end(), output + Sizes[0]) &&
+            std::equal(fixture.source[2].begin(), fixture.source[2].end(),
+                       output + Sizes[0] + bp16.source.size());
+    };
+    for (bool parallel : {false, true}) {
+        std::vector<std::uint8_t> output(expected + 2 * Guard, 0xa5);
+        require(zvram::snapshot::decodeBatch(mixed.data(), mixed.size(),
+                output.data() + Guard, expected, ChunkLimit, parallel),
+                "mixed Zstd/BP16 decode failed");
+        require(matches(output.data() + Guard) && guardsIntact(output),
+                "mixed Zstd/BP16 output differs or damaged canaries");
+    }
+
+    const auto expectBp16Failure = [&](const EncodedChunk& invalid, const char* message) {
+        std::vector<std::uint8_t> output(bp16.source.size() + 2 * Guard, 0xa5);
+        require(!zvram::snapshot::decodeBatch(&invalid, 1, output.data() + Guard,
+                bp16.source.size(), ChunkLimit, false), message);
+        require(std::all_of(output.begin(), output.end(), [](auto byte) { return byte == 0xa5; }),
+                "BP16 preflight failure changed staging bytes");
+    };
+
+    auto bad = bp16.chunk;
+    bad.byteShuffle = 2;
+    expectBp16Failure(bad, "BP16 with byte-shuffle metadata accepted");
+    bad = bp16.chunk;
+    bad.compressed = false;
+    expectBp16Failure(bad, "RAW-tagged BP16 frame accepted");
+    bad = bp16.chunk;
+    bad.rawSize += 256;
+    expectBp16Failure(bad, "BP16 expected-size mismatch accepted");
+    bad = bp16.chunk;
+    bad.storedSize--;
+    expectBp16Failure(bad, "truncated BP16 frame accepted");
+    auto malformed = bp16.encoded;
+    const auto desc = zvram::bp16::HeaderBytes;
+    auto packed = zvram::bp16::load32(malformed.data() + desc + 4);
+    zvram::bp16::store32(malformed.data() + desc + 4, packed | 0x00010001u);
+    bad.data = malformed.data();
+    bad.storedSize = malformed.size();
+    expectBp16Failure(bad, "malformed BP16 base/mask accepted");
+}
 } // namespace
 
 int main() try {
     Fixture fixture;
+    testBp16Batch(fixture);
     auto serial = guardedOutput();
     auto parallel = guardedOutput();
     require(zvram::snapshot::decodeBatch(fixture.mixed.data(), fixture.mixed.size(),
@@ -174,7 +259,7 @@ int main() try {
                   "RAW stored-length mismatch accepted");
     expectFailure(fixture.mixed.data(), 5, Total, ChunkLimit, "more than four frames accepted");
 
-    std::cout << "PASS: serial/parallel mixed Zstd+RAW+stride2/4, odd tails, canaries, "
+    std::cout << "PASS: serial/parallel mixed Zstd+BP16+RAW+stride2/4, odd tails, canaries, "
                  "corruption, truncation, metadata, and bounds\n";
     return 0;
 } catch (const std::exception& e) {

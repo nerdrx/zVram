@@ -1,0 +1,66 @@
+{
+  "performance": {
+    "decode_ms": 131146.68,
+    "decode_runs": 12,
+    "tokens_per_second": 0.09,
+    "prompt_ms": 25022.95,
+    "restore_ms": []
+  },
+  "minimum_available_mib": 22343,
+  "swap_growth_mib": 3735,
+  "returncode": 0,
+  "stdout_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "offload": [
+    49,
+    49
+  ],
+  "backing": {
+    "hot": {
+      "resident-vram": 9977856,
+      "memory-vram": 9977856,
+      "resident-gtt": 1206468608,
+      "memory-gtt": 1206468608,
+      "unique_drm_clients": 1,
+      "resident_vram_present": true
+    },
+    "pressure": {
+      "resident-vram": 18179719168,
+      "memory-vram": 18179719168,
+      "resident-gtt": 1254350848,
+      "memory-gtt": 1254350848,
+      "unique_drm_clients": 1,
+      "resident_vram_present": true
+    }
+  },
+  "source_commit": "346742f0626fa81e80b7c2757715ce43370ce790",
+  "scope": "GDeflate GPU MRU 18GiB tracked cap, 3GiB reserve,32 workers,nodes4,full39.73GBF16;12 actual decode runs",
+  "final_counters": {
+    "resident": 19325321216,
+    "cold-logical": 19424477184,
+    "cold-stored": 15298269732,
+    "freezes": 9470,
+    "restores": 10051,
+    "failures": 0,
+    "cache-stored": 6153769332,
+    "clean-reuses": 7210,
+    "cache-invalidations": 1438,
+    "copy-calls": 2261,
+    "copy-bytes": 74943168512,
+    "copy-ns": 7136491179,
+    "decode-bytes": 0,
+    "decode-ns": 0,
+    "pipeline-prefetches": 0,
+    "pipeline-restores": 0,
+    "pipeline-wait-ns": 0,
+    "gpu-decode-calls": 8883,
+    "gpu-decode-bytes": 294139330560,
+    "gpu-decode-ns": 117178590754,
+    "gpu-decode-fallbacks": 0
+  },
+  "native_output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "limits": [
+    "native nodes4 reference was separate, not simultaneous paired measurement",
+    "actual VRAM/GTT differs from tracked residency; all allocations are not tracked",
+    "current code changed after this compiled run; binary hashes and source commit retained"
+  ]
+}

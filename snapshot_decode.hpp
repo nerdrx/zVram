@@ -8,13 +8,14 @@
 #include <memory>
 #include <zstd.h>
 #include "byte_shuffle.hpp"
+#include "bp16_codec.hpp"
 #ifdef ZVRAM_HAVE_GDEFLATE
 #include "gdeflate_codec.hpp"
 #endif
 
 namespace zvram::snapshot {
 
-enum class Codec { Zstd, GDeflate };
+enum class Codec { Zstd, GDeflate, BP16 };
 
 struct EncodedChunk {
     const std::uint8_t* data{};
@@ -28,6 +29,8 @@ struct EncodedChunk {
 
 inline bool decodeOne(const EncodedChunk& chunk, std::uint8_t* output) noexcept {
     if (chunk.codec != Codec::Zstd) {
+        if (chunk.codec == Codec::BP16 && chunk.compressed && !chunk.byteShuffle)
+            return zvram::bp16::decode(chunk.data, chunk.storedSize, output, chunk.rawSize);
 #ifdef ZVRAM_HAVE_GDEFLATE
         if (chunk.codec == Codec::GDeflate && chunk.compressed && !chunk.byteShuffle)
             return zvram::gdeflate::decode(chunk.data, chunk.storedSize, output, chunk.rawSize);
@@ -64,8 +67,12 @@ inline bool decodeBatch(const EncodedChunk* chunks, std::size_t count,
             chunk.rawSize > capacity - total || !chunk.data || !chunk.storedSize ||
             (chunk.byteShuffle && (!chunk.compressed || (chunk.byteShuffle != 2 && chunk.byteShuffle != 4))) ||
             (chunk.codec != Codec::Zstd &&
-             (chunk.codec != Codec::GDeflate || !chunk.compressed || chunk.byteShuffle)) ||
+             (chunk.codec != Codec::GDeflate && chunk.codec != Codec::BP16)) ||
+            (chunk.codec == Codec::GDeflate && (!chunk.compressed || chunk.byteShuffle)) ||
             (!chunk.compressed && chunk.storedSize != chunk.rawSize)) return false;
+        if (chunk.codec == Codec::BP16 &&
+            (!chunk.compressed || chunk.byteShuffle ||
+             !zvram::bp16::validate(chunk.data, chunk.storedSize, chunk.rawSize))) return false;
         total += chunk.rawSize;
         if (chunk.compressed) {
             if (firstCompressed == count) firstCompressed = i;

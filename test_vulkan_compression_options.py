@@ -83,6 +83,33 @@ with tempfile.TemporaryDirectory() as temporary:
     gpu_child = "import os; print(os.environ['ZVRAM_VULKAN_GDEFLATE_GPU']); print(os.environ['ZVRAM_GDEFLATE_SHADER_PATH'])"
     result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--vulkan-gdeflate-gpu", "--", sys.executable, "-c", gpu_child)
     assert result.returncode == 0 and result.stdout == "1\n" + str(build / "gdeflate-wave32.spv") + "\n", (result.stdout, result.stderr)
+    bp16_child = "import os; print(os.environ['ZVRAM_VULKAN_CODEC']); print(os.environ['ZVRAM_VULKAN_BP16_GPU']); print(os.environ['ZVRAM_BP16_SHADER_PATH'])"
+    (build / "zvram-codecs.json").write_text('{"bp16": true, "bp16_gpu": true}')
+    (build / "bp16.spv").touch()
+    result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "bp16", "--vulkan-bp16-gpu", "--", sys.executable, "-c", bp16_child)
+    assert result.returncode == 0 and result.stdout == "bp16\n1\n" + str(build / "bp16.spv") + "\n", (result.stdout, result.stderr)
+    for extra in (("--vulkan-bp16-gpu",), ("--vulkan-codec", "bp16", "--vulkan-bp16-gpu", "--vulkan-gdeflate-gpu"),
+                  ("--vulkan-codec", "bp16", "--vulkan-byte-shuffle", "2")):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", *extra, "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2, (extra, result.stderr)
+    hip_bp16_gpu = run(launcher, "--hip", "--vulkan-bp16-gpu", "--", sys.executable, "-c", "pass")
+    assert hip_bp16_gpu.returncode == 2 and "require the Vulkan backend" in hip_bp16_gpu.stderr
+    inherited_bp16 = os.environ.copy()
+    for key in ("ZVRAM_VULKAN_CODEC", "ZVRAM_VULKAN_BP16_GPU", "ZVRAM_VULKAN_GDEFLATE_GPU", "ZVRAM_VULKAN_BYTE_SHUFFLE"):
+        inherited_bp16.pop(key, None)
+    inherited_bp16.update({"ZVRAM_VULKAN_CODEC": "bp16", "ZVRAM_VULKAN_BP16_GPU": "1"})
+    result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--", sys.executable, "-c", bp16_child, env=inherited_bp16)
+    assert result.returncode == 0 and result.stdout == "bp16\n1\n" + str(build / "bp16.spv") + "\n", (result.stdout, result.stderr)
+    inherited_bp16["ZVRAM_VULKAN_CODEC"] = "zstd"
+    result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--", sys.executable, "-c", "pass", env=inherited_bp16)
+    assert result.returncode == 2 and "requires the bp16 codec" in result.stderr, result.stderr
+    (build / "bp16.spv").unlink()
+    missing_bp16_shader = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "bp16", "--vulkan-bp16-gpu", "--", sys.executable, "-c", "pass")
+    assert missing_bp16_shader.returncode == 2 and "GPU BP16 decoder missing" in missing_bp16_shader.stderr
+    (build / "zvram-codecs.json").write_text('{"bp16": false, "bp16_gpu": true}')
+    missing_bp16 = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "bp16", "--", sys.executable, "-c", "pass")
+    assert missing_bp16.returncode == 2 and "BP16 codec missing" in missing_bp16.stderr
+    (build / "zvram-codecs.json").write_text('{"gdeflate": true, "gdeflate_gpu": true}')
     for codec in ("zstd", "gdeflate"):
         result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", codec, "--", sys.executable, "-c", codec_child)
         assert result.returncode == 0 and result.stdout == codec + "\n", (result.stdout, result.stderr)

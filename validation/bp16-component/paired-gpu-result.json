@@ -1,0 +1,63 @@
+{
+  "scope": "Sequential timestamped GPU component checks, validation on, no inference result; clocks not locked",
+  "environment": {
+    "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/radeon_icd.json",
+    "VK_LOADER_LAYERS_DISABLE": "~implicit~",
+    "ZVRAM_RESEARCH_ITERATIONS": "3"
+  },
+  "host_sha256": "869d1c6c449b7198478e376cedd494f32004a8b24ac7cdc6d8dbcd5378b6fcc8",
+  "cases": {
+    "gdeflate": {
+      "command": [
+        "/tmp/zvram-gdeflate-bp16-host",
+        "--gpu-bounded-smoke",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/research/gdeflate/GDeflate-bounded-wave32.spv",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/gdeflate-output-reuse-f16.gdeflate",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 10.780360650998773,
+      "diagnostics": [
+        "gpu-timing iterations=3 upload-ns-median=1154880 decode-ns-median=5776160 readback-copy-ns-median=1126440",
+        "PASS: decoded 33554432 exact bytes in 512 tile workgroups across 3 iterations",
+        "validation-errors=0 validation-vuids=0"
+      ]
+    },
+    "bp16": {
+      "command": [
+        "/tmp/zvram-gdeflate-bp16-host",
+        "--codec",
+        "bp16",
+        "--gpu-bounded-smoke",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/research/bp16/decode.spv",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 11.0421636760002,
+      "diagnostics": [
+        "gpu-timing iterations=3 upload-ns-median=1232440 decode-ns-median=117840 readback-copy-ns-median=1113840",
+        "PASS: decoded 33554432 exact bytes in 32768 BP16 workgroups across 3 iterations",
+        "validation-errors=0 validation-vuids=0"
+      ]
+    },
+    "bp16-mixed": {
+      "command": [
+        "/tmp/zvram-gdeflate-bp16-host",
+        "--codec",
+        "bp16",
+        "--gpu-bounded-smoke",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/research/bp16/decode.spv",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-research/gpu-mixed-pattern.bp16",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-research/gpu-mixed-pattern.raw"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.018689838001591852,
+      "diagnostics": [
+        "gpu-timing iterations=3 upload-ns-median=480 decode-ns-median=1400 readback-copy-ns-median=920",
+        "PASS: decoded 4352 exact bytes in 5 BP16 workgroups across 3 iterations",
+        "validation-errors=0 validation-vuids=0"
+      ]
+    }
+  }
+}

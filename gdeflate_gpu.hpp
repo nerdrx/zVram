@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gdeflate_envelope.hpp"
+#include "bp16_codec.hpp"
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_layer.h>
@@ -14,6 +15,8 @@
 
 namespace zvram::gdeflate::gpu {
 
+enum class Format { GDeflate, BP16 };
+
 class Decoder {
 public:
     Decoder() = default;
@@ -24,16 +27,26 @@ public:
     ~Decoder() { destroy(); }
     bool unsafe() const noexcept { return poisoned_; }
 
-    // Caller must enable shaderInt64, subgroup-size-control, computeFullSubgroups,
-    // and provide a compute-capable private queue. The shader is the pinned
-    // wave32 module with bindings input/control/output/scratch = 0/1/2/3.
+    // GDeflate requires shaderInt64, subgroup-size-control, computeFullSubgroups,
+    // and a compute-capable private queue. BP16 needs the supplied device limits
+    // for its plain 256-thread compute pipeline.
     VkResult initialize(VkDevice device, PFN_vkGetDeviceProcAddr nextGdpa,
                         const VkPhysicalDeviceMemoryProperties& memory,
                         VkQueue queue, std::uint32_t family,
                         PFN_vkSetDeviceLoaderData setLoaderData,
-                        const char* shaderPath) {
+                        const char* shaderPath,
+                        const VkPhysicalDeviceProperties* properties = nullptr,
+                        Format format = Format::GDeflate) {
         if (initialized_ || poisoned_ || !device || !nextGdpa || !queue || !setLoaderData || !shaderPath)
             return VK_ERROR_INITIALIZATION_FAILED;
+        if (format != Format::GDeflate && format != Format::BP16)
+            return VK_ERROR_VALIDATION_FAILED_EXT;
+        if (format == Format::BP16 && (!properties ||
+            properties->limits.maxComputeWorkGroupInvocations < 256 ||
+            properties->limits.maxComputeWorkGroupSize[0] < 256 ||
+            !properties->limits.maxComputeWorkGroupCount[0] ||
+            !properties->limits.maxStorageBufferRange))
+            return VK_ERROR_FEATURE_NOT_PRESENT;
         std::vector<std::uint8_t> code;
         if (!readShader(shaderPath, code)) return VK_ERROR_INITIALIZATION_FAILED;
 
@@ -42,6 +55,11 @@ public:
         queue_ = queue;
         family_ = family;
         setLoaderData_ = setLoaderData;
+        format_ = format;
+        if (properties) {
+            maxStorageBufferRange_ = properties->limits.maxStorageBufferRange;
+            maxDispatchGroupsX_ = properties->limits.maxComputeWorkGroupCount[0];
+        }
         VkResult result = loadFunctions(nextGdpa);
         if (result == VK_SUCCESS) result = createBuffer(4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0, upload_);
@@ -56,7 +74,7 @@ public:
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, scratch_);
         if (result == VK_SUCCESS) result = createBuffer(4, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0, errorReadback_);
-        if (result == VK_SUCCESS) result = createPipeline(code);
+        if (result == VK_SUCCESS) result = createPipeline(code, format);
         if (result == VK_SUCCESS) result = createDescriptors();
         if (result == VK_SUCCESS) result = createCommands();
         if (result == VK_SUCCESS) result = createFence();
@@ -78,18 +96,33 @@ public:
     VkResult restore(const std::uint8_t* encoded, std::size_t encodedSize,
                      VkBuffer output, VkDeviceSize offset, std::size_t rawSize) {
         if (!initialized_ || poisoned_) return VK_ERROR_DEVICE_LOST;
+        const auto maxInputBytes = format_ == Format::BP16 ? MaxBP16InputBytes : MaxInputBytes;
         if (!encoded || !output || !rawSize || rawSize > MaxRawBytes ||
-            encodedSize > MaxInputBytes || encodedSize > MaxEncodedBytes ||
+            encodedSize > maxInputBytes || encodedSize > MaxEncodedBytes ||
             (offset & 3u))
             return VK_ERROR_VALIDATION_FAILED_EXT;
         const auto paddedRaw = (rawSize + 3u) & ~std::size_t(3u);
         if (offset > std::numeric_limits<VkDeviceSize>::max() - paddedRaw)
             return VK_ERROR_VALIDATION_FAILED_EXT;
-        Info info{};
-        const Limits limits{MaxEncodedBytes, MaxRawBytes, rawSize, 0, 0, 512};
-        if (!validateEnvelope(encoded, encodedSize, limits, &info))
-            return VK_ERROR_VALIDATION_FAILED_EXT;
+        std::uint32_t dispatchGroups{};
+        if (format_ == Format::BP16) {
+            if (!bp16::validate(encoded, encodedSize, static_cast<std::uint32_t>(rawSize)))
+                return VK_ERROR_VALIDATION_FAILED_EXT;
+            if (paddedRaw > maxStorageBufferRange_)
+                return VK_ERROR_VALIDATION_FAILED_EXT;
+            dispatchGroups = static_cast<std::uint32_t>((rawSize + 1023u) / 1024u);
+            if (!dispatchGroups || dispatchGroups > maxDispatchGroupsX_)
+                return VK_ERROR_VALIDATION_FAILED_EXT;
+        } else {
+            Info info{};
+            const Limits limits{MaxEncodedBytes, MaxRawBytes, rawSize, 0, 0, 512};
+            if (!validateEnvelope(encoded, encodedSize, limits, &info))
+                return VK_ERROR_VALIDATION_FAILED_EXT;
+            dispatchGroups = info.tileCount;
+        }
         const auto inputBytes = (encodedSize + 3u) & ~std::size_t(3u);
+        if (format_ == Format::BP16 && inputBytes > maxStorageBufferRange_)
+            return VK_ERROR_VALIDATION_FAILED_EXT;
         VkResult result = checked(ensureInputBuffers(inputBytes, output, offset,
                                              static_cast<VkDeviceSize>(paddedRaw)));
         if (result != VK_SUCCESS) return result;
@@ -130,7 +163,7 @@ public:
         api_.cmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
         api_.cmdBindDescriptorSets(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE,
             pipelineLayout_, 0, 1, &descriptorSet_, 0, nullptr);
-        api_.cmdDispatch(commandBuffer_, info.tileCount, 1, 1);
+        api_.cmdDispatch(commandBuffer_, dispatchGroups, 1, 1);
 
         VkBufferMemoryBarrier outputReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
         outputReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -194,6 +227,8 @@ private:
     static constexpr std::size_t MaxInputBytes = 32u * 1024u * 1024u;
     static constexpr std::size_t MaxRawBytes = 32u * 1024u * 1024u;
     static constexpr std::size_t MaxEncodedBytes = 64u * 1024u * 1024u;
+    static constexpr std::size_t MaxBP16InputBytes = bp16::HeaderBytes +
+        (MaxRawBytes / bp16::RawBytesPerBlock) * bp16::DescriptorBytes + MaxRawBytes;
     static constexpr std::uint64_t WaitNanoseconds = 5'000'000'000ull;
 
     struct Functions {
@@ -343,9 +378,14 @@ private:
 
     VkResult ensureInputBuffers(std::size_t bytes, VkBuffer output,
                                 VkDeviceSize outputOffset, VkDeviceSize outputRange) {
-        if (bytes <= inputCapacity_)
+        if (bytes <= inputCapacity_) {
+            if (format_ == Format::BP16) {
+                const VkResult result = updateInputDescriptor(static_cast<VkDeviceSize>(bytes));
+                if (result != VK_SUCCESS) return result;
+            }
             return updateOutputDescriptor(output, outputOffset, outputRange);
-        std::size_t capacity = 4096;
+        }
+        std::size_t capacity = format_ == Format::BP16 ? bytes : 4096;
         while (capacity < bytes) capacity *= 2;
         Buffer newUpload{}, newInput{};
         VkResult result = createBuffer(static_cast<VkDeviceSize>(capacity), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -363,7 +403,9 @@ private:
         upload_ = newUpload;
         input_ = newInput;
         inputCapacity_ = capacity;
-        result = updateDescriptors(output, outputOffset, outputRange);
+        const auto inputRange = format_ == Format::BP16 ? static_cast<VkDeviceSize>(bytes)
+                                                        : static_cast<VkDeviceSize>(inputCapacity_);
+        result = updateDescriptors(output, outputOffset, inputRange, outputRange);
         if (result != VK_SUCCESS) {
             destroyBuffer(upload_);
             destroyBuffer(input_);
@@ -379,7 +421,7 @@ private:
         return VK_SUCCESS;
     }
 
-    VkResult createPipeline(const std::vector<std::uint8_t>& code) {
+    VkResult createPipeline(const std::vector<std::uint8_t>& code, Format format) {
         VkDescriptorSetLayoutBinding bindings[4]{};
         for (std::uint32_t i = 0; i < 4; ++i) {
             bindings[i].binding = i;
@@ -402,13 +444,15 @@ private:
         shaderInfo.pCode = reinterpret_cast<const std::uint32_t*>(code.data());
         result = api_.createShaderModule(device_, &shaderInfo, nullptr, &shader_);
         if (result != VK_SUCCESS) return result;
-        VkPipelineShaderStageRequiredSubgroupSizeCreateInfo subgroup{
-            VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO};
-        subgroup.requiredSubgroupSize = 32;
         VkComputePipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
         pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        pipelineInfo.stage.flags = VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
-        pipelineInfo.stage.pNext = &subgroup;
+        VkPipelineShaderStageRequiredSubgroupSizeCreateInfo subgroup{
+            VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO};
+        if (format == Format::GDeflate) {
+            subgroup.requiredSubgroupSize = 32;
+            pipelineInfo.stage.flags = VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+            pipelineInfo.stage.pNext = &subgroup;
+        }
         pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
         pipelineInfo.stage.module = shader_;
         pipelineInfo.stage.pName = "CSMain";
@@ -432,9 +476,9 @@ private:
     }
 
     VkResult updateDescriptors(VkBuffer output, VkDeviceSize outputOffset,
-                               VkDeviceSize outputRange) {
+                               VkDeviceSize inputRange, VkDeviceSize outputRange) {
         VkDescriptorBufferInfo infos[4]{};
-        infos[0] = {input_.buffer, 0, inputCapacity_};
+        infos[0] = {input_.buffer, 0, inputRange};
         infos[1] = {control_.buffer, 0, 12};
         infos[2] = {output, outputOffset, outputRange};
         infos[3] = {scratch_.buffer, 0, 4};
@@ -448,6 +492,18 @@ private:
             writes[i].pBufferInfo = &infos[i];
         }
         api_.updateDescriptorSets(device_, 4, writes, 0, nullptr);
+        return VK_SUCCESS;
+    }
+
+    VkResult updateInputDescriptor(VkDeviceSize inputRange) {
+        VkDescriptorBufferInfo info{input_.buffer, 0, inputRange};
+        VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        write.dstSet = descriptorSet_;
+        write.dstBinding = 0;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write.pBufferInfo = &info;
+        api_.updateDescriptorSets(device_, 1, &write, 0, nullptr);
         return VK_SUCCESS;
     }
 
@@ -519,6 +575,9 @@ private:
         shader_ = VK_NULL_HANDLE;
         pipelineLayout_ = VK_NULL_HANDLE;
         setLayout_ = VK_NULL_HANDLE;
+        format_ = Format::GDeflate;
+        maxDispatchGroupsX_ = 0;
+        maxStorageBufferRange_ = 0;
     }
 
     Functions api_{};
@@ -527,6 +586,9 @@ private:
     VkQueue queue_{};
     std::uint32_t family_{};
     PFN_vkSetDeviceLoaderData setLoaderData_{};
+    Format format_{Format::GDeflate};
+    std::uint32_t maxDispatchGroupsX_{};
+    VkDeviceSize maxStorageBufferRange_{};
     Buffer upload_{}, input_{}, control_{}, scratch_{}, errorReadback_{};
     std::size_t inputCapacity_{};
     VkDescriptorSetLayout setLayout_{};

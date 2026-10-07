@@ -5,8 +5,10 @@ find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 option(ZVRAM_ENABLE_GDEFLATE "Build the experimental GDeflate snapshot codec and optional GPU restore" OFF)
+option(ZVRAM_ENABLE_BP16_GPU_TESTS "Register opt-in BP16 GPU integrity tests" OFF)
 set(ZVRAM_GDEFLATE_CAPABILITY false)
 set(ZVRAM_GDEFLATE_GPU_CAPABILITY false)
+configure_file(research/bp16/decode.spv bp16.spv COPYONLY)
 if(ZVRAM_ENABLE_GDEFLATE)
     enable_language(C)
     if(POLICY CMP0135)
@@ -33,9 +35,11 @@ if(ZVRAM_ENABLE_GDEFLATE)
     configure_file(research/gdeflate/GDeflate-bounded-wave32.spv gdeflate-wave32.spv COPYONLY)
 endif()
 file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
-    CONTENT "{\"gdeflate\":${ZVRAM_GDEFLATE_CAPABILITY},\"gdeflate_gpu\":${ZVRAM_GDEFLATE_GPU_CAPABILITY}}\n")
+    CONTENT "{\"gdeflate\":${ZVRAM_GDEFLATE_CAPABILITY},\"gdeflate_gpu\":${ZVRAM_GDEFLATE_GPU_CAPABILITY},\"bp16\":true,\"bp16_gpu\":true}\n")
 add_library(zvram_layer SHARED layer.cpp)
-set_property(TARGET zvram_layer APPEND PROPERTY LINK_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json)
+set_property(TARGET zvram_layer APPEND PROPERTY LINK_DEPENDS
+    ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
+    ${CMAKE_CURRENT_BINARY_DIR}/bp16.spv)
 add_custom_command(TARGET zvram_layer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs.json
@@ -94,6 +98,8 @@ add_executable(zvram-file-pool-check file_pool_check.cpp)
 target_link_libraries(zvram-file-pool-check PRIVATE zvram_pool)
 add_executable(zvram-compression-policy-check compression_policy_check.cpp)
 target_compile_features(zvram-compression-policy-check PRIVATE cxx_std_17)
+add_executable(zvram-bp16-codec-check bp16_codec_check.cpp)
+target_compile_features(zvram-bp16-codec-check PRIVATE cxx_std_17)
 add_executable(zvram-resident-bootstrap-check resident_bootstrap_check.cpp)
 target_include_directories(zvram-resident-bootstrap-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_compile_features(zvram-resident-bootstrap-check PRIVATE cxx_std_17)
@@ -101,6 +107,7 @@ target_link_libraries(zvram-resident-bootstrap-check PRIVATE Threads::Threads Pk
 add_executable(zvram-resident-budget-check resident_budget_check.cpp)
 target_compile_features(zvram-resident-budget-check PRIVATE cxx_std_17)
 enable_testing()
+add_test(NAME cpu-bp16-codec COMMAND zvram-bp16-codec-check)
 add_test(NAME cpu-resident-budget COMMAND zvram-resident-budget-check)
 add_test(NAME cpu-resident-bootstrap COMMAND zvram-resident-bootstrap-check)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -622,6 +629,36 @@ if(ZVRAM_ENABLE_GDEFLATE)
     add_executable(zvram-gdeflate-codec-model research/gdeflate/check_codec_model.cpp)
     target_compile_features(zvram-gdeflate-codec-model PRIVATE cxx_std_17)
     target_link_libraries(zvram-gdeflate-codec-model PRIVATE zvram_gdeflate Threads::Threads PkgConfig::ZSTD)
+endif()
+if(ZVRAM_ENABLE_BP16_GPU_TESTS)
+    set(bp16_gpu_launch ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_gdeflate_gpu_layer.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/zvram --build-dir ${CMAKE_CURRENT_BINARY_DIR}
+        --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100
+        --vulkan-cold-mib 512 --vulkan-codec bp16 --vulkan-bp16-gpu)
+    foreach(bp16_range_mode synthetic native)
+        set(bp16_range_flags --range-compressed)
+        if(bp16_range_mode STREQUAL "native")
+            list(APPEND bp16_range_flags --native-allocation)
+        endif()
+        set(bp16_test vulkan-bp16-gpu-range-${bp16_range_mode})
+        add_test(NAME ${bp16_test} COMMAND ${bp16_gpu_launch}
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            -- $<TARGET_FILE:zvram-vulkan-auto-check> ${bp16_range_flags})
+        set_tests_properties(${bp16_test} PROPERTIES TIMEOUT 60
+            ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+    endforeach()
+    foreach(bp16_pressure_mode synthetic native)
+        set(bp16_pressure_flags --range-pressure)
+        if(bp16_pressure_mode STREQUAL "native")
+            list(APPEND bp16_pressure_flags --native-allocation)
+        endif()
+        set(bp16_test vulkan-bp16-gpu-pressure-${bp16_pressure_mode})
+        add_test(NAME ${bp16_test} COMMAND ${bp16_gpu_launch}
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 32 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${bp16_pressure_flags})
+        set_tests_properties(${bp16_test} PROPERTIES TIMEOUT 60
+            ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+    endforeach()
 endif()
 get_property(ZVRAM_TESTS DIRECTORY PROPERTY TESTS)
 set_tests_properties(${ZVRAM_TESTS} PROPERTIES TIMEOUT 60)

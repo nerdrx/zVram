@@ -28,9 +28,7 @@
 #include "snapshot_decode.hpp"
 #include "resident_budget.hpp"
 #include "snapshot_pipeline.hpp"
-#ifdef ZVRAM_HAVE_GDEFLATE
 #include "gdeflate_gpu.hpp"
-#endif
 
 namespace {
 constexpr char kLayer[] = "VK_LAYER_NX_zvram";
@@ -257,9 +255,8 @@ struct Device {
     VkDeviceSize gpuStorageAlignment{1};
     VkDeviceSize gpuStorageRange{};
     std::uint64_t gpuDecodeCalls{}, gpuDecodeBytes{}, gpuDecodeNanoseconds{}, gpuDecodeFallbacks{};
-#ifdef ZVRAM_HAVE_GDEFLATE
+    VkPhysicalDeviceProperties gpuProperties{};
     std::unique_ptr<zvram::gdeflate::gpu::Decoder> gpuDecoder;
-#endif
     bool narrowDescriptorRanges{};
     VkDeviceSize robustRangeAlignment{1};
     std::uint64_t restoreGeneration{};
@@ -713,12 +710,12 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         (ci->pEnabledFeatures && ci->pEnabledFeatures->sparseResidencyBuffer!=VK_FALSE);
     const bool rangeEnabled=rangeMiB && snapshotRequested && physicalFeatures.sparseResidencyBuffer &&
         (!hasFeatures2 || features2AtHead || residencyEnabled);
-    bool gpuRestorePlanned=false, injectGpuSubgroup=false;
+    bool gpuRestorePlanned=false, injectGpuSubgroup=false, gpuRequiresInt64=false;
     VkPhysicalDeviceSubgroupSizeControlFeatures gpuSubgroup{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES};
     VkPhysicalDeviceProperties gpuProperties{};
+    const char* codecEnv=std::getenv("ZVRAM_VULKAN_CODEC");
 #ifdef ZVRAM_HAVE_GDEFLATE
     const char* gpuEnv=std::getenv("ZVRAM_VULKAN_GDEFLATE_GPU");
-    const char* codecEnv=std::getenv("ZVRAM_VULKAN_CODEC");
     if(gpuEnv && std::strcmp(gpuEnv,"1")==0 && codecEnv && std::strcmp(codecEnv,"gdeflate")==0 &&
        snapshotRequested && virtualEnabled && privateQueuePlanned && subgroupControlSupported &&
        (queueProps[privateFamily].queueFlags&VK_QUEUE_COMPUTE_BIT)) {
@@ -750,10 +747,21 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 (sizes.requiredSubgroupSizeStages&VK_SHADER_STAGE_COMPUTE_BIT) && sizes.minSubgroupSize<=32 && sizes.maxSubgroupSize>=32 &&
                 gpuProperties.limits.maxComputeWorkGroupInvocations>=32 && gpuProperties.limits.maxComputeWorkGroupSize[0]>=32 &&
                 gpuProperties.limits.maxComputeWorkGroupCount[0]>=512 && gpuProperties.limits.maxStorageBufferRange>=32u*1024u*1024u;
+            gpuRequiresInt64=gpuRestorePlanned;
             injectGpuSubgroup=gpuRestorePlanned && !appSubgroup && !app13;
         }
     }
 #endif
+    const char* bp16GpuEnv=std::getenv("ZVRAM_VULKAN_BP16_GPU");
+    if(bp16GpuEnv && std::strcmp(bp16GpuEnv,"1")==0 && codecEnv && std::strcmp(codecEnv,"bp16")==0 &&
+       snapshotRequested && virtualEnabled && privateQueuePlanned && in->properties &&
+       (queueProps[privateFamily].queueFlags&VK_QUEUE_COMPUTE_BIT)) {
+        in->properties(physical,&gpuProperties);
+        gpuRestorePlanned=gpuProperties.limits.maxComputeWorkGroupInvocations>=256 &&
+            gpuProperties.limits.maxComputeWorkGroupSize[0]>=256 &&
+            gpuProperties.limits.maxComputeWorkGroupCount[0]>=32768 &&
+            gpuProperties.limits.maxStorageBufferRange>=zvram::bp16::MaxRawBytes;
+    }
     bool strictRobustnessEnabled=false;
     bool appRobustnessPresent=false;
     VkDeviceSize robustAlignment=1;
@@ -800,6 +808,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     }
     gpuRestorePlanned = gpuRestorePlanned && virtualEnabled && privateQueuePlanned;
     injectGpuSubgroup = injectGpuSubgroup && gpuRestorePlanned;
+    gpuRequiresInt64 = gpuRequiresInt64 && gpuRestorePlanned;
     VkDeviceCreateInfo copy=*ci; VkDeviceMemoryOverallocationCreateInfoAMD behavior{VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD};
     if(privateQueuePlanned) { copy.queueCreateInfoCount=static_cast<std::uint32_t>(queueInfos.size()); copy.pQueueCreateInfos=queueInfos.data(); }
     std::vector<const char*> extensions;
@@ -816,20 +825,20 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     if(virtualEnabled) {
         if(hasFeatures2) {
             if(!sparseBindingEnabled || (rangeEnabled && !residencyEnabled) || (strictRobustnessEnabled && !appRobustnessPresent && !coreRobustEnabled) ||
-               (gpuRestorePlanned && features2AtHead && !requestedFeatures2->features.shaderInt64)) {
+               (gpuRequiresInt64 && features2AtHead && !requestedFeatures2->features.shaderInt64)) {
                 injectedFeatures2=*requestedFeatures2; injectedFeatures2.features.sparseBinding=VK_TRUE;
                 if(rangeEnabled) injectedFeatures2.features.sparseResidencyBuffer=VK_TRUE;
                 if(strictRobustnessEnabled) injectedFeatures2.features.robustBufferAccess=VK_TRUE;
-                if(gpuRestorePlanned) injectedFeatures2.features.shaderInt64=VK_TRUE;
+                if(gpuRequiresInt64) injectedFeatures2.features.shaderInt64=VK_TRUE;
                 if(copy.pNext==ci->pNext) copy.pNext=&injectedFeatures2;
                 else behavior.pNext=&injectedFeatures2;
             }
-        } else if(!sparseBindingEnabled || (rangeEnabled && !residencyEnabled) || strictRobustnessEnabled || gpuRestorePlanned) {
+        } else if(!sparseBindingEnabled || (rangeEnabled && !residencyEnabled) || strictRobustnessEnabled || gpuRequiresInt64) {
             if(ci->pEnabledFeatures) injectedFeatures=*ci->pEnabledFeatures;
             injectedFeatures.sparseBinding=VK_TRUE;
             if(rangeEnabled) injectedFeatures.sparseResidencyBuffer=VK_TRUE;
             if(strictRobustnessEnabled) injectedFeatures.robustBufferAccess=VK_TRUE;
-            if(gpuRestorePlanned) injectedFeatures.shaderInt64=VK_TRUE;
+            if(gpuRequiresInt64) injectedFeatures.shaderInt64=VK_TRUE;
             copy.pEnabledFeatures=&injectedFeatures;
         }
     }
@@ -848,7 +857,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         injectedRobustness.pNext=const_cast<void*>(copy.pNext); copy.pNext=&injectedRobustness;
     }
 #endif
-    if(gpuRestorePlanned) {
+    if(gpuRequiresInt64) {
         try {
             if(!appEnabled(ci,VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME)) {
                 if(extensions.empty() && ci->enabledExtensionCount)
@@ -887,6 +896,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             d->budgetReserveBytes=reserveMiB*1024ull*1024ull;
         }
         if(gpuRestorePlanned) {
+            d->gpuProperties=gpuProperties;
             d->gpuStorageAlignment=std::max<VkDeviceSize>(1,gpuProperties.limits.minStorageBufferOffsetAlignment);
             d->gpuStorageRange=gpuProperties.limits.maxStorageBufferRange;
         }
@@ -994,6 +1004,9 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
 #else
                         autoResult=VK_ERROR_FEATURE_NOT_PRESENT; logf("GDeflate codec was not built");
 #endif
+                    } else if(std::strcmp(codec,"bp16")==0) {
+                        d->snapshotCodec=zvram::snapshot::Codec::BP16;
+                        if(d->byteShuffle) { autoResult=VK_ERROR_FEATURE_NOT_PRESENT; logf("BP16 snapshots do not support byte shuffle"); }
                     } else if(std::strcmp(codec,"zstd")!=0) {
                         autoResult=VK_ERROR_FEATURE_NOT_PRESENT; logf("invalid Vulkan snapshot codec");
                     }
@@ -1054,6 +1067,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     if(d->autoEnabled && d->byteShuffle) logf("Vulkan snapshot byte shuffle stride=%u",d->byteShuffle);
                     if(d->autoEnabled && d->snapshotCodec==zvram::snapshot::Codec::GDeflate)
                         logf("Vulkan snapshot codec=gdeflate decode=%s experimental=1",d->gpuRestoreEnabled?"GPU":"CPU");
+                    if(d->autoEnabled && d->snapshotCodec==zvram::snapshot::Codec::BP16)
+                        logf("Vulkan snapshot codec=bp16 decode=%s experimental=1",d->gpuRestoreEnabled?"GPU":"CPU");
                 }
             }
         }
@@ -1413,27 +1428,28 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
     logf("Vulkan snapshot transfer staging bytes=%llu",static_cast<unsigned long long>(s.stagingSize));
     logf("Vulkan snapshot decode max-workers=%u",s.stagingSize>s.chunkSize?4u:1u);
     if(s.lookaheadMapped) logf("Vulkan snapshot lookahead staging bytes=%llu",static_cast<unsigned long long>(s.stagingSize));
-#ifdef ZVRAM_HAVE_GDEFLATE
     if(d.gpuRestoreEnabled) {
+        const bool bp16=d.snapshotCodec==zvram::snapshot::Codec::BP16;
+        const char* codecName=bp16?"BP16":"GDeflate";
         try { d.gpuDecoder=std::make_unique<zvram::gdeflate::gpu::Decoder>(); }
         catch(const std::bad_alloc&) { d.gpuRestoreEnabled=false; }
-        const auto* path=std::getenv("ZVRAM_GDEFLATE_SHADER_PATH");
-        const auto result=d.gpuDecoder && path?d.gpuDecoder->initialize(d.handle,d.gdpa,d.memory,d.copyQueue,family,d.setDeviceLoaderData,path):VK_ERROR_INITIALIZATION_FAILED;
+        const auto* path=std::getenv(bp16?"ZVRAM_BP16_SHADER_PATH":"ZVRAM_GDEFLATE_SHADER_PATH");
+        const auto format=bp16?zvram::gdeflate::gpu::Format::BP16:zvram::gdeflate::gpu::Format::GDeflate;
+        const auto result=d.gpuDecoder && path?d.gpuDecoder->initialize(d.handle,d.gdpa,d.memory,d.copyQueue,family,
+            d.setDeviceLoaderData,path,&d.gpuProperties,format):VK_ERROR_INITIALIZATION_FAILED;
         if(result!=VK_SUCCESS) {
             d.gpuRestoreEnabled=false; d.gpuDecoder.reset();
-            logf("GPU GDeflate restore unavailable result=%d; retaining CPU codec",result);
+            logf("GPU %s restore unavailable result=%d; retaining CPU codec",codecName,result);
             if(result==VK_ERROR_DEVICE_LOST) { d.gpuGateError=result; return false; }
-        } else logf("GPU GDeflate restore enabled: wave32, compressed upload, direct backing output");
+        } else logf("GPU %s restore enabled: %s, compressed upload, direct backing output",codecName,bp16?"256-thread":"wave32");
     }
-#endif
     return true;
 }
 void releaseSnapshotResources(Device& d) {
-#ifdef ZVRAM_HAVE_GDEFLATE
     d.gpuDecoder.reset();
-#endif
     if(d.gpuDecodeCalls || d.gpuDecodeFallbacks)
-        logf("GPU GDeflate restore calls=%llu bytes=%llu host-ns=%llu fallbacks=%llu",
+        logf("GPU %s restore calls=%llu bytes=%llu host-ns=%llu fallbacks=%llu",
+             d.snapshotCodec==zvram::snapshot::Codec::BP16?"BP16":"GDeflate",
              static_cast<unsigned long long>(d.gpuDecodeCalls),static_cast<unsigned long long>(d.gpuDecodeBytes),
              static_cast<unsigned long long>(d.gpuDecodeNanoseconds),static_cast<unsigned long long>(d.gpuDecodeFallbacks));
     auto& s=d.snapshot;
@@ -1625,10 +1641,9 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                 if(r==VK_SUCCESS) offset=preparedBytes;
             }
             for(std::size_t next=0;!preparedBuffer && next<group.chunks.size();) {
-#ifdef ZVRAM_HAVE_GDEFLATE
                 const auto& gpuChunk=group.chunks[next];
                 if(d.gpuRestoreEnabled && d.gpuDecoder && gpuChunk.compressed &&
-                   gpuChunk.codec==zvram::snapshot::Codec::GDeflate && !gpuChunk.byteShuffle &&
+                   gpuChunk.codec==d.snapshotCodec && gpuChunk.codec!=zvram::snapshot::Codec::Zstd && !gpuChunk.byteShuffle &&
                    gpuChunk.rawSize && gpuChunk.rawSize<=s.chunkSize && offset<=group.logicalBytes &&
                    gpuChunk.rawSize<=group.logicalBytes-offset && offset%d.gpuStorageAlignment==0 &&
                    ((gpuChunk.rawSize+3)&~VkDeviceSize(3))<=d.gpuStorageRange && offset<=amount &&
@@ -1649,15 +1664,14 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                         return VK_ERROR_DEVICE_LOST;
                     }
                     ++d.gpuDecodeFallbacks;
-                    logf("GPU GDeflate restore fallback result=%d",gpuResult);
+                    logf("GPU %s restore fallback result=%d",d.snapshotCodec==zvram::snapshot::Codec::BP16?"BP16":"GDeflate",gpuResult);
                 }
-#endif
                 std::array<zvram::snapshot::EncodedChunk,4> batch{};
                 std::size_t count=0;
                 VkDeviceSize staged=0;
                 while(count<batch.size() && next<group.chunks.size()) {
                     const auto& chunk=group.chunks[next];
-                    if(count && d.gpuRestoreEnabled && chunk.compressed && chunk.codec==zvram::snapshot::Codec::GDeflate) break;
+                    if(count && d.gpuRestoreEnabled && chunk.compressed && chunk.codec!=zvram::snapshot::Codec::Zstd) break;
                     if(chunk.rawSize>s.chunkSize || chunk.rawSize>group.logicalBytes-offset-staged) {
                         r=VK_ERROR_UNKNOWN; break;
                     }
@@ -1807,7 +1821,15 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
                     keepCompressed=retainCompression(amount,compressed,d.minSavingsPercent);
                 } else
 #endif
-                {
+                if(d.snapshotCodec==zvram::snapshot::Codec::BP16) {
+                    if(amount<=zvram::bp16::MaxRawBytes && amount%zvram::bp16::RawBytesPerBlock==0) {
+                        if(!zvram::bp16::encodeFast(source,static_cast<std::size_t>(amount),encoded)) {
+                            okay=false; r=VK_ERROR_UNKNOWN; break;
+                        }
+                        compressed=encoded.size();
+                        keepCompressed=retainCompression(amount,compressed,d.minSavingsPercent);
+                    }
+                } else {
                 const auto* compressionSource=source;
                 if(d.byteShuffle) {
                     shuffled.resize(static_cast<std::size_t>(amount));
@@ -1899,6 +1921,12 @@ bool encodeAsyncSnapshot(const std::uint8_t* raw,std::size_t rawSize,std::size_t
 #else
                     return false;
 #endif
+                } else if(codec==zvram::snapshot::Codec::BP16) {
+                    if(shuffle) return false;
+                    if(amount<=zvram::bp16::MaxRawBytes && amount%zvram::bp16::RawBytesPerBlock==0) {
+                        if(!zvram::bp16::encodeFast(source,amount,encoded)) return false;
+                        compressed=encoded.size(); keepCompressed=retainCompression(amount,compressed,minSavings);
+                    }
                 } else {
                     const auto* compressionSource=source;
                     if(shuffle) {

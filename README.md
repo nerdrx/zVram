@@ -264,3 +264,16 @@ For a model that exceeds physical VRAM, `--vmm-only` skips native comparison and
 
 
 The newer full 39.73 GB F16 model run completed with lazy backing under a 16 GiB tracked cap and output identical to native. It remains extremely slow: **0.03319 tokens/s versus 1.69 native** across 12 actual decode runs. GPU decompression and MRU caching are being evaluated separately. See [full run evidence and limits](VALIDATION.md#full-internlm-lazy-backing-under-16-gib).
+
+### Experimental BP16 snapshots
+
+BP16 losslessly packs constant bits within blocks of 128 16-bit words. It accepts
+any byte data in complete 256-byte blocks; unsupported sizes or frames without
+savings retain exact RAW bytes. It is built in without an external codec library,
+with Zstd remaining the default. Opt in with `--vulkan-codec bp16`; add
+`--vulkan-bp16-gpu` for GPU restoration. Byte shuffle is restricted to Zstd.
+
+The paired 32 MiB component check measured median GPU decode at 0.118 ms for BP16
+and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored
+87.0% of raw bytes versus GDeflate's 81.1% on that slice. These are decoder-only
+measurements, not a model speedup. [Component evidence](validation/bp16-component).
