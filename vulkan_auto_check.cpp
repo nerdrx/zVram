@@ -20,6 +20,8 @@ constexpr VkDeviceSize BudgetFirstBytes = 256 * MiB;
 constexpr VkDeviceSize BudgetSecondBytes = 192 * MiB;
 constexpr VkDeviceSize FirstChildBytes = 256 * MiB;
 constexpr VkDeviceSize SecondChildBytes = TotalBytes - FirstChildBytes;
+constexpr VkDeviceSize PipelineFirstChildBytes = 128 * MiB;
+constexpr VkDeviceSize PipelineColdRemainingBytes = TotalBytes - PipelineFirstChildBytes;
 constexpr VkDeviceSize ChunkBytes = 32 * MiB;
 constexpr std::uint32_t ChunkWords = static_cast<std::uint32_t>(ChunkBytes / 4);
 constexpr std::uint32_t TotalWords = static_cast<std::uint32_t>(TotalBytes / 4);
@@ -301,9 +303,9 @@ struct Context {
         VkDescriptorSetLayoutCreateInfo dl{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         dl.bindingCount = 1; dl.pBindings = &binding;
         check(vkCreateDescriptorSetLayout(device, &dl, nullptr, &descriptorLayout), "create descriptor layout");
-        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1};
+        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8};
         VkDescriptorPoolCreateInfo dp{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        dp.maxSets = 1; dp.poolSizeCount = 1; dp.pPoolSizes = &poolSize;
+        dp.maxSets = 8; dp.poolSizeCount = 1; dp.pPoolSizes = &poolSize;
         check(vkCreateDescriptorPool(device, &dp, nullptr, &descriptorPool), "create descriptor pool");
         VkDescriptorSetAllocateInfo da{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         da.descriptorPool = descriptorPool; da.descriptorSetCount = 1; da.pSetLayouts = &descriptorLayout;
@@ -749,6 +751,53 @@ VkResult computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle,
     return VK_SUCCESS;
 }
 
+VkResult computePipelineCycle(Context& context, VkBuffer buffer, std::uint32_t cycle,
+                              bool expectFailure = false) {
+    const VkDeviceSize offsets[2]{96 * MiB, 192 * MiB};
+    const VkDeviceSize ranges[2]{64 * MiB, 96 * MiB};
+    const std::uint32_t chunks[2]{3, 6};
+    require(context.properties.limits.maxStorageBufferRange >= ranges[1],
+            "pipeline regression requires a 96 MiB storage-buffer range");
+    VkDescriptorSetLayout layouts[2]{context.descriptorLayout, context.descriptorLayout};
+    VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    allocate.descriptorPool = context.descriptorPool; allocate.descriptorSetCount = 2; allocate.pSetLayouts = layouts;
+    VkDescriptorSet sets[2]{};
+    check(vkAllocateDescriptorSets(context.device, &allocate, sets), "allocate pipeline descriptor sets");
+    VkDescriptorBufferInfo buffers[2]{};
+    VkWriteDescriptorSet writes[2]{};
+    for (std::size_t i = 0; i < 2; ++i) {
+        buffers[i] = {buffer, offsets[i], ranges[i]};
+        writes[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        writes[i].dstSet = sets[i]; writes[i].dstBinding = 0; writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].pBufferInfo = &buffers[i];
+    }
+    vkUpdateDescriptorSets(context.device, 2, writes, 0, nullptr);
+    return context.submit([&](VkCommandBuffer command) {
+        VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+        for (std::size_t i = 0; i < 2; ++i) {
+            vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, context.pipeline);
+            vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, context.pipelineLayout,
+                                    0, 1, &sets[i], 0, nullptr);
+            const std::uint32_t push[3]{ChunkWords, cycleSalt(cycle, chunks[i]), 1};
+            vkCmdPushConstants(command, context.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, sizeof(push), push);
+            vkCmdDispatch(command, ChunkWords / 256, 1, 1);
+            barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+        }
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 1, &barrier, 0, nullptr, 0, nullptr);
+    }, 0, expectFailure ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_SUCCESS);
+}
+
 VkResult readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
                        int cycle, bool releaseForCompute = false,
                        VkDeviceSize byteSize = TotalBytes,
@@ -809,6 +858,59 @@ VkResult readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
     }
     return VK_SUCCESS;
 }
+
+void pipelineRestoreCheck(Context& context, Buffer& resident, Staging& staging,
+                          const ZvramSnapshotStatsNX& initial, bool injectFailure) {
+    require((!injectFailure || !context.nativeAllocation) && !context.bdaMode,
+            "pipeline fault injection requires synthetic descriptor-tracked memory");
+    require(context.properties.limits.maxStorageBufferRange >= 96 * MiB,
+            "pipeline check requires a 96 MiB storage-buffer range");
+    waitCold(context, initial);
+    const auto cold = context.stats();
+    require(cold.coldLogicalBytes == TotalBytes && cold.residentBytes == 0 &&
+            cold.freezes >= initial.freezes + 3,
+            "pipeline check did not cold all three 128/128/64 MiB groups");
+    metadataWhileCold(context, resident.handle, cold);
+
+    ZvramSnapshotStatsNX beforeRetry = cold;
+    if (injectFailure) {
+        require(context.armRestoreFailure != nullptr, "pipeline restore fault-arm interface unavailable");
+        check(context.armRestoreFailure(context.device, 1), "arm pipeline partial restore failure");
+        const auto first = computePipelineCycle(context, resident.handle, 0, true);
+        require(first == VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                "pipeline fault did not reject the first multi-range submission with OOM");
+        beforeRetry = context.stats();
+        require(beforeRetry.failures > cold.failures &&
+                beforeRetry.lastError == VK_ERROR_OUT_OF_DEVICE_MEMORY &&
+                beforeRetry.restores > cold.restores &&
+                beforeRetry.residentBytes == PipelineFirstChildBytes &&
+                beforeRetry.coldLogicalBytes == PipelineColdRemainingBytes,
+                "faulted pipeline restore did not leave one 128 MiB group resident and 192 MiB cold");
+        std::cout << "PIPELINE_PARTIAL_FAULT resident=" << beforeRetry.residentBytes
+                  << " cold=" << beforeRetry.coldLogicalBytes << std::endl;
+    }
+
+    check(computePipelineCycle(context, resident.handle, 0), "submit/retry multi-range pipeline workload");
+    for (std::uint32_t chunk = 0; chunk < TotalBytes / ChunkBytes; ++chunk) {
+        const int cycle = (chunk == 3 || chunk == 6) ? 0 : -1;
+        check(readbackAndVerify(context, resident.handle, staging, cycle, false, ChunkBytes, 0, chunk),
+              "verify pipeline-restored child bytes");
+    }
+    const auto restored = context.stats();
+    require(restored.restores > beforeRetry.restores && restored.coldLogicalBytes == 0 &&
+            restored.residentBytes == TotalBytes,
+            "pipeline submission did not restore and retain all three groups");
+
+    vkDestroyBuffer(context.device, resident.handle, nullptr); resident.handle = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, resident.memory, nullptr); resident.memory = VK_NULL_HANDLE;
+    const auto empty = context.stats();
+    require(empty.coldLogicalBytes == 0 && empty.residentBytes == 0,
+            "pipeline regression cleanup retained cold or resident bytes");
+    std::cout << (injectFailure ?
+        "PASS: lookahead joined partial restore failure; retry restored three groups and verified all bytes\n" :
+        "PASS: one tracked multi-range submission restored three groups and verified all bytes\n");
+}
+
 void suballocationCheck(Context& context, bool automatic, bool api2) {
     constexpr VkDeviceSize PoolBytes = 512 * MiB;
     constexpr VkDeviceSize ABytes = 192 * MiB, AOffset = 128 * MiB;
@@ -1771,6 +1873,7 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
 int main(int argc, char** argv) try {
     bool expectBudgetRefusal = false, expectBudgetRelease = false;
     bool expectPartialFreeze = false, expectPartialRestore = false;
+    bool expectPipelineRestore = false, expectPipelinePartialRestore = false;
     bool bdaMode = false, nativeAllocation = false;
     bool twoQueues = false, twoFamilies = false, exclusiveFamilies = false;
     bool pendingWait = false, pendingBind = false;
@@ -1790,6 +1893,8 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--expect-budget-release") == 0) expectBudgetRelease = true;
         else if (std::strcmp(argv[i], "--expect-partial-freeze") == 0) expectPartialFreeze = true;
         else if (std::strcmp(argv[i], "--expect-partial-restore") == 0) expectPartialRestore = true;
+        else if (std::strcmp(argv[i], "--expect-pipeline-restore") == 0) expectPipelineRestore = true;
+        else if (std::strcmp(argv[i], "--expect-pipeline-partial-restore") == 0) expectPipelinePartialRestore = true;
         else if (std::strcmp(argv[i], "--bda") == 0) bdaMode = true;
         else if (std::strcmp(argv[i], "--native-allocation") == 0) nativeAllocation = true;
         else if (std::strcmp(argv[i], "--two-queues") == 0) twoQueues = true;
@@ -1822,9 +1927,10 @@ int main(int argc, char** argv) try {
             rangeSubmit=true; rangeCache=true; rangeCacheUnknown=true;
         }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
     }
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
+                                      expectPipelineRestore || expectPipelinePartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||
                                       exclusiveFamilies || pendingWait || pendingBind)),
             "budget-release mode uses one synthetic single-queue allocation path");
@@ -1834,6 +1940,16 @@ int main(int argc, char** argv) try {
             "partial-freeze mode requires the standard virtual allocation path");
     require(!(expectPartialRestore && (expectBudgetRefusal || expectPartialFreeze || nativeAllocation || bdaMode)),
             "partial-restore mode requires the standard virtual allocation path");
+    require(!(expectPipelineRestore && expectPipelinePartialRestore),
+            "choose only one pipeline restore mode");
+    require(!(expectPipelineRestore && (expectBudgetRefusal || expectBudgetRelease || expectPartialFreeze ||
+                                        expectPartialRestore || bdaMode || twoQueues || twoFamilies ||
+                                        exclusiveFamilies || pendingWait || pendingBind)),
+            "pipeline restore mode requires the standard single-queue descriptor path");
+    require(!(expectPipelinePartialRestore && (expectBudgetRefusal || expectBudgetRelease || expectPartialFreeze ||
+                                               expectPartialRestore || nativeAllocation || bdaMode || twoQueues ||
+                                               twoFamilies || exclusiveFamilies || pendingWait || pendingBind)),
+            "pipeline partial-restore mode requires synthetic single-queue memory");
     require(!(twoQueues && (twoFamilies || exclusiveFamilies)), "choose only one multi-queue mode");
     require(!rangePressure || (rangeSubmit && !activeSubmit && !bdaMode && !twoFamilies && !exclusiveFamilies),
             "range pressure requires descriptor-tracked range-submit mode");
@@ -1846,11 +1962,13 @@ int main(int argc, char** argv) try {
     require(!concurrentWait || (pendingWait && twoQueues),
             "--concurrent-wait requires --pending-wait and --two-queues");
     require(!selectiveBind || !(suballocation || expectBudgetRefusal || expectBudgetRelease ||
-                                expectPartialFreeze || expectPartialRestore || bdaMode || twoQueues ||
+                                expectPartialFreeze || expectPartialRestore || expectPipelineRestore ||
+                                expectPipelinePartialRestore || bdaMode || twoQueues ||
                                 twoFamilies || exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
             "selective-bind mode is independent of other Vulkan checks");
     require(!selectiveSubmit || !(selectiveBind || suballocation || expectBudgetRefusal || expectBudgetRelease ||
-                                  expectPartialFreeze || expectPartialRestore || (twoQueues && !activeSubmit && !rangePressure) || twoFamilies ||
+                                  expectPartialFreeze || expectPartialRestore || expectPipelineRestore ||
+                                  expectPipelinePartialRestore || (twoQueues && !activeSubmit && !rangePressure) || twoFamilies ||
                                   exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
             "selective-submit mode is independent of other Vulkan checks");
     if (activeSubmit && !twoQueues) {
@@ -1863,6 +1981,7 @@ int main(int argc, char** argv) try {
             "--pending-bind requires --native-allocation and a multi-queue mode");
     Context context;
     require(!suballocation || !(expectBudgetRefusal || expectBudgetRelease || expectPartialFreeze || expectPartialRestore ||
+                               expectPipelineRestore || expectPipelinePartialRestore ||
                                exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
             "suballocation mode is independent of refusal, retry, exclusive-family and pending-work checks");
     require(!suballocation || !nativeAllocation || suballocationAuto,
@@ -2037,6 +2156,10 @@ int main(int argc, char** argv) try {
         return 0;
     }
     const auto initial = context.stats();
+    if (expectPipelineRestore || expectPipelinePartialRestore) {
+        pipelineRestoreCheck(context, resident, staging, initial, expectPipelinePartialRestore);
+        return 0;
+    }
     if (expectBudgetRelease) {
         const auto deadline = std::chrono::steady_clock::now() + ColdTimeout;
         ZvramSnapshotStatsNX firstCold{};

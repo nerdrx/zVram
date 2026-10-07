@@ -1,0 +1,47 @@
+{
+  "status": "stopped_by_memavailable_guard_before_complete_cold_pass_and_prompt",
+  "model": "InternLM2.5-20B F16",
+  "guard": {
+    "minimum_available_mib": 12288,
+    "observed_available_mib": 12262
+  },
+  "native_run": {
+    "decode_runs": 12,
+    "tokens_per_second": 1.59,
+    "decode_ms": 7556.54,
+    "prompt_ms": 1459.44,
+    "stdout_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b"
+  },
+  "automatic_run": {
+    "stdout_bytes": 3,
+    "stdout_contents": "newline, greater-than prompt, space",
+    "stdout_sha256": "76a75a99139031c4c42d75071d9ffdebebfa77519d2b92b91400cfc3662bed4f",
+    "interactive_ready": true,
+    "interactive_mode_observed": true,
+    "layers_offloaded": [49, 49],
+    "complete_cold_pass": false,
+    "prompt_sent": false,
+    "generated_response": false,
+    "cold_fdinfo_captured": false,
+    "decode_throughput_available": false
+  },
+  "last_automatic_state": {
+    "resident_bytes": 6862733312,
+    "cold_logical_bytes": 31887065088,
+    "cold_stored_bytes": 24333045029,
+    "freezes": 353,
+    "restores": 104,
+    "failures": 0,
+    "clean_cache_bytes": 0,
+    "actual_pipeline_prefetches": 47,
+    "prepared": 104,
+    "wait_nanoseconds": 13306673
+  },
+  "validation_vuid_count": 0,
+  "validation_error_count": 0,
+  "benchmark_terminal_exit_code": 1,
+  "processes_freed": true,
+  "clock_before_artifact": "vulkan-internlm-f16-pipeline-20g-gpu-clock-before.json",
+  "clock_after_artifact": "vulkan-internlm-f16-pipeline-20g-gpu-clock-after.json",
+  "result_json": null
+}

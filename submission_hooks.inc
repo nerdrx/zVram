@@ -128,6 +128,31 @@ PFN_vkVoidFunction submissionHookLookup(const char* name) {
 
 bool commandMemories(Device&,const std::vector<VkCommandBuffer>&,std::vector<ActiveRefs::Use>&,bool writesOnly=false);
 
+// Copy only frame descriptors. The caller keeps device/queue gates held and
+// joins before modifying the next cold group or releasing either staging slot.
+bool prepareRangeDecode(Device& d,const ActiveRefs::Use& use,std::size_t slot,
+                        zvram::snapshot::DecodeAhead& ahead,bool asynchronous) {
+    const auto p=d.virtualMemory.find(use.memory);
+    if(p==d.virtualMemory.end() || use.child==SIZE_MAX || use.child>=p->second.coldGroups.size()) return false;
+    const auto& group=p->second.coldGroups[use.child];
+    auto& s=d.snapshot;
+    if(!group.cold || !group.logicalBytes || group.logicalBytes>s.stagingSize ||
+       group.chunks.empty() || group.chunks.size()>4) return false;
+    std::array<zvram::snapshot::EncodedChunk,4> chunks{};
+    VkDeviceSize bytes=0;
+    for(std::size_t i=0;i<group.chunks.size();++i) {
+        const auto& chunk=group.chunks[i];
+        if(!chunk.rawSize || chunk.rawSize>s.chunkSize || chunk.rawSize>group.logicalBytes-bytes) return false;
+        bytes+=chunk.rawSize;
+        chunks[i]={chunk.bytes.data(),chunk.bytes.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed};
+    }
+    if(bytes!=group.logicalBytes) return false;
+    auto* mapped=static_cast<std::uint8_t*>(slot?s.lookaheadMapped:s.mapped);
+    if(ahead.start(chunks,group.chunks.size(),mapped,static_cast<std::size_t>(s.stagingSize),
+                   static_cast<std::size_t>(s.chunkSize),asynchronous)) ++s.prefetchLaunches;
+    return true;
+}
+
 // Called with the existing device and queue gates held.
 VkResult restoreTrackedCommands(Device& d,const std::vector<VkCommandBuffer>& commands) {
     if(!d.selectiveRestore || unknownCommandProc) return restoreColdLocked(d.handle,d);
@@ -137,20 +162,61 @@ VkResult restoreTrackedCommands(Device& d,const std::vector<VkCommandBuffer>& co
             logf("selective restore fallback: untracked command, descriptor or address shader");
             return restoreColdLocked(d.handle,d);
         }
-        std::size_t restored=0;
+        std::vector<ActiveRefs::Use> cold;
+        cold.reserve(selected.size());
         for(const auto& use:selected) {
-            const auto memory=use.memory;
-            const auto p=d.virtualMemory.find(memory);
+            const auto p=d.virtualMemory.find(use.memory);
+            if(p==d.virtualMemory.end() || !p->second.cold) continue;
+            if(use.child!=SIZE_MAX && (use.child>=p->second.coldGroups.size() || !p->second.coldGroups[use.child].cold)) continue;
+            if(std::none_of(cold.begin(),cold.end(),[&](const auto& entry){
+                return entry.memory==use.memory && entry.child==use.child;
+            })) cold.push_back(use);
+        }
+        auto& s=d.snapshot;
+        const bool pipeline=s.lookaheadMapped && std::none_of(cold.begin(),cold.end(),[](const auto& use){return use.child==SIZE_MAX;});
+        zvram::snapshot::DecodeAhead ahead;
+        std::size_t preparedFor=SIZE_MAX, slot=0, restored=0;
+        auto finishDecode=[&] {
+            const auto start=std::chrono::steady_clock::now();
+            const auto result=ahead.take();
+            s.prefetchWaitNanoseconds+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();
+            s.decodeBytes+=result.bytes; s.decodeNanoseconds+=result.nanoseconds;
+            return result;
+        };
+        for(std::size_t n=0;n<cold.size();++n) {
+            const auto& use=cold[n];
+            const auto p=d.virtualMemory.find(use.memory);
             if(p==d.virtualMemory.end() || !p->second.cold ||
                (use.child!=SIZE_MAX && !p->second.coldGroups[use.child].cold)) continue;
-            const auto r=restoreColdLocked(d.handle,d,memory,use.child); if(r!=VK_SUCCESS) return r;
+            bool prepared=preparedFor==n;
+            preparedFor=SIZE_MAX;
+            if(!prepared && pipeline) prepared=prepareRangeDecode(d,use,slot,ahead,false);
+            zvram::snapshot::DecodeResult decoded{};
+            if(prepared) {
+                decoded=finishDecode();
+                if(!decoded.ok || decoded.bytes!=p->second.coldGroups[use.child].logicalBytes) return VK_ERROR_UNKNOWN;
+            }
+            // Current decode is complete before launching the only look-ahead:
+            // at most four CPU decode workers are active, and no worker uses Vulkan.
+            if(prepared && n+1<cold.size() && prepareRangeDecode(d,cold[n+1],1-slot,ahead,true)) preparedFor=n+1;
+            const auto buffer=prepared?(slot?s.lookaheadBuffer:s.stagingBuffer):VK_NULL_HANDLE;
+            const auto r=restoreColdLocked(d.handle,d,use.memory,use.child,buffer,decoded.bytes);
+            if(r!=VK_SUCCESS) {
+                if(preparedFor!=SIZE_MAX) (void)finishDecode();
+                return r;
+            }
+            if(prepared) ++s.preparedRestores;
             ++restored;
+            slot=preparedFor!=SIZE_MAX?1-slot:0;
         }
         std::size_t remaining=0;
         for(const auto& p:d.virtualMemory) remaining+=p.second.cold;
         if(restored) {
             if(d.rangeChunkBytes) logf("selective range restore selected-chunks=%zu restored-chunks=%zu cold-pools-left=%zu",selected.size(),restored,remaining);
             else logf("selective restore selected-pools=%zu restored-pools=%zu cold-pools-left=%zu",selected.size(),restored,remaining);
+            if(pipeline) logf("snapshot pipeline prefetches=%llu prepared-restores=%llu wait-ns=%llu",
+                static_cast<unsigned long long>(s.prefetchLaunches),static_cast<unsigned long long>(s.preparedRestores),
+                static_cast<unsigned long long>(s.prefetchWaitNanoseconds));
         }
         return VK_SUCCESS;
     } catch(const std::bad_alloc&) {

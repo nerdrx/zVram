@@ -26,6 +26,7 @@
 #include "active_refs.hpp"
 #include "compression_policy.hpp"
 #include "snapshot_decode.hpp"
+#include "snapshot_pipeline.hpp"
 
 namespace {
 constexpr char kLayer[] = "VK_LAYER_NX_zvram";
@@ -169,6 +170,10 @@ struct SnapshotResources {
     VkDeviceSize stagingSize{32u*1024u*1024u};
     std::uint64_t copyCalls{}, copyBytes{}, copyNanoseconds{}, decodeBytes{}, decodeNanoseconds{};
     void* mapped{};
+    VkBuffer lookaheadBuffer{};
+    VkDeviceMemory lookaheadMemory{};
+    void* lookaheadMapped{};
+    std::uint64_t prefetchLaunches{}, preparedRestores{}, prefetchWaitNanoseconds{};
 };
 struct PromotedBuffer {
     VkDeviceSize size{};
@@ -257,14 +262,16 @@ struct Device {
     uint64_t liveLocal{}, peakLocal{}, liveOther{}, peakOther{}, failures{};
 };
 void logSnapshotState(const char* event,const Device& d) {
-    logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu cache-stored=%llu clean-reuses=%llu cache-invalidations=%llu copy-calls=%llu copy-bytes=%llu copy-ns=%llu decode-bytes=%llu decode-ns=%llu",
+    logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu cache-stored=%llu clean-reuses=%llu cache-invalidations=%llu copy-calls=%llu copy-bytes=%llu copy-ns=%llu decode-bytes=%llu decode-ns=%llu pipeline-prefetches=%llu pipeline-restores=%llu pipeline-wait-ns=%llu",
          event,static_cast<unsigned long long>(d.residentBytes),static_cast<unsigned long long>(d.coldLogicalBytes),
          static_cast<unsigned long long>(d.coldBytes),static_cast<unsigned long long>(d.freezeCount),
          static_cast<unsigned long long>(d.restoreCount),static_cast<unsigned long long>(d.snapshotFailures),
          static_cast<unsigned long long>(d.cacheBytes),static_cast<unsigned long long>(d.cleanReuseCount),
          static_cast<unsigned long long>(d.cacheInvalidations),static_cast<unsigned long long>(d.snapshot.copyCalls),
          static_cast<unsigned long long>(d.snapshot.copyBytes),static_cast<unsigned long long>(d.snapshot.copyNanoseconds),
-         static_cast<unsigned long long>(d.snapshot.decodeBytes),static_cast<unsigned long long>(d.snapshot.decodeNanoseconds));
+         static_cast<unsigned long long>(d.snapshot.decodeBytes),static_cast<unsigned long long>(d.snapshot.decodeNanoseconds),
+         static_cast<unsigned long long>(d.snapshot.prefetchLaunches),static_cast<unsigned long long>(d.snapshot.preparedRestores),
+         static_cast<unsigned long long>(d.snapshot.prefetchWaitNanoseconds));
 }
 std::mutex mapsMutex;
 // Future command entry points absent from our build cannot be tracked safely.
@@ -329,7 +336,8 @@ VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice,VkDeviceMemory,const VkAlloc
 bool initSnapshotResources(Device&,std::uint32_t);
 void releaseSnapshotResources(Device&);
 void snapshotWorkerLoop(const std::shared_ptr<Device>&);
-VkResult restoreColdLocked(VkDevice,Device&,VkDeviceMemory only=VK_NULL_HANDLE,std::size_t childOnly=SIZE_MAX);
+VkResult restoreColdLocked(VkDevice,Device&,VkDeviceMemory only=VK_NULL_HANDLE,std::size_t childOnly=SIZE_MAX,
+                          VkBuffer preparedBuffer=VK_NULL_HANDLE,VkDeviceSize preparedBytes=0);
 VkResult freezeChildLocked(Device&,VirtualMemory&,std::size_t);
 void discardCleanCacheLocked(Device&,VirtualMemory&,std::size_t);
 std::vector<std::uint32_t> backingMemoryTypes(const Device&,const VkMemoryRequirements&);
@@ -1098,30 +1106,42 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
     VkBufferCreateInfo buffer{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; buffer.size=s.stagingSize;
     buffer.usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     buffer.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
-    if(s.createBuffer(d.handle,&buffer,nullptr,&s.stagingBuffer)!=VK_SUCCESS) return false;
-    VkMemoryRequirements req{}; s.getBufferMemoryRequirements(d.handle,s.stagingBuffer,&req);
-    std::uint32_t type=UINT32_MAX; int bestScore=-1;
-    for(std::uint32_t i=0;i<d.memory.memoryTypeCount;i++) {
-        if(!(req.memoryTypeBits&(1u<<i))) continue;
-        const auto flags=d.memory.memoryTypes[i].propertyFlags;
-        if((flags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))!=
-           (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) continue;
-        const auto heap=d.memory.memoryTypes[i].heapIndex;
-        const bool local=heap<d.memory.memoryHeapCount && (d.memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
-        const bool cached=(flags&VK_MEMORY_PROPERTY_HOST_CACHED_BIT)!=0;
-        const int score=!local&&cached?4:cached?3:!local?2:1;
-        if(score>bestScore) { type=i; bestScore=score; }
+    auto makeStaging=[&](VkBuffer& handle,VkDeviceMemory& memory,void*& mapped) {
+        if(s.createBuffer(d.handle,&buffer,nullptr,&handle)!=VK_SUCCESS) return false;
+        VkMemoryRequirements req{}; s.getBufferMemoryRequirements(d.handle,handle,&req);
+        std::uint32_t type=UINT32_MAX; int bestScore=-1;
+        for(std::uint32_t i=0;i<d.memory.memoryTypeCount;i++) {
+            if(!(req.memoryTypeBits&(1u<<i))) continue;
+            const auto flags=d.memory.memoryTypes[i].propertyFlags;
+            if((flags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))!=
+               (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) continue;
+            const auto heap=d.memory.memoryTypes[i].heapIndex;
+            const bool local=heap<d.memory.memoryHeapCount && (d.memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
+            const bool cached=(flags&VK_MEMORY_PROPERTY_HOST_CACHED_BIT)!=0;
+            const int score=!local&&cached?4:cached?3:!local?2:1;
+            if(score>bestScore) { type=i; bestScore=score; }
+        }
+        if(type==UINT32_MAX) return false;
+        VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; allocation.allocationSize=req.size; allocation.memoryTypeIndex=type;
+        if(s.allocateMemory(d.handle,&allocation,nullptr,&memory)!=VK_SUCCESS) return false;
+        if(s.bindBufferMemory(d.handle,handle,memory,0)!=VK_SUCCESS) return false;
+        void* address{};
+        if(s.mapMemory(d.handle,memory,0,s.stagingSize,0,&address)!=VK_SUCCESS) return false;
+        mapped=address;
+        return true;
+    };
+    if(!makeStaging(s.stagingBuffer,s.stagingMemory,s.mapped)) return false;
+    if(d.rangeChunkBytes && d.selectiveRestore &&
+       !makeStaging(s.lookaheadBuffer,s.lookaheadMemory,s.lookaheadMapped)) {
+        if(s.lookaheadBuffer) s.destroyBuffer(d.handle,s.lookaheadBuffer,nullptr);
+        if(s.lookaheadMemory) s.freeMemory(d.handle,s.lookaheadMemory,nullptr);
+        s.lookaheadBuffer=VK_NULL_HANDLE; s.lookaheadMemory=VK_NULL_HANDLE;
+        logf("Vulkan snapshot lookahead unavailable: using serial restore");
     }
-    if(type==UINT32_MAX) return false;
-    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; allocation.allocationSize=req.size; allocation.memoryTypeIndex=type;
-    if(s.allocateMemory(d.handle,&allocation,nullptr,&s.stagingMemory)!=VK_SUCCESS) return false;
-    if(s.bindBufferMemory(d.handle,s.stagingBuffer,s.stagingMemory,0)!=VK_SUCCESS) return false;
-    const auto result=s.mapMemory(d.handle,s.stagingMemory,0,s.stagingSize,0,&s.mapped);
-    if(result==VK_SUCCESS) {
-        logf("Vulkan snapshot transfer staging bytes=%llu",static_cast<unsigned long long>(s.stagingSize));
-        logf("Vulkan snapshot decode max-workers=%u",s.stagingSize>s.chunkSize?4u:1u);
-    }
-    return result==VK_SUCCESS;
+    logf("Vulkan snapshot transfer staging bytes=%llu",static_cast<unsigned long long>(s.stagingSize));
+    logf("Vulkan snapshot decode max-workers=%u",s.stagingSize>s.chunkSize?4u:1u);
+    if(s.lookaheadMapped) logf("Vulkan snapshot lookahead staging bytes=%llu",static_cast<unsigned long long>(s.stagingSize));
+    return true;
 }
 void releaseSnapshotResources(Device& d) {
     auto& s=d.snapshot;
@@ -1129,6 +1149,9 @@ void releaseSnapshotResources(Device& d) {
         static_cast<unsigned long long>(s.copyCalls),static_cast<unsigned long long>(s.copyBytes),
         static_cast<unsigned long long>(s.copyNanoseconds),static_cast<unsigned long long>(s.decodeBytes),
         static_cast<unsigned long long>(s.decodeNanoseconds));
+    if(s.lookaheadMapped && s.unmapMemory) s.unmapMemory(d.handle,s.lookaheadMemory);
+    if(s.lookaheadBuffer && s.destroyBuffer) s.destroyBuffer(d.handle,s.lookaheadBuffer,nullptr);
+    if(s.lookaheadMemory && s.freeMemory) s.freeMemory(d.handle,s.lookaheadMemory,nullptr);
     if(s.mapped && s.unmapMemory) s.unmapMemory(d.handle,s.stagingMemory);
     if(s.stagingBuffer && s.destroyBuffer) s.destroyBuffer(d.handle,s.stagingBuffer,nullptr);
     if(s.stagingMemory && s.freeMemory) s.freeMemory(d.handle,s.stagingMemory,nullptr);
@@ -1186,9 +1209,12 @@ void trimCleanCacheLocked(Device& d,VkDeviceSize required) {
         }
     }
 }
-VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::size_t childOnly) {
+VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::size_t childOnly,
+                          VkBuffer preparedBuffer,VkDeviceSize preparedBytes) {
     if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
     auto& s=d.snapshot;
+    if(preparedBuffer && (!only || childOnly==SIZE_MAX || !preparedBytes || preparedBytes>s.stagingSize))
+        return VK_ERROR_UNKNOWN;
     bool restoredAny=false;
     std::uint64_t restoredThisCall=0;
     for(auto& pair:d.virtualMemory) {
@@ -1215,6 +1241,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             auto& group=memory.coldGroups[i];
             const auto amount=memory.childSizes[i];
             if(!group.cold) continue;
+            if(preparedBuffer && preparedBytes!=group.logicalBytes) return VK_ERROR_UNKNOWN;
             if(!memory.children[i]) {
                 VkDeviceMemory child{}; std::uint32_t used=UINT32_MAX; r=VK_ERROR_OUT_OF_DEVICE_MEMORY;
                 for(auto type:types) {
@@ -1233,7 +1260,11 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                 group.restoreBound=true;
             }
             VkDeviceSize offset=0;
-            for(std::size_t next=0;next<group.chunks.size();) {
+            if(preparedBuffer) {
+                r=copyChunkLocked(d,preparedBuffer,memory.poolViews[i],0,0,preparedBytes,true);
+                if(r==VK_SUCCESS) offset=preparedBytes;
+            }
+            for(std::size_t next=0;!preparedBuffer && next<group.chunks.size();) {
                 std::array<zvram::snapshot::EncodedChunk,4> batch{};
                 std::size_t count=0;
                 VkDeviceSize staged=0;
@@ -1934,6 +1965,15 @@ VKAPI_ATTR VkResult VKAPI_CALL layerArmRestoreFailure(VkDevice device,std::uint3
     std::lock_guard<std::mutex> lock(d->mutex);
     if(d->restoreFailureInjected) return VK_ERROR_FEATURE_NOT_PRESENT;
     d->restoreFailureAfterGroups=groups;
+    // Test-only grace keeps a committed child observable after the injected
+    // failure, before the normal idle worker can legitimately freeze it again.
+    const auto observeUntil=std::chrono::steady_clock::now()+std::chrono::seconds(1);
+    for(auto& pair:d->virtualMemory) {
+        auto& memory=pair.second;
+        if(!memory.cold) continue;
+        memory.lastUse=observeUntil;
+        for(auto& group:memory.coldGroups) if(group.cold) group.lastUse=observeUntil;
+    }
     return VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerAllocateMemory(VkDevice device,const VkMemoryAllocateInfo* info,const VkAllocationCallbacks* allocator,VkDeviceMemory* out) {
