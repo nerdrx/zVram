@@ -1,0 +1,24 @@
+{
+  "scope": "CPU production-path regression, not GPU performance",
+  "source_sha256": {
+    "layer.cpp": "7e10b0bd290c27da0f75985536db814e0a409d70fb63bf3bcc583d7d1a0cfa01",
+    "resident_bootstrap_check.cpp": "bece829dc9dbb9a197b04f7e621df9daf67d08653689a257ea8e70f285c073de"
+  },
+  "default_cpu_suite": {
+    "passed": 10,
+    "failed": 0,
+    "elapsed_seconds": 3.65
+  },
+  "gdeflate_cpu_suite": {
+    "passed": 12,
+    "failed": 0,
+    "elapsed_seconds": 4.56
+  },
+  "cases": [
+    "fresh budget retry forwards application submit once",
+    "persistent refusal retries admission once and never submits",
+    "partial selective restore preserves restored children and evicts unselected victim under persistently lower budget",
+    "allocation OOM does not trigger budget retry",
+    "sticky sparse error does not trigger budget retry"
+  ]
+}

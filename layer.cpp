@@ -246,6 +246,7 @@ struct Device {
     VkDeviceSize lastBudgetLimit{std::numeric_limits<VkDeviceSize>::max()};
     bool lazyBacking{};
     bool residentAdmissionArmed{true};
+    bool restoreBudgetRefused{};
     bool cleanCache{};
     bool mruEviction{};
     unsigned minSavingsPercent{};
@@ -1540,6 +1541,7 @@ VkResult residentAdmissionLimit(Device& d,VkDeviceSize& limit) {
 }
 VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::size_t childOnly,
                           VkBuffer preparedBuffer,VkDeviceSize preparedBytes) {
+    d.restoreBudgetRefused=false;
     if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
     auto& s=d.snapshot;
     if(preparedBuffer && (!only || childOnly==SIZE_MAX || !preparedBytes || preparedBytes>s.stagingSize))
@@ -1562,11 +1564,11 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                 if(childOnly!=SIZE_MAX && i!=childOnly) continue;
                 if(!memory.coldGroups[i].cold || memory.children[i]) continue;
                 const auto amount=memory.childSizes[i];
-                if(amount>limit-incoming) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                if(amount>limit-incoming) { d.restoreBudgetRefused=true; return VK_ERROR_OUT_OF_DEVICE_MEMORY; }
                 incoming+=amount;
             }
         }
-        if(d.residentBytes>limit-incoming) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        if(d.residentBytes>limit-incoming) { d.restoreBudgetRefused=true; return VK_ERROR_OUT_OF_DEVICE_MEMORY; }
     }
     bool restoredAny=false;
     std::uint64_t restoredThisCall=0;
@@ -2740,6 +2742,21 @@ VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice device,VkDeviceMemory memory
 #include "submission_hooks.inc"
 
 template<class... Args>
+VkResult restoreForQueueWithBudgetRetry(Device& d,const char* name,Args... args) {
+    d.restoreBudgetRefused=false;
+    auto result=restoreForQueue(d,name,args...);
+    if(result!=VK_ERROR_OUT_OF_DEVICE_MEMORY || !d.restoreBudgetRefused || d.gpuGateError!=VK_SUCCESS)
+        return result;
+    // EXT memory-budget estimates can shrink between admission and restore.
+    // Re-admit once under the current estimate; this is not a reservation.
+    d.restoreBudgetRefused=false;
+    result=admitForQueue(d,name,args...);
+    if(result!=VK_SUCCESS) return result;
+    d.restoreBudgetRefused=false;
+    return restoreForQueue(d,name,args...);
+}
+
+template<class... Args>
 void bumpAcceptedWriteEpochs(Device& d,const char* name,Args... args) {
     if(!d.asyncCompression) return;
     std::vector<ActiveRefs::Use> writes;
@@ -2783,7 +2800,7 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     const bool hasCold=std::any_of(d->virtualMemory.begin(),d->virtualMemory.end(),[](const auto& pair){return pair.second.cold;});
     // An idle wait executes no application memory accesses. Keep cold pools asleep.
     if(hasCold && std::strcmp(name,"vkQueueWaitIdle")!=0) {
-        const auto r=restoreForQueue(*d,name,args...); if(r!=VK_SUCCESS) return r;
+        const auto r=restoreForQueueWithBudgetRetry(*d,name,args...); if(r!=VK_SUCCESS) return r;
     }
     const bool unsupportedOrdering=std::strcmp(name,"vkQueueBindSparse")==0 || std::strcmp(name,"vkQueuePresentKHR")==0;
     if(unsupportedOrdering && d->autoEnabled) {

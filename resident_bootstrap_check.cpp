@@ -16,9 +16,13 @@ int failSparseBinds{};
 unsigned failQueueWaitAt{};
 unsigned frees{};
 unsigned budgetQueries{};
+unsigned submitCalls{};
 VkDeviceSize mockHeapBudget{};
 VkDeviceSize mockHeapUsage{};
 VkDeviceSize mockNativeHeapSize{};
+std::vector<std::pair<VkDeviceSize,VkDeviceSize>> mockBudgetSequence;
+const void* applicationSubmitPnext{};
+const VkSubmitInfo* applicationSubmitInfo{};
 unsigned presentCalls{};
 VkResult presentResult{VK_SUCCESS};
 const VkPresentInfoKHR* forwardedPresent{};
@@ -81,7 +85,12 @@ VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDevic
     auto* budget=reinterpret_cast<VkPhysicalDeviceMemoryBudgetPropertiesEXT*>(out->pNext);
     require(budget && budget->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT,
             "production budget query omitted the budget structure");
-    budget->heapBudget[0]=mockHeapBudget; budget->heapUsage[0]=mockHeapUsage;
+    auto heapBudget=mockHeapBudget, heapUsage=mockHeapUsage;
+    if(!mockBudgetSequence.empty()) {
+        const auto index=std::min<std::size_t>(budgetQueries-1,mockBudgetSequence.size()-1);
+        heapBudget=mockBudgetSequence[index].first; heapUsage=mockBudgetSequence[index].second;
+    }
+    budget->heapBudget[0]=heapBudget; budget->heapUsage[0]=heapUsage;
     budget->heapBudget[1]=64*MiB; budget->heapUsage[1]=0;
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockPresent(VkQueue,const VkPresentInfoKHR* info) {
@@ -103,7 +112,11 @@ VKAPI_ATTR VkResult VKAPI_CALL mockCreateSemaphore(VkDevice,const VkSemaphoreCre
     *out=tokenHandle<VkSemaphore>(nextHandle++); return VK_SUCCESS;
 }
 VKAPI_ATTR void VKAPI_CALL mockDestroySemaphore(VkDevice,VkSemaphore,const VkAllocationCallbacks*) {}
-VKAPI_ATTR VkResult VKAPI_CALL mockSubmit(VkQueue,std::uint32_t,const VkSubmitInfo*,VkFence) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockSubmit(VkQueue,std::uint32_t count,const VkSubmitInfo* infos,VkFence) {
+    if(count && infos && ((applicationSubmitPnext && infos[0].pNext==applicationSubmitPnext) ||
+                          (applicationSubmitInfo && infos==applicationSubmitInfo))) ++submitCalls;
+    return VK_SUCCESS;
+}
 VKAPI_ATTR VkResult VKAPI_CALL mockResetCommandPool(VkDevice,VkCommandPool,VkCommandPoolResetFlags) { return VK_SUCCESS; }
 VKAPI_ATTR VkResult VKAPI_CALL mockBeginCommandBuffer(VkCommandBuffer,const VkCommandBufferBeginInfo*) { return VK_SUCCESS; }
 VKAPI_ATTR VkResult VKAPI_CALL mockEndCommandBuffer(VkCommandBuffer) { return VK_SUCCESS; }
@@ -146,7 +159,7 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=0; failAllocations=failSparseBinds=0; failQueueWaitAt=0; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear();
+        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failQueueWaitAt=0; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr;
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
         mockHeapBudget=mockHeapUsage=mockNativeHeapSize=0;
         device.handle=handle; device.autoEnabled=true; device.lazyBacking=true;
@@ -345,6 +358,131 @@ void checkUnknownSubmitAdmission() {
             "admitted unknown submit did not conservatively restore pristine backing");
     require(f.device.residentBytes==3*MiB && !f.state().cold,
             "admitted unknown submit restored the wrong backing amount");
+}
+
+void checkBudgetPreflightRetry() {
+    auto setup=[&](Fixture& f,bool activeEviction=false) {
+        f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+        auto& d=f.device; d.handle=f.handle; d.gdpa=mockGetDeviceProcAddr;
+        d.virtualEnabled=true; d.autoInitialized=true; d.activeEviction=activeEviction;
+        d.residentAdmissionArmed=true; d.budgetProperties=mockBudgetProperties; d.budgetHeap=0;
+        d.budgetReserveBytes=1; d.memory.memoryHeapCount=1; d.memory.memoryHeaps[0].size=2*MiB;
+        mockNativeHeapSize=2*MiB;
+        const auto queue=reinterpret_cast<VkQueue>(f.handle);
+        const std::vector<VkQueue> queues{queue,d.sparseQueue};
+        require(d.autoQueues.init(d.handle,d.gdpa,d.sparseQueue,queues,activeEviction)==VK_SUCCESS,
+                "mock automatic queue setup failed");
+        if(activeEviction) d.restoreQueueGenerations.emplace_back(queue,0);
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices[key(f.handle)]=std::shared_ptr<Device>(&d,[](Device*){});
+        return queue;
+    };
+    auto unregister=[](Fixture& f) {
+        std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(f.handle));
+    };
+    auto submit=[](VkBaseInStructure& chain) {
+        VkSubmitInfo info{VK_STRUCTURE_TYPE_SUBMIT_INFO}; info.pNext=&chain;
+        return info;
+    };
+
+    {
+        Fixture f(MiB,MiB); f.bind(0,MiB); auto& d=f.device; const auto queue=setup(f);
+        VkBaseInStructure unknown{static_cast<VkStructureType>(0x7fffffff),nullptr};
+        auto info=submit(unknown); applicationSubmitPnext=&unknown;
+        const auto* infoPtr=static_cast<const VkSubmitInfo*>(&info);
+        mockBudgetSequence={{2*MiB,0},{MiB,0},{2*MiB,0},{2*MiB,0}};
+        const auto result=queueCall<PFN_vkQueueSubmit>(queue,"vkQueueSubmit",std::uint32_t{1},infoPtr,VkFence{});
+        require(result==VK_SUCCESS && submitCalls==1 && budgetQueries==4,
+                "fresh admission did not retry a preflight-only refusal exactly once");
+        require(allocations==1 && d.residentBytes==MiB && !f.state().cold &&
+                d.gpuGateError==VK_SUCCESS && !d.restoreBudgetRefused,
+                "successful budget retry did not restore cleanly");
+        unregister(f); applicationSubmitPnext=nullptr;
+    }
+    {
+        Fixture f(3*MiB,3*MiB); const auto buffer=f.bind(0,3*MiB);
+        auto& d=f.device; const auto queue=setup(f,true); auto& m=f.state();
+        d.memory.memoryHeaps[0].size=4*MiB; mockNativeHeapSize=4*MiB;
+        d.snapshot.stagingSize=MiB; d.snapshot.chunkSize=MiB;
+        d.snapshot.stagingBuffer=tokenHandle<VkBuffer>(0x8800);
+        d.snapshot.commandPool=tokenHandle<VkCommandPool>(0x8801);
+        d.snapshot.commandBuffer=tokenHandle<VkCommandBuffer>(0x8802);
+        auto staging=std::make_unique<std::vector<std::uint8_t>>(MiB);
+        d.snapshot.mapped=staging->data();
+        d.coldBudget=4*MiB; d.minSavingsPercent=0; d.narrowDescriptorRanges=true;
+        for(std::size_t i=0;i<2;i++) {
+            auto& group=m.coldGroups[i]; group.pristine=false;
+            VirtualMemory::ColdChunk chunk; chunk.bytes.assign(MiB,static_cast<std::uint8_t>(0x31+i));
+            chunk.rawSize=MiB; group.chunks.push_back(std::move(chunk)); group.storedBytes=MiB;
+            m.coldStoredBytes+=MiB; d.coldBytes+=MiB;
+        }
+        // Child 2 starts resident but unselected; the budget retry must evict it.
+        m.children[2]=tokenHandle<VkDeviceMemory>(0x8820); m.childTypes[2]=0;
+        m.coldGroups[2].cold=false; m.coldGroups[2].pristine=false;
+        m.coldGroups[2].logicalBytes=0; m.coldLogicalSize-=MiB; d.coldLogicalBytes-=MiB;
+        m.residentBytes=MiB; d.residentBytes=MiB;
+        d.selectiveRestore=true;
+        d.promotedBuffers[buffer]=PromotedBuffer{};
+        d.promotedBuffers[buffer].size=2*MiB; d.promotedBuffers[buffer].memory=f.memory;
+        const auto command=tokenHandle<VkCommandBuffer>(0x8830);
+        VkCommandBufferAllocateInfo commandAllocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        commandAllocation.commandPool=tokenHandle<VkCommandPool>(0x8831);
+        commandAllocation.commandBufferCount=1; d.submission.allocateCommands(&commandAllocation,&command);
+        d.submission.beginCommand(command); d.submission.bufferRange(command,buffer,0,2*MiB,true);
+        mockBudgetSequence={{4*MiB,MiB},{4*MiB,MiB},{2*MiB+MiB/2+1,MiB},
+                            {2*MiB+MiB/2+1,2*MiB},{2*MiB+MiB/2+1,MiB}};
+        VkSubmitInfo tracked{VK_STRUCTURE_TYPE_SUBMIT_INFO}; tracked.commandBufferCount=1;
+        tracked.pCommandBuffers=&command; applicationSubmitInfo=&tracked;
+        const auto* trackedInfo=static_cast<const VkSubmitInfo*>(&tracked);
+        const auto result=queueCall<PFN_vkQueueSubmit>(queue,"vkQueueSubmit",std::uint32_t{1},trackedInfo,VkFence{});
+        require(result==VK_SUCCESS && submitCalls==1 && budgetQueries==5,
+                "budget shrink after partial selective restore did not re-admit and retry once");
+        require(m.children[0] && !m.coldGroups[0].cold && m.children[1] && !m.coldGroups[1].cold,
+                "retry lost a selected child already restored or failed to restore the next child");
+        require(!m.children[2] && m.coldGroups[2].cold && m.coldGroups[2].logicalBytes==MiB &&
+                d.residentBytes==2*MiB && d.residentBytes<=2*MiB+MiB/2,
+                "re-admission did not evict the unselected victim within the refreshed budget");
+        require(d.gpuGateError==VK_SUCCESS && !d.restoreBudgetRefused,
+                "successful partial-restore retry left a gate or budget marker set");
+        unregister(f); applicationSubmitInfo=nullptr;
+        d.snapshot.mapped=nullptr;
+    }
+    {
+        Fixture f(MiB,MiB); f.bind(0,MiB); auto& d=f.device; const auto queue=setup(f);
+        VkBaseInStructure unknown{static_cast<VkStructureType>(0x7fffffff),nullptr};
+        auto info=submit(unknown); applicationSubmitPnext=&unknown;
+        const auto* infoPtr=static_cast<const VkSubmitInfo*>(&info);
+        mockBudgetSequence={{2*MiB,0},{MiB,0},{MiB,0}};
+        const auto result=queueCall<PFN_vkQueueSubmit>(queue,"vkQueueSubmit",std::uint32_t{1},infoPtr,VkFence{});
+        require(result==VK_ERROR_OUT_OF_DEVICE_MEMORY && submitCalls==0 && budgetQueries==3 &&
+                allocations==0 && f.state().cold,
+                "persistent budget refusal retried more than once or reached the app submit");
+        unregister(f); applicationSubmitPnext=nullptr;
+    }
+    {
+        Fixture f(MiB,MiB); f.bind(0,MiB); auto& d=f.device; const auto queue=setup(f);
+        VkBaseInStructure unknown{static_cast<VkStructureType>(0x7fffffff),nullptr};
+        auto info=submit(unknown); applicationSubmitPnext=&unknown;
+        const auto* infoPtr=static_cast<const VkSubmitInfo*>(&info);
+        mockBudgetSequence={{2*MiB,0},{2*MiB,0}}; failAllocations=1;
+        const auto result=queueCall<PFN_vkQueueSubmit>(queue,"vkQueueSubmit",std::uint32_t{1},infoPtr,VkFence{});
+        require(result==VK_ERROR_OUT_OF_DEVICE_MEMORY && allocations==1 && budgetQueries==2 &&
+                submitCalls==0 && d.gpuGateError==VK_SUCCESS && !d.restoreBudgetRefused && f.state().cold,
+                "non-budget allocation failure was retried or altered the cold group");
+        unregister(f); applicationSubmitPnext=nullptr;
+    }
+    {
+        Fixture f(MiB,MiB); f.bind(0,MiB); auto& d=f.device; const auto queue=setup(f);
+        VkBaseInStructure unknown{static_cast<VkStructureType>(0x7fffffff),nullptr};
+        auto info=submit(unknown); applicationSubmitPnext=&unknown;
+        const auto* infoPtr=static_cast<const VkSubmitInfo*>(&info);
+        mockBudgetSequence={{2*MiB,0},{2*MiB,0}}; failSparseBinds=1;
+        const auto result=queueCall<PFN_vkQueueSubmit>(queue,"vkQueueSubmit",std::uint32_t{1},infoPtr,VkFence{});
+        require(result==VK_ERROR_OUT_OF_DEVICE_MEMORY && allocations==1 && budgetQueries==2 &&
+                submitCalls==0 && d.gpuGateError==VK_ERROR_DEVICE_LOST && !d.restoreBudgetRefused,
+                "sticky sparse failure was retried or app work was forwarded");
+        unregister(f); applicationSubmitPnext=nullptr;
+    }
 }
 
 void checkResidentBudgetAccounting() {
@@ -691,6 +829,7 @@ int main() try {
     checkOneByteBelowCap();
     checkBootstrapAlignmentRollback();
     checkUnknownSubmitAdmission();
+    checkBudgetPreflightRetry();
     checkResidentBudgetAccounting();
     checkBudgetRefusalBeforeAllocation();
     checkDefaultBudgetDoesNotQuery();
