@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "hot_peak": {
+    "drm-resident-vram": 345059328,
+    "drm-resident-gtt": 69210112,
+    "drm-memory-vram": 345059328,
+    "drm-memory-gtt": 69210112
+  },
+  "first_cold": {
+    "drm-resident-vram": 9515008,
+    "drm-resident-gtt": 69210112,
+    "drm-memory-vram": 9515008,
+    "drm-memory-gtt": 69210112
+  }
+}

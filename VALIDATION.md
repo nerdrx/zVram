@@ -39,6 +39,26 @@ VK_VALIDATION_VALIDATE_SYNC=1 \
 
 Both runs exited 0 without core or synchronization validation diagnostics. Raw logs: [native baseline](validation/native-40gib.txt), [zVram layer](validation/zvram-40gib.txt). The 40 GiB test can pressure the desktop; the utility defaults to 64 MiB.
 
+## Automatic Vulkan idle snapshots
+
+The opt-in layer path was tested with a 320 MiB eligible sparse storage buffer, two native backing chunks, and a 32 MiB coherent staging buffer. With a 512 MiB cold-store cap, the first idle snapshot retained 12,263,515 bytes (96.345% smaller than the payload). After a GPU XOR mutation produced randomized contents, the next snapshot correctly used raw 335,544,320-byte backing. Two GPU XOR/wake cycles compared every byte and kept the same `VkBuffer` handle. Cold metadata queries did not wake the allocation, freeing it while cold did not restore it, and the 1 MiB budget refusal retained the original data.
+
+Process fdinfo measured resident DRM VRAM falling from 345,059,328 bytes hot to 9,515,008 bytes cold, exactly the 320 MiB buffer; GTT stayed at 69,210,112 bytes. The logical heap was configured to 96 GiB, but this was a 320 MiB integrity test, not 96 GiB backing. The check passed all 30 CTests in 11.34 seconds.
+
+```sh
+# Bounded capacity probe with a 96 GiB logical heap (2 GiB payload)
+./zvram --verbose --isolate-layers --vulkan-virtual-gib 96 -- \
+  memtest_vulkan 1 2147483648
+
+# Narrow idle snapshot integrity check
+./zvram --verbose --isolate-layers --vulkan-virtual-gib 96 \
+  --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- ./build/zvram-vulkan-auto-check
+```
+
+This mode requires the app to create one sparse+transfer queue and uses only eligible storage buffers whose full snapshot fits the cold budget before unbinding. Active work still needs native VRAM plus GTT. Images, BDA, protected/external memory, suballocations, multiple queues, and general paging are unsupported. The unchanged Vulkan llama.cpp test used native allocations/BDA and multiple queues, so it does not establish automatic model compression.
+
+Evidence: [idle integrity log](validation/vulkan-automatic-idle-integrity.txt), [budget refusal](validation/vulkan-automatic-budget-refusal.txt), [backing report](validation/vulkan-automatic-backing.json), [hot fdinfo](validation/vulkan-automatic-hot.fdinfo.txt), [cold fdinfo](validation/vulkan-automatic-cold.fdinfo.txt), and [CTest output](validation/vulkan-automatic-ctest.txt).
+
 ## Managed Vulkan pool
 
 ### Mixed-data lifecycle check

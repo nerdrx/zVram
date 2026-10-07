@@ -1,0 +1,65 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+      Start  1: compression-roundtrip
+ 1/30 Test  #1: compression-roundtrip ................   Passed    0.10 sec
+      Start  2: layer-capacity-integrity
+ 2/30 Test  #2: layer-capacity-integrity .............   Passed    0.09 sec
+      Start  3: vulkan-virtual-single-integrity
+ 3/30 Test  #3: vulkan-virtual-single-integrity ......   Passed    0.21 sec
+      Start  4: vulkan-virtual-api2-integrity
+ 4/30 Test  #4: vulkan-virtual-api2-integrity ........   Passed    0.18 sec
+      Start  5: vulkan-automatic-idle-integrity
+ 5/30 Test  #5: vulkan-automatic-idle-integrity ......   Passed    1.76 sec
+      Start  6: vulkan-automatic-budget-refusal
+ 6/30 Test  #6: vulkan-automatic-budget-refusal ......   Passed    0.81 sec
+      Start  7: managed-compute-integrity
+ 7/30 Test  #7: managed-compute-integrity ............   Passed    0.50 sec
+      Start  8: managed-capacity-integrity
+ 8/30 Test  #8: managed-capacity-integrity ...........   Passed    0.35 sec
+      Start  9: sparse-compute-integrity
+ 9/30 Test  #9: sparse-compute-integrity .............   Passed    0.09 sec
+      Start 10: hip-native-integrity
+10/30 Test #10: hip-native-integrity .................   Passed    0.41 sec
+      Start 11: hip-spill-integrity
+11/30 Test #11: hip-spill-integrity ..................   Passed    0.10 sec
+      Start 12: hip-procedure-native-query
+12/30 Test #12: hip-procedure-native-query ...........   Passed    0.10 sec
+      Start 13: hip-automatic-idle-integrity
+13/30 Test #13: hip-automatic-idle-integrity .........   Passed    0.84 sec
+      Start 14: hip-automatic-concurrent-integrity
+14/30 Test #14: hip-automatic-concurrent-integrity ...   Passed    0.50 sec
+      Start 15: hip-automatic-local-integrity
+15/30 Test #15: hip-automatic-local-integrity ........   Passed    0.84 sec
+      Start 16: hip-automatic-capture-guard
+16/30 Test #16: hip-automatic-capture-guard ..........   Passed    0.65 sec
+      Start 17: hip-automatic-callback-guard
+17/30 Test #17: hip-automatic-callback-guard .........   Passed    0.64 sec
+      Start 18: hip-hibernation-integrity
+18/30 Test #18: hip-hibernation-integrity ............   Passed    0.27 sec
+      Start 19: hip-hibernation-multisegment
+19/30 Test #19: hip-hibernation-multisegment .........   Passed    1.69 sec
+      Start 20: hip-vmm-integrity
+20/30 Test #20: hip-vmm-integrity ....................   Passed    0.09 sec
+      Start 21: hip-vmm-host-integrity
+21/30 Test #21: hip-vmm-host-integrity ...............   Passed    0.09 sec
+      Start 22: hip-native-capacity-query
+22/30 Test #22: hip-native-capacity-query ............   Passed    0.07 sec
+      Start 23: hip-virtual-capacity-query
+23/30 Test #23: hip-virtual-capacity-query ...........   Passed    0.07 sec
+      Start 24: hip-vmm-descriptor-lifetime
+24/30 Test #24: hip-vmm-descriptor-lifetime ..........   Passed    0.11 sec
+      Start 25: hip-procedure-vmm-query
+25/30 Test #25: hip-procedure-vmm-query ..............   Passed    0.10 sec
+      Start 26: hip-fallback-error-state
+26/30 Test #26: hip-fallback-error-state .............   Passed    0.09 sec
+      Start 27: hip-vmm-error-state
+27/30 Test #27: hip-vmm-error-state ..................   Passed    0.09 sec
+      Start 28: hip-injected-oom-integrity
+28/30 Test #28: hip-injected-oom-integrity ...........   Passed    0.11 sec
+      Start 29: hip-hibernation-remap-recovery
+29/30 Test #29: hip-hibernation-remap-recovery .......   Passed    0.28 sec
+      Start 30: hip-vmm-partial-failure-cleanup
+30/30 Test #30: hip-vmm-partial-failure-cleanup ......   Passed    0.10 sec
+
+100% tests passed out of 30
+
+Total Test time (real) =  11.34 sec

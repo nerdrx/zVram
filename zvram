@@ -13,12 +13,18 @@ parser.add_argument("--hip-local-mib", type=int, help="spill tracked HIP allocat
 parser.add_argument("--hip-host-mib", type=int, help="limit tracked mapped HIP host memory")
 parser.add_argument("--hip-auto-idle-ms", type=int, help="automatically compress idle HIP VMM allocations (experimental, exact supported HIP ABI)")
 parser.add_argument("--hip-cold-mib", type=int, help="limit automatic lossless cold storage; requires --hip-auto-idle-ms")
-parser.add_argument("--vulkan-virtual-mib", type=int, help="set the experimental Vulkan logical heap size at launch, in positive MiB (requires sparse binding)")
+virtual_size = parser.add_mutually_exclusive_group()
+virtual_size.add_argument("--vulkan-virtual-mib", type=int, help="set the experimental Vulkan logical heap size at launch, in positive MiB (requires sparse binding)")
+virtual_size.add_argument("--vulkan-virtual-gib", type=int, help="set the experimental Vulkan logical heap size at launch, in positive GiB (requires sparse binding)")
+parser.add_argument("--vulkan-auto-idle-ms", type=int, help="compress idle synthetic Vulkan allocations after this delay (experimental, single queue only)")
+parser.add_argument("--vulkan-cold-mib", type=int, help="limit retained Vulkan snapshots in MiB; requires --vulkan-auto-idle-ms")
 parser.add_argument("--verbose", action="store_true", help="log each Vulkan allocation")
 parser.add_argument("--validate", action="store_true", help="enable Vulkan core and synchronization validation")
 parser.add_argument("--isolate-layers", action="store_true", help="disable implicit layers for a controlled experiment")
 parser.add_argument("command", nargs=argparse.REMAINDER, help="-- application [arguments]")
 args = parser.parse_args()
+if args.vulkan_virtual_gib is not None:
+    args.vulkan_virtual_mib = args.vulkan_virtual_gib * 1024
 command = args.command
 if command and command[0] == "--":
     command = command[1:]
@@ -32,6 +38,12 @@ if args.vulkan_virtual_mib is not None:
         parser.error("--vulkan-virtual-mib requires the Vulkan backend and a positive size in MiB")
     if args.vulkan_virtual_mib > ((1 << 64) - 1) // (1024 * 1024):
         parser.error("--vulkan-virtual-mib overflows Vulkan's 64-bit byte size")
+if args.vulkan_auto_idle_ms is not None:
+    if args.hip or args.vulkan_virtual_mib is None or args.vulkan_cold_mib is None or not 1 <= args.vulkan_auto_idle_ms <= 60000:
+        parser.error("Vulkan automatic snapshots require --vulkan-virtual-mib, --vulkan-cold-mib, and idle 1..60000 ms")
+if args.vulkan_cold_mib is not None:
+    if args.vulkan_auto_idle_ms is None or not 0 < args.vulkan_cold_mib <= ((1 << 64) - 1) // (1024 * 1024):
+        parser.error("--vulkan-cold-mib requires automatic snapshots and a positive size fitting 64-bit bytes")
 if not args.hip and (args.hip_vmm or args.hip_report_capacity or args.hip_local_mib is not None or args.hip_host_mib is not None or args.hip_auto_idle_ms is not None or args.hip_cold_mib is not None):
     parser.error("HIP virtual memory and memory limits require --hip")
 if args.hip_report_capacity and (not args.hip_vmm or args.hip_local_mib is None or
@@ -77,6 +89,9 @@ if args.hip:
 else:
     if args.vulkan_virtual_mib is not None:
         env["ZVRAM_VULKAN_VIRTUAL_MIB"] = str(args.vulkan_virtual_mib)
+    if args.vulkan_auto_idle_ms is not None:
+        env["ZVRAM_VULKAN_AUTO_IDLE_MS"] = str(args.vulkan_auto_idle_ms)
+        env["ZVRAM_VULKAN_COLD_MIB"] = str(args.vulkan_cold_mib)
     path_variable = "VK_LAYER_PATH" if env.get("VK_LAYER_PATH") else "VK_ADD_LAYER_PATH"
     env[path_variable] = str(build) + (os.pathsep + env[path_variable] if env.get(path_variable) else "")
     layers = ["VK_LAYER_NX_zvram"]

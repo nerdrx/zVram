@@ -1,0 +1,16 @@
+[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+[zvram] virtual bind bytes=335544320 segments=2 local=2 system=0
+[zvram] allocate nonlocal bytes=33554432
+[zvram] snapshot cold bytes=335544320 stored=12263515
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+cold snapshot: logical=335544320 stored=12263515 freezes=1
+wake cycle 1: verified 335544320 bytes
+[zvram] snapshot cold bytes=335544320 stored=335544320
+wake cycle 2: verified 335544320 bytes
+[zvram] snapshot cold bytes=335544320 stored=335544320
+[zvram] virtual free bytes=335544320
+[zvram] free bytes=33554432
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+PASS: two cold/wake compute cycles, full readback, metadata stayed cold, cold free did not restore

@@ -23,8 +23,8 @@ RADV already migrates allocations between VRAM and GPU-accessible system memory.
 ## Experimental Vulkan virtual memory
 
 ```bash
-# Unchanged memtest sees the configured 48 GiB virtual heap; tests 2 GiB.
-./zvram --verbose --isolate-layers --vulkan-virtual-mib 49152 -- memtest_vulkan 1 2147483648
+# Unchanged memtest sees the configured 96 GiB virtual heap; tests 2 GiB.
+./zvram --verbose --isolate-layers --vulkan-virtual-gib 96 -- memtest_vulkan 1 2147483648
 
 # Verify every byte of one 40 GiB logical allocation with chunked staging.
 ./zvram --validate --isolate-layers --vulkan-virtual-mib 49152 -- \
@@ -33,9 +33,23 @@ RADV already migrates allocations between VRAM and GPU-accessible system memory.
 
 This userspace mode adds a GPU-only virtual heap/type while preserving native heaps and memory types. On the tested discrete RADV device, it enables sparse binding and promotes storage buffers of at least 1 MiB with only storage/transfer usage, no creation flags, and no buffer `pNext` chain. Synthetic allocations are backed at bind time by aligned native chunks of at most 256 MiB; native local allocation types are preferred, with compatible system types as fallback. RADV remains responsible for migration between VRAM and RAM. The 40 GiB transfer check verified one logical allocation, one buffer, and 160 native chunks; unchanged memtest completed a bounded 2 GiB compute check with eight chunks and displayed 40 GB.
 
-The configured heap is a logical cap, not reserved memory or a free-capacity guarantee. Binding can fail if actual backing cannot be allocated. This phase supports one bind per synthetic allocation, with zero offset; it retains backing until allocation free. It requires an application-created sparse-capable queue and currently injects sparse features through legacy features or a head `VkPhysicalDeviceFeatures2` chain. Other feature-chain layouts keep this mode disabled. Images, external/protected memory, device addresses, synthetic host mapping, and synthetic suballocation are unsupported. Native buffer/allocation limits remain unchanged; the 40 GiB check used Vulkan 1.1 on this particular RADV driver. This mode does **not** compress Vulkan allocations yet. Ctrl+C stops memtest.
+The configured heap is a logical cap, not reserved memory or a free-capacity guarantee. Binding can fail if actual backing cannot be allocated. This phase supports one bind per synthetic allocation, with zero offset; it retains backing until allocation free unless the narrow automatic-idle mode below is enabled. It requires an application-created sparse-capable queue and currently injects sparse features through legacy features or a head `VkPhysicalDeviceFeatures2` chain. Other feature-chain layouts keep this mode disabled. Images, external/protected memory, device addresses, synthetic host mapping, and synthetic suballocation are unsupported. Native buffer/allocation limits remain unchanged; the 40 GiB check used Vulkan 1.1 on this particular RADV driver. Ctrl+C stops memtest.
 
-Choose the heap size at each launch with `--vulkan-virtual-mib`: `49152` is 48 GiB, `98304` is 96 GiB. There is no artificial upper cap; only positivity and Vulkan's 64-bit byte-size overflow are checked. The heap remains a logical budget. Full 40 GiB backing is verified; 48 GiB was displayed in a 2 GiB memtest smoke check, not a full 48 GiB capacity test.
+Choose the heap size at each launch with `--vulkan-virtual-gib 96`, or use `--vulkan-virtual-mib 98304` for the same 96 GiB budget. Use one size option per launch. There is no artificial upper cap; only positivity and Vulkan's 64-bit byte-size overflow are checked. The heap remains a logical budget. Full 40 GiB backing is verified; both 48 GiB and 96 GiB settings passed bounded 2 GiB memtest checks. Full 48 GiB or 96 GiB backing remains unverified.
+
+### Automatic idle snapshots (narrow experimental path)
+
+`--vulkan-auto-idle-ms 100 --vulkan-cold-mib 512` opts eligible app-created storage buffers into lossless idle snapshots. This was validated with one 320 MiB buffer, two native backing chunks, and a 32 MiB coherent staging buffer. The first idle snapshot retained 12,263,515 bytes (96.345% smaller); after GPU mutation to randomized data, the next snapshot used raw 335,544,320-byte backing. Two GPU XOR wake cycles verified every byte while the `VkBuffer` handle stayed stable. Cold metadata queries and freeing a cold buffer did not restore it. A 1 MiB cold-store budget refused eviction and preserved the original contents.
+
+The first cold transition released exactly 335,544,320 bytes of process DRM resident VRAM (345,059,328 to 9,515,008 bytes); resident GTT stayed at 69,210,112 bytes. This only applies when a single app-created sparse+transfer queue and an eligible storage buffer meet the layer's restrictions, and the complete snapshot fits the cold budget before unbinding. Active work still needs native VRAM plus GTT. Images, BDA, protected/external memory, suballocations, multiple queues, and general application paging are outside this path. The unchanged 135M llama.cpp Vulkan check is not proof of automatic compression: it uses native allocations/BDA and multiple queues.
+
+```sh
+# 96 GiB logical heap, narrow 320 MiB idle-snapshot integrity check
+./zvram --verbose --isolate-layers --vulkan-virtual-gib 96 \
+  --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- ./build/zvram-vulkan-auto-check
+```
+
+See [hardware evidence and limits](VALIDATION.md#automatic-vulkan-idle-snapshots).
 
 ## Managed Vulkan buffer pool
 
