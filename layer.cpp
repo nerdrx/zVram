@@ -25,6 +25,7 @@
 #include "submission_tracking.hpp"
 #include "active_refs.hpp"
 #include "compression_policy.hpp"
+#include "snapshot_decode.hpp"
 
 namespace {
 constexpr char kLayer[] = "VK_LAYER_NX_zvram";
@@ -165,6 +166,8 @@ struct SnapshotResources {
     VkBuffer stagingBuffer{};
     VkDeviceMemory stagingMemory{};
     VkDeviceSize chunkSize{32u*1024u*1024u};
+    VkDeviceSize stagingSize{32u*1024u*1024u};
+    std::uint64_t copyCalls{}, copyBytes{}, copyNanoseconds{}, decodeBytes{}, decodeNanoseconds{};
     void* mapped{};
 };
 struct PromotedBuffer {
@@ -254,12 +257,14 @@ struct Device {
     uint64_t liveLocal{}, peakLocal{}, liveOther{}, peakOther{}, failures{};
 };
 void logSnapshotState(const char* event,const Device& d) {
-    logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu cache-stored=%llu clean-reuses=%llu cache-invalidations=%llu",
+    logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu cache-stored=%llu clean-reuses=%llu cache-invalidations=%llu copy-calls=%llu copy-bytes=%llu copy-ns=%llu decode-bytes=%llu decode-ns=%llu",
          event,static_cast<unsigned long long>(d.residentBytes),static_cast<unsigned long long>(d.coldLogicalBytes),
          static_cast<unsigned long long>(d.coldBytes),static_cast<unsigned long long>(d.freezeCount),
          static_cast<unsigned long long>(d.restoreCount),static_cast<unsigned long long>(d.snapshotFailures),
          static_cast<unsigned long long>(d.cacheBytes),static_cast<unsigned long long>(d.cleanReuseCount),
-         static_cast<unsigned long long>(d.cacheInvalidations));
+         static_cast<unsigned long long>(d.cacheInvalidations),static_cast<unsigned long long>(d.snapshot.copyCalls),
+         static_cast<unsigned long long>(d.snapshot.copyBytes),static_cast<unsigned long long>(d.snapshot.copyNanoseconds),
+         static_cast<unsigned long long>(d.snapshot.decodeBytes),static_cast<unsigned long long>(d.snapshot.decodeNanoseconds));
 }
 std::mutex mapsMutex;
 // Future command entry points absent from our build cannot be tracked safely.
@@ -1081,7 +1086,9 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
     command.commandPool=s.commandPool; command.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY; command.commandBufferCount=1;
     if(s.allocateCommandBuffers(d.handle,&command,&s.commandBuffer)!=VK_SUCCESS) return false;
     if(d.setDeviceLoaderData(d.handle,s.commandBuffer)!=VK_SUCCESS) return false;
-    VkBufferCreateInfo buffer{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; buffer.size=s.chunkSize;
+    // Batch large ranges without growing staging with the application's pool.
+    if(d.rangeChunkBytes>s.chunkSize) s.stagingSize=4*s.chunkSize;
+    VkBufferCreateInfo buffer{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; buffer.size=s.stagingSize;
     buffer.usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     buffer.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
     if(s.createBuffer(d.handle,&buffer,nullptr,&s.stagingBuffer)!=VK_SUCCESS) return false;
@@ -1102,10 +1109,19 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; allocation.allocationSize=req.size; allocation.memoryTypeIndex=type;
     if(s.allocateMemory(d.handle,&allocation,nullptr,&s.stagingMemory)!=VK_SUCCESS) return false;
     if(s.bindBufferMemory(d.handle,s.stagingBuffer,s.stagingMemory,0)!=VK_SUCCESS) return false;
-    return s.mapMemory(d.handle,s.stagingMemory,0,s.chunkSize,0,&s.mapped)==VK_SUCCESS;
+    const auto result=s.mapMemory(d.handle,s.stagingMemory,0,s.stagingSize,0,&s.mapped);
+    if(result==VK_SUCCESS) {
+        logf("Vulkan snapshot transfer staging bytes=%llu",static_cast<unsigned long long>(s.stagingSize));
+        logf("Vulkan snapshot decode max-workers=%u",s.stagingSize>s.chunkSize?4u:1u);
+    }
+    return result==VK_SUCCESS;
 }
 void releaseSnapshotResources(Device& d) {
     auto& s=d.snapshot;
+    if(s.mapped) logf("snapshot transfer profile copy-calls=%llu copy-bytes=%llu copy-ns=%llu decode-bytes=%llu decode-ns=%llu",
+        static_cast<unsigned long long>(s.copyCalls),static_cast<unsigned long long>(s.copyBytes),
+        static_cast<unsigned long long>(s.copyNanoseconds),static_cast<unsigned long long>(s.decodeBytes),
+        static_cast<unsigned long long>(s.decodeNanoseconds));
     if(s.mapped && s.unmapMemory) s.unmapMemory(d.handle,s.stagingMemory);
     if(s.stagingBuffer && s.destroyBuffer) s.destroyBuffer(d.handle,s.stagingBuffer,nullptr);
     if(s.stagingMemory && s.freeMemory) s.freeMemory(d.handle,s.stagingMemory,nullptr);
@@ -1115,6 +1131,7 @@ void releaseSnapshotResources(Device& d) {
 VkResult copyChunkLocked(Device& d,VkBuffer source,VkBuffer destination,VkDeviceSize sourceOffset,
                          VkDeviceSize destinationOffset,VkDeviceSize bytes,bool restoring) {
     auto& s=d.snapshot;
+    const auto started=std::chrono::steady_clock::now();
     VkResult r=s.resetCommandPool(d.handle,s.commandPool,0); if(r!=VK_SUCCESS) return r;
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     r=s.beginCommandBuffer(s.commandBuffer,&begin); if(r!=VK_SUCCESS) return r;
@@ -1135,7 +1152,10 @@ VkResult copyChunkLocked(Device& d,VkBuffer source,VkBuffer destination,VkDevice
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.commandBufferCount=1; submit.pCommandBuffers=&s.commandBuffer;
     r=s.queueSubmit(d.copyQueue?d.copyQueue:d.sparseQueue,1,&submit,VK_NULL_HANDLE);
     const auto queue=d.copyQueue?d.copyQueue:d.sparseQueue;
-    return r==VK_SUCCESS?d.queueWaitIdle(queue):r;
+    if(r==VK_SUCCESS) r=d.queueWaitIdle(queue);
+    ++s.copyCalls; s.copyBytes+=bytes;
+    s.copyNanoseconds+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-started).count();
+    return r;
 }
 void discardCleanCacheLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     auto& group=memory.coldGroups[i];
@@ -1206,15 +1226,30 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                 group.restoreBound=true;
             }
             VkDeviceSize offset=0;
-            for(const auto& chunk:group.chunks) {
-                auto* mapped=static_cast<std::uint8_t*>(s.mapped);
-                if(chunk.compressed) {
-                    const auto size=ZSTD_decompress(mapped,static_cast<std::size_t>(s.chunkSize),chunk.bytes.data(),chunk.bytes.size());
-                    if(ZSTD_isError(size) || size!=chunk.rawSize) { r=VK_ERROR_UNKNOWN; break; }
-                } else std::memcpy(mapped,chunk.bytes.data(),static_cast<std::size_t>(chunk.rawSize));
-                r=copyChunkLocked(d,s.stagingBuffer,memory.poolViews[i],0,offset,chunk.rawSize,true);
+            for(std::size_t next=0;next<group.chunks.size();) {
+                std::array<zvram::snapshot::EncodedChunk,4> batch{};
+                std::size_t count=0;
+                VkDeviceSize staged=0;
+                while(count<batch.size() && next<group.chunks.size()) {
+                    const auto& chunk=group.chunks[next];
+                    if(chunk.rawSize>s.chunkSize || chunk.rawSize>group.logicalBytes-offset-staged) {
+                        r=VK_ERROR_UNKNOWN; break;
+                    }
+                    if(chunk.rawSize>s.stagingSize-staged) break;
+                    batch[count++]={chunk.bytes.data(),chunk.bytes.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed};
+                    staged+=chunk.rawSize; ++next;
+                }
+                if(r!=VK_SUCCESS || !count) { r=VK_ERROR_UNKNOWN; break; }
+                const auto decodeStarted=std::chrono::steady_clock::now();
+                if(!zvram::snapshot::decodeBatch(batch.data(),count,static_cast<std::uint8_t*>(s.mapped),
+                    static_cast<std::size_t>(s.stagingSize),static_cast<std::size_t>(s.chunkSize))) {
+                    r=VK_ERROR_UNKNOWN; break;
+                }
+                s.decodeBytes+=staged;
+                s.decodeNanoseconds+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-decodeStarted).count();
+                r=copyChunkLocked(d,s.stagingBuffer,memory.poolViews[i],0,offset,staged,true);
                 if(r!=VK_SUCCESS) break;
-                offset+=chunk.rawSize;
+                offset+=staged;
             }
             if(r==VK_SUCCESS && offset!=group.logicalBytes) r=VK_ERROR_UNKNOWN;
             if(r!=VK_SUCCESS) {
@@ -1314,20 +1349,25 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
         std::vector<std::uint8_t> encoded;
         for(VkDeviceSize offset=0;offset<logicalBytes;offset+=d.snapshot.chunkSize) {
             const auto amount=std::min(d.snapshot.chunkSize,logicalBytes-offset);
-            r=copyChunkLocked(d,memory.poolViews[i],d.snapshot.stagingBuffer,offset,0,amount,false);
-            if(r!=VK_SUCCESS) { okay=false; break; }
+            const auto stagedOffset=offset%d.snapshot.stagingSize;
+            if(!stagedOffset) {
+                r=copyChunkLocked(d,memory.poolViews[i],d.snapshot.stagingBuffer,offset,0,
+                    std::min(d.snapshot.stagingSize,logicalBytes-offset),false);
+                if(r!=VK_SUCCESS) { okay=false; break; }
+            }
+            const auto* source=static_cast<std::uint8_t*>(d.snapshot.mapped)+stagedOffset;
             VirtualMemory::ColdChunk chunk; chunk.rawSize=amount;
             std::size_t compressed=0;
             bool keepCompressed=false;
             if(d.minSavingsPercent<100) {
                 encoded.resize(ZSTD_compressBound(static_cast<std::size_t>(amount)));
-                compressed=ZSTD_compress(encoded.data(),encoded.size(),d.snapshot.mapped,static_cast<std::size_t>(amount),1);
+                compressed=ZSTD_compress(encoded.data(),encoded.size(),source,static_cast<std::size_t>(amount),1);
                 keepCompressed=!ZSTD_isError(compressed) && retainCompression(amount,compressed,d.minSavingsPercent);
             }
             if(keepCompressed) {
                 chunk.bytes.resize(compressed); std::memcpy(chunk.bytes.data(),encoded.data(),compressed); chunk.compressed=true;
             } else {
-                chunk.bytes.resize(static_cast<std::size_t>(amount)); std::memcpy(chunk.bytes.data(),d.snapshot.mapped,static_cast<std::size_t>(amount));
+                chunk.bytes.resize(static_cast<std::size_t>(amount)); std::memcpy(chunk.bytes.data(),source,static_cast<std::size_t>(amount));
             }
             if(stored<=d.coldBudget && chunk.bytes.size()<=d.coldBudget-stored)
                 trimCleanCacheLocked(d,stored+chunk.bytes.size());

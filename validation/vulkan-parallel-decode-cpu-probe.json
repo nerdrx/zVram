@@ -1,0 +1,53 @@
+{
+  "model": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/models/internlm2_5-20b-chat-fp16.gguf",
+  "model_bytes": 39725643136,
+  "slice_offsets": [
+    9898557440,
+    19830669312,
+    29762781184
+  ],
+  "slice_bytes_each": 33554432,
+  "codec": "Zstd level 1",
+  "workers": 3,
+  "repeats": 5,
+  "compressed_bytes_each": [
+    25739984,
+    25710955,
+    25718376
+  ],
+  "source_sha256": [
+    "2f4c94cccbf2bed719b463cb81759031524e254695ec0a3e357035149a4665e7",
+    "f4ba3dfcd6807c399b9b6d5e7088be35884fa89d6f01f533508ad30fafc4e842",
+    "9aafc2dc5717adfd2f0fba36ece4be96ab9b8a21cd690843d4d650f7e150a2d7"
+  ],
+  "serial_decode_only_ms": [
+    39.53337698476389,
+    39.470447023632005,
+    39.4665649801027,
+    39.396514010149986,
+    39.32619700208306
+  ],
+  "serial_decode_only_median_ms": 39.4665649801027,
+  "parallel_decode_plus_copy_ms": [
+    20.956980995833874,
+    19.51174801797606,
+    20.01830897643231,
+    20.011949993204325,
+    20.313088985858485
+  ],
+  "parallel_decode_plus_copy_median_ms": 20.01830897643231,
+  "parallel_direct_staging_decode_only_ms": [
+    13.486270006978884,
+    13.403110002400354,
+    13.370628992561251,
+    13.303030020324513,
+    13.460290007060394
+  ],
+  "parallel_direct_staging_median_ms": 13.403110002400354,
+  "serial_to_parallel_copy_speedup": 1.9715234202133136,
+  "serial_to_parallel_direct_speedup": 2.944582635898285,
+  "peak_resident_bytes": 236793856,
+  "temporary_ram_bound_bytes": 268435456,
+  "checks": "SHA-256 per decoded chunk and copy; exact Zstd output size; checks run outside timed intervals",
+  "scope": "CPU only; three 32 MiB ranges; no full-model scan or GPU"
+}

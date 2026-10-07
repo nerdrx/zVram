@@ -50,6 +50,10 @@ set_tests_properties(cpu-vulkan-compression-options PROPERTIES TIMEOUT 10)
 add_test(NAME cpu-vulkan-model-budget COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_model_budget.py)
 set_tests_properties(cpu-vulkan-model-budget PROPERTIES TIMEOUT 10)
 add_test(NAME cpu-compression-policy COMMAND zvram-compression-policy-check)
+add_executable(zvram-snapshot-decode-check snapshot_decode_check.cpp)
+target_compile_features(zvram-snapshot-decode-check PRIVATE cxx_std_17)
+target_link_libraries(zvram-snapshot-decode-check PRIVATE Threads::Threads PkgConfig::ZSTD)
+add_test(NAME cpu-snapshot-decode COMMAND zvram-snapshot-decode-check)
 add_executable(zvram-submission-tracking-check submission_tracking_check.cpp)
 target_compile_features(zvram-submission-tracking-check PRIVATE cxx_std_17)
 target_include_directories(zvram-submission-tracking-check PRIVATE ${Vulkan_INCLUDE_DIRS})
@@ -155,6 +159,23 @@ foreach(range_pressure_mode synthetic native)
             set_tests_properties(${test_name} PROPERTIES TIMEOUT 30
                 ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
         endif()
+    endforeach()
+endforeach()
+foreach(batch_mode synthetic native)
+    set(batch_flags)
+    if(batch_mode STREQUAL "native")
+        list(APPEND batch_flags --native-allocation)
+    endif()
+    foreach(batch_savings 0 100)
+        set(batch_test vulkan-transfer-batch-${batch_mode}-${batch_savings})
+        add_test(NAME ${batch_test}
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+                --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512
+                --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib 128 --vulkan-min-savings-percent ${batch_savings} --
+                $<TARGET_FILE:zvram-vulkan-auto-check> ${batch_flags})
+        set_tests_properties(${batch_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
     endforeach()
 endforeach()
 foreach(range_cache_mode synthetic native)

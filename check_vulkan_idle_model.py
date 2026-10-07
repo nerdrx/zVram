@@ -385,7 +385,10 @@ def main():
         checks["no_admission_refusals"] = "resident admission refused:" not in auto_text
     if args.eviction_policy is not None:
         checks["eviction_policy_enabled"] = f"Vulkan eviction policy={args.eviction_policy}" in auto_text
+    profiles = [dict(zip(("copy_calls", "copy_bytes", "copy_ns", "decode_bytes", "decode_ns"), map(int, values)))
+                for values in re.findall(r"copy-calls=(\d+) copy-bytes=(\d+) copy-ns=(\d+) decode-bytes=(\d+) decode-ns=(\d+)", auto_text)]
     result = {"passed": all(checks.values()), "checks": checks, "model": str(model),
+              "transfer_profile": profiles[-1] if profiles else None,
               "binary": str(binary), "command": command,
               "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
               "eviction_policy": args.eviction_policy,
