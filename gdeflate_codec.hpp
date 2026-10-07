@@ -37,6 +37,8 @@ inline void storeLe32(std::uint8_t* p, std::uint32_t value) noexcept {
 
 // Emits the pinned DirectStorage TileStream envelope using one level-1
 // compressor, one reusable worst-case page buffer, and one bounded output.
+// Input and output storage must not overlap. Output capacity survives calls;
+// every failure clears its logical size.
 inline bool encode(const std::uint8_t* raw, std::size_t rawSize,
                    std::vector<std::uint8_t>& encoded) noexcept {
     encoded.clear();
@@ -61,7 +63,7 @@ inline bool encode(const std::uint8_t* raw, std::size_t rawSize,
             offset += amount;
         }
 
-        std::vector<std::uint8_t> result;
+        auto& result = encoded;
         result.reserve(headerBytes + boundTotal);
         result.resize(headerBytes, 0);
         std::vector<std::uint8_t> pageScratch(pageScratchSize);
@@ -79,15 +81,20 @@ inline bool encode(const std::uint8_t* raw, std::size_t rawSize,
             const auto compressed = libdeflate_gdeflate_compress(
                 compressor.get(), raw + offset, amount, &page, 1);
             if (!compressed || compressed != page.nbytes || page.nbytes > pageScratch.size() ||
-                page.nbytes < 4 || (page.nbytes & 3u)) return false;
+                page.nbytes < 4 || (page.nbytes & 3u)) {
+                encoded.clear();
+                return false;
+            }
             if (i + 1 == count)
                 storeLe32(result.data() + 8, static_cast<std::uint32_t>(page.nbytes));
             result.insert(result.end(), pageScratch.begin(), pageScratch.begin() + page.nbytes);
             offset += amount;
         }
         Limits limits{MaxEncodedBytes, MaxRawBytes, rawSize, 0, 0, MaxTiles};
-        if (!validateEnvelope(result.data(), result.size(), limits)) return false;
-        encoded.swap(result);
+        if (!validateEnvelope(result.data(), result.size(), limits)) {
+            encoded.clear();
+            return false;
+        }
         return true;
     } catch (...) {
         encoded.clear();

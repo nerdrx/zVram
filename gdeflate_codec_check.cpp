@@ -76,6 +76,26 @@ void roundtrip(const std::vector<std::uint8_t>& input) {
     require(hasCanaries(guarded), "corrupt payload damaged output canary");
 }
 
+void checkOutputReuse() {
+    std::vector<std::uint8_t> reused;
+    reused.reserve(1024u * 1024u);
+    const auto* storage = reused.data();
+    const auto capacity = reused.capacity();
+    for (const auto size : {2 * Tile + 123, std::size_t(1), Tile, Tile + 19}) {
+        const auto input = pattern(size);
+        std::vector<std::uint8_t> fresh, decoded(size);
+        require(zvram::gdeflate::encode(input.data(), size, fresh) &&
+                zvram::gdeflate::encode(input.data(), size, reused), "reused encode failed");
+        require(reused.data() == storage && reused.capacity() == capacity,
+                "encoder discarded caller output storage");
+        require(reused == fresh, "reused encoder retained stale bytes or tile metadata");
+        require(zvram::gdeflate::decode(reused.data(), reused.size(), decoded.data(), size) &&
+                decoded == input, "reused output failed exact roundtrip");
+    }
+    require(!zvram::gdeflate::encode(nullptr, Tile, reused) && reused.empty() &&
+            reused.capacity() == capacity, "failed encode retained bytes or discarded capacity");
+}
+
 std::filesystem::path fixtureDirectory(const char* requested) {
     if (requested) {
         const std::filesystem::path path(requested);
@@ -127,6 +147,7 @@ int main(int argc, char** argv) try {
     std::vector<std::uint8_t> entropy(Tile + 19);
     for (auto& byte : entropy) byte = static_cast<std::uint8_t>(rng());
     roundtrip(entropy);
+    checkOutputReuse();
 
     std::uint8_t oneByte = 7;
     std::vector<std::uint8_t> encoded{1, 2, 3};

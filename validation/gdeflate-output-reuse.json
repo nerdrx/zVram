@@ -1,0 +1,26 @@
+{
+  "recorded_at_utc": "2026-10-07T18:46:17.607934+00:00",
+  "scope": "CPU-only correctness and capacity reuse, no GPU/Vulkan dispatch. Timings are intentionally not a speed comparison; clean GPU benchmarking remains deferred.",
+  "prior_commit": "fadefd11d536f5de35ff80373a7c7fee9e9f7240",
+  "old_encoder_regression_exit": 1,
+  "old_encoder_regression_stderr": "FAIL: encoder discarded caller output storage",
+  "reuse_sizes": [
+    131195,
+    1,
+    65536,
+    65555
+  ],
+  "reserved_capacity_bytes": 1048576,
+  "caller_output_pointer_stable": true,
+  "caller_output_capacity_stable": true,
+  "raw_bytes": 33554432,
+  "raw_sha256": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895",
+  "encoded_bytes": 27219160,
+  "encoded_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+  "identical_to_prior_gpu_verified_stream": true,
+  "exact_cpu_roundtrip": true,
+  "source_hashes": {
+    "gdeflate_codec.hpp": "190d604caa95cb6c62476c352e36d88a8ad4feccf228d6db3bc7c6e7a0c69ea0",
+    "gdeflate_codec_check.cpp": "c3cef046edd48d4e148ea4a9bf14025e41d1a676e391aeda6bb0ba401b2a93e1"
+  }
+}

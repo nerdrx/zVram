@@ -27,6 +27,8 @@ A separate synthetic Vulkan-layer test exercised this CPU codec with actual GPU-
 
 [Layer test log](../../validation/gdeflate-layer-auto-restore.txt).
 
+The encoder reuses caller output capacity across chunks. Its CPU regression checks preserve storage across changing input sizes, clear failed output, and pass exact round trips. A 32 MiB F16 stream remains byte-identical to the previously GPU-verified input. This removes repeated result-buffer allocation; its throughput impact remains unmeasured. [Reuse evidence](../../validation/gdeflate-output-reuse.json).
+
 ## Opt-in layer GPU restore
 
 Add `--vulkan-gdeflate-gpu` to the launch above to select direct GPU decoding on supported wave32 hardware. The layer uploads each compressed chunk and decodes at most 32 MiB into its private sparse backing view before rebinding application buffers. RAW chunks retain the CPU/copy path; encoding remains on CPU. Recoverable decode errors use counted CPU fallback. A failed fence wait stops reuse and retains potentially in-flight resources until device teardown. Decoder input/upload/scratch memory is outside the tracked backing cap.
