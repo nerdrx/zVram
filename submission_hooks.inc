@@ -221,8 +221,14 @@ bool commandMemories(Device& d,const std::vector<VkCommandBuffer>& commands,std:
         if(binding==v->second.bindings.end() || range.offset>=p->second.size) return false;
         const auto bytes=range.size==VK_WHOLE_SIZE?p->second.size-range.offset:range.size;
         if(!bytes || bytes>p->second.size-range.offset) return false;
-        const auto start=binding->memoryOffset+range.offset;
-        const auto end=start+bytes;
+        auto relativeStart=range.offset;
+        auto relativeEnd=range.offset+bytes;
+        const auto alignment=d.robustRangeAlignment;
+        relativeStart-=relativeStart%alignment;
+        const auto padding=(alignment-relativeEnd%alignment)%alignment;
+        relativeEnd+=std::min(padding,p->second.size-relativeEnd);
+        const auto start=binding->memoryOffset+relativeStart;
+        const auto end=binding->memoryOffset+relativeEnd;
         VkDeviceSize base=0;
         for(std::size_t i=0;i<v->second.childSizes.size();i++) {
             const auto next=base+v->second.childSizes[i];
@@ -250,4 +256,90 @@ bool queueMemories(Device& d,const char*,std::vector<ActiveRefs::Use>& memories,
         }
     }
     return commandMemories(d,commands,memories);
+}
+
+// Pressure admission never waits for an application queue: a future timeline
+// signal may be needed to release it. Only completed unselected children can
+// be displaced. The initial bind and untracked allocations are outside this cap.
+template<class... Args>
+VkResult admitForQueue(Device&,const char*,Args...) { return VK_SUCCESS; }
+template<class Info>
+VkResult admitTrackedSubmit(Device& d,const char* name,std::uint32_t count,const Info* infos,VkFence fence) {
+    if(!d.residentLimitBytes) return VK_SUCCESS;
+    if(!d.rangeChunkBytes) return VK_ERROR_FEATURE_NOT_PRESENT;
+    if(!d.residentAdmissionArmed) {
+        if(d.residentBytes || !d.coldLogicalBytes) return VK_SUCCESS;
+        d.residentAdmissionArmed=true;
+        logf("resident admission armed after complete cold transition");
+    }
+    try {
+        std::vector<ActiveRefs::Use> selected;
+        const bool known=d.autoEnabled && queueMemories(d,name,selected,count,infos,fence);
+        // Empty known submits only advance ordering; do not deny a signal that
+        // can release already accepted work behind a timeline wait.
+        if(known && selected.empty()) return VK_SUCCESS;
+        if(!known) {
+            selected.clear();
+            for(const auto& pair:d.virtualMemory)
+                for(std::size_t i=0;i<pair.second.childSizes.size();++i) selected.push_back({pair.first,i});
+        }
+        VkDeviceSize needed=0,incoming=0;
+        for(const auto& use:selected) {
+            const auto p=d.virtualMemory.find(use.memory);
+            if(p==d.virtualMemory.end() || use.child>=p->second.childSizes.size()) return VK_ERROR_UNKNOWN;
+            const auto size=p->second.childSizes[use.child];
+            if(size>d.residentLimitBytes-needed) {
+                logf("resident admission refused: submission working set exceeds limit-bytes=%llu known=%d",
+                     static_cast<unsigned long long>(d.residentLimitBytes),known);
+                return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            }
+            needed+=size;
+            if(!p->second.children[use.child]) incoming+=size;
+        }
+        if(d.residentBytes<=d.residentLimitBytes-incoming) return VK_SUCCESS;
+        if(!d.autoEnabled) {
+            logf("resident admission refused: automatic paging disabled and full backing exceeds limit");
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto ready=d.autoQueues.pollActive(
+            [&](VkQueue q){d.activeRefs.retire(q);},[&](VkQueue q){d.activeRefs.cover(q);});
+        if(ready!=VK_SUCCESS) {
+            d.gpuGateError=ready; d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
+            return ready;
+        }
+        struct Victim { VkDeviceMemory memory; std::size_t child; std::chrono::steady_clock::time_point used; };
+        std::vector<Victim> victims;
+        for(const auto& pair:d.virtualMemory) {
+            const auto& memory=pair.second;
+            for(std::size_t i=0;i<memory.children.size();++i) {
+                if(!memory.children[i] || memory.coldGroups[i].cold || d.activeRefs.busy(pair.first,i)) continue;
+                const ActiveRefs::Use use{pair.first,i};
+                if(std::find(selected.begin(),selected.end(),use)==selected.end())
+                    victims.push_back({pair.first,i,memory.coldGroups[i].lastUse});
+            }
+        }
+        std::sort(victims.begin(),victims.end(),[](const auto& a,const auto& b){return a.used<b.used;});
+        std::size_t evicted=0;
+        for(const auto& victim:victims) {
+            if(d.residentBytes<=d.residentLimitBytes-incoming) break;
+            auto& memory=d.virtualMemory.at(victim.memory);
+            const auto result=freezeChildLocked(d,memory,victim.child);
+            if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
+            if(result==VK_SUCCESS && memory.coldGroups[victim.child].cold) ++evicted;
+        }
+        if(d.residentBytes>d.residentLimitBytes-incoming) {
+            logf("resident admission refused: completed evictable backing or cold budget unavailable");
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        logf("resident admission selected-chunks=%zu evicted-chunks=%zu resident-before-restore=%llu incoming-bytes=%llu limit-bytes=%llu",
+             selected.size(),evicted,static_cast<unsigned long long>(d.residentBytes),
+             static_cast<unsigned long long>(incoming),static_cast<unsigned long long>(d.residentLimitBytes));
+        return VK_SUCCESS;
+    } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+}
+VkResult admitForQueue(Device& d,const char* name,std::uint32_t count,const VkSubmitInfo* infos,VkFence fence) {
+    return admitTrackedSubmit(d,name,count,infos,fence);
+}
+VkResult admitForQueue(Device& d,const char* name,std::uint32_t count,const VkSubmitInfo2* infos,VkFence fence) {
+    return admitTrackedSubmit(d,name,count,infos,fence);
 }

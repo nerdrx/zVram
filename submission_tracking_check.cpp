@@ -206,6 +206,34 @@ int main() {
 #ifdef VK_EXT_pipeline_robustness
     require(tracker.collectRanges(1,&primary,ranges) && hasRange(ranges,bufferA,0,VK_WHOLE_SIZE),
             "explicit pipeline robustness conservatively widens descriptor ranges");
+
+    tracker.boundedRobustness(true);
+    auto checkRobustnessRange = [&](VkPipelineRobustnessBufferBehaviorEXT behavior,
+                                    VkDeviceSize expectedOffset, VkDeviceSize expectedSize,
+                                    const char* message, std::uintptr_t handle) {
+        VkPipelineRobustnessCreateInfoEXT boundedInfo{};
+        boundedInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT;
+        boundedInfo.storageBuffers = behavior;
+        VkComputePipelineCreateInfo boundedPipelineInfo = pipelineInfo;
+        boundedPipelineInfo.pNext = &boundedInfo;
+        const auto boundedPipeline = fakeHandle<VkPipeline>(handle);
+        tracker.computePipeline(boundedPipeline, boundedPipelineInfo);
+        tracker.beginCommand(primary);
+        tracker.pipeline(primary, boundedPipeline);
+        tracker.descriptors(primary, 1, &copiedSet);
+        require(tracker.collectRanges(1, &primary, ranges) && ranges.size() == 3 &&
+                hasRange(ranges, bufferD, expectedOffset, expectedSize), message);
+        tracker.erasePipeline(boundedPipeline);
+    };
+    checkRobustnessRange(VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT, 44, 20,
+                         "bounded default keeps explicitly disabled robustness narrow", 36);
+    checkRobustnessRange(VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT, 44, 20,
+                         "bounded default keeps robustness2 narrow", 37);
+    checkRobustnessRange(VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DEVICE_DEFAULT_EXT, 44, 20,
+                         "bounded default keeps explicit device default narrow", 38);
+    checkRobustnessRange(VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT, 0, VK_WHOLE_SIZE,
+                         "explicit robustness1 widens descriptor range", 39);
+    tracker.boundedRobustness(false);
 #endif
 
     VkBaseInStructure unknownPipelineInfo{};

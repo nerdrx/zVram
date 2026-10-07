@@ -189,6 +189,23 @@ public:
         return VK_SUCCESS;
     }
 
+    // Called only after downstream vkQueueWaitIdle succeeded while queue entry
+    // remains serialized. If pollActive covers a newer tail, the new marker is
+    // the only new work on this already idle queue, so completing it cannot
+    // wait for an unresolved application semaphore. Never wait on other queues.
+    template<class Retired,class Covered>
+    VkResult finishIdleActive(VkQueue handle,Retired&& retired,Covered&& covered) {
+        auto result=pollActive(retired,covered);
+        if(result!=VK_SUCCESS) return result;
+        const auto q=std::find_if(queues_.begin(),queues_.end(),[&](const Queue& item){return item.handle==handle;});
+        if(q==queues_.end()) return checked(VK_ERROR_FEATURE_NOT_PRESENT);
+        if(q->pending) {
+            result=waitIdle_(handle); if(result!=VK_SUCCESS) return checked(result);
+            result=pollActive(retired,covered); if(result!=VK_SUCCESS) return result;
+        }
+        return q->pending?checked(VK_ERROR_UNKNOWN):VK_SUCCESS;
+    }
+
     // Active restore visibility goes only to the queue that will use the
     // restored resource. Its temporary fence lets pollActive reclaim the
     // binary semaphore without ever CPU-waiting on an app queue.

@@ -21,6 +21,9 @@ parser.add_argument("--vulkan-cold-mib", type=int, help="limit retained Vulkan s
 parser.add_argument("--vulkan-selective-restore", action="store_true", help="restore only allocations referenced by tracked Vulkan submissions; unknown access restores all (experimental)")
 parser.add_argument("--vulkan-active-eviction", action="store_true", help="compress unused whole Vulkan allocations while other tracked submissions remain active; requires selective restore (experimental)")
 parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residency and chunk native pools at this positive MiB granularity; requires active eviction (experimental)")
+parser.add_argument("--vulkan-resident-mib", type=int, help="limit eligible resident backing at tracked submission admission; requires range mode (experimental, not a global VRAM cap)")
+parser.add_argument("--vulkan-resident-after-cold", action="store_true", help="arm resident admission after all eligible backing first becomes cold; startup can exceed limit")
+parser.add_argument("--vulkan-strict-robustness", action="store_true", help="enable supported robustness2 bounds for narrow descriptor residency; requires range mode")
 parser.add_argument("--verbose", action="store_true", help="log each Vulkan allocation")
 parser.add_argument("--validate", action="store_true", help="enable Vulkan core and synchronization validation")
 parser.add_argument("--isolate-layers", action="store_true", help="disable implicit layers for a controlled experiment")
@@ -54,6 +57,13 @@ if args.vulkan_active_eviction and not args.vulkan_selective_restore:
 if args.vulkan_range_mib is not None and (not args.vulkan_active_eviction or
         not 0 < args.vulkan_range_mib <= ((1 << 64) - 1) // (1024 * 1024)):
     parser.error("--vulkan-range-mib requires active eviction and a positive size fitting 64-bit bytes")
+if args.vulkan_resident_mib is not None and (args.vulkan_range_mib is None or
+        not 0 < args.vulkan_resident_mib <= ((1 << 64) - 1) // (1024 * 1024)):
+    parser.error("--vulkan-resident-mib requires range mode and a positive size fitting 64-bit bytes")
+if args.vulkan_strict_robustness and args.vulkan_range_mib is None:
+    parser.error("--vulkan-strict-robustness requires --vulkan-range-mib")
+if args.vulkan_resident_after_cold and args.vulkan_resident_mib is None:
+    parser.error("--vulkan-resident-after-cold requires --vulkan-resident-mib")
 if not args.hip and (args.hip_vmm or args.hip_report_capacity or args.hip_local_mib is not None or args.hip_host_mib is not None or args.hip_auto_idle_ms is not None or args.hip_cold_mib is not None):
     parser.error("HIP virtual memory and memory limits require --hip")
 if args.hip_report_capacity and (not args.hip_vmm or args.hip_local_mib is None or
@@ -108,6 +118,12 @@ else:
         env["ZVRAM_VULKAN_ACTIVE_EVICTION"] = "1"
     if args.vulkan_range_mib is not None:
         env["ZVRAM_VULKAN_RANGE_MIB"] = str(args.vulkan_range_mib)
+    if args.vulkan_resident_mib is not None:
+        env["ZVRAM_VULKAN_RESIDENT_MIB"] = str(args.vulkan_resident_mib)
+    if args.vulkan_resident_after_cold:
+        env["ZVRAM_VULKAN_RESIDENT_AFTER_COLD"] = "1"
+    if args.vulkan_strict_robustness:
+        env["ZVRAM_VULKAN_STRICT_ROBUSTNESS"] = "1"
     path_variable = "VK_LAYER_PATH" if env.get("VK_LAYER_PATH") else "VK_ADD_LAYER_PATH"
     env[path_variable] = str(build) + (os.pathsep + env[path_variable] if env.get(path_variable) else "")
     layers = ["VK_LAYER_NX_zvram"]

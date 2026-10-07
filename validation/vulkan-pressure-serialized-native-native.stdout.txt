@@ -1,0 +1,74 @@
+Validation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+Validation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+
+> Validation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+Validation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+InValidation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+Validation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+ theValidation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+Validation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+ heartValidation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+Validation Error: [ VUID-vkResetCommandPool-commandPool-00040 ] | MessageID = 0xb53e2331
+(Warning - This VUID has now been reported 10 times, which is the duplicate_message_limit value, this will be the last time reporting it).
+vkResetCommandPool(): (VkCommandBuffer 0x55cea67f3120) is in use.
+The Vulkan spec states: All VkCommandBuffer objects allocated from commandPool must not be in the pending state (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkResetCommandPool-commandPool-00040)
+Objects: 2
+    [0] VkCommandBuffer 0x55cea67f3120
+    [1] VkCommandPool 0x260000000026
+
+ of the dense forest, where the moon cast a silver glow over the trees, there lived a fox named Finnley. Finnley was a curious and playful fox, always eager to explore and learn. He loved
+

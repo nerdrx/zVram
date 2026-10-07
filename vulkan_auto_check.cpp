@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -96,6 +97,7 @@ struct Context {
     bool pendingWait{};
     bool pendingBind{};
     bool activeSubmit{};
+    bool pressureTimeline{};
     std::uint32_t secondFamily{};
     std::uint32_t chainIndex{};
     bool chainStarted{};
@@ -116,12 +118,13 @@ struct Context {
     }
 
     void initialize(bool enableBda, bool native, bool twoSame, bool twoSeparate, bool exclusive,
-                    bool pending, bool bindWhilePending, bool active) {
+                    bool pending, bool bindWhilePending, bool active, bool pressureWait = false, bool robustCore = false) {
         twoSeparate = twoSeparate || exclusive;
         bdaMode = enableBda;
         nativeAllocation = native; twoQueues = twoSame; twoFamilies = twoSeparate;
         exclusiveFamilies = exclusive; pendingWait = pending; pendingBind = bindWhilePending;
         activeSubmit = active;
+        pressureTimeline = pressureWait;
         if (exclusive) twoFamilies = true;
         require(!(twoSame && twoSeparate), "choose only one of --two-queues and --two-families");
         require(!(pending && bindWhilePending), "choose only one pending queue test");
@@ -129,7 +132,7 @@ struct Context {
                 "pending queue tests require a multi-queue mode");
         require(!(pending || bindWhilePending) || native, "pending queue tests require --native-allocation");
         VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
-        app.apiVersion = (enableBda || pending || bindWhilePending || active) ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1;
+        app.apiVersion = (enableBda || pending || bindWhilePending || active || pressureWait) ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1;
         VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
         ici.pApplicationInfo = &app;
         check(vkCreateInstance(&ici, nullptr, &instance), "create instance");
@@ -149,18 +152,18 @@ struct Context {
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES};
             VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures{
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
-            if (enableBda || pending || bindWhilePending || active) {
+            if (enableBda || pending || bindWhilePending || active || pressureWait) {
                 VkPhysicalDeviceFeatures2 features2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
                 if (enableBda) {
                     features2.pNext = &bdaFeatures;
-                    if (pending || bindWhilePending || active) bdaFeatures.pNext = &timelineFeatures;
+                    if (pending || bindWhilePending || active || pressureWait) bdaFeatures.pNext = &timelineFeatures;
                 } else {
                     features2.pNext = &timelineFeatures;
                 }
                 vkGetPhysicalDeviceFeatures2(candidate, &features2);
                 features = features2.features;
                 if (enableBda && (!bdaFeatures.bufferDeviceAddress || !features.shaderInt64)) continue;
-                if ((pending || bindWhilePending || active) && !timelineFeatures.timelineSemaphore) continue;
+                if ((pending || bindWhilePending || active || pressureWait) && !timelineFeatures.timelineSemaphore) continue;
             } else {
                 vkGetPhysicalDeviceFeatures(candidate, &features);
             }
@@ -220,7 +223,7 @@ struct Context {
         }
         VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         dci.queueCreateInfoCount = qciCount; dci.pQueueCreateInfos = qci;
-        VkPhysicalDeviceFeatures enabled{}; enabled.sparseBinding = VK_TRUE;
+        VkPhysicalDeviceFeatures enabled{}; enabled.sparseBinding = VK_TRUE; enabled.robustBufferAccess=robustCore;
         VkPhysicalDeviceBufferDeviceAddressFeatures enabledBda{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES};
         VkPhysicalDeviceTimelineSemaphoreFeatures enabledTimeline{
@@ -229,16 +232,16 @@ struct Context {
         if (enableBda) {
             enabledBda.bufferDeviceAddress = VK_TRUE;
             enabled2.features.sparseBinding = VK_TRUE;
-            enabled2.features.shaderInt64 = VK_TRUE;
+            enabled2.features.shaderInt64 = VK_TRUE; enabled2.features.robustBufferAccess=robustCore;
             enabled2.pNext = &enabledBda;
-            if (pendingWait || pendingBind || activeSubmit) {
+            if (pendingWait || pendingBind || activeSubmit || pressureTimeline) {
                 enabledTimeline.timelineSemaphore = VK_TRUE;
                 enabledBda.pNext = &enabledTimeline;
             }
             dci.pNext = &enabled2;
         } else {
             dci.pEnabledFeatures = &enabled;
-            if (pendingWait || pendingBind || activeSubmit) {
+            if (pendingWait || pendingBind || activeSubmit || pressureTimeline) {
                 enabledTimeline.timelineSemaphore = VK_TRUE;
                 dci.pNext = &enabledTimeline;
             }
@@ -274,7 +277,7 @@ struct Context {
             check(vkCreateSemaphore(device, &sci, nullptr, &chainSemaphores[0]), "create queue-chain semaphore");
             check(vkCreateSemaphore(device, &sci, nullptr, &chainSemaphores[1]), "create queue-chain semaphore");
         }
-        if (pendingWait || pendingBind || activeSubmit) {
+        if (pendingWait || pendingBind || activeSubmit || pressureTimeline) {
             VkSemaphoreTypeCreateInfo type{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
             type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
             VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO}; sci.pNext = &type;
@@ -746,17 +749,18 @@ VkResult computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle,
     return VK_SUCCESS;
 }
 
-void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
+VkResult readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
                        int cycle, bool releaseForCompute = false,
                        VkDeviceSize byteSize = TotalBytes,
-                       std::uint32_t queueIndex = 0, std::uint32_t firstChunk = 0) {
+                       std::uint32_t queueIndex = 0, std::uint32_t firstChunk = 0,
+                       VkResult expectedFailure = VK_SUCCESS) {
     auto* actual = static_cast<const std::uint32_t*>(staging.mapped);
     require(byteSize % ChunkBytes == 0, "readback size must contain whole chunks");
     const std::uint32_t chunkCount = static_cast<std::uint32_t>(byteSize / ChunkBytes);
     for (std::uint32_t localChunk = 0; localChunk < chunkCount; ++localChunk) {
         const std::uint32_t chunk=firstChunk+localChunk;
         const VkDeviceSize offset = static_cast<VkDeviceSize>(chunk) * ChunkBytes;
-        context.submit([&](VkCommandBuffer command) {
+        const VkResult result = context.submit([&](VkCommandBuffer command) {
             if (context.exclusiveFamilies && chunk == 0) {
                 VkBufferMemoryBarrier acquire{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
                 acquire.srcAccessMask = 0;
@@ -791,7 +795,8 @@ void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
                                      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
                                      0, nullptr, 1, &release, 0, nullptr);
             }
-        }, queueIndex);
+        }, queueIndex, expectedFailure);
+        if (expectedFailure != VK_SUCCESS) return result;
         const std::uint32_t base = chunk * ChunkWords;
         for (std::uint32_t i = 0; i < ChunkWords; ++i) {
             std::uint32_t expected = initialWord(base + i);
@@ -802,6 +807,7 @@ void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
                     std::to_string((static_cast<std::uint64_t>(base) + i) * 4));
         }
     }
+    return VK_SUCCESS;
 }
 void suballocationCheck(Context& context, bool automatic, bool api2) {
     constexpr VkDeviceSize PoolBytes = 512 * MiB;
@@ -1097,7 +1103,7 @@ void selectiveBindCheck(Context& context, bool api2) {
               << " independent pools froze cold, woke selectively, and preserved distinct full-byte patterns" << std::endl;
 }
 
-void rangeSubmitCheck(Context& context) {
+void rangeSubmitCheck(Context& context, bool pressure) {
     constexpr VkDeviceSize Bytes=2*ChunkBytes;
     Buffer pool; pool.device=context.device;
     VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -1121,6 +1127,134 @@ void rangeSubmitCheck(Context& context) {
     check(vkMapMemory(context.device,staging.memory,0,ChunkBytes,0,&staging.mapped),"map range staging");
     upload(context,pool.handle,staging,Bytes);
     check(computeCycle(context,pool.handle,0,0,false,Bytes),"initialize both range chunks");
+    if (pressure) {
+        auto requirePressure = [&] {
+            const auto stats = context.stats();
+            require(stats.residentBytes == ChunkBytes && stats.coldLogicalBytes == ChunkBytes &&
+                    stats.failures == 0, "range pressure did not retain exactly one resident chunk");
+        };
+        requirePressure();
+        for (std::uint32_t cycle = 1; cycle <= 3; ++cycle) {
+            for (std::uint32_t chunk = 0; chunk < 2; ++chunk) {
+                check(computeCycle(context, pool.handle, cycle, 0, false, ChunkBytes, chunk),
+                      "compute pressured range chunk");
+                requirePressure();
+                readbackAndVerify(context, pool.handle, staging, cycle, false, ChunkBytes, 0, chunk);
+                requirePressure();
+            }
+        }
+        const auto refuseWholeBuffer = [&](const char* operation, auto&& record) {
+            const auto result = context.submit(std::forward<decltype(record)>(record), 0,
+                                               VK_ERROR_OUT_OF_DEVICE_MEMORY);
+            require(result == VK_ERROR_OUT_OF_DEVICE_MEMORY, operation);
+            requirePressure();
+        };
+        refuseWholeBuffer("whole-buffer fill was not refused under the resident cap",
+            [&](VkCommandBuffer command) {
+                vkCmdFillBuffer(command, pool.handle, 0, Bytes, 0xfeedfaceu);
+            });
+        readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, 0);
+        requirePressure();
+        readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, 1);
+        requirePressure();
+
+        VkEvent event{};
+        VkEventCreateInfo eventInfo{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
+        check(vkCreateEvent(context.device, &eventInfo, nullptr, &event), "create pressure unknown-command event");
+        refuseWholeBuffer("unknown-command submit was not refused under the resident cap",
+            [&](VkCommandBuffer command) {
+                vkCmdSetEvent(command, event, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            });
+        vkDestroyEvent(context.device, event, nullptr);
+        readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, 0);
+        requirePressure();
+        readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, 1);
+        requirePressure();
+
+        if (context.twoQueues) {
+            VkDescriptorBufferInfo info{pool.handle, 0, ChunkBytes};
+            VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            write.dstSet = context.descriptor; write.dstBinding = 0; write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; write.pBufferInfo = &info;
+            vkUpdateDescriptorSets(context.device, 1, &write, 0, nullptr);
+            const std::uint32_t cycle = 4;
+            const std::uint32_t push[3]{ChunkWords, cycleSalt(cycle, 0), 1};
+            VkCommandBufferAllocateInfo commandAlloc{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+            commandAlloc.commandPool = context.secondCommands;
+            commandAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            commandAlloc.commandBufferCount = 1;
+            VkCommandBuffer pendingCommand{};
+            check(vkAllocateCommandBuffers(context.device, &commandAlloc, &pendingCommand),
+                  "allocate pending range command");
+            try {
+                VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+                begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                check(vkBeginCommandBuffer(pendingCommand, &begin), "begin pending range command");
+                VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                vkCmdPipelineBarrier(pendingCommand, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+                vkCmdBindPipeline(pendingCommand, VK_PIPELINE_BIND_POINT_COMPUTE, context.pipeline);
+                vkCmdBindDescriptorSets(pendingCommand, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                        context.pipelineLayout, 0, 1, &context.descriptor, 0, nullptr);
+                vkCmdPushConstants(pendingCommand, context.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
+                                   0, sizeof(push), push);
+                vkCmdDispatch(pendingCommand, ChunkWords / 256, 1, 1);
+                check(vkEndCommandBuffer(pendingCommand), "end pending range command");
+
+                const std::uint64_t waitValue = 1;
+                VkTimelineSemaphoreSubmitInfo waitValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+                waitValues.waitSemaphoreValueCount = 1; waitValues.pWaitSemaphoreValues = &waitValue;
+                const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                VkSubmitInfo pendingInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+                pendingInfo.pNext = &waitValues;
+                pendingInfo.waitSemaphoreCount = 1; pendingInfo.pWaitSemaphores = &context.pendingTimeline;
+                pendingInfo.pWaitDstStageMask = &waitStage;
+                pendingInfo.commandBufferCount = 1; pendingInfo.pCommandBuffers = &pendingCommand;
+                TimelineWatchdog watchdog(context.device, context.pendingTimeline, waitValue);
+                check(vkQueueSubmit(context.secondQueue, 1, &pendingInfo, VK_NULL_HANDLE),
+                      "submit pending first-range compute");
+                const auto refusedRead = readbackAndVerify(context, pool.handle, staging, 3,
+                    false, ChunkBytes, 0, 1, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+                require(refusedRead == VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                        "in-flight first range did not block second-range readback");
+                VkTimelineSemaphoreSubmitInfo signalValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+                signalValues.signalSemaphoreValueCount = 1; signalValues.pSignalSemaphoreValues = &waitValue;
+                VkSubmitInfo signalInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+                signalInfo.pNext = &signalValues; signalInfo.signalSemaphoreCount = 1;
+                signalInfo.pSignalSemaphores = &context.pendingTimeline;
+                const auto signalResult = vkQueueSubmit(context.queue, 1, &signalInfo, VK_NULL_HANDLE);
+                const auto idleResult = vkQueueWaitIdle(context.secondQueue);
+                watchdog.cancelAndJoin();
+                if (idleResult != VK_SUCCESS) {
+                    vkDeviceWaitIdle(context.device);
+                    check(idleResult, "finish pending range queue");
+                }
+                check(signalResult, "signal pending range timeline from first queue");
+                check(idleResult, "finish pending range queue");
+                vkFreeCommandBuffers(context.device, context.secondCommands, 1, &pendingCommand);
+                pendingCommand = VK_NULL_HANDLE;
+                readbackAndVerify(context, pool.handle, staging, 4, false, ChunkBytes, 0, 0);
+                requirePressure();
+                readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, 1);
+                requirePressure();
+            } catch (...) {
+                if (pendingCommand) {
+                    vkDeviceWaitIdle(context.device);
+                    vkFreeCommandBuffers(context.device, context.secondCommands, 1, &pendingCommand);
+                }
+                throw;
+            }
+        }
+        std::cout << "PASS: resident-cap range pressure evicted completed chunks, refused broad/unknown submissions, and preserved every byte" << std::endl;
+        vkDestroyBuffer(context.device,pool.handle,nullptr);pool.handle=VK_NULL_HANDLE;
+        vkFreeMemory(context.device,pool.memory,nullptr);pool.memory=VK_NULL_HANDLE;
+        const auto empty=context.stats();
+        require(!empty.residentBytes && !empty.coldLogicalBytes && !empty.coldStoredBytes && !empty.failures,
+                "range pressure cleanup retained backing or errors");
+        return;
+    }
     auto waitCold=[&] {
         const auto deadline=std::chrono::steady_clock::now()+ColdTimeout;
         while(std::chrono::steady_clock::now()<deadline) {
@@ -1474,6 +1608,8 @@ int main(int argc, char** argv) try {
     bool pendingWait = false, pendingBind = false;
     bool activeSubmit = false;
     bool rangeSubmit = false;
+    bool rangePressure = false;
+    bool robustCore = false;
     bool concurrentWait = false;
     bool suballocation = false, suballocationAuto = false, suballocationApi2 = false;
     bool selectiveBind = false, selectiveBindApi2 = false;
@@ -1500,8 +1636,10 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--selective-submit-api2") == 0) { selectiveSubmit = true; selectiveSubmitApi2 = true; }
         else if (std::strcmp(argv[i], "--selective-submit-unknown") == 0) { selectiveSubmit = true; selectiveSubmitUnknown = true; }
         else if (std::strcmp(argv[i], "--range-submit") == 0) { rangeSubmit=true; selectiveSubmit=true; }
+        else if (std::strcmp(argv[i], "--robust-core") == 0) robustCore=true;
+        else if (std::strcmp(argv[i], "--range-pressure") == 0) { rangeSubmit=true; rangePressure=true; }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--active-submit --two-queues]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-pressure] [--active-submit --two-queues]");
     }
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||
@@ -1514,6 +1652,10 @@ int main(int argc, char** argv) try {
     require(!(expectPartialRestore && (expectBudgetRefusal || expectPartialFreeze || nativeAllocation || bdaMode)),
             "partial-restore mode requires the standard virtual allocation path");
     require(!(twoQueues && (twoFamilies || exclusiveFamilies)), "choose only one multi-queue mode");
+    require(!rangePressure || (rangeSubmit && !activeSubmit && !bdaMode && !twoFamilies && !exclusiveFamilies),
+            "range pressure requires descriptor-tracked range-submit mode");
+    require(!rangePressure || !pendingWait,
+            "range pressure manages its own pending timeline test");
     require(!(expectBudgetRefusal && exclusiveFamilies), "budget refusal mode does not use exclusive family transfers");
     require(!(pendingWait && pendingBind), "choose only one pending queue test");
     require(!concurrentWait || (pendingWait && twoQueues),
@@ -1523,7 +1665,7 @@ int main(int argc, char** argv) try {
                                 twoFamilies || exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
             "selective-bind mode is independent of other Vulkan checks");
     require(!selectiveSubmit || !(selectiveBind || suballocation || expectBudgetRefusal || expectBudgetRelease ||
-                                  expectPartialFreeze || expectPartialRestore || (twoQueues && !activeSubmit) || twoFamilies ||
+                                  expectPartialFreeze || expectPartialRestore || (twoQueues && !activeSubmit && !rangePressure) || twoFamilies ||
                                   exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
             "selective-submit mode is independent of other Vulkan checks");
     if (activeSubmit && !twoQueues) {
@@ -1541,8 +1683,8 @@ int main(int argc, char** argv) try {
     require(!suballocation || !nativeAllocation || suballocationAuto,
             "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
-                       pendingWait, pendingBind, activeSubmit);
-    if (rangeSubmit) { rangeSubmitCheck(context); return 0; }
+                       pendingWait, pendingBind, activeSubmit, rangePressure && twoQueues, robustCore);
+    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
     if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }

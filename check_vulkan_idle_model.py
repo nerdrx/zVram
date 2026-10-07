@@ -187,6 +187,12 @@ def main():
                         help="test tracked eviction while unrelated submissions remain active; enables selective restore")
     parser.add_argument("--range-mib", type=int,
                         help="test sparse range residency at this MiB chunk size; enables active eviction")
+    parser.add_argument("--validate", action="store_true", help="enable Vulkan core/synchronization validation on both runs")
+    parser.add_argument("--resident-mib", type=int, help="test pressure admission limit; requires --range-mib")
+    parser.add_argument("--strict-robustness", action="store_true", help="enable supported robustness2 for narrow descriptor ranges")
+    parser.add_argument("--resident-after-cold", action="store_true", help="allow bootstrap then arm pressure admission after all eligible backing is cold")
+    parser.add_argument("--max-nodes-per-submit", type=int, help="set llama.cpp graph batching identically for both runs")
+    parser.add_argument("--serialize-submissions", action="store_true", help="use llama.cpp synchronous submissions identically for both runs")
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument("--output-dir", type=Path, default=Path("build/vulkan-idle-model-check"))
     parser.add_argument("--app-arg", action="append", default=[],
@@ -196,6 +202,14 @@ def main():
     args.selective_restore = args.selective_restore or args.active_eviction
     if args.range_mib is not None and not 0 < args.range_mib <= ((1 << 64) - 1) // (1024 * 1024):
         parser.error("--range-mib must be positive and fit 64-bit bytes")
+    if args.resident_mib is not None and (args.range_mib is None or not 0 < args.resident_mib <= ((1 << 64) - 1) // (1024 * 1024)):
+        parser.error("--resident-mib requires --range-mib and positive size fitting 64-bit bytes")
+    if args.strict_robustness and args.range_mib is None:
+        parser.error("--strict-robustness requires --range-mib")
+    if args.resident_after_cold and args.resident_mib is None:
+        parser.error("--resident-after-cold requires --resident-mib")
+    if args.max_nodes_per_submit is not None and not 1 <= args.max_nodes_per_submit <= (1 << 32) - 1:
+        parser.error("--max-nodes-per-submit must fit a positive uint32")
     binary = args.binary.expanduser().resolve()
     model = args.model.expanduser().resolve()
     launcher = root / "zvram"
@@ -220,6 +234,14 @@ def main():
     env["GGML_CUDA_DISABLE_GRAPHS"] = "1"
     env["GGML_VK_VISIBLE_DEVICES"] = "0"
     env["GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM"] = "1"
+    if args.max_nodes_per_submit is not None:
+        env["GGML_VK_MAX_NODES_PER_SUBMIT"] = str(args.max_nodes_per_submit)
+    if args.serialize_submissions:
+        env["GGML_VK_SERIALIZE_SUBMISSIONS"] = "1"
+    if args.validate:
+        env["VK_INSTANCE_LAYERS"] = "VK_LAYER_KHRONOS_validation"
+        env["VK_VALIDATION_VALIDATE_SYNC"] = "1"
+        env["VK_LOADER_LAYERS_DISABLE"] = "~implicit~"
     native = run_interactive("native", app, env, output, args.timeout, False)
     command = [str(launcher), "--vulkan-virtual-gib", "96", "--vulkan-auto-idle-ms",
                str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib)]
@@ -229,6 +251,14 @@ def main():
         command.append("--vulkan-active-eviction")
     if args.range_mib is not None:
         command += ["--vulkan-range-mib", str(args.range_mib)]
+    if args.resident_mib is not None:
+        command += ["--vulkan-resident-mib", str(args.resident_mib)]
+    if args.resident_after_cold:
+        command.append("--vulkan-resident-after-cold")
+    if args.strict_robustness:
+        command.append("--vulkan-strict-robustness")
+    if args.validate:
+        command += ["--validate", "--isolate-layers"]
     command += ["--", *app]
     auto = run_interactive("automatic", command, env, output, args.timeout, True)
     auto_text = auto["stderr"]
@@ -262,8 +292,30 @@ def main():
         checks["active_eviction_enabled"] = "active Vulkan eviction enabled" in auto_text
     if args.range_mib is not None:
         checks["range_residency_enabled"] = "Vulkan range residency enabled" in auto_text
+    pressure_events = [tuple(map(int, values)) for values in re.findall(
+        r"resident admission selected-chunks=(\d+) evicted-chunks=(\d+) resident-before-restore=(\d+) incoming-bytes=(\d+) limit-bytes=(\d+)", auto_text)]
+    if args.validate:
+        checks["no_validation_diagnostics"] = not any(
+            "Validation Error" in text or "VUID-" in text
+            for text in (native["stderr"], native["stdout"].decode(errors="replace"), auto_text, auto["stdout"].decode(errors="replace")))
+    admission_text = auto_text.split("resident admission armed after complete cold transition", 1)[-1]
+    resident_states = [int(value) for value in re.findall(r"snapshot state event=[^ ]+ resident=(\d+)", admission_text)]
+    if args.strict_robustness:
+        checks["bounded_robustness_enabled"] = "bounded Vulkan robustness enabled" in auto_text
+    if args.resident_mib is not None:
+        if args.resident_after_cold:
+            checks["resident_admission_armed"] = "resident admission armed after complete cold transition" in auto_text
+        checks["resident_admission_enabled"] = "Vulkan resident admission enabled" in auto_text
+        checks["pressure_eviction_observed"] = any(evicted > 0 for _, evicted, _, _, _ in pressure_events)
+        checks["pressure_admissions_within_limit"] = bool(pressure_events) and all(
+            resident + incoming <= limit == args.resident_mib * MiB for _, _, resident, incoming, limit in pressure_events)
+        checks["tracked_resident_peak_within_limit"] = bool(resident_states) and max(resident_states) <= args.resident_mib * MiB
+        checks["no_admission_refusals"] = "resident admission refused:" not in auto_text
     result = {"passed": all(checks.values()), "checks": checks, "model": str(model),
               "binary": str(binary), "command": command,
+              "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
+              "resident_admission_events": pressure_events,
+              "tracked_resident_peak_after_arming": max(resident_states) if resident_states else None,
               "native": {k: v for k, v in native.items() if k not in ("stdout", "stderr")},
               "automatic": {k: v for k, v in auto.items() if k not in ("stdout", "stderr")},
               "automatic_cold_state_before_prompt": cold_state,

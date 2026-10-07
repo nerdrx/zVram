@@ -20,6 +20,8 @@ public:
         VkDeviceSize size{VK_WHOLE_SIZE};
     };
 
+    void boundedRobustness(bool bounded) { boundedDefault_ = bounded; }
+
     void shader(VkShaderModule module, const VkShaderModuleCreateInfo* info) {
         shaders_[module] = classify(info);
     }
@@ -37,7 +39,21 @@ public:
         bool wide=false;
         for(auto* p=static_cast<const VkBaseInStructure*>(info.pNext);p;p=p->pNext) {
 #ifdef VK_EXT_pipeline_robustness
-            if(p->sType==VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT) wide=true;
+            if(p->sType==VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT) {
+                const auto* robustness=reinterpret_cast<const VkPipelineRobustnessCreateInfoEXT*>(p);
+                switch(robustness->storageBuffers) {
+                case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DEVICE_DEFAULT_EXT:
+                    wide=!boundedDefault_; break;
+                case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT:
+                    wide=false; break;
+                case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT:
+                    wide=true; break;
+                case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT:
+                    wide=!boundedDefault_; break;
+                default:
+                    wide=true; break;
+                }
+            }
 #endif
         }
         widePipelines_[pipeline]=wide;
@@ -436,6 +452,7 @@ private:
     std::unordered_map<VkShaderModule, ShaderKind> shaders_;
     std::unordered_map<VkPipeline, bool> pipelines_;
     std::unordered_map<VkPipeline, bool> widePipelines_;
+    bool boundedDefault_{};
     std::unordered_map<VkDescriptorSetLayout, Layout> layouts_;
     std::unordered_map<VkDescriptorSet, Set> sets_;
     std::unordered_map<VkCommandBuffer, Command> commands_;

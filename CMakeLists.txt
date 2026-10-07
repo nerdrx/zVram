@@ -108,6 +108,45 @@ foreach(range_mode synthetic native)
     set_tests_properties(vulkan-range-residency-${range_mode} PROPERTIES TIMEOUT 60
         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
+foreach(range_pressure_mode synthetic native)
+    foreach(queue_mode single two-queues)
+        set(range_pressure_flags --range-pressure)
+        if(range_pressure_mode STREQUAL "native")
+            list(APPEND range_pressure_flags --native-allocation)
+        endif()
+        if(queue_mode STREQUAL "two-queues")
+            list(APPEND range_pressure_flags --two-queues)
+        endif()
+        set(test_name vulkan-range-pressure-${range_pressure_mode}-${queue_mode})
+        add_test(NAME ${test_name}
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
+                --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+                --vulkan-resident-mib 32 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> ${range_pressure_flags})
+        if(queue_mode STREQUAL "two-queues")
+            set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
+                ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+        else()
+            set_tests_properties(${test_name} PROPERTIES TIMEOUT 30
+                ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+        endif()
+    endforeach()
+endforeach()
+foreach(robust_mode synthetic native)
+    set(robust_flags --range-pressure --robust-core)
+    if(robust_mode STREQUAL "native")
+        list(APPEND robust_flags --native-allocation)
+    endif()
+    add_test(NAME vulkan-range-pressure-robust-${robust_mode}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 32 --vulkan-strict-robustness --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${robust_flags})
+    set_tests_properties(vulkan-range-pressure-robust-${robust_mode} PROPERTIES TIMEOUT 60
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
 foreach(active_mode synthetic native synthetic-unknown native-unknown)
     set(active_flags --active-submit --two-queues)
     if(active_mode MATCHES "^native")
