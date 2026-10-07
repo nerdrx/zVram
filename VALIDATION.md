@@ -227,7 +227,7 @@ Each allocation contains half repeated 64-bit values and half seeded pseudo-rand
 
 Per-process `/proc/self/fdinfo` measurements separate these resources from other desktop applications. In the larger check's first cycle, DRM client 17584 reported resident VRAM **159,916 → 143,532 KiB** and GTT **286,772 → 8,244 KiB** hot-to-cold: exactly **16 MiB VRAM + 272 MiB GTT** released. On restore, GTT returned to 286,772 KiB and VRAM to 159,920 KiB, with a 4 KiB runtime difference. GPU-wide sysfs counters are also logged; they include other applications and need not immediately reflect client releases. These measurements establish backing release for this synthetic check, not total process-RAM savings or a model compression ratio.
 
-Internal snapshot copies use a GPU kernel and a 1 MiB mapped staging allocation with its explicit device alias. An earlier native-copy staging attempt returned incorrect readbacks after remapping; the final path passes both GPU checks and native application readbacks. Access is granted on the full mapped range because ROCm 7.2's [`hipMemSetAccess` implementation](https://github.com/ROCm/clr/blob/rocm-7.2.0/hipamd/src/hip_vm.cpp) validates child sizes from the parent range. Resume maps all missing segments before granting access and restoring chunks. It can require active backing plus retained snapshots, and can fail with recoverable cold data if another allocation occupies capacity or RAM admission fails. No automatic idle hooks, launch interception, fault paging, compressed inference, or multi-GPU validation is claimed.
+Internal snapshot copies use a GPU kernel and a 1 MiB mapped staging allocation with its explicit device alias. An earlier native-copy staging attempt returned incorrect readbacks after remapping; the final path passes both GPU checks and native application readbacks. Access is granted on the full mapped range because ROCm 7.2's [`hipMemSetAccess` implementation](https://github.com/ROCm/clr/blob/rocm-7.2.0/hipamd/src/hip_vm.cpp) validates child sizes from the parent range. Resume maps all missing segments before granting access and restoring chunks. It can require active backing plus retained snapshots, and can fail with recoverable cold data if another allocation occupies capacity or RAM admission fails. These explicit checks do not establish fault paging, compressed active inference, or multi-GPU behavior. Automatic HIP dispatch checks are documented below.
 
 All **21 CTests passed** after this feature, including the existing allocation, lookup, error-state, and Vulkan regressions. Raw logs: [32 MiB integrity](validation/hip-hibernation-integrity.txt), [288 MiB and process residency](validation/hip-hibernation-multisegment.txt), [failed remap recovery](validation/hip-hibernation-remap-recovery.txt).
 
@@ -238,3 +238,43 @@ ctest --test-dir build -R hip-hibernation --output-on-failure
 ```
 
 A separate allocator regression reran the unchanged small F16 llama.cpp model for eight tokens through native and VMM/GTT paths. Both exited 0, offloaded 31/31 layers, and produced identical output (SHA-256 `93f6b895a3f0448b3fa0a4299639533448ddafe1a235a21dc059de633fa4fcb3`). VMM reported eight allocations and zero cleanup/failure counters. This run did **not** invoke hibernation; it checks the refactored allocator only. [Summary](validation/hip-hibernation-model-summary.json), [native log](validation/hip-hibernation-model-native.stderr.txt), [VMM log](validation/hip-hibernation-model-vmm.stderr.txt).
+
+## Automatic userspace HIP idle hibernation
+
+On the installed HIP 7.2.53211 ABI, the opt-in ROCm dispatch bridge wraps 506 slots. It gates new HIP entry while snapshotting, drains earlier GPU work, and restores all cold tracked VMM allocations before work proceeds. Direct calls, `hipGetProcAddress`, and native-library `dlsym` synchronization all wake cold allocations. Metadata queries retain cold state, and cold free releases snapshots. Two threads with separate nonblocking streams passed two simultaneous wake cycles, GPU verification, and full readback of both 32 MiB allocations. Stream capture and host callbacks issued while cold safely restore data and disable subsequent automatic snapshots. [Raw integration and guard output](validation/hip-automatic-guards-and-integrity.txt). All 26 CTests passed, including an all-local automatic VMM case with no GTT allocation allowance. [Full test output](validation/hip-automatic-26-tests.txt).
+
+Automatic mode routes intercepted nonzero `hipMalloc` allocations through VMM even when they fit entirely in VRAM; native allocations cannot be hibernated. Other dispatch ABIs do not enable the worker. Raw HSA/direct GPU submissions, multiple-runtime coexistence, and general Vulkan application compression are outside this mode's validated scope. IPC, external memory, raw VMM/memory-pool mutations, and callback registrations disable future snapshots. HIP graph capture is disabled in the model checks using llama.cpp's existing `GGML_CUDA_DISABLE_GRAPHS=1` setting. No application source changes or privileged service are used.
+
+A subsequent all-local small-model check used a 512 MiB local cap and retained all model/work buffers in VRAM while active. It offloaded 31/31 layers, hibernated 307,704,064 logical bytes to 206,994,149 stored bytes, and restored in 169.422 ms. Native versus automatic output was byte-identical over 108 decode runs, with zero cleanup/failure counters. Single-run decode rates were 287.57 versus 281.75 tokens/s (2.02% lower with automatic mode); this short run is not a general overhead estimate. [Summary](validation/hip-automatic-local-model-summary.json), [native stderr](validation/hip-automatic-local-model-native.stderr.txt), [automatic stderr](validation/hip-automatic-local-model-automatic.stderr.txt), [hot fdinfo](validation/hip-automatic-local-model-hot.fdinfo.txt), [cold fdinfo](validation/hip-automatic-local-model-cold.fdinfo.txt).
+
+### Existing Odysseus 27B model
+
+The existing Q4_K_M Qwen 27B model offloaded 66/66 layers, with a 15,088.32 MiB ROCm model buffer. Both runs used an 8,192 MiB local cap and 12,000 MiB GTT cap; the baseline used VMM without automatic mode. The automatic run hibernated before receiving interactive input, restored on the first inference call, and produced byte-identical stdout. Final allocation, backing, cleanup, and failure counters were zero.
+
+| Measurement | Result |
+|---|---:|
+| Cold logical bytes | 16,150,707,328 |
+| Retained cold payload | 15,701,249,373 |
+| Payload savings | 2.78% |
+| Background hibernation | 41,844.201 ms |
+| Wake/restore | 11,488.008 ms |
+| Baseline decode, 45 runs | 2.91 tokens/s |
+| Automatic decode, 45 runs | 2.94 tokens/s |
+| Baseline prompt evaluation | 686.94 ms |
+| Automatic prompt evaluation, including restore | 12,228.92 ms |
+
+The approximately 1% decode difference is not evidence of a speed improvement: these are single runs on an active desktop. It isolates automatic-mode overhead at the same constrained placement, **not** slowdown relative to fully GPU-resident Odyssey/Ollama inference. A native all-GPU attempt failed allocating the 15,088.32 MiB buffer under current desktop memory use. The user's roughly 25 tokens/s Odyssey result is not reproduced by this forced-spill benchmark.
+
+Deduplicated process AMD DRM-client memory accounting fell from **8,756,654,080 to 155,070,464 bytes VRAM** and **7,579,774,976 to 18,993,152 bytes GTT** while cold. The captured clients include a small integrated-GPU runtime client. These are process driver counters, not global desktop totals or complete process-RAM usage. [Hot fdinfo](validation/hip-automatic-27b-hot.fdinfo.txt), [cold fdinfo](validation/hip-automatic-27b-cold.fdinfo.txt).
+
+[Summary](validation/hip-automatic-27b-summary.json), [baseline stderr](validation/hip-automatic-27b-baseline.stderr.txt), [automatic stderr](validation/hip-automatic-27b-automatic.stderr.txt), [baseline stdout](validation/hip-automatic-27b-baseline.stdout.txt), [automatic stdout](validation/hip-automatic-27b-automatic.stdout.txt), [native OOM](validation/hip-automatic-27b-native-oom.stderr.txt).
+
+Reproduce using existing binaries/models with `check_idle_model.py --binary /path/to/llama-completion --model /path/to/model.gguf --vmm-baseline --local-mib 8192 --host-mib 12000 --cold-mib 20000 --idle-ms 5000 --tokens 64`. Interactive llama.cpp subtracts input tokens from its prediction budget; the script requires at least 64 to avoid a negative remaining count. Actual decode counts are recorded in the logs.
+
+## Unchanged memtest_vulkan smoke check
+
+Installed `memtest_vulkan` 0.5.0 ran on the RX 7900 XTX with a 2 GiB explicit limit, through the Vulkan layer and natively, sequentially. Each run was interrupted after 12 seconds with SIGINT and exited 65. Neither emitted a memory-error report. The last five-second reports checked about 449.6 GB/s through zVram versus 437.7 GB/s natively. This short check is not a complete five-minute stability test or a performance improvement claim.
+
+Both runs emitted the same SPIR-V `AtomicIAdd` memory-semantics validation warning during shader creation. zVram logged the 2,147,483,648-byte local allocation plus a 432-byte allocation; memtest still reported the native 24 GiB card. This path exercises telemetry and native allocation behavior, not automatic Vulkan compression or capacity expansion. [Wrapped log](validation/memtest-vulkan-zvram-2gib.txt), [native log](validation/memtest-vulkan-native-2gib.txt).
+
+The upstream CLI uses positional device and byte-limit arguments: [`memtest_vulkan` source](https://github.com/GpuZelenograd/memtest_vulkan/blob/main/src/main.rs). The bounded local command was `./zvram --verbose --isolate-layers -- memtest_vulkan 1 2147483648`, with the RADV ICD selected and SIGINT sent after 12 seconds.

@@ -1,0 +1,121 @@
+Start testing: Oct 07 03:59 CEST
+----------------------------------------------------------
+9/25 Testing: hip-automatic-idle-integrity
+9/25 Test: hip-automatic-idle-integrity
+Command: "/usr/bin/cmake" "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "64" "--hip-auto-idle-ms" "100" "--hip-cold-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_auto_check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"hip-automatic-idle-integrity" start time: Oct 07 03:59 CEST
+Output:
+----------------------------------------------------------
+[zvram-hip] automatic dispatch ready: HIP=70200 slots=506
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+[zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392
+[zvram-hip] auto resume: status=0 logical=0 stored=0
+[zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392
+[zvram-hip] auto resume: status=0 logical=0 stored=0
+[zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392
+[zvram-hip] auto resume: status=0 logical=0 stored=0
+[zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392
+[zvram-hip] auto resume: status=0 logical=0 stored=0
+[zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392
+[zvram-hip] auto resume: status=0 logical=0 stored=0
+[zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+cycle 1 autosnapshot cold=33554432
+cold metadata device=AMD Radeon RX 7900 XTX free=17767071744 total=25753026560
+cycle 1 restore route=direct hipDeviceSynchronize verified
+cycle 2 autosnapshot cold=33554432
+cold metadata device=AMD Radeon RX 7900 XTX free=17767071744 total=25753026560
+cycle 2 restore route=hipGetProcAddress hipDeviceSynchronize verified
+cycle 3 autosnapshot cold=33554432
+cold metadata device=AMD Radeon RX 7900 XTX free=17829986304 total=25753026560
+cycle 3 restore route=native-library dlsym hipDeviceSynchronize verified
+cycle 4 autosnapshot cold=33554432
+cold metadata device=AMD Radeon RX 7900 XTX free=17829986304 total=25753026560
+cycle 4 restore route=ordinary GPU launch verified
+cycle 5 autosnapshot cold=33554432
+HIP automatic idle integration PASS: 4 restores, final cold free, metadata while cold, GPU and full 32 MiB verification
+<end of output>
+Test time =   0.86 sec
+----------------------------------------------------------
+Test Passed.
+"hip-automatic-idle-integrity" end time: Oct 07 03:59 CEST
+"hip-automatic-idle-integrity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/25 Testing: hip-automatic-concurrent-integrity
+10/25 Test: hip-automatic-concurrent-integrity
+Command: "/usr/bin/cmake" "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "128" "--hip-auto-idle-ms" "100" "--hip-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_auto_thread_check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"hip-automatic-concurrent-integrity" start time: Oct 07 03:59 CEST
+Output:
+----------------------------------------------------------
+[zvram-hip] automatic dispatch ready: HIP=70200 slots=506
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=0 host_pinned=33554432 handles=1
+[zvram-hip] auto hibernate: status=0 logical=67108864 stored=33558784
+[zvram-hip] auto resume: status=0 logical=0 stored=0
+[zvram-hip] auto hibernate: status=0 logical=67108864 stored=33558784
+[zvram-hip] auto resume: status=0 logical=0 stored=0
+[zvram-hip] summary: tracked=0 peak_allocations=2 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=50331648 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=2 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+cycle 1 both worker allocations cold=67108864
+cycle 1 concurrent GPU verification passed
+cycle 2 both worker allocations cold=67108864
+cycle 2 concurrent GPU verification passed
+HIP automatic thread integration PASS: 2 threads x 2 cycles, 64 MiB autosnapshot budget, concurrent GPU and full readback
+<end of output>
+Test time =   0.45 sec
+----------------------------------------------------------
+Test Passed.
+"hip-automatic-concurrent-integrity" end time: Oct 07 03:59 CEST
+"hip-automatic-concurrent-integrity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/25 Testing: hip-automatic-capture-guard
+11/25 Test: hip-automatic-capture-guard
+Command: "/usr/bin/cmake" "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "64" "--hip-auto-idle-ms" "100" "--hip-cold-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_auto_guard_check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"hip-automatic-capture-guard" start time: Oct 07 03:59 CEST
+Output:
+----------------------------------------------------------
+[zvram-hip] automatic dispatch ready: HIP=70200 slots=506
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+[zvram-hip] auto hibernate: status=0 logical=33554432 stored=1984
+[zvram-hip] automatic hibernation disabled: hipStreamBeginCapture_fn
+[zvram-hip] auto resume: status=0 logical=0 stored=0
+[zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+automatic snapshot observed: 33554432 bytes cold
+cold captured hipMemsetAsync safely restored and updated the allocation
+HIP automatic guard integration PASS: stream capture restored safely and suppressed future auto-release
+<end of output>
+Test time =   0.62 sec
+----------------------------------------------------------
+Test Passed.
+"hip-automatic-capture-guard" end time: Oct 07 03:59 CEST
+"hip-automatic-capture-guard" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/25 Testing: hip-automatic-callback-guard
+12/25 Test: hip-automatic-callback-guard
+Command: "/usr/bin/cmake" "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "64" "--hip-auto-idle-ms" "100" "--hip-cold-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_auto_guard_check" "--callback"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"hip-automatic-callback-guard" start time: Oct 07 03:59 CEST
+Output:
+----------------------------------------------------------
+[zvram-hip] automatic dispatch ready: HIP=70200 slots=506
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+[zvram-hip] auto hibernate: status=0 logical=33554432 stored=1984
+[zvram-hip] automatic hibernation disabled: hipLaunchHostFunc_fn
+[zvram-hip] auto resume: status=0 logical=0 stored=0
+[zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+automatic snapshot observed: 33554432 bytes cold
+cold hipLaunchHostFunc safely restored and preserved the allocation
+HIP automatic guard integration PASS: host callback restored safely and suppressed future auto-release
+<end of output>
+Test time =   0.64 sec
+----------------------------------------------------------
+Test Passed.
+"hip-automatic-callback-guard" end time: Oct 07 03:59 CEST
+"hip-automatic-callback-guard" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 07 03:59 CEST

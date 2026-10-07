@@ -46,7 +46,27 @@ if(ZVRAM_BUILD_HIP)
     find_path(ZVRAM_HIP_INCLUDE hip/hip_runtime_api.h HINTS /opt/rocm/include)
     find_library(ZVRAM_HIP_RUNTIME amdhip64 HINTS /opt/rocm/lib)
     if(ZVRAM_HIPCC AND ZVRAM_HIP_INCLUDE AND ZVRAM_HIP_RUNTIME)
-        add_library(zvram_hip SHARED hip_layer.cpp)
+        add_library(zvram_hip SHARED hip_layer.cpp hip_activity.cpp)
+        include(CheckCXXSourceCompiles)
+        set(CMAKE_REQUIRED_INCLUDES ${ZVRAM_HIP_INCLUDE})
+        set(CMAKE_REQUIRED_DEFINITIONS -D__HIP_PLATFORM_AMD__=1)
+        check_cxx_source_compiles("#include <GL/gl.h>
+            #include <hip/hip_runtime.h>
+            #include <hip/hip_deprecated.h>
+            #include <hip/hip_gl_interop.h>
+            #include <hip/amd_detail/hip_api_trace.hpp>
+            static_assert(HIP_VERSION_MAJOR == 7 && HIP_VERSION_MINOR == 2 && HIP_VERSION_PATCH == 53211);
+            static_assert(HIP_RUNTIME_API_TABLE_MAJOR_VERSION == 0 && HIP_RUNTIME_API_TABLE_STEP_VERSION == 18);
+            static_assert(sizeof(HipDispatchTable) == 4056);
+            int main() { return 0; }" ZVRAM_CAN_HIP_DISPATCH)
+        unset(CMAKE_REQUIRED_INCLUDES)
+        unset(CMAKE_REQUIRED_DEFINITIONS)
+        if(ZVRAM_CAN_HIP_DISPATCH)
+            target_sources(zvram_hip PRIVATE hip_dispatch.cpp)
+            target_compile_definitions(zvram_hip PRIVATE ZVRAM_HAS_HIP_DISPATCH=1)
+        else()
+            message(STATUS "HIP dispatch ABI unsupported: automatic hibernation unavailable")
+        endif()
         add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o
             COMMAND ${ZVRAM_HIPCC} --offload-arch=${ZVRAM_HIP_ARCH} -O2 -std=c++17 -fPIC -c
                 ${CMAKE_CURRENT_SOURCE_DIR}/hip_snapshot_copy.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o
@@ -88,7 +108,7 @@ if(ZVRAM_BUILD_HIP)
         target_compile_features(zvram-hip-error-check PRIVATE cxx_std_17)
         target_compile_definitions(zvram-hip-error-check PRIVATE __HIP_PLATFORM_AMD__=1)
         target_link_libraries(zvram-hip-error-check PRIVATE ${ZVRAM_HIP_RUNTIME} Threads::Threads)
-        foreach(check hip_check hip_probe vmm_probe hip_hibernate_check)
+        foreach(check hip_check hip_probe vmm_probe hip_hibernate_check hip_auto_check hip_auto_thread_check hip_auto_guard_check)
             add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${check}
                 COMMAND ${ZVRAM_HIPCC} --offload-arch=${ZVRAM_HIP_ARCH} -O2 -std=c++17 -pthread
                     ${CMAKE_CURRENT_SOURCE_DIR}/${check}.cpp -ldl -o ${CMAKE_CURRENT_BINARY_DIR}/${check}
@@ -111,6 +131,27 @@ if(ZVRAM_BUILD_HIP)
         add_test(NAME hip-spill-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-local-mib 16 --hip-host-mib 64 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check)
         add_test(NAME hip-procedure-native-query COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-local-mib 32 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-proc-check> --expect-physical)
         if(DRM_AMDGPU_FOUND)
+        if(ZVRAM_CAN_HIP_DISPATCH)
+        add_test(NAME hip-automatic-idle-integrity COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
+            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64
+            --hip-auto-idle-ms 100 --hip-cold-mib 32 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_auto_check)
+        add_test(NAME hip-automatic-concurrent-integrity COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
+            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 128
+            --hip-auto-idle-ms 100 --hip-cold-mib 64 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_auto_thread_check)
+        add_test(NAME hip-automatic-local-integrity COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
+            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 64 --hip-host-mib 0
+            --hip-auto-idle-ms 100 --hip-cold-mib 32 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_auto_check)
+        foreach(guard capture callback)
+            if(guard STREQUAL "callback")
+                set(ZVRAM_GUARD_ARGS --callback)
+            else()
+                set(ZVRAM_GUARD_ARGS)
+            endif()
+            add_test(NAME hip-automatic-${guard}-guard COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
+                ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64
+                --hip-auto-idle-ms 100 --hip-cold-mib 32 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_auto_guard_check ${ZVRAM_GUARD_ARGS})
+        endforeach()
+        endif()
         add_test(NAME hip-hibernation-integrity COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
             ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 --
             ${CMAKE_CURRENT_BINARY_DIR}/hip_hibernate_check)

@@ -1,4 +1,5 @@
 #include <hip/hip_runtime_api.h>
+#include "hip_activity.hpp"
 
 #ifdef ZVRAM_HAS_DRM_VMM
 #include <amdgpu.h>
@@ -1915,6 +1916,11 @@ hipError_t wrapHipMalloc(void** pointer, size_t bytes) {
       return hipErrorOutOfMemory;
     }
 
+    // Automatic hibernation must own the physical mappings even when the
+    // allocation fits entirely in local VRAM. Native hipMalloc is not evictable.
+    if (haveDevice && hybridVmmEnabled() && zvramHipAutoRequested())
+      return createHybridVmm(pointer, bytes, device, hipErrorOutOfMemory);
+
     NativeReservation reservation = NativeReservation::Failed;
     if (haveDevice) {
       reservation = reserveNativeBytes(bytes, device);
@@ -2056,7 +2062,11 @@ void* wrappedProcedure(const char* symbol, void* realAddress) {
 // Experimental explicit lifecycle API: callers must serialize all HIP/GPU use
 // of these allocations and must not dereference them until resume succeeds.
 extern "C" hipError_t zvramHipHibernate(size_t coldBudgetBytes) {
+  const bool external = !zvramHipInternalActivity();
   PrimaryCallBoundary boundary;
+  // The coordinator alone owns lifecycle changes in automatic mode.
+  if (zvramHipAutoRequested() && external)
+    return boundary.finish(hipErrorNotSupported);
   try {
     return boundary.finish(zvramHibernate(coldBudgetBytes));
   } catch (const std::bad_alloc&) {
@@ -2067,7 +2077,10 @@ extern "C" hipError_t zvramHipHibernate(size_t coldBudgetBytes) {
 }
 
 extern "C" hipError_t zvramHipResume() {
+  const bool external = !zvramHipInternalActivity();
   PrimaryCallBoundary boundary;
+  if (zvramHipAutoRequested() && external)
+    return boundary.finish(hipErrorNotSupported);
   try {
     return boundary.finish(zvramResume());
   } catch (const std::bad_alloc&) {
@@ -2098,39 +2111,58 @@ extern "C" hipError_t zvramHipColdBytes(size_t* logicalColdBytes,
   }
 }
 
+extern "C" bool zvramHipLayerInternal() noexcept { return gPrimaryDepth != 0; }
+extern "C" hipError_t zvramHipDispatchError(hipError_t native, bool clear) noexcept {
+  const hipError_t result = native == hipSuccess ? gShadowError : native;
+  if (clear) gShadowError = hipSuccess;
+  return result;
+}
+
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipMalloc(void** pointer, size_t bytes) {
+  ZvramHipActivity activity(true);
   PrimaryCallBoundary boundary;
+  if (activity.status != hipSuccess) return boundary.finish(activity.status);
   return boundary.finish(wrapHipMalloc(pointer, bytes));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipFree(void* pointer) {
+  ZvramHipActivity activity(false);
   PrimaryCallBoundary boundary;
+  if (activity.status != hipSuccess) return boundary.finish(activity.status);
   return boundary.finish(wrapHipFree(pointer));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipFreeAsync(void* pointer, hipStream_t stream) {
+  ZvramHipActivity activity(false);
   PrimaryCallBoundary boundary;
+  if (activity.status != hipSuccess) return boundary.finish(activity.status);
   return boundary.finish(wrapHipFreeAsync(pointer, stream));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipMemGetInfo(size_t* free, size_t* total) {
+  ZvramHipActivity activity(false);
   PrimaryCallBoundary boundary;
+  if (activity.status != hipSuccess) return boundary.finish(activity.status);
   return boundary.finish(wrapHipMemGetInfo(free, total));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipDeviceTotalMem(size_t* bytes, hipDevice_t device) {
+  ZvramHipActivity activity(false);
   PrimaryCallBoundary boundary;
+  if (activity.status != hipSuccess) return boundary.finish(activity.status);
   return boundary.finish(wrapHipDeviceTotalMem(bytes, device));
 }
 
 extern "C" __attribute__((visibility("hidden"))) hipError_t
 zvramWrappedHipGetDeviceProperties(hipDeviceProp_t* properties, int device) {
+  ZvramHipActivity activity(false);
   PrimaryCallBoundary boundary;
+  if (activity.status != hipSuccess) return boundary.finish(activity.status);
   return boundary.finish(wrapHipGetDeviceProperties(properties, device));
 }
 

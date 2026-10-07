@@ -1,0 +1,127 @@
+{
+  "passed": true,
+  "checks": {
+    "same_nonempty_stdout": true,
+    "complete_gpu_offload": true,
+    "baseline_complete_gpu_offload": true,
+    "cold_model_before_input": true,
+    "successful_automatic_restore": true,
+    "automatic_remained_enabled": true,
+    "zero_cleanup_and_failures": true,
+    "model_buffer_above_minimum": true
+  },
+  "model": "/run/media/nerdrx/Lex/Odysseus/data/ollama/models/blobs/sha256-6c2c13cef89238c3604d756b07b3ef5fafebbd61095feb8553ff449c95e4c1c6",
+  "baseline": "vmm-baseline",
+  "binary": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-build/bin/llama-completion",
+  "command": [
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram",
+    "--hip",
+    "--hip-vmm",
+    "--hip-local-mib",
+    "8192",
+    "--hip-host-mib",
+    "12000",
+    "--hip-auto-idle-ms",
+    "5000",
+    "--hip-cold-mib",
+    "20000",
+    "--",
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-build/bin/llama-completion",
+    "--model",
+    "/run/media/nerdrx/Lex/Odysseus/data/ollama/models/blobs/sha256-6c2c13cef89238c3604d756b07b3ef5fafebbd61095feb8553ff449c95e4c1c6",
+    "--gpu-layers",
+    "999",
+    "--ctx-size",
+    "512",
+    "--batch-size",
+    "128",
+    "--predict",
+    "64",
+    "--temp",
+    "0",
+    "--seed",
+    "1",
+    "--load-mode",
+    "none",
+    "--fit",
+    "off",
+    "--flash-attn",
+    "off",
+    "--verbose",
+    "--simple-io",
+    "--no-display-prompt",
+    "--conversation",
+    "--interactive-first",
+    "--single-turn"
+  ],
+  "graphs_disabled": true,
+  "cold_logical_bytes": 16150707328,
+  "cold_stored_bytes": 15701249373,
+  "metrics": {
+    "last_offloaded_layers": [
+      66,
+      66
+    ],
+    "rocm_model_buffers_mib": [
+      15088.32
+    ],
+    "largest_rocm_model_buffer_mib": 15088.32
+  },
+  "cleanup": {
+    "fields": {
+      "tracked": 0,
+      "peak_allocations": 12,
+      "hipMalloc_api_bytes_current": 0,
+      "peak": 7596060672,
+      "host_pinned_backing_bytes_current": 0,
+      "pending": 0,
+      "native_allocations": 0,
+      "mapped_host_allocations": 0,
+      "hybrid_vmm_allocations": 12,
+      "orphaned_vmm_cleanup": 0,
+      "mapped_host_async_free_rejections": 0,
+      "failures": 0
+    },
+    "required_zero_fields": [
+      "tracked",
+      "hipMalloc_api_bytes_current",
+      "host_pinned_backing_bytes_current",
+      "pending",
+      "orphaned_vmm_cleanup",
+      "failures"
+    ],
+    "all_required_fields_present": true,
+    "all_required_fields_zero": true,
+    "hybrid_vmm_allocations": 12
+  },
+  "backing_bytes": {
+    "hot": {
+      "vram": 8756654080,
+      "gtt": 7579774976
+    },
+    "cold": {
+      "vram": 155070464,
+      "gtt": 18993152
+    }
+  },
+  "stdout_sha256": "61c5375468005f6c1436b328f039ef4a5fbb6b73687461b4cfe4d7f5e6d20a5b",
+  "performance": {
+    "baseline": {
+      "decode_ms": 15442.17,
+      "decode_runs": 45,
+      "tokens_per_second": 2.91,
+      "prompt_ms": 686.94,
+      "restore_ms": []
+    },
+    "automatic": {
+      "decode_ms": 15310.24,
+      "decode_runs": 45,
+      "tokens_per_second": 2.94,
+      "prompt_ms": 12228.92,
+      "restore_ms": [
+        11488.008
+      ]
+    },
+    "decode_speed_change_percent": 1.0309278350515427
+  }
+}

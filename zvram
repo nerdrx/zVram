@@ -11,6 +11,8 @@ parser.add_argument("--hip-vmm", action="store_true", help="use HIP virtual memo
 parser.add_argument("--hip-report-capacity", action="store_true", help="report the configured VRAM plus GTT capacity through supported HIP queries (opt-in)")
 parser.add_argument("--hip-local-mib", type=int, help="spill tracked HIP allocations beyond this local limit; 0 forces RAM backing")
 parser.add_argument("--hip-host-mib", type=int, help="limit tracked mapped HIP host memory")
+parser.add_argument("--hip-auto-idle-ms", type=int, help="automatically compress idle HIP VMM allocations (experimental, exact supported HIP ABI)")
+parser.add_argument("--hip-cold-mib", type=int, help="limit automatic lossless cold storage; requires --hip-auto-idle-ms")
 parser.add_argument("--verbose", action="store_true", help="log each Vulkan allocation")
 parser.add_argument("--validate", action="store_true", help="enable Vulkan core and synchronization validation")
 parser.add_argument("--isolate-layers", action="store_true", help="disable implicit layers for a controlled experiment")
@@ -24,11 +26,18 @@ if not command:
 build = Path(__file__).resolve().parent / "build"
 if args.hip and args.validate:
     parser.error("--validate applies to the Vulkan backend")
-if not args.hip and (args.hip_vmm or args.hip_report_capacity or args.hip_local_mib is not None or args.hip_host_mib is not None):
+if not args.hip and (args.hip_vmm or args.hip_report_capacity or args.hip_local_mib is not None or args.hip_host_mib is not None or args.hip_auto_idle_ms is not None or args.hip_cold_mib is not None):
     parser.error("HIP virtual memory and memory limits require --hip")
 if args.hip_report_capacity and (not args.hip_vmm or args.hip_local_mib is None or
                                  args.hip_host_mib is None or args.hip_host_mib <= 0):
     parser.error("--hip-report-capacity requires --hip-vmm and explicit local and positive host limits")
+if args.hip_auto_idle_ms is not None and (not args.hip_vmm or args.hip_cold_mib is None or
+                                       args.hip_local_mib is None or args.hip_host_mib is None or
+                                       not 1 <= args.hip_auto_idle_ms <= 60000 or
+                                       not 1 <= args.hip_cold_mib <= 40960):
+    parser.error("automatic hibernation requires --hip-vmm, explicit local/host limits, idle 1..60000 ms, and cold storage 1..40960 MiB")
+if args.hip_cold_mib is not None and args.hip_auto_idle_ms is None:
+    parser.error("--hip-cold-mib requires --hip-auto-idle-ms")
 for limit in (args.hip_local_mib, args.hip_host_mib):
     if limit is not None and not 0 <= limit <= 40960:
         parser.error("HIP memory limits must be 0..40960 MiB")
@@ -51,6 +60,14 @@ if args.hip:
         env["ZVRAM_HIP_LOCAL_LIMIT_MIB"] = str(args.hip_local_mib)
     if args.hip_host_mib is not None:
         env["ZVRAM_HIP_HOST_LIMIT_MIB"] = str(args.hip_host_mib)
+    if args.hip_auto_idle_ms is not None:
+        registered = env.get("ROCPROFILER_REGISTER_LIBRARY")
+        if registered and registered != library:
+            parser.error("automatic hibernation needs the HIP dispatch bridge; an existing profiler library is configured")
+        env["ROCPROFILER_REGISTER_LIBRARY"] = library
+        env["ROCPROFILER_REGISTER_SECURE"] = "yes"
+        env["ZVRAM_HIP_AUTO_IDLE_MS"] = str(args.hip_auto_idle_ms)
+        env["ZVRAM_HIP_COLD_LIMIT_MIB"] = str(args.hip_cold_mib)
 else:
     path_variable = "VK_LAYER_PATH" if env.get("VK_LAYER_PATH") else "VK_ADD_LAYER_PATH"
     env[path_variable] = str(build) + (os.pathsep + env[path_variable] if env.get(path_variable) else "")

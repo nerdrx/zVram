@@ -1,0 +1,143 @@
+fdinfo 6
+pos:	0
+flags:	02100002
+mnt_id:	39
+ino:	657
+drm-driver:	amdgpu
+drm-client-id:	18309
+drm-pdev:	0000:03:00.0
+pasid:	18308
+drm-total-cpu:	0
+drm-shared-cpu:	0
+drm-resident-cpu:	0
+drm-purgeable-cpu:	0
+drm-total-gtt:	2 MiB
+drm-shared-gtt:	0
+drm-resident-gtt:	2 MiB
+drm-purgeable-gtt:	0
+drm-total-vram:	12 KiB
+drm-shared-vram:	0
+drm-resident-vram:	12 KiB
+drm-purgeable-vram:	0
+drm-total-gds:	0
+drm-shared-gds:	0
+drm-resident-gds:	0
+drm-purgeable-gds:	0
+drm-total-gws:	0
+drm-shared-gws:	0
+drm-resident-gws:	0
+drm-purgeable-gws:	0
+drm-total-oa:	0
+drm-shared-oa:	0
+drm-resident-oa:	0
+drm-purgeable-oa:	0
+drm-total-doorbell:	0
+drm-shared-doorbell:	0
+drm-resident-doorbell:	0
+drm-purgeable-doorbell:	0
+drm-total-mmioremap:	0
+drm-shared-mmioremap:	0
+drm-resident-mmioremap:	0
+drm-purgeable-mmioremap:	0
+drm-memory-vram:	12 KiB
+drm-memory-gtt: 	2048 KiB
+drm-memory-cpu: 	0 KiB
+amd-evicted-vram:	0 KiB
+amd-requested-vram:	12 KiB
+amd-requested-gtt:	2048 KiB
+
+fdinfo 7
+pos:	0
+flags:	02100002
+mnt_id:	39
+ino:	657
+drm-driver:	amdgpu
+drm-client-id:	18303
+drm-pdev:	0000:03:00.0
+pasid:	18302
+drm-total-cpu:	101236 KiB
+drm-shared-cpu:	0
+drm-resident-cpu:	0
+drm-purgeable-cpu:	0
+drm-total-gtt:	8284 KiB
+drm-shared-gtt:	8 KiB
+drm-resident-gtt:	8268 KiB
+drm-purgeable-gtt:	0
+drm-total-vram:	448172 KiB
+drm-shared-vram:	300488 KiB
+drm-resident-vram:	448172 KiB
+drm-purgeable-vram:	0
+drm-total-gds:	0
+drm-shared-gds:	0
+drm-resident-gds:	0
+drm-purgeable-gds:	0
+drm-total-gws:	0
+drm-shared-gws:	0
+drm-resident-gws:	0
+drm-purgeable-gws:	0
+drm-total-oa:	0
+drm-shared-oa:	0
+drm-resident-oa:	0
+drm-purgeable-oa:	0
+drm-total-doorbell:	0
+drm-shared-doorbell:	0
+drm-resident-doorbell:	0
+drm-purgeable-doorbell:	0
+drm-total-mmioremap:	0
+drm-shared-mmioremap:	0
+drm-resident-mmioremap:	0
+drm-purgeable-mmioremap:	0
+drm-memory-vram:	448172 KiB
+drm-memory-gtt: 	8268 KiB
+drm-memory-cpu: 	0 KiB
+amd-evicted-vram:	0 KiB
+amd-requested-vram:	448172 KiB
+amd-requested-gtt:	8284 KiB
+
+fdinfo 8
+pos:	0
+flags:	02100002
+mnt_id:	39
+ino:	663
+drm-driver:	amdgpu
+drm-client-id:	18304
+drm-pdev:	0000:7b:00.0
+pasid:	18303
+drm-total-cpu:	15468 KiB
+drm-shared-cpu:	0
+drm-resident-cpu:	0
+drm-purgeable-cpu:	0
+drm-total-gtt:	8256 KiB
+drm-shared-gtt:	0
+drm-resident-gtt:	8240 KiB
+drm-purgeable-gtt:	0
+drm-total-vram:	96 KiB
+drm-shared-vram:	0
+drm-resident-vram:	96 KiB
+drm-purgeable-vram:	0
+drm-total-gds:	0
+drm-shared-gds:	0
+drm-resident-gds:	0
+drm-purgeable-gds:	0
+drm-total-gws:	0
+drm-shared-gws:	0
+drm-resident-gws:	0
+drm-purgeable-gws:	0
+drm-total-oa:	0
+drm-shared-oa:	0
+drm-resident-oa:	0
+drm-purgeable-oa:	0
+drm-total-doorbell:	0
+drm-shared-doorbell:	0
+drm-resident-doorbell:	0
+drm-purgeable-doorbell:	0
+drm-total-mmioremap:	0
+drm-shared-mmioremap:	0
+drm-resident-mmioremap:	0
+drm-purgeable-mmioremap:	0
+drm-memory-vram:	96 KiB
+drm-memory-gtt: 	8240 KiB
+drm-memory-cpu: 	0 KiB
+amd-evicted-vram:	0 KiB
+amd-requested-vram:	96 KiB
+amd-requested-gtt:	8256 KiB
