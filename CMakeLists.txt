@@ -47,6 +47,8 @@ add_test(NAME cpu-vulkan-ram-guard COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT
 set_tests_properties(cpu-vulkan-ram-guard PROPERTIES TIMEOUT 10)
 add_test(NAME cpu-vulkan-compression-options COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_compression_options.py)
 set_tests_properties(cpu-vulkan-compression-options PROPERTIES TIMEOUT 10)
+add_test(NAME cpu-vulkan-model-budget COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_model_budget.py)
+set_tests_properties(cpu-vulkan-model-budget PROPERTIES TIMEOUT 10)
 add_test(NAME cpu-compression-policy COMMAND zvram-compression-policy-check)
 add_executable(zvram-submission-tracking-check submission_tracking_check.cpp)
 target_compile_features(zvram-submission-tracking-check PRIVATE cxx_std_17)

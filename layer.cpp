@@ -1311,12 +1311,12 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     bool budgetExceeded=false;
     try {
         candidate.chunks.reserve(static_cast<std::size_t>((logicalBytes+d.snapshot.chunkSize-1)/d.snapshot.chunkSize));
+        std::vector<std::uint8_t> encoded;
         for(VkDeviceSize offset=0;offset<logicalBytes;offset+=d.snapshot.chunkSize) {
             const auto amount=std::min(d.snapshot.chunkSize,logicalBytes-offset);
             r=copyChunkLocked(d,memory.poolViews[i],d.snapshot.stagingBuffer,offset,0,amount,false);
             if(r!=VK_SUCCESS) { okay=false; break; }
             VirtualMemory::ColdChunk chunk; chunk.rawSize=amount;
-            std::vector<std::uint8_t> encoded;
             std::size_t compressed=0;
             bool keepCompressed=false;
             if(d.minSavingsPercent<100) {

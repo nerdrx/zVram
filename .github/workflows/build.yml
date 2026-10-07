@@ -17,4 +17,6 @@ jobs:
         run: python3 test_vulkan_ram_guard.py
       - name: Check Vulkan compression options and CPU policy
         run: python3 test_vulkan_compression_options.py && ctest --test-dir build -R cpu-compression-policy --output-on-failure
+      - name: Check bounded model evidence
+        run: python3 test_vulkan_model_budget.py
       # GPU integrity checks are run on the hardware documented in VALIDATION.md.

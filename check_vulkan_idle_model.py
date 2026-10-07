@@ -27,6 +27,12 @@ VulkanBufferPattern = re.compile(
 OffloadPattern = re.compile(r"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers?\s+to GPU", re.I)
 
 
+def has_decode_tokens(metrics):
+    return bool(metrics and metrics.get("decode_runs", 0) and
+                metrics.get("tokens_per_second", 0) and
+                metrics["decode_runs"] > 0 and metrics["tokens_per_second"] > 0)
+
+
 def available_memory_mib():
     match = re.search(r"^MemAvailable:\s+(\d+)\s+kB$",
                       Path("/proc/meminfo").read_text(), re.M)
@@ -229,6 +235,8 @@ def main():
     parser.add_argument("--app-arg", action="append", default=[],
                         help="extra llama-completion option; repeat as --app-arg=VALUE")
     args = parser.parse_args()
+    if not 32 <= args.tokens <= 128:
+        parser.error("tokens must be 32..128")
     args.active_eviction = args.active_eviction or args.range_mib is not None
     args.selective_restore = args.selective_restore or args.active_eviction
     if args.range_mib is not None and not 0 < args.range_mib <= ((1 << 64) - 1) // (1024 * 1024):
@@ -262,8 +270,8 @@ def main():
         parser.error(f"--model must be an existing nonempty file: {model}")
     if not launcher.is_file():
         parser.error(f"zVram launcher missing: {launcher}")
-    if not 64 <= args.tokens <= 128 or not 1 <= args.idle_ms <= 60000 or not 1 <= args.cold_mib <= 40960 or not 1 <= args.timeout <= (1 << 32) - 1:
-        parser.error("tokens must be 64..128, idle-ms 1..60000, cold-mib 1..40960, timeout a positive uint32")
+    if not 1 <= args.idle_ms <= 60000 or not 1 <= args.cold_mib <= 40960 or not 1 <= args.timeout <= (1 << 32) - 1:
+        parser.error("idle-ms 1..60000, cold-mib 1..40960, timeout a positive uint32")
     output.mkdir(parents=True, exist_ok=True)
     app = common_app_args(binary, model, args.tokens)[:-2]
     app += ["--conversation", "--interactive-first", "--single-turn", *args.app_arg]
@@ -314,6 +322,7 @@ def main():
     cold_state = auto["pre_prompt_cold_state"]
     checks = {
         "same_nonempty_stdout": bool(native["stdout"].strip()) and native["stdout"] == auto["stdout"],
+        "both_runs_decode_tokens": has_decode_tokens(native["performance"]) and has_decode_tokens(auto["performance"]),
         "full_gpu_offload_matches": bool(native["offload"] and native["offload"][0] == native["offload"][1] > 0 and auto["offload"] == native["offload"]),
         "automatic_enabled": "automatic Vulkan snapshots enabled" in auto_text and "automatic Vulkan snapshots disabled:" not in auto_text,
         "model_buffer_cold_before_prompt": bool(auto["model_buffers_mib"] and cold_state and
