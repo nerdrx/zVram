@@ -4,7 +4,7 @@
 
 zVram tests explicit strategies for GPU memory beyond local VRAM: native driver migration, a managed Vulkan buffer pool with lossless zstd snapshots, and an opt-in HIP `hipMalloc` spillover layer.
 
-**Status: experimental v0.2.0.** The managed pool only controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing. The VMM/GTT provider passed one 40 GiB single-pointer integrity check using 20 GiB of VRAM and 20 GiB of GTT on this machine. This is explicit integration research, not transparent arbitrary-application paging or compression; no model workload, unmodified application compatibility, or native HIP baseline has been tested.
+**Status: experimental v0.2.0.** The managed pool only controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing. The VMM/GTT provider passed one 40 GiB single-pointer integrity check using 20 GiB of VRAM and 20 GiB of GTT on this machine. This is explicit integration research, not transparent arbitrary-application paging or compression; an unmodified ROCm copy example also passed, while model workloads and a native 40 GiB HIP baseline remain untested.
 
 ## What works today
 
@@ -62,6 +62,10 @@ cmake --build build -j
 ```
 
 The launcher uses the build directory beside itself. Reconfigure CMake after moving the checkout so its layer manifest points to the current library.
+
+## Unmodified HIP application check
+
+[`check_primbench.py`](check_primbench.py) fetches two hash-verified files from a pinned official ROCm commit and builds the unchanged HIP copy example. Run `python3 check_primbench.py --run` to check native execution and VMM/GTT spillover with a 32 MiB local cap. Its two 32 MiB data buffers and internal 256 MiB cache buffer exceed that cap; the upstream assertion checks only the first three copied values. This is an application integration gate, not full-buffer integrity, model validation, or a performance comparison. Full logs and limits are in [VALIDATION.md](VALIDATION.md#unmodified-rocm-application).
 
 ## Scoped kernel paging probe
 

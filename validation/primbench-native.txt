@@ -1,0 +1,8 @@
+Upstream commit: 959b2d4d0459abfd1f67f3fb9cce20cd88a7785a
+Command: ['/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/primbench/copy_benchmark', '--size', '32MiB', '--min-secs', '0.1', '--noise-timeout-secs', '1']
+Status of copy            Noise  Bytes/sec  Specialization      Index/2
+───────────────────────────────────────────────────────────────────────
+Noisy timed out after 1s   4.1%   2.85e+11  type: char                0
+Noisy timed out after 1s   3.4%   2.62e+11  type: long long           1
+
+Exit=0

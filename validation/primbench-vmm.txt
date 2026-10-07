@@ -1,0 +1,15 @@
+Upstream commit: 959b2d4d0459abfd1f67f3fb9cce20cd88a7785a
+Command: ['/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram', '--hip', '--hip-vmm', '--hip-report-capacity', '--hip-local-mib', '32', '--hip-host-mib', '512', '--', '/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/primbench/copy_benchmark', '--size', '32MiB', '--min-secs', '0.1', '--noise-timeout-secs', '1']
+[zvram-hip] hybrid VMM allocation: logical=268435456 mapped=268435456 VRAM=33554432 host_pinned=234881024 handles=2
+[zvram-hip] hybrid VMM allocation: logical=8 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=0 host_pinned=33554432 handles=1
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=0 host_pinned=33554432 handles=1
+Status of copy            Noise  Bytes/sec  Specialization      Index/2
+───────────────────────────────────────────────────────────────────────
+Noisy timed out after 1s   5.2%   3.15e+10  type: char                0[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=0 host_pinned=33554432 handles=1
+[zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=0 host_pinned=33554432 handles=1
+
+Noisy timed out after 1s   2.7%   3.39e+10  type: long long           1[zvram-hip] summary: tracked=0 peak_allocations=3 hipMalloc_api_bytes_current=0 peak=33554432 host_pinned_backing_bytes_current=0 pending=0 peak=301989888 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=6 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+
+
+Exit=0

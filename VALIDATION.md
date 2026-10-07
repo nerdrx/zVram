@@ -120,7 +120,7 @@ The all-GTT descriptor test kept **256 × 4 KiB allocations** live, filled each 
   ./build/hip_check --single-allocation --mib 40960
 ```
 
-An earlier HIP host-location VMM provider is a separate, superseded path: its 40 GiB attempt failed during host-segment creation, and a host-only probe showed each 256 MiB allocation consuming matching VRAM with GTT unchanged at creation. Its historical failure log is [`validation/hip-vmm-40gib-failed.txt`](validation/hip-vmm-40gib-failed.txt); those findings do not describe the current GTT BO provider. For comparison, the non-VMM `hipMalloc` mapped-host fallback also passed a separate 40 GiB test using pinned host memory. These are synthetic pointer/data-integrity checks. No native HIP baseline, model workload, unmodified-application compatibility, compression, or transparent paging has been established. The VMM/GTT build needs ROCm/HIP and libdrm AMDGPU development files.
+An earlier HIP host-location VMM provider is a separate, superseded path: its 40 GiB attempt failed during host-segment creation, and a host-only probe showed each 256 MiB allocation consuming matching VRAM with GTT unchanged at creation. Its historical failure log is [`validation/hip-vmm-40gib-failed.txt`](validation/hip-vmm-40gib-failed.txt); those findings do not describe the current GTT BO provider. For comparison, the non-VMM `hipMalloc` mapped-host fallback also passed a separate 40 GiB test using pinned host memory. These are synthetic pointer/data-integrity checks. These capacity checks do not establish a native 40 GiB HIP baseline, model workloads, compression, or transparent paging. A separate unmodified-application check is documented below. The VMM/GTT build needs ROCm/HIP and libdrm AMDGPU development files.
 
 ## Linux TTM paging probe
 
@@ -136,3 +136,11 @@ ctest --test-dir build --output-on-failure
 ```
 
 Tests require compatible GPU hardware and the relevant runtime. This report distinguishes completed integrity checks from untested application, model, performance, and transparent paging claims.
+
+## Unmodified ROCm application
+
+The unchanged official ROCm [primbench HIP copy example](https://github.com/ROCm/rocm-libraries/blob/959b2d4d0459abfd1f67f3fb9cce20cd88a7785a/shared/primbench/examples/hip/copy_benchmark.cpp) was built at commit `959b2d4d0459abfd1f67f3fb9cce20cd88a7785a`, targeting gfx1100, with monitoring disabled and upstream assertions enabled. `check_primbench.py` pins both source hashes and reproduces the build and runs.
+
+Both the native process and `./zvram --hip --hip-vmm --hip-report-capacity --hip-local-mib 32 --hip-host-mib 512 -- copy_benchmark --size 32MiB --min-secs 0.1 --noise-timeout-secs 1` exited 0 for `char` and `long long`. The example allocates two 32 MiB data buffers plus its library's internal 256 MiB cache buffer. Under zVram these exceeded the 32 MiB local cap: peak tracked backing was 32 MiB VRAM and 288 MiB GTT, with six VMM allocations over the run. Tracked/local/host/pending/orphan/failure counters returned to zero.
+
+The upstream copy assertion verifies only the first three values (`0, 1, 2`), so this does not replace the full-word integrity checks above. Both short runs reached primbench's statistical noise timeout, which is distinct from the subprocess timeout and assertion failure; no stable performance comparison is claimed. An initial 256 MiB host cap correctly refused another allocation because the internal cache had already consumed most of it; the successful run used 512 MiB. No model or broader HIP API compatibility follows from this example. Logs: [native](validation/primbench-native.txt), [VMM/GTT](validation/primbench-vmm.txt).
