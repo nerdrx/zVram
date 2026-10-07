@@ -24,6 +24,12 @@
 
 namespace {
 constexpr char kLayer[] = "VK_LAYER_NX_zvram";
+#ifdef VK_KHR_internally_synchronized_queues
+constexpr VkDeviceQueueCreateFlags kAllowedQueueCreateFlags =
+    VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR;
+#else
+constexpr VkDeviceQueueCreateFlags kAllowedQueueCreateFlags = 0;
+#endif
 struct Device;
 template<class H> void* key(H h) { return h ? *reinterpret_cast<void**>(h) : nullptr; }
 template<class H> H tokenHandle(std::uintptr_t value) {
@@ -453,7 +459,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             if((queueProps[i].queueFlags&VK_QUEUE_SPARSE_BINDING_BIT)==0) continue;
             for(std::uint32_t q=0;q<ci->queueCreateInfoCount;q++)
                 if(ci->pQueueCreateInfos[q].queueFamilyIndex==i && ci->pQueueCreateInfos[q].queueCount &&
-                   (ci->pQueueCreateInfos[q].flags&~VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR)==0) {
+                   (ci->pQueueCreateInfos[q].flags&~kAllowedQueueCreateFlags)==0) {
                     sparseFamily=i; sparseQueueFlags=queueProps[i].queueFlags; break;
                 }
             if(sparseFamily!=UINT32_MAX) break;
@@ -462,7 +468,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         if(!deviceGroupRequested) {
             bool appQueuesSupported=true;
             for(std::uint32_t q=0;q<ci->queueCreateInfoCount;q++)
-                if(ci->pQueueCreateInfos[q].flags&~VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR) {
+                if(ci->pQueueCreateInfos[q].flags&~kAllowedQueueCreateFlags) {
                     appQueuesSupported=false; unsupportedQueueFlags=true;
                 }
             for(std::uint32_t i=0;i<familyCount;i++) {
@@ -476,7 +482,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 std::uint32_t used=0; bool supportedFlags=true; std::uint32_t existing=UINT32_MAX;
                 for(std::uint32_t q=0;q<ci->queueCreateInfoCount;q++) if(ci->pQueueCreateInfos[q].queueFamilyIndex==i) {
                     existing=q; used=ci->pQueueCreateInfos[q].queueCount;
-                    if(ci->pQueueCreateInfos[q].flags&~VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR) supportedFlags=false;
+                    if(ci->pQueueCreateInfos[q].flags&~kAllowedQueueCreateFlags) supportedFlags=false;
                     break;
                 }
                 if(!supportedFlags || used>=queueProps[i].queueCount) continue;
@@ -1330,12 +1336,15 @@ VKAPI_ATTR VkResult VKAPI_CALL layerBindAccelerationStructureMemoryNV(VkDevice d
     auto fn=reinterpret_cast<PFN_vkBindAccelerationStructureMemoryNV>(d->gdpa(device,"vkBindAccelerationStructureMemoryNV"));
     return fn?fn(device,count,infos):VK_ERROR_FEATURE_NOT_PRESENT;
 }
+#ifdef VK_ARM_tensors
 VKAPI_ATTR VkResult VKAPI_CALL layerBindTensorMemoryARM(VkDevice device,std::uint32_t count,const VkBindTensorMemoryInfoARM* infos) {
     auto d=findDevice(device); if(!d || !infos) return VK_ERROR_INITIALIZATION_FAILED;
     for(std::uint32_t i=0;i<count;i++) if(containsVirtualMemory(d,infos[i].memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
     auto fn=reinterpret_cast<PFN_vkBindTensorMemoryARM>(d->gdpa(device,"vkBindTensorMemoryARM"));
     return fn?fn(device,count,infos):VK_ERROR_FEATURE_NOT_PRESENT;
 }
+#endif
+#ifdef VK_ARM_data_graph
 VKAPI_ATTR VkResult VKAPI_CALL layerBindDataGraphPipelineSessionMemoryARM(VkDevice device,std::uint32_t count,
     const VkBindDataGraphPipelineSessionMemoryInfoARM* infos) {
     auto d=findDevice(device); if(!d || !infos) return VK_ERROR_INITIALIZATION_FAILED;
@@ -1343,12 +1352,15 @@ VKAPI_ATTR VkResult VKAPI_CALL layerBindDataGraphPipelineSessionMemoryARM(VkDevi
     auto fn=reinterpret_cast<PFN_vkBindDataGraphPipelineSessionMemoryARM>(d->gdpa(device,"vkBindDataGraphPipelineSessionMemoryARM"));
     return fn?fn(device,count,infos):VK_ERROR_FEATURE_NOT_PRESENT;
 }
+#endif
+#ifdef VK_QCOM_tile_memory_heap
 VKAPI_ATTR void VKAPI_CALL layerCmdBindTileMemoryQCOM(VkCommandBuffer commandBuffer,const VkTileMemoryBindInfoQCOM* info) {
     auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d || !info) return;
     if(containsVirtualMemory(d,info->memory)) { logf("rejected synthetic memory in vkCmdBindTileMemoryQCOM"); return; }
     auto fn=reinterpret_cast<PFN_vkCmdBindTileMemoryQCOM>(d->gdpa(d->handle,"vkCmdBindTileMemoryQCOM"));
     if(fn) fn(commandBuffer,info);
 }
+#endif
 VKAPI_ATTR VkResult VKAPI_CALL layerGetSnapshotStats(VkDevice device,ZvramSnapshotStatsNX* out) {
     auto d=findDevice(device); if(!d || !out || out->structSize<sizeof(ZvramSnapshotStatsNX)) return VK_ERROR_INITIALIZATION_FAILED;
     std::lock_guard<std::mutex> lock(d->mutex);
@@ -1707,9 +1719,15 @@ PFN_vkVoidFunction lookup(const char* name) {
     MATCH("vkDebugMarkerSetObjectTagEXT",layerDebugMarkerSetObjectTagEXT);
     MATCH("vkBindVideoSessionMemoryKHR",layerBindVideoSessionMemoryKHR);
     MATCH("vkBindAccelerationStructureMemoryNV",layerBindAccelerationStructureMemoryNV);
+#ifdef VK_ARM_tensors
     MATCH("vkBindTensorMemoryARM",layerBindTensorMemoryARM);
+#endif
+#ifdef VK_ARM_data_graph
     MATCH("vkBindDataGraphPipelineSessionMemoryARM",layerBindDataGraphPipelineSessionMemoryARM);
+#endif
+#ifdef VK_QCOM_tile_memory_heap
     MATCH("vkCmdBindTileMemoryQCOM",layerCmdBindTileMemoryQCOM);
+#endif
     MATCH("vkZVramGetSnapshotStatsNX",layerGetSnapshotStats);
     MATCH("vkQueueSubmit",layerQueueSubmit); MATCH("vkQueueSubmit2",layerQueueSubmit2);
     MATCH("vkQueueSubmit2KHR",layerQueueSubmit2KHR); MATCH("vkQueueBindSparse",layerQueueBindSparse);
