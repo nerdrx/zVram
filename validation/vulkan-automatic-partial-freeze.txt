@@ -1,0 +1,27 @@
+
+7/37 Testing: vulkan-automatic-partial-freeze
+7/37 Test: vulkan-automatic-partial-freeze
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "11" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--expect-partial-freeze"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"vulkan-automatic-partial-freeze" start time: Oct 07 06:10 CEST
+Output:
+----------------------------------------------------------
+[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=11534336
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+[zvram] virtual bind bytes=335544320 segments=2 local=2 system=0
+[zvram] snapshot cold bytes=268435456 stored=9809248
+[zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=9809248 freezes=1 restores=0 failures=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+partial freeze: cold=268435456 resident=67108864 stored=9809248
+[zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=1
+[zvram] virtual free bytes=335544320
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=1
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+PASS: first child released, second stayed resident, and all 320 MiB verified after wake
+<end of output>
+Test time =   0.67 sec
+----------------------------------------------------------
+Test Passed.
+"vulkan-automatic-partial-freeze" end time: Oct 07 06:10 CEST
+"vulkan-automatic-partial-freeze" time elapsed: 00:00:00

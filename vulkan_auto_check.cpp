@@ -14,6 +14,10 @@
 namespace {
 constexpr VkDeviceSize MiB = 1024ull * 1024ull;
 constexpr VkDeviceSize TotalBytes = 320 * MiB;
+constexpr VkDeviceSize BudgetFirstBytes = 256 * MiB;
+constexpr VkDeviceSize BudgetSecondBytes = 192 * MiB;
+constexpr VkDeviceSize FirstChildBytes = 256 * MiB;
+constexpr VkDeviceSize SecondChildBytes = TotalBytes - FirstChildBytes;
 constexpr VkDeviceSize ChunkBytes = 32 * MiB;
 constexpr std::uint32_t ChunkWords = static_cast<std::uint32_t>(ChunkBytes / 4);
 constexpr std::uint32_t TotalWords = static_cast<std::uint32_t>(TotalBytes / 4);
@@ -330,7 +334,8 @@ struct Context {
     }
 
     template<class Record>
-    void submit(Record&& record, std::uint32_t queueIndex = 0) {
+    VkResult submit(Record&& record, std::uint32_t queueIndex = 0,
+                    VkResult expectedFailure = VK_SUCCESS) {
         VkQueue targetQueue = queueIndex ? secondQueue : queue;
         VkCommandPool targetPool = queueIndex ? secondCommands : commands;
         require(targetQueue != VK_NULL_HANDLE && targetPool != VK_NULL_HANDLE, "requested queue is unavailable");
@@ -355,7 +360,12 @@ struct Context {
                 }
                 si.signalSemaphoreCount = 1; si.pSignalSemaphores = &chainSemaphores[signalIndex];
             }
-            check(vkQueueSubmit(targetQueue, 1, &si, VK_NULL_HANDLE), "submit command buffer");
+            const VkResult submitResult = vkQueueSubmit(targetQueue, 1, &si, VK_NULL_HANDLE);
+            if (expectedFailure != VK_SUCCESS && submitResult == expectedFailure) {
+                vkFreeCommandBuffers(device, targetPool, 1, &command);
+                return submitResult;
+            }
+            check(submitResult, "submit command buffer");
             check(vkQueueWaitIdle(targetQueue), "wait for queue");
             if (twoQueues || twoFamilies) { chainIndex = signalIndex; chainStarted = true; }
         } catch (...) {
@@ -363,6 +373,7 @@ struct Context {
             throw;
         }
         vkFreeCommandBuffers(device, targetPool, 1, &command);
+        return VK_SUCCESS;
     }
 };
 
@@ -409,8 +420,27 @@ void waitCold(const Context& context, const ZvramSnapshotStatsNX& before) {
         " lastError=" + std::to_string(final.lastError));
 }
 
+ZvramSnapshotStatsNX waitPartialCold(const Context& context, const ZvramSnapshotStatsNX& before) {
+    const auto deadline = std::chrono::steady_clock::now() + ColdTimeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto current = context.stats();
+        if (current.coldLogicalBytes == FirstChildBytes &&
+            current.residentBytes == SecondChildBytes && current.coldStoredBytes > 0 &&
+            current.freezes > before.freezes) return current;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    const auto final = context.stats();
+    throw std::runtime_error("partial freeze state not reached: cold=" +
+        std::to_string(final.coldLogicalBytes) + " resident=" + std::to_string(final.residentBytes) +
+        " stored=" + std::to_string(final.coldStoredBytes) + " freezes=" +
+        std::to_string(final.freezes) + " failures=" + std::to_string(final.failures) +
+        " lastError=" + std::to_string(final.lastError));
+}
+
 void metadataWhileCold(Context& context, VkBuffer buffer,
-                       const ZvramSnapshotStatsNX& cold) {
+                       const ZvramSnapshotStatsNX& cold,
+                       std::uint64_t expectedColdBytes = TotalBytes,
+                       VkDeviceSize minimumBufferBytes = TotalBytes) {
     if (context.bdaMode) {
         VkBufferDeviceAddressInfo addressInfo{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
         addressInfo.buffer = buffer;
@@ -420,12 +450,12 @@ void metadataWhileCold(Context& context, VkBuffer buffer,
     for (int i = 0; i < 3; ++i) {
         VkMemoryRequirements requirements{};
         vkGetBufferMemoryRequirements(context.device, buffer, &requirements);
-        require(requirements.size >= TotalBytes, "buffer requirements changed while cold");
+        require(requirements.size >= minimumBufferBytes, "buffer requirements changed while cold");
         VkPhysicalDeviceMemoryProperties memory{};
         vkGetPhysicalDeviceMemoryProperties(context.physical, &memory);
         require(memory.memoryTypeCount > context.virtualType, "virtual memory type disappeared while cold");
         const auto current = context.stats();
-        require(current.restores == cold.restores && current.coldLogicalBytes >= TotalBytes,
+        require(current.restores == cold.restores && current.coldLogicalBytes == expectedColdBytes,
                 "metadata query woke the cold allocation");
     }
 }
@@ -520,9 +550,12 @@ void probeNativeTokenLifetimes(Context& context, VkDeviceMemory original,
     std::cout << "native token probes bound with distinct allocations; original cold token unchanged" << std::endl;
 }
 
-void upload(Context& context, VkBuffer buffer, Staging& staging) {
+void upload(Context& context, VkBuffer buffer, Staging& staging,
+            VkDeviceSize byteSize = TotalBytes) {
     auto* words = static_cast<std::uint32_t*>(staging.mapped);
-    for (std::uint32_t chunk = 0; chunk < TotalBytes / ChunkBytes; ++chunk) {
+    require(byteSize % ChunkBytes == 0, "upload size must contain whole chunks");
+    const std::uint32_t chunkCount = static_cast<std::uint32_t>(byteSize / ChunkBytes);
+    for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
         const std::uint32_t base = chunk * ChunkWords;
         for (std::uint32_t i = 0; i < ChunkWords; ++i) words[i] = initialWord(base + i);
         context.submit([&](VkCommandBuffer command) {
@@ -537,13 +570,13 @@ void upload(Context& context, VkBuffer buffer, Staging& staging) {
             barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
             vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                  0, 1, &barrier, 0, nullptr, 0, nullptr);
-            if (context.exclusiveFamilies && chunk + 1 == TotalBytes / ChunkBytes) {
+            if (context.exclusiveFamilies && chunk + 1 == chunkCount) {
                 VkBufferMemoryBarrier release{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
                 release.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
                 release.dstAccessMask = 0;
                 release.srcQueueFamilyIndex = context.family;
                 release.dstQueueFamilyIndex = context.secondFamily;
-                release.buffer = buffer; release.offset = 0; release.size = TotalBytes;
+                release.buffer = buffer; release.offset = 0; release.size = byteSize;
                 vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
                                      0, nullptr, 1, &release, 0, nullptr);
@@ -552,8 +585,12 @@ void upload(Context& context, VkBuffer buffer, Staging& staging) {
     }
 }
 
-void computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle, std::uint32_t queueIndex) {
-    for (std::uint32_t chunk = 0; chunk < TotalBytes / ChunkBytes; ++chunk) {
+VkResult computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle,
+                      std::uint32_t queueIndex, bool expectFirstFailure = false,
+                      VkDeviceSize byteSize = TotalBytes) {
+    require(byteSize % ChunkBytes == 0, "compute size must contain whole chunks");
+    const std::uint32_t chunkCount = static_cast<std::uint32_t>(byteSize / ChunkBytes);
+    for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
         const VkDeviceSize offset = static_cast<VkDeviceSize>(chunk) * ChunkBytes;
         VkDescriptorBufferInfo info{buffer, offset, ChunkBytes};
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -563,14 +600,14 @@ void computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle, std::u
         struct BdaPush { VkDeviceAddress address; std::uint32_t count, salt; };
         const BdaPush bdaPush{context.bufferAddress + offset, ChunkWords, cycleSalt(cycle, chunk)};
         const std::uint32_t push[3]{ChunkWords, cycleSalt(cycle, chunk), 1};
-        context.submit([&](VkCommandBuffer command) {
+        const VkResult result = context.submit([&](VkCommandBuffer command) {
             if (context.exclusiveFamilies && chunk == 0) {
                 VkBufferMemoryBarrier acquire{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
                 acquire.srcAccessMask = 0;
                 acquire.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
                 acquire.srcQueueFamilyIndex = context.family;
                 acquire.dstQueueFamilyIndex = context.secondFamily;
-                acquire.buffer = buffer; acquire.offset = 0; acquire.size = TotalBytes;
+                acquire.buffer = buffer; acquire.offset = 0; acquire.size = byteSize;
                 vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                                      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
                                      0, nullptr, 1, &acquire, 0, nullptr);
@@ -595,25 +632,30 @@ void computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle, std::u
             barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
             vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                  0, 1, &barrier, 0, nullptr, 0, nullptr);
-            if (context.exclusiveFamilies && chunk + 1 == TotalBytes / ChunkBytes) {
+            if (context.exclusiveFamilies && chunk + 1 == chunkCount) {
                 VkBufferMemoryBarrier release{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
                 release.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
                 release.dstAccessMask = 0;
                 release.srcQueueFamilyIndex = context.secondFamily;
                 release.dstQueueFamilyIndex = context.family;
-                release.buffer = buffer; release.offset = 0; release.size = TotalBytes;
+                release.buffer = buffer; release.offset = 0; release.size = byteSize;
                 vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
                                      0, nullptr, 1, &release, 0, nullptr);
             }
-        }, queueIndex);
+        }, queueIndex, expectFirstFailure && chunk == 0 ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_SUCCESS);
+        if (expectFirstFailure && chunk == 0) return result;
     }
+    return VK_SUCCESS;
 }
 
 void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
-                       int cycle, bool releaseForCompute = false) {
+                       int cycle, bool releaseForCompute = false,
+                       VkDeviceSize byteSize = TotalBytes) {
     auto* actual = static_cast<const std::uint32_t*>(staging.mapped);
-    for (std::uint32_t chunk = 0; chunk < TotalBytes / ChunkBytes; ++chunk) {
+    require(byteSize % ChunkBytes == 0, "readback size must contain whole chunks");
+    const std::uint32_t chunkCount = static_cast<std::uint32_t>(byteSize / ChunkBytes);
+    for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
         const VkDeviceSize offset = static_cast<VkDeviceSize>(chunk) * ChunkBytes;
         context.submit([&](VkCommandBuffer command) {
             if (context.exclusiveFamilies && chunk == 0) {
@@ -622,7 +664,7 @@ void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
                 acquire.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
                 acquire.srcQueueFamilyIndex = context.secondFamily;
                 acquire.dstQueueFamilyIndex = context.family;
-                acquire.buffer = buffer; acquire.offset = 0; acquire.size = TotalBytes;
+                acquire.buffer = buffer; acquire.offset = 0; acquire.size = byteSize;
                 vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                                      VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
                                      0, nullptr, 1, &acquire, 0, nullptr);
@@ -639,13 +681,13 @@ void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
             vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
                                  0, 1, &barrier, 0, nullptr, 0, nullptr);
             if (context.exclusiveFamilies && releaseForCompute &&
-                chunk + 1 == TotalBytes / ChunkBytes) {
+                chunk + 1 == chunkCount) {
                 VkBufferMemoryBarrier release{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
                 release.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
                 release.dstAccessMask = 0;
                 release.srcQueueFamilyIndex = context.family;
                 release.dstQueueFamilyIndex = context.secondFamily;
-                release.buffer = buffer; release.offset = 0; release.size = TotalBytes;
+                release.buffer = buffer; release.offset = 0; release.size = byteSize;
                 vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
                                      0, nullptr, 1, &release, 0, nullptr);
@@ -665,11 +707,16 @@ void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
 } // namespace
 
 int main(int argc, char** argv) try {
-    bool expectBudgetRefusal = false, bdaMode = false, nativeAllocation = false;
+    bool expectBudgetRefusal = false, expectBudgetRelease = false;
+    bool expectPartialFreeze = false, expectPartialRestore = false;
+    bool bdaMode = false, nativeAllocation = false;
     bool twoQueues = false, twoFamilies = false, exclusiveFamilies = false;
     bool pendingWait = false, pendingBind = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--expect-budget-refusal") == 0) expectBudgetRefusal = true;
+        else if (std::strcmp(argv[i], "--expect-budget-release") == 0) expectBudgetRelease = true;
+        else if (std::strcmp(argv[i], "--expect-partial-freeze") == 0) expectPartialFreeze = true;
+        else if (std::strcmp(argv[i], "--expect-partial-restore") == 0) expectPartialRestore = true;
         else if (std::strcmp(argv[i], "--bda") == 0) bdaMode = true;
         else if (std::strcmp(argv[i], "--native-allocation") == 0) nativeAllocation = true;
         else if (std::strcmp(argv[i], "--two-queues") == 0) twoQueues = true;
@@ -677,10 +724,18 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--exclusive-families") == 0) exclusiveFamilies = true;
         else if (std::strcmp(argv[i], "--pending-wait") == 0) pendingWait = true;
         else if (std::strcmp(argv[i], "--pending-bind") == 0) pendingBind = true;
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind]");
     }
+    require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
+                                      bdaMode || nativeAllocation || twoQueues || twoFamilies ||
+                                      exclusiveFamilies || pendingWait || pendingBind)),
+            "budget-release mode uses one synthetic single-queue allocation path");
     require(!(expectBudgetRefusal && bdaMode), "--bda and --expect-budget-refusal cannot be combined");
     require(!(expectBudgetRefusal && nativeAllocation), "budget refusal requires virtual allocation");
+    require(!(expectPartialFreeze && (expectBudgetRefusal || nativeAllocation || bdaMode)),
+            "partial-freeze mode requires the standard virtual allocation path");
+    require(!(expectPartialRestore && (expectBudgetRefusal || expectPartialFreeze || nativeAllocation || bdaMode)),
+            "partial-restore mode requires the standard virtual allocation path");
     require(!(twoQueues && (twoFamilies || exclusiveFamilies)), "choose only one multi-queue mode");
     require(!(expectBudgetRefusal && exclusiveFamilies), "budget refusal mode does not use exclusive family transfers");
     require(!(pendingWait && pendingBind), "choose only one pending queue test");
@@ -714,8 +769,10 @@ int main(int argc, char** argv) try {
         }
     }
     Buffer resident; resident.device = context.device;
+    Buffer extra; extra.device = context.device;
+    const VkDeviceSize residentBufferBytes = expectBudgetRelease ? BudgetFirstBytes : TotalBytes;
     VkBufferCreateInfo ci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    ci.size = TotalBytes;
+    ci.size = residentBufferBytes;
     ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     if (bdaMode) ci.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
@@ -751,6 +808,34 @@ int main(int argc, char** argv) try {
     check(vkAllocateMemory(context.device, &ai, nullptr, &resident.memory), "allocate virtual buffer memory");
     const auto bindStart = std::chrono::steady_clock::now();
     check(vkBindBufferMemory(context.device, resident.handle, resident.memory, 0), "bind virtual buffer memory");
+    VkDeviceSize residentLogicalBytes = requirements.size;
+    VkDeviceSize extraLogicalBytes = 0;
+    if (expectBudgetRelease) {
+        VkBufferCreateInfo extraInfo = ci;
+        extraInfo.size = BudgetSecondBytes;
+        check(vkCreateBuffer(context.device, &extraInfo, nullptr, &extra.handle), "create second virtual buffer");
+        VkMemoryRequirements extraRequirements{};
+        vkGetBufferMemoryRequirements(context.device, extra.handle, &extraRequirements);
+        require(extraRequirements.memoryTypeBits & (1u << context.virtualType),
+                "second buffer is not eligible for virtual memory type");
+        require(extraRequirements.size <= 98304 * MiB, "second buffer exceeds configured virtual capacity");
+        VkMemoryAllocateInfo extraAlloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        extraAlloc.allocationSize = extraRequirements.size;
+        extraAlloc.memoryTypeIndex = context.virtualType;
+        VkMemoryAllocateFlagsInfo extraAddressFlags{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
+        extraAddressFlags.flags = 0;
+        extraAlloc.pNext = &extraAddressFlags;
+        check(vkAllocateMemory(context.device, &extraAlloc, nullptr, &extra.memory),
+              "allocate second virtual buffer memory");
+        check(vkBindBufferMemory(context.device, extra.handle, extra.memory, 0),
+              "bind second virtual buffer memory");
+        residentLogicalBytes = requirements.size;
+        extraLogicalBytes = extraRequirements.size;
+        require(residentLogicalBytes != extraLogicalBytes,
+                "budget-release buffers need distinct allocation sizes for cold identity");
+        require(residentLogicalBytes <= FirstChildBytes && extraLogicalBytes <= FirstChildBytes,
+                "budget-release allocations must each fit one backing child");
+    }
     if (pendingBind) {
         const auto bindMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - bindStart).count();
@@ -789,7 +874,12 @@ int main(int argc, char** argv) try {
     check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0), "bind staging memory");
     check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped), "map staging memory");
 
-    upload(context, resident.handle, staging);
+    upload(context, resident.handle, staging, residentBufferBytes);
+    if (expectBudgetRelease) {
+        upload(context, extra.handle, staging, BudgetSecondBytes);
+        readbackAndVerify(context, resident.handle, staging, -1, false, residentBufferBytes);
+        readbackAndVerify(context, extra.handle, staging, -1, false, BudgetSecondBytes);
+    }
     if (pendingBind) {
         for (std::uint32_t cycle = 0; cycle < 2; ++cycle) {
             computeCycle(context, resident.handle, cycle, 1);
@@ -801,6 +891,85 @@ int main(int argc, char** argv) try {
         return 0;
     }
     const auto initial = context.stats();
+    if (expectBudgetRelease) {
+        const auto deadline = std::chrono::steady_clock::now() + ColdTimeout;
+        ZvramSnapshotStatsNX firstCold{};
+        do {
+            firstCold = context.stats();
+            const bool primaryCold = firstCold.coldLogicalBytes == residentLogicalBytes &&
+                                     firstCold.residentBytes == extraLogicalBytes;
+            const bool extraCold = firstCold.coldLogicalBytes == extraLogicalBytes &&
+                                   firstCold.residentBytes == residentLogicalBytes;
+            if ((primaryCold || extraCold) && firstCold.coldStoredBytes > 0 &&
+                firstCold.failures > initial.failures) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        } while (std::chrono::steady_clock::now() < deadline);
+
+        Buffer* coldBuffer = nullptr;
+        Buffer* remainingBuffer = nullptr;
+        VkDeviceSize coldBytes = 0;
+        VkDeviceSize remainingBytes = 0;
+        if (firstCold.coldLogicalBytes == residentLogicalBytes &&
+            firstCold.residentBytes == extraLogicalBytes) {
+            coldBuffer = &resident; remainingBuffer = &extra;
+            coldBytes = residentLogicalBytes; remainingBytes = extraLogicalBytes;
+        } else if (firstCold.coldLogicalBytes == extraLogicalBytes &&
+                   firstCold.residentBytes == residentLogicalBytes) {
+            coldBuffer = &extra; remainingBuffer = &resident;
+            coldBytes = extraLogicalBytes; remainingBytes = residentLogicalBytes;
+        }
+        require(coldBuffer && remainingBuffer && firstCold.coldStoredBytes > 0 &&
+                firstCold.failures > initial.failures,
+                "cold-budget test did not freeze exactly one identifiable allocation and block the other");
+        metadataWhileCold(context, coldBuffer->handle, firstCold, coldBytes, coldBytes);
+        std::cout << "budget release: first cold allocation=" << coldBytes
+                  << " resident=" << firstCold.residentBytes
+                  << " failures=" << firstCold.failures << std::endl;
+
+        const auto beforeFree = context.stats();
+        vkDestroyBuffer(context.device, coldBuffer->handle, nullptr);
+        coldBuffer->handle = VK_NULL_HANDLE;
+        vkFreeMemory(context.device, coldBuffer->memory, nullptr);
+        coldBuffer->memory = VK_NULL_HANDLE;
+        const auto afterFree = context.stats();
+        require(afterFree.restores == beforeFree.restores,
+                "freeing the cold allocation caused an unnecessary restore");
+
+        const auto refreezeDeadline = std::chrono::steady_clock::now() + ColdTimeout;
+        ZvramSnapshotStatsNX remainingCold{};
+        do {
+            remainingCold = context.stats();
+            if (remainingCold.coldLogicalBytes == remainingBytes &&
+                remainingCold.residentBytes == 0 && remainingCold.coldStoredBytes > 0 &&
+                remainingCold.freezes > beforeFree.freezes &&
+                remainingCold.restores == beforeFree.restores) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        } while (std::chrono::steady_clock::now() < refreezeDeadline);
+        require(remainingCold.coldLogicalBytes == remainingBytes &&
+                remainingCold.residentBytes == 0 && remainingCold.coldStoredBytes > 0 &&
+                remainingCold.freezes > beforeFree.freezes &&
+                remainingCold.restores == beforeFree.restores,
+                "remaining allocation did not freeze after cold capacity was freed without queue work");
+        metadataWhileCold(context, remainingBuffer->handle, remainingCold,
+                          remainingBytes, remainingBytes);
+
+        const auto beforeWake = context.stats();
+        check(computeCycle(context, remainingBuffer->handle, 0, 0, false, remainingBytes),
+              "wake remaining allocation after budget release");
+        const auto afterWake = context.stats();
+        require(afterWake.restores > beforeWake.restores,
+                "remaining allocation did not restore after the capacity-release freeze");
+        readbackAndVerify(context, remainingBuffer->handle, staging, 0, false, remainingBytes);
+        vkDestroyBuffer(context.device, remainingBuffer->handle, nullptr);
+        remainingBuffer->handle = VK_NULL_HANDLE;
+        vkFreeMemory(context.device, remainingBuffer->memory, nullptr);
+        remainingBuffer->memory = VK_NULL_HANDLE;
+        const auto afterCleanup = context.stats();
+        require(afterCleanup.coldLogicalBytes == 0 && afterCleanup.residentBytes == 0,
+                "budget-release test cleanup left cold or resident allocation bytes");
+        std::cout << "PASS: freeing one cold allocation released budget; remaining allocation froze, woke, and verified all bytes\n";
+        return 0;
+    }
     if (expectBudgetRefusal) {
         const auto deadline = std::chrono::steady_clock::now() + ColdTimeout;
         ZvramSnapshotStatsNX refused{};
@@ -816,8 +985,80 @@ int main(int argc, char** argv) try {
         std::cout << "budget refusal: failures=" << refused.failures << " resident="
                   << refused.residentBytes << " cold=" << refused.coldLogicalBytes << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        readbackAndVerify(context, resident.handle, staging, -1);
-        std::cout << "PASS: over-budget snapshot refused; original 320 MiB contents remain intact\n";
+        const auto stillIdle = context.stats();
+        require(stillIdle.failures == refused.failures &&
+                stillIdle.residentBytes == refused.residentBytes &&
+                stillIdle.coldLogicalBytes == 0,
+                "budget refusal retried without a new app queue submission");
+        std::cout << "budget refusal stayed suppressed without queue work: failures="
+                  << stillIdle.failures << std::endl;
+
+        computeCycle(context, resident.handle, 0, 0);
+        const auto retryDeadline = std::chrono::steady_clock::now() + ColdTimeout;
+        ZvramSnapshotStatsNX retried{};
+        do {
+            retried = context.stats();
+            if (retried.failures > stillIdle.failures && retried.residentBytes > 0 &&
+                retried.coldLogicalBytes == 0) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        } while (std::chrono::steady_clock::now() < retryDeadline);
+        require(retried.failures > stillIdle.failures && retried.residentBytes > 0 &&
+                retried.coldLogicalBytes == 0,
+                "budget refusal did not retry after new app queue work");
+        readbackAndVerify(context, resident.handle, staging, 0);
+        std::cout << "PASS: refusal stayed suppressed while idle, retried after queue work, and all 320 MiB remained intact\n";
+        return 0;
+    }
+    if (expectPartialFreeze) {
+        const auto cold = waitPartialCold(context, initial);
+        require(cold.coldLogicalBytes == FirstChildBytes && cold.residentBytes == SecondChildBytes,
+                "partial freeze did not leave exactly the second child resident");
+        metadataWhileCold(context, resident.handle, cold, FirstChildBytes);
+        std::cout << "partial freeze: cold=" << cold.coldLogicalBytes << " resident="
+                  << cold.residentBytes << " stored=" << cold.coldStoredBytes << std::endl;
+        const auto beforeWake = context.stats();
+        computeCycle(context, resident.handle, 0, 0);
+        const auto afterWake = context.stats();
+        require(afterWake.restores > beforeWake.restores,
+                "partial-cold allocation did not restore on GPU access");
+        readbackAndVerify(context, resident.handle, staging, 0);
+        std::cout << "PASS: first child released, second stayed resident, and all 320 MiB verified after wake\n";
+        return 0;
+    }
+    if (expectPartialRestore) {
+        const auto cold = [&] {
+            waitCold(context, initial);
+            return context.stats();
+        }();
+        require(cold.coldLogicalBytes == TotalBytes && cold.residentBytes == 0 &&
+                cold.freezes >= initial.freezes + 2,
+                "restore-retry test did not cold both backing child groups");
+        metadataWhileCold(context, resident.handle, cold);
+        std::cout << "fault-retry cold baseline: logical=" << cold.coldLogicalBytes
+                  << " stored=" << cold.coldStoredBytes << " freezes=" << cold.freezes << std::endl;
+        const auto beforeFault = context.stats();
+        const VkResult firstAttempt = computeCycle(context, resident.handle, 0, 0, true);
+        require(firstAttempt == VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                "injected partial restore did not reject the first queue submission with OOM");
+        const auto afterFault = context.stats();
+        require(afterFault.failures > beforeFault.failures && afterFault.lastError == VK_ERROR_OUT_OF_DEVICE_MEMORY &&
+                afterFault.restores > beforeFault.restores &&
+                afterFault.coldLogicalBytes == SecondChildBytes &&
+                afterFault.residentBytes == FirstChildBytes,
+                "faulted restore did not retain one restored and one cold child group");
+        std::cout << "partial restore fault: resident=" << afterFault.residentBytes
+                  << " cold=" << afterFault.coldLogicalBytes << " failures=" << afterFault.failures << std::endl;
+        check(computeCycle(context, resident.handle, 0, 0), "retry compute after partial restore");
+        readbackAndVerify(context, resident.handle, staging, 0);
+        const auto afterRetry = context.stats();
+        require(afterRetry.restores > afterFault.restores,
+                "retry did not restore the remaining cold child group");
+        vkDestroyBuffer(context.device, resident.handle, nullptr); resident.handle = VK_NULL_HANDLE;
+        vkFreeMemory(context.device, resident.memory, nullptr); resident.memory = VK_NULL_HANDLE;
+        const auto afterFree = context.stats();
+        require(afterFree.coldLogicalBytes == 0 && afterFree.residentBytes == 0,
+                "partial-restore retry cleanup left cold or resident virtual bytes");
+        std::cout << "PASS: injected partial restore returned OOM, retry restored and verified all bytes, cleanup is empty\n";
         return 0;
     }
     waitCold(context, initial);

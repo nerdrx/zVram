@@ -1,0 +1,11 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+    Start 13: vulkan-automatic-exclusive-families
+    Test #13: vulkan-automatic-exclusive-families ...   Passed    1.98 sec
+    Start 13: vulkan-automatic-exclusive-families
+    Test #13: vulkan-automatic-exclusive-families ...   Passed    1.98 sec
+    Start 13: vulkan-automatic-exclusive-families
+1/1 Test #13: vulkan-automatic-exclusive-families ...   Passed    2.01 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =   5.96 sec

@@ -1,0 +1,30 @@
+
+8/37 Testing: vulkan-automatic-partial-restore-retry
+8/37 Test: vulkan-automatic-partial-restore-retry
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--expect-partial-restore"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"vulkan-automatic-partial-restore-retry" start time: Oct 07 06:10 CEST
+Output:
+----------------------------------------------------------
+[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+[zvram] virtual bind bytes=335544320 segments=2 local=2 system=0
+[zvram] snapshot cold bytes=268435456 stored=9809248
+[zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=9809248 freezes=1 restores=0 failures=0
+[zvram] snapshot cold bytes=67108864 stored=2454267
+[zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=12263515 freezes=2 restores=0 failures=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+fault-retry cold baseline: logical=335544320 stored=12263515 freezes=2
+partial restore fault: resident=268435456 cold=67108864 failures=1
+[zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=1
+[zvram] virtual free bytes=335544320
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=1
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+PASS: injected partial restore returned OOM, retry restored and verified all bytes, cleanup is empty
+<end of output>
+Test time =   0.67 sec
+----------------------------------------------------------
+Test Passed.
+"vulkan-automatic-partial-restore-retry" end time: Oct 07 06:10 CEST
+"vulkan-automatic-partial-restore-retry" time elapsed: 00:00:00

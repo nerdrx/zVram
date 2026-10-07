@@ -533,15 +533,24 @@ bool reserveHostBytes(size_t bytes) {
   const Limit& configured = hostLimit();
   std::lock_guard<std::mutex> lock(gMutex);
   size_t available = 0;
-  if (!memAvailableBytes(&available) || available <= kHostReserveBytes) return false;
+  const auto refuse = [&](const char* reason) {
+    std::fprintf(stderr,
+                 "[zvram-hip] host backing reservation refused: reason=%s requested=%zu available=%zu reserve=%zu limit=%zu current=%zu pending=%zu\n",
+                 reason, bytes, available, kHostReserveBytes,
+                 configured.set ? configured.bytes : 0,
+                 gTotals.hostCurrent, gTotals.hostPending);
+    return false;
+  };
+  if (!memAvailableBytes(&available)) return refuse("meminfo-unavailable");
+  if (available <= kHostReserveBytes) return refuse("system-reserve");
   const size_t availableBudget = available - kHostReserveBytes;
   if (bytes > availableBudget || gTotals.hostPending > availableBudget - bytes)
-    return false;
+    return refuse("system-ram-budget");
   if (configured.set &&
       (bytes > configured.bytes ||
        gTotals.hostCurrent > configured.bytes - bytes ||
        gTotals.hostPending > configured.bytes - bytes - gTotals.hostCurrent))
-    return false;
+    return refuse("configured-host-limit");
   gTotals.hostPending += bytes;
   const size_t reserved = gTotals.hostCurrent + gTotals.hostPending;
   if (reserved > gTotals.hostPeak) gTotals.hostPeak = reserved;

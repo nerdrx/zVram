@@ -1,0 +1,61 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 6
+    Start 6: vulkan-automatic-budget-refusal
+
+6: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "98304" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "1" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--expect-budget-refusal"
+6: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+6: Environment variables: 
+6:  VK_LOADER_LAYERS_DISABLE=~implicit~
+6: Test timeout computed to be: 60
+6: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=1048576
+6: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+6: [zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+6: [zvram] virtual bind bytes=335544320 segments=2 local=2 system=0
+6: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+6: budget refusal: failures=2 resident=335544320 cold=0
+6: budget refusal stayed suppressed without queue work: failures=2
+6: [zvram] virtual free bytes=335544320
+6: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=4
+6: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+6: PASS: refusal stayed suppressed while idle, retried after queue work, and all 320 MiB remained intact
+1/2 Test #6: vulkan-automatic-budget-refusal ...   Passed    1.24 sec
+test 7
+    Start 7: vulkan-automatic-budget-release
+
+7: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "98304" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "14" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--expect-budget-release"
+7: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+7: Test timeout computed to be: 60
+7: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=14680064
+7: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+7: [zvram] virtual allocate bytes=268435456 heap-capacity=103079215104
+7: [zvram] virtual bind bytes=268435456 segments=1 local=1 system=0
+7: [zvram] virtual allocate bytes=201326592 heap-capacity=103079215104
+7: [zvram] virtual bind bytes=201326592 segments=1 local=1 system=0
+7: [zvram] snapshot cold bytes=201326592 stored=7360298
+7: [zvram] snapshot state event=freeze resident=268435456 cold-logical=201326592 cold-stored=7360298 freezes=1 restores=0 failures=0
+7: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+7: budget release: first cold allocation=201326592 resident=268435456 failures=1
+7: [zvram] virtual free bytes=201326592
+7: [zvram] snapshot cold bytes=268435456 stored=9809248
+7: [zvram] snapshot state event=freeze resident=0 cold-logical=268435456 cold-stored=9809248 freezes=2 restores=0 failures=1
+7: [zvram] snapshot state event=restore resident=268435456 cold-logical=0 cold-stored=0 freezes=2 restores=1 failures=1
+7: [zvram] virtual free bytes=268435456
+7: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=1 failures=1
+7: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+7: PASS: freeing one cold allocation released budget; remaining allocation froze, woke, and verified all bytes
+2/2 Test #7: vulkan-automatic-budget-release ...   Passed    0.89 sec
+
+The following tests passed:
+	vulkan-automatic-budget-refusal
+	vulkan-automatic-budget-release
+
+100% tests passed out of 2
+
+Total Test time (real) =   2.13 sec
