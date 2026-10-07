@@ -140,13 +140,13 @@ int main() {
     allowedInfo.stage.pNext = &subgroupInfo;
 #endif
 #ifdef VK_EXT_pipeline_robustness
-    VkPipelineRobustnessCreateInfo robustnessInfo{};
-    robustnessInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO;
+    VkPipelineRobustnessCreateInfoEXT robustnessInfo{};
+    robustnessInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT;
     allowedInfo.pNext = &robustnessInfo;
 #endif
 #ifdef VK_KHR_maintenance5
-    VkPipelineCreateFlags2CreateInfo flags2Info{};
-    flags2Info.sType = VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO;
+    VkPipelineCreateFlags2CreateInfoKHR flags2Info{};
+    flags2Info.sType = VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR;
     flags2Info.pNext = allowedInfo.pNext;
     allowedInfo.pNext = &flags2Info;
 #endif

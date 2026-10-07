@@ -2,6 +2,7 @@
 """Generate the Vulkan command-buffer forwarding hooks from vk.xml."""
 
 import argparse
+import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -17,6 +18,9 @@ NO_ACTION = {
     "vkCmdPushConstants", "vkCmdPushConstants2", "vkCmdPushConstants2KHR",
     "vkCmdResetQueryPool", "vkCmdWriteTimestamp", "vkCmdWriteTimestamp2",
     "vkCmdWriteTimestamp2KHR",
+}
+MIN_EXTENSION_VERSION = {
+    "vkCmdSetDispatchParametersARM": ("VK_ARM_SCHEDULING_CONTROLS_SPEC_VERSION", 2),
 }
 
 
@@ -39,6 +43,11 @@ def resolve(name, commands):
 
 def providers(root):
     result = {}
+    core_macros = {
+        feature.get("name"): "VK_VERSION_" + feature.get("number", "").replace(".", "_")
+        for feature in root.findall("./feature")
+        if feature.get("number") and not feature.get("name", "").startswith("VKSC_")
+    }
     platform_protect = {
         platform.get("name"): platform.get("protect")
         for platform in root.findall("./platforms/platform")
@@ -50,17 +59,54 @@ def providers(root):
         if not number or feature.get("name", "").startswith("VKSC_"):
             continue
         macro = "VK_VERSION_" + number.replace(".", "_")
-        for ref in feature.findall("./require/command"):
-            result.setdefault(ref.get("name"), set()).add((macro, None, False))
+        feature_guard = dependency(feature.get("depends"), core_macros)
+        for req in feature.findall("./require"):
+            if req.get("api") and "vulkan" not in req.get("api").split(","):
+                continue
+            req_guard = dependency(req.get("depends"), core_macros)
+            for ref in req.findall("command"):
+                result.setdefault(ref.get("name"), set()).add(
+                    ((f"defined({macro})", feature_guard, req_guard), None, False, None))
     for ext in root.findall("./extensions/extension"):
         if "vulkan" not in (ext.get("supported") or "").split(","):
             continue
         macro = ext.get("name", "")
         protect = ext.get("protect") or platform_protect.get(ext.get("platform"))
         beta = ext.get("provisional") == "true"
-        for ref in ext.findall("./require/command"):
-            result.setdefault(ref.get("name"), set()).add((macro, protect, beta))
+        ext_guard = dependency(ext.get("depends"), core_macros)
+        for req in ext.findall("./require"):
+            if req.get("api") and "vulkan" not in req.get("api").split(","):
+                continue
+            req_guard = dependency(req.get("depends"), core_macros)
+            for ref in req.findall("command"):
+                result.setdefault(ref.get("name"), set()).add(
+                    ((f"defined({macro})", ext_guard, req_guard), protect, beta,
+                     MIN_EXTENSION_VERSION.get(ref.get("name")) if ext.get("name") == "VK_ARM_scheduling_controls" else None))
     return result
+
+
+def dependency(expr, core_macros):
+    if not expr:
+        return None
+    # Registry feature members constrain runtime support, not declarations.
+    expr = re.sub(r"\bVk[A-Za-z0-9_]+::[A-Za-z0-9_]+", "1", expr)
+    token_re = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|1|[+,()]")
+    tokens = token_re.findall(expr)
+    if "".join(tokens) != re.sub(r"\s+", "", expr):
+        raise ValueError(f"unsupported dependency expression: {expr}")
+    converted = []
+    for token in tokens:
+        if token == "+":
+            converted.append("&&")
+        elif token == ",":
+            converted.append("||")
+        elif token in "()":
+            converted.append(token)
+        elif token == "1":
+            converted.append("1")
+        else:
+            converted.append(f"defined({core_macros.get(token, token)})")
+    return "(" + " ".join(converted) + ")"
 
 
 def declaration(param):
@@ -96,6 +142,21 @@ def action(name, params):
     return ["unknown(commandBuffer);"]
 
 
+def provider_expression(providers):
+    alternatives = set()
+    for guards, protect, beta, revision in providers:
+        terms = [guard for guard in guards if guard]
+        if protect:
+            terms.append(f"defined({protect})")
+        if beta:
+            terms.append("defined(VK_ENABLE_BETA_EXTENSIONS)")
+        if revision:
+            macro, minimum = revision
+            terms.append(f"defined({macro}) && {macro} >= {minimum}")
+        alternatives.add("(" + " && ".join(terms) + ")")
+    return " || ".join(sorted(alternatives))
+
+
 def generate(registry):
     root = ET.parse(registry).getroot()
     nodes = [node for node in root.findall("./commands/command") if command_name(node)]
@@ -109,26 +170,25 @@ def generate(registry):
         params = target.findall("param")
         if not params or params[0].findtext("type") != "VkCommandBuffer":
             continue
-        prov = sorted(provided.get(name, ()))
+        prov = sorted(provided.get(name, ()), key=repr)
         if not prov:
             continue
         ret = target.findtext("proto/type")
         declarations = [declaration(p) for p in params]
         selected.append((name, ret, declarations, prov, action(name, declarations)))
 
-    out = ["// Generated by generate_command_hooks.py; do not edit."]
+    out = ["// Generated by generate_command_hooks.py; do not edit.",
+           "// Requires <tuple> from the including translation unit.",
+           "template <typename> struct ZVramCommandSignature;",
+           "template <typename R, typename... Args>",
+           "struct ZVramCommandSignature<R (VKAPI_PTR *)(Args...)> { using ArgsTuple = std::tuple<Args...>; };"]
     for name, ret, params, prov, calls in selected:
-        conditions = []
-        for macro, protect, beta in prov:
-            parts = [f"defined({macro})"]
-            if protect:
-                parts.append(f"defined({protect})")
-            if beta:
-                parts.append("defined(VK_ENABLE_BETA_EXTENSIONS)")
-            conditions.append("(" + " && ".join(parts) + ")")
-        out += ["#if " + " || ".join(conditions),
+        out += ["#if " + provider_expression(prov),
+                f"using TrackedArgs_{name} = typename ZVramCommandSignature<PFN_{name}>::ArgsTuple;",
                 f"VKAPI_ATTR {ret} VKAPI_CALL tracked{name}("]
-        out.append("    " + ",\n    ".join(d for d, _ in params) + ") {")
+        out.append("    " + ",\n    ".join(
+            f"std::tuple_element_t<{i}, TrackedArgs_{name}> {param_name}"
+            for i, (_, param_name) in enumerate(params)) + ") {")
         out += ["    auto d = findDevice(reinterpret_cast<VkDevice>(commandBuffer));",
                 f"    auto next = d && d->gdpa ? reinterpret_cast<PFN_{name}>(d->gdpa(d->handle, \"{name}\")) : nullptr;"]
         if ret == "VkResult":
@@ -166,15 +226,7 @@ def generate(registry):
     out += ["", "PFN_vkVoidFunction trackedCommandLookup(const char* name) {"]
     out.append("    if (!name) return nullptr;")
     for name, _, _, prov, _ in selected:
-        conditions = []
-        for macro, protect, beta in prov:
-            parts = [f"defined({macro})"]
-            if protect:
-                parts.append(f"defined({protect})")
-            if beta:
-                parts.append("defined(VK_ENABLE_BETA_EXTENSIONS)")
-            conditions.append("(" + " && ".join(parts) + ")")
-        out += ["#if " + " || ".join(conditions),
+        out += ["#if " + provider_expression(prov),
                 f"    if (std::strcmp(name, \"{name}\") == 0) return reinterpret_cast<PFN_vkVoidFunction>(tracked{name});",
                 "#endif"]
     out += ["    return nullptr;", "}",
@@ -197,6 +249,8 @@ def main():
         missing = [name for name in required if name not in content]
         if "VK_KHR_synchronization2" not in content:
             missing.append("VK_KHR_synchronization2 guard")
+        if "VK_ARM_SCHEDULING_CONTROLS_SPEC_VERSION >= 2" not in content:
+            missing.append("ARM scheduling-controls revision gate")
         if "if (!pCopyBufferInfo || pCopyBufferInfo->pNext ||" not in content:
             missing.append("CopyBuffer2 pNext/null fallback")
         if "pCopyBufferInfo->regionCount && !pCopyBufferInfo->pRegions" not in content:

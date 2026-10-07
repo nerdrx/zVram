@@ -11,6 +11,7 @@
 #include <mutex>
 #include <new>
 #include <type_traits>
+#include <tuple>
 #include <string>
 #include <unordered_map>
 #include <vector>

@@ -266,14 +266,14 @@ private:
         bool robustness = false, flags2 = false;
         for (auto* p = static_cast<const VkBaseInStructure*>(chain); p; p = p->pNext) {
 #ifdef VK_EXT_pipeline_robustness
-            if (p->sType == VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO) {
+            if (p->sType == VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT) {
                 if (robustness) return false;
                 robustness = true;
                 continue;
             }
 #endif
 #ifdef VK_KHR_maintenance5
-            if (p->sType == VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO) {
+            if (p->sType == VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR) {
                 if (flags2) return false;
                 flags2 = true;
                 continue;
