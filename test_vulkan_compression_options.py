@@ -32,6 +32,11 @@ with tempfile.TemporaryDirectory() as temporary:
                      "--vulkan-min-savings-percent", value, "--", sys.executable, "-c", "pass")
         assert result.returncode == 2, (value, result.stderr)
 
+    for value in ("-1", "0", "4294967296", "not-an-int"):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", value,
+                     "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2, (value, result.stderr)
+
     missing_auto = run(launcher, *BASE, "--vulkan-min-savings-percent", "5",
                        "--", sys.executable, "-c", "pass")
     assert missing_auto.returncode == 2 and "requires Vulkan automatic snapshots" in missing_auto.stderr
@@ -47,3 +52,10 @@ with tempfile.TemporaryDirectory() as temporary:
                      "--", sys.executable, "-c", child)
         assert result.returncode == 0, result.stderr
         assert result.stdout == value + "\n", result.stdout
+
+    idle_child = "import os; print(os.environ.get('ZVRAM_VULKAN_AUTO_IDLE_MS', ''))"
+    result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "300000",
+                 "--vulkan-min-savings-percent", "5",
+                 "--", sys.executable, "-c", idle_child)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "300000\n", result.stdout

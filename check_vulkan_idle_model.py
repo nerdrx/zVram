@@ -22,6 +22,9 @@ ColdPattern = re.compile(r"snapshot cold bytes=(\d+) stored=(\d+)")
 StatePattern = re.compile(
     r"snapshot state (?:event=\S+ )?resident=(\d+) cold-logical=(\d+) cold-stored=(\d+) "
     r"freezes=(\d+) restores=(\d+) failures=(\d+)")
+StateEventPattern = re.compile(
+    r"snapshot state event=(\S+) resident=(\d+) cold-logical=(\d+) cold-stored=(\d+) "
+    r"freezes=(\d+) restores=(\d+) failures=(\d+)")
 VulkanBufferPattern = re.compile(
     r"\bVulkan\d+\s+model buffer size\s*=\s*([\d,]+(?:\.\d+)?)\s*MiB\b", re.I)
 OffloadPattern = re.compile(r"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers?\s+to GPU", re.I)
@@ -39,6 +42,42 @@ def available_memory_mib():
     if not match:
         raise RuntimeError("/proc/meminfo has no MemAvailable value")
     return int(match[1]) // 1024
+
+
+def pressure_prompt_ready(ready, model_mib):
+    """Pressure mode prompts at readiness; first inference submit performs admission."""
+    return bool(ready and model_mib)
+
+
+def cold_prompt_ready(ready, model_mib, cold_seen, state):
+    if not ready or not model_mib or not cold_seen or not state:
+        return False
+    tolerance = len(model_mib) * 0.01 * MiB
+    return (state[0] == 0 and state[1] + tolerance >= sum(model_mib) * MiB and
+            state[3] > 0 and state[5] == 0)
+
+
+def pressure_resident_states(text):
+    """Keep allocation peaks visible separately from completed restore states.
+
+    Allocation/bind can temporarily exceed admission's budget before the next
+    submit evicts backing. Every completed restore must respect that budget.
+    """
+    first = text.find("resident admission selected-chunks=")
+    states = [(match[1], int(match[2])) for match in StateEventPattern.finditer(text)
+              if first >= 0 and match.start() >= first]
+    return [size for event, size in states if event == "restore"], [size for _, size in states]
+
+
+def validate_pressure_options(args, parser):
+    if not args.pressure_on_first_submit:
+        return
+    if args.range_mib is None or args.resident_mib is None:
+        parser.error("--pressure-on-first-submit requires --range-mib and --resident-mib")
+    if args.resident_after_cold:
+        parser.error("--pressure-on-first-submit cannot be combined with --resident-after-cold")
+    if "--warmup" in args.app_arg:
+        parser.error("--pressure-on-first-submit requires --no-warmup; remove app --warmup")
 
 
 def capture_backing(pid, path):
@@ -68,7 +107,7 @@ def capture_backing(pid, path):
 
 
 def run_interactive(label, command, env, output_dir, timeout, automatic,
-                    min_available_mib=None):
+                    min_available_mib=None, pressure_on_first_submit=False):
     out_path = output_dir / f"{label}.stdout.txt"
     err_path = output_dir / f"{label}.stderr.txt"
     stdout = bytearray()
@@ -86,6 +125,7 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
     ready = False
     last_cold_time = None
     pre_prompt_cold_state = None
+    pre_prompt_state = None
     minimum_available_mib = None
     try:
         while time.monotonic() < deadline:
@@ -116,6 +156,8 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
                     states = [tuple(map(int, x)) for x in StatePattern.findall(text)]
                     if states:
                         cold_state = states[-1]
+                        if not prompt_sent:
+                            pre_prompt_state = cold_state
                     if automatic and "automatic Vulkan snapshots disabled:" in text:
                         raise RuntimeError(f"{label}: automatic Vulkan snapshots were disabled")
                     if automatic and any(word in text.lower() for word in
@@ -131,10 +173,12 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
                 raise RuntimeError(f"{label} exited before input (status {proc.returncode})")
             if not automatic and ready and model_mib:
                 break
-            tolerance = len(model_mib) * 0.01 * MiB
-            cold_ready = (cold_state and cold_state[0] == 0 and cold_state[1] + tolerance >=
-                          sum(model_mib) * MiB and cold_state[3] > 0 and cold_state[5] == 0)
-            if automatic and ready and model_mib and cold and cold_ready:
+            if (automatic and pressure_on_first_submit and
+                    pressure_prompt_ready(ready, model_mib)):
+                if "hot" not in backing:
+                    raise RuntimeError(f"{label}: no hot DRM snapshot was captured before pressure")
+                break
+            if automatic and cold_prompt_ready(ready, model_mib, cold, cold_state):
                 if last_cold_time is not None and time.monotonic() - last_cold_time >= 0.2:
                     if "hot" not in backing:
                         raise RuntimeError(f"{label}: no hot DRM snapshot was captured before eviction")
@@ -144,6 +188,7 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
         else:
             raise RuntimeError(f"{label} timed out waiting for ready model/snapshot")
         prompt_time = time.monotonic()
+        pressure_stderr_start = len(stderr)
         proc.stdin.write(Prompt)
         proc.stdin.close()
         prompt_sent = True
@@ -165,6 +210,11 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
                         first_output_time = time.monotonic()
                 else:
                     stderr.extend(chunk)
+                    if (automatic and pressure_on_first_submit and prompt_sent and
+                            b"snapshot state event=restore" in stderr[pressure_stderr_start:] and
+                            "pressure" not in backing):
+                        backing["pressure"] = capture_backing(
+                            proc.pid, output_dir / f"{label}-pressure.fdinfo.txt")
             if proc.poll() is not None:
                 break
         if proc.poll() is None:
@@ -191,9 +241,12 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
     states = [tuple(map(int, x)) for x in StatePattern.findall(text)]
     if states:
         cold_state = states[-1]
+    state_events = [(event, *map(int, values)) for event, *values in
+                    StateEventPattern.findall(text)]
     offloads = [(int(a), int(b)) for a, b in OffloadPattern.findall(text)]
     return {"stdout": bytes(stdout), "stderr": text, "model_buffers_mib": model_mib,
             "cold": cold, "cold_state": cold_state, "pre_prompt_cold_state": pre_prompt_cold_state,
+            "pre_prompt_state": pre_prompt_state, "state_events": state_events,
             "backing": backing,
             "offload": list(offloads[-1]) if offloads else None,
             "performance": performance(text),
@@ -228,6 +281,8 @@ def main():
     parser.add_argument("--strict-robustness", action="store_true", help="enable supported robustness2 for narrow descriptor ranges")
     parser.add_argument("--clean-cache", action="store_true", help="retain and reuse snapshots after proven read-only GPU work")
     parser.add_argument("--resident-after-cold", action="store_true", help="allow bootstrap then arm pressure admission after all eligible backing is cold")
+    parser.add_argument("--pressure-on-first-submit", action="store_true",
+                        help="keep the resident cap active and prompt after full backing is tracked, before requiring full cold")
     parser.add_argument("--max-nodes-per-submit", type=int, help="set llama.cpp graph batching identically for both runs")
     parser.add_argument("--serialize-submissions", action="store_true", help="use llama.cpp synchronous submissions identically for both runs")
     parser.add_argument("--timeout", type=int, default=60, help="seconds allowed per run, including model loading")
@@ -255,6 +310,7 @@ def main():
         parser.error("--clean-cache requires --range-mib")
     if args.resident_after_cold and args.resident_mib is None:
         parser.error("--resident-after-cold requires --resident-mib")
+    validate_pressure_options(args, parser)
     if args.max_nodes_per_submit is not None and not 1 <= args.max_nodes_per_submit <= (1 << 32) - 1:
         parser.error("--max-nodes-per-submit must fit a positive uint32")
     binary = args.binary.expanduser().resolve()
@@ -270,11 +326,13 @@ def main():
         parser.error(f"--model must be an existing nonempty file: {model}")
     if not launcher.is_file():
         parser.error(f"zVram launcher missing: {launcher}")
-    if not 1 <= args.idle_ms <= 60000 or not 1 <= args.cold_mib <= 40960 or not 1 <= args.timeout <= (1 << 32) - 1:
-        parser.error("idle-ms 1..60000, cold-mib 1..40960, timeout a positive uint32")
+    if not 1 <= args.idle_ms <= (1 << 32) - 1 or not 1 <= args.cold_mib <= 40960 or not 1 <= args.timeout <= (1 << 32) - 1:
+        parser.error("idle-ms and timeout a positive uint32, cold-mib 1..40960")
     output.mkdir(parents=True, exist_ok=True)
     app = common_app_args(binary, model, args.tokens)[:-2]
     app += ["--conversation", "--interactive-first", "--single-turn", *args.app_arg]
+    if args.pressure_on_first_submit and "--no-warmup" not in app:
+        app.append("--no-warmup")
     env = clean_environment()
     env.pop("ROCPROFILER_REGISTER_LIBRARY", None)
     env.pop("ROCPROFILER_REGISTER_SECURE", None)
@@ -315,11 +373,14 @@ def main():
         command += ["--validate", "--isolate-layers"]
     command += ["--", *app]
     auto = run_interactive("automatic", command, env, output, args.timeout, True,
-                           args.min_available_mib)
+                           args.min_available_mib, args.pressure_on_first_submit)
     auto_text = auto["stderr"]
     auto_cold = auto["cold"]
     cleanup_fields = re.findall(r"\[zvram\].*(?:summary|automatic).*", auto_text, re.I)
     cold_state = auto["pre_prompt_cold_state"]
+    pre_prompt_state = auto["pre_prompt_state"]
+    model_bytes = sum(auto["model_buffers_mib"]) * MiB
+    coverage_tolerance = len(auto["model_buffers_mib"]) * 0.01 * MiB
     checks = {
         "same_nonempty_stdout": bool(native["stdout"].strip()) and native["stdout"] == auto["stdout"],
         "both_runs_decode_tokens": has_decode_tokens(native["performance"]) and has_decode_tokens(auto["performance"]),
@@ -365,6 +426,25 @@ def main():
             for text in (native["stderr"], native["stdout"].decode(errors="replace"), auto_text, auto["stdout"].decode(errors="replace")))
     admission_text = auto_text.split("resident admission armed after complete cold transition", 1)[-1]
     resident_states = [int(value) for value in re.findall(r"snapshot state event=[^ ]+ resident=(\d+)", admission_text)]
+    if args.pressure_on_first_submit:
+        checks.pop("model_buffer_cold_before_prompt")
+        checks.pop("hot_and_cold_fdinfo_captured")
+        checks["model_buffer_coverage_before_prompt"] = bool(
+            pre_prompt_state and model_bytes and
+            pre_prompt_state[0] + pre_prompt_state[1] + coverage_tolerance >= model_bytes and
+            pre_prompt_state[0] + pre_prompt_state[1] > 0 and pre_prompt_state[5] == 0)
+        checks["hot_and_pressure_fdinfo_captured"] = (
+            "hot" in auto["backing"] and "pressure" in auto["backing"])
+        checks["resident_vram_captured"] = all(
+            auto["backing"].get(where, {}).get("resident_vram_present")
+            for where in ("hot", "pressure"))
+        checks["nonempty_cold_data"] = bool(
+            (pre_prompt_state and pre_prompt_state[1] > 0) or
+            any(state[2] > 0 for state in auto["state_events"]) or auto_cold)
+        checks["successful_restore"] = bool(
+            pre_prompt_state and auto["cold_state"] and
+            auto["cold_state"][4] > pre_prompt_state[4] and auto["cold_state"][5] == 0)
+        resident_states, all_pressure_states = pressure_resident_states(auto_text)
     if args.strict_robustness:
         checks["bounded_robustness_enabled"] = "bounded Vulkan robustness enabled" in auto_text
     cache_states = [tuple(map(int, values)) for values in re.findall(
@@ -383,6 +463,9 @@ def main():
             resident + incoming <= limit == args.resident_mib * MiB for _, _, resident, incoming, limit in pressure_events)
         checks["tracked_resident_peak_within_limit"] = bool(resident_states) and max(resident_states) <= args.resident_mib * MiB
         checks["no_admission_refusals"] = "resident admission refused:" not in auto_text
+        if args.pressure_on_first_submit:
+            checks["completed_restores_within_limit"] = checks.pop("tracked_resident_peak_within_limit")
+    tracked_peak = max(resident_states) if resident_states else None
     if args.eviction_policy is not None:
         checks["eviction_policy_enabled"] = f"Vulkan eviction policy={args.eviction_policy}" in auto_text
     profiles = [dict(zip(("copy_calls", "copy_bytes", "copy_ns", "decode_bytes", "decode_ns"), map(int, values)))
@@ -396,11 +479,17 @@ def main():
               "snapshot_encoding_counts": {"compressed_chunks": sum(x[2] for x in encodings),
                                             "raw_chunks": sum(x[3] for x in encodings)},
               "resident_admission_events": pressure_events,
-              "tracked_resident_peak_after_arming": max(resident_states) if resident_states else None,
+              "tracked_resident_peak_after_arming": None if args.pressure_on_first_submit else tracked_peak,
+              "tracked_resident_peak_at_completed_restore": tracked_peak if args.pressure_on_first_submit else None,
+              "tracked_resident_peak_observed_since_first_admission": (
+                  max(all_pressure_states) if args.pressure_on_first_submit and all_pressure_states else None),
               "clean_cache_state": cache_states[-1] if cache_states else None,
               "native": {k: v for k, v in native.items() if k not in ("stdout", "stderr")},
               "automatic": {k: v for k, v in auto.items() if k not in ("stdout", "stderr")},
               "automatic_cold_state_before_prompt": cold_state,
+              "automatic_pre_prompt_state": pre_prompt_state,
+              "automatic_pre_prompt_state_kind": (
+                  "first-submit-pressure" if args.pressure_on_first_submit else "fully-cold"),
               "automatic_cold_logical_bytes": cold_state[1] if cold_state else None,
               "automatic_cold_stored_bytes": cold_state[2] if cold_state else None,
               "automatic_snapshot_events": auto_cold,
@@ -408,8 +497,13 @@ def main():
               "selective_range_restore_events": range_events,
               "selective_restore_fallbacks": auto_text.count("selective restore fallback:"),
               "backing_bytes": auto["backing"], "cleanup_log_lines": cleanup_fields,
-              "resident_vram_freed_bytes": (auto["backing"].get("hot", {}).get("resident-vram", 0) -
-                                             auto["backing"].get("cold", {}).get("resident-vram", 0)),
+              "resident_vram_freed_bytes": (None if args.pressure_on_first_submit else
+                  auto["backing"].get("hot", {}).get("resident-vram", 0) -
+                  auto["backing"].get("cold", {}).get("resident-vram", 0)),
+              "resident_vram_pressure_delta_bytes": (
+                  auto["backing"].get("hot", {}).get("resident-vram", 0) -
+                  auto["backing"].get("pressure", {}).get("resident-vram", 0)
+                  if args.pressure_on_first_submit else None),
               "stdout_sha256": hashlib.sha256(auto["stdout"]).hexdigest()}
     (output / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))

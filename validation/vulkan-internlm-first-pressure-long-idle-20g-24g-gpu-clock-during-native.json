@@ -1,0 +1,26 @@
+{
+  "captured_at_utc": "2026-10-07T15:21:23.754785+00:00",
+  "phase": "during native run; not a pre-run sample",
+  "devices": {
+    "card1": {
+      "power_dpm_force_performance_level": "profile_min_mclk\n",
+      "pp_dpm_sclk": "0: 500Mhz \n1: 2579Mhz *\n2: 2526Mhz \n",
+      "pp_dpm_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz *\n3: 1249Mhz \n",
+      "pp_od_clk_voltage": "OD_SCLK:\n0: 500Mhz\n1: 2750Mhz\nOD_MCLK:\n0: 97Mhz\n1: 1250MHz\nOD_RANGE:\nSCLK:     500Mhz       5000Mhz\nMCLK:      97Mhz       1500Mhz\nVDDGFX_OFFSET:    -450mv          0mv\nOD_VDDGFX_OFFSET:\n0mV\n",
+      "current_link_speed": "16.0 GT/s PCIe\n",
+      "current_link_width": "16\n",
+      "max_link_speed": "16.0 GT/s PCIe\n",
+      "max_link_width": "16\n"
+    },
+    "card0": {
+      "power_dpm_force_performance_level": "auto\n",
+      "pp_dpm_sclk": "0: 600Mhz *\n1: 700Mhz \n2: 2200Mhz \n",
+      "pp_dpm_mclk": "0: 2800Mhz *\n",
+      "pp_od_clk_voltage": "OD_SCLK:\n0:        600Mhz\n1:       2200Mhz\nOD_RANGE:\nSCLK:     600Mhz       2200Mhz\n",
+      "current_link_speed": "16.0 GT/s PCIe\n",
+      "current_link_width": "16\n",
+      "max_link_speed": "16.0 GT/s PCIe\n",
+      "max_link_width": "16\n"
+    }
+  }
+}

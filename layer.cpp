@@ -379,7 +379,7 @@ std::uint64_t positiveEnv(const char* name,std::uint64_t max=std::numeric_limits
     return parsed;
 }
 bool snapshotConfig(const Device& d,std::uint64_t& idleMs,std::uint64_t& coldBudget) {
-    idleMs=positiveEnv("ZVRAM_VULKAN_AUTO_IDLE_MS",60000);
+    idleMs=positiveEnv("ZVRAM_VULKAN_AUTO_IDLE_MS",UINT32_MAX);
     const auto coldMiB=positiveEnv("ZVRAM_VULKAN_COLD_MIB");
     if(!idleMs || !coldMiB || coldMiB>std::numeric_limits<std::uint64_t>::max()/(1024ull*1024ull)) return false;
     coldBudget=coldMiB*1024ull*1024ull;
@@ -1021,6 +1021,7 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
     }
     m.bound=true;
     m.backingMemoryTypeBits=compatibleTypeBits;
+    if(initializedNow && d.autoInitialized) logSnapshotState("bootstrap-bind",d);
     return VK_SUCCESS;
 }
 VkResult bindSparse(VkDevice d,Device& state,VkBuffer buffer,const VkSparseMemoryBind* binds,std::uint32_t count) {
@@ -1428,6 +1429,10 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
             if(br!=VK_SUCCESS) { d.gpuGateError=br; d.autoEnabled=false; d.stopWorker.store(true); }
         } else { d.gpuGateError=ur; d.autoEnabled=false; d.stopWorker.store(true); }
         if(budgetExceeded) {
+            logf("snapshot cold-budget refusal logical=%llu encoded-prefix=%llu cold=%llu cache=%llu limit=%llu retained-resident=1",
+                static_cast<unsigned long long>(logicalBytes),static_cast<unsigned long long>(stored),
+                static_cast<unsigned long long>(d.coldBytes),static_cast<unsigned long long>(d.cacheBytes),
+                static_cast<unsigned long long>(d.coldBudget));
             group.budgetBlocked=true; group.failedBudgetGeneration=d.coldBudgetGeneration;
             group.failedBudgetSubmissionGeneration=d.gpuSubmissionGeneration;
         }

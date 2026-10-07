@@ -1,0 +1,13 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+    Start  1: cpu-vulkan-ram-guard
+1/4 Test  #1: cpu-vulkan-ram-guard .................   Passed    0.10 sec
+    Start  3: cpu-vulkan-model-budget
+2/4 Test  #3: cpu-vulkan-model-budget ..............   Passed    1.26 sec
+    Start 43: vulkan-snapshot-pipeline
+3/4 Test #43: vulkan-snapshot-pipeline .............   Passed    1.30 sec
+    Start 46: vulkan-range-clean-cache-bootstrap
+4/4 Test #46: vulkan-range-clean-cache-bootstrap ...   Passed    1.65 sec
+
+100% tests passed out of 4
+
+Total Test time (real) =   4.31 sec
