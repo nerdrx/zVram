@@ -1,0 +1,2528 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+      Start  1: vulkan-submission-tracking
+
+1: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-submission-tracking-check
+1: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+1: Test timeout computed to be: 60
+1: submission tracking checks passed
+ 1/67 Test  #1: vulkan-submission-tracking .........................   Passed    0.00 sec
+test 2
+      Start  2: cpu-active-refs
+
+2: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-active-refs-check
+2: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+2: Test timeout computed to be: 60
+2: active refs checks passed
+ 2/67 Test  #2: cpu-active-refs ....................................   Passed    0.00 sec
+test 3
+      Start  3: compression-roundtrip
+
+3: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-compression-check
+3: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+3: Environment variables: 
+3:  VK_LOADER_LAYERS_DISABLE=~implicit~
+3: Test timeout computed to be: 60
+3: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+3: heap[0] size=32411705344 B budget=30725730304 B usage=0 B
+3: heap[1] size=25753026560 B budget=22630658048 B usage=0 B device-local
+3: repetitive: original=16777216 stored=58748 B mode=zstd ratio=0.00350165 released-device-allocation=16777216 B, initial-copy=1.66169 ms compress=2.07337 ms decompress=0.670132 ms restore-copy=1.38979 ms
+3: seeded-random: original=16777216 stored=16777216 B mode=raw ratio=1 released-device-allocation=16777216 B, initial-copy=1.39058 ms compress=1.68321 ms decompress=0.243511 ms restore-copy=1.38423 ms
+ 3/67 Test  #3: compression-roundtrip ..............................   Passed    0.07 sec
+test 4
+      Start  4: layer-capacity-integrity
+
+4: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--isolate-layers" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-capacity-check" "--mib" "64"
+4: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+4: Environment variables: 
+4:  VK_LOADER_LAYERS_DISABLE=~implicit~
+4: Test timeout computed to be: 60
+4: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+4: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=67108864 allocation-failures=0
+4: sysfs baseline: VRAM=3122384896/25753026560 B GTT=1685979136/32411705344 B
+4: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+4: local heap=25753026560 B; VRAM free=22630637568 B; GTT free=30725726208 B; host MemAvailable=41313251328 B; conservative capacity estimate=53356363776 B
+4: requested=67108864 B in 1 allocations; staging=67108864 B
+4: uploaded 67108864 / 67108864 B
+4: sysfs all chunks uploaded: VRAM=3198504960/25753026560 B GTT=1753088000/32411705344 B
+4: verified 67108864 / 67108864 B
+4: elapsed generation+verification=0.0306843 s
+4: sysfs after readback: VRAM=3198504960/25753026560 B GTT=1753088000/32411705344 B
+4: sysfs after cleanup: VRAM=3198504960/25753026560 B GTT=1753088000/32411705344 B
+4: PASS: verified 67108864 bytes across 1 resident device-local allocations
+ 4/67 Test  #4: layer-capacity-integrity ...........................   Passed    0.07 sec
+test 5
+      Start  5: vulkan-virtual-single-integrity
+
+5: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "40960" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-capacity-check" "--single-allocation" "--mib" "320" "--chunk-mib" "64"
+5: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+5: Environment variables: 
+5:  VK_LOADER_LAYERS_DISABLE=~implicit~
+5: Test timeout computed to be: 60
+5: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+5: [zvram] virtual allocate bytes=335544320 heap-capacity=42949672960
+5: [zvram] virtual free bytes=335544320
+5: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=67108864 allocation-failures=0
+5: sysfs baseline: VRAM=3124482048/25753026560 B GTT=1684414464/32411705344 B
+5: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+5: local heap=42949672960 B; VRAM free=22628544512 B; GTT free=30727290880 B; host MemAvailable=41324040192 B; conservative capacity estimate=53355835392 B
+5: requested=335544320 B in 1 allocations; staging=67108864 B
+5: uploaded 335544320 / 335544320 B
+5: sysfs all chunks uploaded: VRAM=3469037568/25753026560 B GTT=1751523328/32411705344 B
+5: verified 335544320 / 335544320 B
+5: elapsed generation+verification=0.114211 s
+5: sysfs after readback: VRAM=3469037568/25753026560 B GTT=1751523328/32411705344 B
+5: sysfs after cleanup: VRAM=3469037568/25753026560 B GTT=1684414464/32411705344 B
+5: PASS: verified 335544320 bytes across 1 resident device-local allocations
+ 5/67 Test  #5: vulkan-virtual-single-integrity ....................   Passed    0.16 sec
+test 6
+      Start  6: vulkan-virtual-api2-integrity
+
+6: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "98304" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-capacity-check" "--single-allocation" "--api2" "--mib" "320" "--chunk-mib" "64"
+6: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+6: Environment variables: 
+6:  VK_LOADER_LAYERS_DISABLE=~implicit~
+6: Test timeout computed to be: 60
+6: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+6: [zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+6: [zvram] virtual free bytes=335544320
+6: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=67108864 allocation-failures=0
+6: sysfs baseline: VRAM=3124482048/25753026560 B GTT=1684414464/32411705344 B
+6: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+6: local heap=103079215104 B; VRAM free=22628544512 B; GTT free=30727290880 B; host MemAvailable=41321488384 B; conservative capacity estimate=53355835392 B
+6: requested=335544320 B in 1 allocations; staging=67108864 B
+6: uploaded 335544320 / 335544320 B
+6: sysfs all chunks uploaded: VRAM=3469037568/25753026560 B GTT=1746804736/32411705344 B
+6: verified 335544320 / 335544320 B
+6: elapsed generation+verification=0.120162 s
+6: sysfs after readback: VRAM=3469037568/25753026560 B GTT=1746804736/32411705344 B
+6: sysfs after cleanup: VRAM=3469037568/25753026560 B GTT=1746804736/32411705344 B
+6: PASS: verified 335544320 bytes across 1 resident device-local allocations
+ 6/67 Test  #6: vulkan-virtual-api2-integrity ......................   Passed    0.17 sec
+test 7
+      Start  7: vulkan-virtual-pool-legacy
+
+7: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation"
+7: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+7: Environment variables: 
+7:  VK_LOADER_LAYERS_DISABLE=~implicit~
+7: Test timeout computed to be: 60
+7: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+7: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+7: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+7: pool memory type=11 synthetic
+7: shared pool range contents survived buffer destruction/rebind
+7: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+7: PASS: shared 512 MiB synthetic allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+7: [zvram] virtual free bytes=536870912
+7: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+ 7/67 Test  #7: vulkan-virtual-pool-legacy .........................   Passed    0.61 sec
+test 8
+      Start  8: vulkan-automatic-pool-legacy
+
+8: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation" "--suballocation-auto"
+8: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+8: Environment variables: 
+8:  VK_LOADER_LAYERS_DISABLE=~implicit~
+8: Test timeout computed to be: 60
+8: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+8: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+8: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+8: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+8: pool memory type=11 synthetic
+8: [zvram] snapshot cold bytes=268435456 stored=135447939
+8: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=135447939 freezes=1 restores=0 failures=0
+8: [zvram] snapshot cold bytes=268435456 stored=201328678
+8: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=2 restores=0 failures=0
+8: shared pool cold: logical=536870912 stored=336776617
+8: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+8: shared pool range contents survived buffer destruction/rebind
+8: [zvram] snapshot cold bytes=268435456 stored=167775289
+8: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=167775289 freezes=3 restores=2 failures=0
+8: [zvram] snapshot cold bytes=268435456 stored=201328678
+8: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=4 restores=2 failures=0
+8: shared pool cold: logical=536870912 stored=369103967
+8: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+8: shared pool cold contents survived destruction of every buffer
+8: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+8: PASS: shared 512 MiB synthetic allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+8: [zvram] virtual free bytes=536870912
+8: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+8: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+ 8/67 Test  #8: vulkan-automatic-pool-legacy .......................   Passed    1.68 sec
+test 9
+      Start  9: vulkan-virtual-pool-api2
+
+9: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation" "--suballocation-api2"
+9: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+9: Environment variables: 
+9:  VK_LOADER_LAYERS_DISABLE=~implicit~
+9: Test timeout computed to be: 60
+9: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+9: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+9: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+9: pool memory type=11 synthetic
+9: shared pool range contents survived buffer destruction/rebind
+9: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+9: PASS: shared 512 MiB synthetic allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+9: [zvram] virtual free bytes=536870912
+9: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+ 9/67 Test  #9: vulkan-virtual-pool-api2 ...........................   Passed    0.61 sec
+test 10
+      Start 10: vulkan-automatic-pool-api2
+
+10: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation" "--suballocation-api2" "--suballocation-auto"
+10: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+10: Environment variables: 
+10:  VK_LOADER_LAYERS_DISABLE=~implicit~
+10: Test timeout computed to be: 60
+10: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+10: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+10: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+10: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+10: pool memory type=11 synthetic
+10: [zvram] snapshot cold bytes=268435456 stored=135447939
+10: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=135447939 freezes=1 restores=0 failures=0
+10: [zvram] snapshot cold bytes=268435456 stored=201328678
+10: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=2 restores=0 failures=0
+10: shared pool cold: logical=536870912 stored=336776617
+10: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+10: shared pool range contents survived buffer destruction/rebind
+10: [zvram] snapshot cold bytes=268435456 stored=167775289
+10: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=167775289 freezes=3 restores=2 failures=0
+10: [zvram] snapshot cold bytes=268435456 stored=201328678
+10: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=4 restores=2 failures=0
+10: shared pool cold: logical=536870912 stored=369103967
+10: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+10: shared pool cold contents survived destruction of every buffer
+10: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+10: PASS: shared 512 MiB synthetic allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+10: [zvram] virtual free bytes=536870912
+10: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+10: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+10/67 Test #10: vulkan-automatic-pool-api2 .........................   Passed    1.73 sec
+test 11
+      Start 11: vulkan-automatic-pool-bda
+
+11: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--suballocation-api2" "--bda"
+11: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+11: Environment variables: 
+11:  VK_LOADER_LAYERS_DISABLE=~implicit~
+11: Test timeout computed to be: 60
+11: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+11: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+11: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+11: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+11: pool memory type=11 synthetic
+11: [zvram] snapshot cold bytes=268435456 stored=135447939
+11: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=135447939 freezes=1 restores=0 failures=0
+11: [zvram] snapshot cold bytes=268435456 stored=201328678
+11: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=2 restores=0 failures=0
+11: shared pool cold: logical=536870912 stored=336776617
+11: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+11: shared pool range contents survived buffer destruction/rebind
+11: [zvram] snapshot cold bytes=268435456 stored=167775289
+11: [zvram] snapshot state event=freeze resident=268435456 cold-logical=268435456 cold-stored=167775289 freezes=3 restores=2 failures=0
+11: [zvram] snapshot cold bytes=268435456 stored=201328678
+11: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=4 restores=2 failures=0
+11: shared pool cold: logical=536870912 stored=369103967
+11: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+11: shared pool cold contents survived destruction of every buffer
+11: [zvram] virtual allocate bytes=536870912 heap-capacity=536870912
+11: PASS: shared 512 MiB synthetic allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+11: [zvram] virtual free bytes=536870912
+11: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+11: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+11/67 Test #11: vulkan-automatic-pool-bda ..........................   Passed    1.71 sec
+test 12
+      Start 12: vulkan-automatic-native-pool-legacy
+
+12: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation"
+12: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+12: Environment variables: 
+12:  VK_LOADER_LAYERS_DISABLE=~implicit~
+12: Test timeout computed to be: 60
+12: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+12: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+12: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+12: pool memory type=0 native
+12: [zvram] native allocation adopted bytes=536870912 type=0
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: [zvram] snapshot cold bytes=536870912 stored=336776617
+12: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+12: shared pool cold: logical=536870912 stored=336776617
+12: native adoption refused after prior ordinary buffer binding
+12: native adoption refused after prior image binding
+12: cold adopted pool refused ordinary buffer/image bindings without waking
+12: native token probes bound with distinct allocations; original cold token unchanged
+12: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: shared pool range contents survived buffer destruction/rebind
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: [zvram] snapshot cold bytes=536870912 stored=369103967
+12: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+12: shared pool cold: logical=536870912 stored=369103967
+12: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+12: shared pool cold contents survived destruction of every buffer
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+12: [zvram] virtual free bytes=1048576
+12: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+12: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+12: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+12/67 Test #12: vulkan-automatic-native-pool-legacy ................   Passed    1.72 sec
+test 13
+      Start 13: vulkan-automatic-native-pool-api2
+
+13: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation" "--suballocation-api2"
+13: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+13: Environment variables: 
+13:  VK_LOADER_LAYERS_DISABLE=~implicit~
+13: Test timeout computed to be: 60
+13: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+13: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+13: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+13: pool memory type=0 native
+13: [zvram] native allocation adopted bytes=536870912 type=0
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: [zvram] snapshot cold bytes=536870912 stored=336776617
+13: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+13: shared pool cold: logical=536870912 stored=336776617
+13: native adoption refused after prior ordinary buffer binding
+13: native adoption refused after prior image binding
+13: cold adopted pool refused ordinary buffer/image bindings without waking
+13: native token probes bound with distinct allocations; original cold token unchanged
+13: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: shared pool range contents survived buffer destruction/rebind
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: [zvram] snapshot cold bytes=536870912 stored=369103967
+13: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+13: shared pool cold: logical=536870912 stored=369103967
+13: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+13: shared pool cold contents survived destruction of every buffer
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+13: [zvram] virtual free bytes=1048576
+13: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+13: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+13: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+13/67 Test #13: vulkan-automatic-native-pool-api2 ..................   Passed    1.69 sec
+test 14
+      Start 14: vulkan-automatic-native-pool-bda
+
+14: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation" "--suballocation-api2" "--bda"
+14: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+14: Environment variables: 
+14:  VK_LOADER_LAYERS_DISABLE=~implicit~
+14: Test timeout computed to be: 60
+14: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+14: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+14: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+14: pool memory type=0 native
+14: [zvram] native allocation adopted bytes=536870912 type=0
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: [zvram] snapshot cold bytes=536870912 stored=336776617
+14: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+14: shared pool cold: logical=536870912 stored=336776617
+14: native adoption refused after prior ordinary buffer binding
+14: native adoption refused after prior image binding
+14: cold adopted pool refused ordinary buffer/image bindings without waking
+14: native token probes bound with distinct allocations; original cold token unchanged
+14: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: shared pool range contents survived buffer destruction/rebind
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: [zvram] snapshot cold bytes=536870912 stored=369103967
+14: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+14: shared pool cold: logical=536870912 stored=369103967
+14: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+14: shared pool cold contents survived destruction of every buffer
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+14: [zvram] virtual free bytes=1048576
+14: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+14: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+14: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+14/67 Test #14: vulkan-automatic-native-pool-bda ...................   Passed    1.69 sec
+test 15
+      Start 15: vulkan-automatic-native-pool-two-queues
+
+15: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation" "--two-queues"
+15: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+15: Environment variables: 
+15:  VK_LOADER_LAYERS_DISABLE=~implicit~
+15: Test timeout computed to be: 60
+15: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+15: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+15: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+15: pool memory type=0 native
+15: [zvram] native allocation adopted bytes=536870912 type=0
+15: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+15: [zvram] virtual free bytes=1048576
+15: [zvram] snapshot cold bytes=536870912 stored=336776617
+15: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+15: shared pool cold: logical=536870912 stored=336776617
+15: native adoption refused after prior ordinary buffer binding
+15: native adoption refused after prior image binding
+15: cold adopted pool refused ordinary buffer/image bindings without waking
+15: native token probes bound with distinct allocations; original cold token unchanged
+15: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+15: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+15: [zvram] virtual free bytes=1048576
+15: shared pool range contents survived buffer destruction/rebind
+15: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+15: [zvram] virtual free bytes=1048576
+15: [zvram] snapshot cold bytes=536870912 stored=369103967
+15: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+15: shared pool cold: logical=536870912 stored=369103967
+15: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+15: shared pool cold contents survived destruction of every buffer
+15: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+15: [zvram] virtual free bytes=1048576
+15: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+15: [zvram] virtual free bytes=1048576
+15: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+15: [zvram] virtual free bytes=1048576
+15: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+15: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+15: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+15/67 Test #15: vulkan-automatic-native-pool-two-queues ............   Passed    1.64 sec
+test 16
+      Start 16: vulkan-automatic-native-pool-two-families
+
+16: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "512" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--suballocation-auto" "--native-allocation" "--two-families" "--bda"
+16: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+16: Environment variables: 
+16:  VK_LOADER_LAYERS_DISABLE=~implicit~
+16: Test timeout computed to be: 60
+16: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+16: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+16: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+16: pool memory type=0 native
+16: [zvram] native allocation adopted bytes=536870912 type=0
+16: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+16: [zvram] virtual free bytes=1048576
+16: [zvram] snapshot cold bytes=536870912 stored=336776617
+16: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=336776617 freezes=1 restores=0 failures=0
+16: shared pool cold: logical=536870912 stored=336776617
+16: native adoption refused after prior ordinary buffer binding
+16: native adoption refused after prior image binding
+16: cold adopted pool refused ordinary buffer/image bindings without waking
+16: native token probes bound with distinct allocations; original cold token unchanged
+16: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+16: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+16: [zvram] virtual free bytes=1048576
+16: shared pool range contents survived buffer destruction/rebind
+16: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+16: [zvram] virtual free bytes=1048576
+16: [zvram] snapshot cold bytes=536870912 stored=369103967
+16: [zvram] snapshot state event=freeze resident=0 cold-logical=536870912 cold-stored=369103967 freezes=2 restores=1 failures=0
+16: shared pool cold: logical=536870912 stored=369103967
+16: [zvram] snapshot state event=restore resident=536870912 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+16: shared pool cold contents survived destruction of every buffer
+16: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+16: [zvram] virtual free bytes=1048576
+16: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+16: [zvram] virtual free bytes=1048576
+16: [zvram] virtual allocate bytes=1048576 heap-capacity=536870912
+16: [zvram] virtual free bytes=1048576
+16: PASS: shared 512 MiB native allocation, nonzero offsets, compute/readback, overlap refusal, rebind persistence, accounting recovery
+16: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+16: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=536870912 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+16/67 Test #16: vulkan-automatic-native-pool-two-families ..........   Passed    1.74 sec
+test 17
+      Start 17: vulkan-selective-submit-synthetic-legacy
+
+17: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-submit"
+17: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+17: Environment variables: 
+17:  VK_LOADER_LAYERS_DISABLE=~implicit~
+17: Test timeout computed to be: 60
+17: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+17: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+17: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+17: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+17: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+17: [zvram] snapshot cold bytes=33554432 stored=33554432
+17: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+17: [zvram] snapshot cold bytes=33554432 stored=33554432
+17: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+17: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+17: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=1
+17: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+17: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+17: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+17: PASS: synthetic legacy selective-submit pools preserved full-byte patterns
+17: [zvram] virtual free bytes=33554432
+17: [zvram] virtual free bytes=33554432
+17: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+17: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+17/67 Test #17: vulkan-selective-submit-synthetic-legacy ...........   Passed    0.36 sec
+test 18
+      Start 18: vulkan-selective-submit-synthetic-api2
+
+18: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-submit" "--selective-submit-api2"
+18: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+18: Environment variables: 
+18:  VK_LOADER_LAYERS_DISABLE=~implicit~
+18: Test timeout computed to be: 60
+18: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+18: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+18: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+18: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+18: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+18: [zvram] snapshot cold bytes=33554432 stored=33554432
+18: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+18: [zvram] snapshot cold bytes=33554432 stored=33554432
+18: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+18: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+18: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=1
+18: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+18: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+18: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+18: PASS: synthetic API2 selective-submit pools preserved full-byte patterns
+18: [zvram] virtual free bytes=33554432
+18: [zvram] virtual free bytes=33554432
+18: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+18: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+18/67 Test #18: vulkan-selective-submit-synthetic-api2 .............   Passed    0.36 sec
+test 19
+      Start 19: vulkan-selective-submit-native-legacy
+
+19: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-submit" "--native-allocation"
+19: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+19: Environment variables: 
+19:  VK_LOADER_LAYERS_DISABLE=~implicit~
+19: Test timeout computed to be: 60
+19: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+19: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+19: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+19: [zvram] native allocation adopted bytes=33554432 type=0
+19: [zvram] native allocation adopted bytes=33554432 type=0
+19: [zvram] snapshot cold bytes=33554432 stored=33554432
+19: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+19: [zvram] snapshot cold bytes=33554432 stored=33554432
+19: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+19: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+19: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=1
+19: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+19: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+19: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+19: PASS: native legacy selective-submit pools preserved full-byte patterns
+19: [zvram] virtual free bytes=33554432
+19: [zvram] virtual free bytes=33554432
+19: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+19: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+19/67 Test #19: vulkan-selective-submit-native-legacy ..............   Passed    0.36 sec
+test 20
+      Start 20: vulkan-selective-submit-native-api2
+
+20: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-submit" "--selective-submit-api2" "--native-allocation"
+20: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+20: Environment variables: 
+20:  VK_LOADER_LAYERS_DISABLE=~implicit~
+20: Test timeout computed to be: 60
+20: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+20: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+20: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+20: [zvram] native allocation adopted bytes=33554432 type=0
+20: [zvram] native allocation adopted bytes=33554432 type=0
+20: [zvram] snapshot cold bytes=33554432 stored=33554432
+20: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+20: [zvram] snapshot cold bytes=33554432 stored=33554432
+20: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+20: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+20: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=1
+20: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+20: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+20: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+20: PASS: native API2 selective-submit pools preserved full-byte patterns
+20: [zvram] virtual free bytes=33554432
+20: [zvram] virtual free bytes=33554432
+20: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+20: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+20/67 Test #20: vulkan-selective-submit-native-api2 ................   Passed    0.36 sec
+test 21
+      Start 21: vulkan-selective-submit-synthetic-unknown
+
+21: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-submit" "--selective-submit-unknown"
+21: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+21: Environment variables: 
+21:  VK_LOADER_LAYERS_DISABLE=~implicit~
+21: Test timeout computed to be: 60
+21: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+21: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+21: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+21: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+21: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+21: [zvram] snapshot cold bytes=33554432 stored=33554432
+21: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+21: [zvram] snapshot cold bytes=33554432 stored=33554432
+21: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+21: [zvram] selective restore fallback: untracked command, descriptor or address shader
+21: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+21: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+21: PASS: unknown command restored both cold selective-submit pools
+21: [zvram] virtual free bytes=33554432
+21: [zvram] virtual free bytes=33554432
+21: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+21: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+21/67 Test #21: vulkan-selective-submit-synthetic-unknown ..........   Passed    0.34 sec
+test 22
+      Start 22: vulkan-selective-submit-native-unknown
+
+22: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-submit" "--selective-submit-unknown" "--native-allocation"
+22: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+22: Environment variables: 
+22:  VK_LOADER_LAYERS_DISABLE=~implicit~
+22: Test timeout computed to be: 60
+22: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+22: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+22: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+22: [zvram] native allocation adopted bytes=33554432 type=0
+22: [zvram] native allocation adopted bytes=33554432 type=0
+22: [zvram] snapshot cold bytes=33554432 stored=33554432
+22: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+22: [zvram] snapshot cold bytes=33554432 stored=33554432
+22: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+22: [zvram] selective restore fallback: untracked command, descriptor or address shader
+22: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+22: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+22: PASS: unknown command restored both cold selective-submit pools
+22: [zvram] virtual free bytes=33554432
+22: [zvram] virtual free bytes=33554432
+22: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+22: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+22/67 Test #22: vulkan-selective-submit-native-unknown .............   Passed    0.34 sec
+test 23
+      Start 23: vulkan-selective-submit-synthetic-bda
+
+23: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-submit" "--bda"
+23: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+23: Environment variables: 
+23:  VK_LOADER_LAYERS_DISABLE=~implicit~
+23: Test timeout computed to be: 60
+23: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+23: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+23: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+23: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+23: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+23: [zvram] snapshot cold bytes=33554432 stored=33554432
+23: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+23: [zvram] snapshot cold bytes=33554432 stored=33554432
+23: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+23: [zvram] selective restore fallback: untracked command, descriptor or address shader
+23: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+23: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+23: PASS: synthetic legacy BDA selective-submit pools preserved full-byte patterns
+23: [zvram] virtual free bytes=33554432
+23: [zvram] virtual free bytes=33554432
+23: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+23: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+23/67 Test #23: vulkan-selective-submit-synthetic-bda ..............   Passed    0.34 sec
+test 24
+      Start 24: vulkan-selective-submit-native-bda
+
+24: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-submit" "--bda" "--native-allocation"
+24: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+24: Environment variables: 
+24:  VK_LOADER_LAYERS_DISABLE=~implicit~
+24: Test timeout computed to be: 60
+24: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+24: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+24: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+24: [zvram] native allocation adopted bytes=33554432 type=0
+24: [zvram] native allocation adopted bytes=33554432 type=0
+24: [zvram] snapshot cold bytes=33554432 stored=33554432
+24: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+24: [zvram] snapshot cold bytes=33554432 stored=33554432
+24: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+24: [zvram] selective restore fallback: untracked command, descriptor or address shader
+24: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+24: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+24: PASS: native legacy BDA selective-submit pools preserved full-byte patterns
+24: [zvram] virtual free bytes=33554432
+24: [zvram] virtual free bytes=33554432
+24: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+24: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+24/67 Test #24: vulkan-selective-submit-native-bda .................   Passed    0.34 sec
+test 25
+      Start 25: vulkan-active-eviction-synthetic
+
+25: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--active-submit" "--two-queues"
+25: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+25: Environment variables: 
+25:  VK_LOADER_LAYERS_DISABLE=~implicit~
+25: Test timeout computed to be: 60
+25: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+25: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+25: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+25: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+25: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+25: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+25: [zvram] snapshot cold bytes=33554432 stored=33554432
+25: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+25: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+25: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+25: [zvram] snapshot cold bytes=33554432 stored=33554432
+25: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+25: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+25: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+25: [zvram] virtual free bytes=33554432
+25: [zvram] virtual free bytes=33554432
+25: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+25: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+25: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+25: PASS: B restored while A stayed host-blocked without watchdog; both byte patterns verified
+25/67 Test #25: vulkan-active-eviction-synthetic ...................   Passed    0.26 sec
+test 26
+      Start 26: vulkan-active-eviction-native
+
+26: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--active-submit" "--two-queues" "--native-allocation"
+26: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+26: Environment variables: 
+26:  VK_LOADER_LAYERS_DISABLE=~implicit~
+26: Test timeout computed to be: 60
+26: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+26: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+26: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+26: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+26: [zvram] native allocation adopted bytes=33554432 type=0
+26: [zvram] native allocation adopted bytes=33554432 type=0
+26: [zvram] snapshot cold bytes=33554432 stored=33554432
+26: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+26: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+26: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+26: [zvram] snapshot cold bytes=33554432 stored=33554432
+26: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+26: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+26: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+26: [zvram] virtual free bytes=33554432
+26: [zvram] virtual free bytes=33554432
+26: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+26: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+26: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+26: PASS: B restored while A stayed host-blocked without watchdog; both byte patterns verified
+26/67 Test #26: vulkan-active-eviction-native ......................   Passed    0.27 sec
+test 27
+      Start 27: vulkan-active-eviction-synthetic-unknown
+
+27: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--active-submit" "--two-queues" "--selective-submit-unknown"
+27: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+27: Environment variables: 
+27:  VK_LOADER_LAYERS_DISABLE=~implicit~
+27: Test timeout computed to be: 60
+27: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+27: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+27: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+27: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+27: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+27: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+27: [zvram] snapshot cold bytes=33554432 stored=33554432
+27: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+27: [zvram] snapshot cold bytes=33554432 stored=33554432
+27: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+27: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+27: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=1
+27: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+27: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+27: [zvram] virtual free bytes=33554432
+27: [zvram] virtual free bytes=33554432
+27: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+27: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+27: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+27: PASS: unknown A submission kept both pools resident while pending; both byte patterns verified
+27/67 Test #27: vulkan-active-eviction-synthetic-unknown ...........   Passed    0.47 sec
+test 28
+      Start 28: vulkan-active-eviction-native-unknown
+
+28: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--active-submit" "--two-queues" "--native-allocation" "--selective-submit-unknown"
+28: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+28: Environment variables: 
+28:  VK_LOADER_LAYERS_DISABLE=~implicit~
+28: Test timeout computed to be: 60
+28: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+28: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+28: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+28: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+28: [zvram] native allocation adopted bytes=33554432 type=0
+28: [zvram] native allocation adopted bytes=33554432 type=0
+28: [zvram] snapshot cold bytes=33554432 stored=33554432
+28: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+28: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+28: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+28: [zvram] virtual free bytes=33554432
+28: [zvram] virtual free bytes=33554432
+28: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+28: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+28: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+28: PASS: unknown A submission kept both pools resident while pending; both byte patterns verified
+28/67 Test #28: vulkan-active-eviction-native-unknown ..............   Passed    0.44 sec
+test 29
+      Start 29: vulkan-automatic-selective-bind-synthetic-legacy
+
+29: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-bind"
+29: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+29: Environment variables: 
+29:  VK_LOADER_LAYERS_DISABLE=~implicit~
+29:  ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1
+29: Test timeout computed to be: 60
+29: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+29: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+29: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+29: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+29: [zvram] snapshot cold bytes=33554432 stored=33554432
+29: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+29: [zvram] snapshot cold bytes=33554432 stored=33554432
+29: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+29: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+29: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+29: [zvram] virtual free bytes=33554432
+29: [zvram] virtual free bytes=33554432
+29: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+29: PASS: synthetic legacy independent pools froze cold, woke selectively, and preserved distinct full-byte patterns
+29: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+29: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+29/67 Test #29: vulkan-automatic-selective-bind-synthetic-legacy ...   Passed    0.36 sec
+test 30
+      Start 30: vulkan-automatic-selective-bind-synthetic-api2
+
+30: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-bind" "--selective-bind-api2"
+30: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+30: Environment variables: 
+30:  VK_LOADER_LAYERS_DISABLE=~implicit~
+30:  ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1
+30: Test timeout computed to be: 60
+30: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+30: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+30: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+30: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+30: [zvram] snapshot cold bytes=33554432 stored=33554432
+30: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+30: [zvram] snapshot cold bytes=33554432 stored=33554432
+30: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+30: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+30: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+30: [zvram] virtual free bytes=33554432
+30: [zvram] virtual free bytes=33554432
+30: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+30: PASS: synthetic API2 independent pools froze cold, woke selectively, and preserved distinct full-byte patterns
+30: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+30: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+30/67 Test #30: vulkan-automatic-selective-bind-synthetic-api2 .....   Passed    0.34 sec
+test 31
+      Start 31: vulkan-automatic-selective-bind-native-legacy
+
+31: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-bind" "--native-allocation"
+31: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+31: Environment variables: 
+31:  VK_LOADER_LAYERS_DISABLE=~implicit~
+31:  ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1
+31: Test timeout computed to be: 60
+31: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+31: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+31: [zvram] native allocation adopted bytes=33554432 type=0
+31: [zvram] native allocation adopted bytes=33554432 type=0
+31: [zvram] snapshot cold bytes=33554432 stored=33554432
+31: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+31: [zvram] snapshot cold bytes=33554432 stored=33554432
+31: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+31: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+31: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+31: [zvram] virtual free bytes=33554432
+31: [zvram] virtual free bytes=33554432
+31: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+31: PASS: native legacy independent pools froze cold, woke selectively, and preserved distinct full-byte patterns
+31: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+31: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+31/67 Test #31: vulkan-automatic-selective-bind-native-legacy ......   Passed    0.35 sec
+test 32
+      Start 32: vulkan-automatic-selective-bind-native-api2
+
+32: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--selective-bind" "--selective-bind-api2" "--native-allocation"
+32: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+32: Environment variables: 
+32:  VK_LOADER_LAYERS_DISABLE=~implicit~
+32:  ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1
+32: Test timeout computed to be: 60
+32: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+32: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+32: [zvram] native allocation adopted bytes=33554432 type=0
+32: [zvram] native allocation adopted bytes=33554432 type=0
+32: [zvram] snapshot cold bytes=33554432 stored=33554432
+32: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+32: [zvram] snapshot cold bytes=33554432 stored=33554432
+32: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+32: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+32: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+32: [zvram] virtual free bytes=33554432
+32: [zvram] virtual free bytes=33554432
+32: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+32: PASS: native API2 independent pools froze cold, woke selectively, and preserved distinct full-byte patterns
+32: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+32: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+32/67 Test #32: vulkan-automatic-selective-bind-native-api2 ........   Passed    0.34 sec
+test 33
+      Start 33: vulkan-automatic-idle-integrity
+
+33: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check"
+33: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+33: Environment variables: 
+33:  VK_LOADER_LAYERS_DISABLE=~implicit~
+33: Test timeout computed to be: 60
+33: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+33: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+33: [zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+33: [zvram] snapshot cold bytes=268435456 stored=9809248
+33: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=9809248 freezes=1 restores=0 failures=0
+33: [zvram] snapshot cold bytes=67108864 stored=2454267
+33: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=12263515 freezes=2 restores=0 failures=0
+33: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+33: cold snapshot: logical=335544320 stored=12263515 freezes=2
+33: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+33: wake cycle 1: verified 335544320 bytes
+33: [zvram] snapshot cold bytes=268435456 stored=268435456
+33: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=268435456 freezes=3 restores=2 failures=0
+33: [zvram] snapshot cold bytes=67108864 stored=67108864
+33: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=4 restores=2 failures=0
+33: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+33: wake cycle 2: verified 335544320 bytes
+33: [zvram] snapshot cold bytes=268435456 stored=268435456
+33: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=268435456 freezes=5 restores=4 failures=0
+33: [zvram] snapshot cold bytes=67108864 stored=67108864
+33: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=6 restores=4 failures=0
+33: [zvram] virtual free bytes=335544320
+33: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=6 restores=4 failures=0
+33: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+33: PASS: two cold/wake compute cycles, full readback, metadata stayed cold, cold free did not restore
+33/67 Test #33: vulkan-automatic-idle-integrity ....................   Passed    1.94 sec
+test 34
+      Start 34: vulkan-automatic-budget-refusal
+
+34: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "98304" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "1" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--expect-budget-refusal"
+34: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+34: Environment variables: 
+34:  VK_LOADER_LAYERS_DISABLE=~implicit~
+34: Test timeout computed to be: 60
+34: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=1048576
+34: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+34: [zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+34: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+34: budget refusal: failures=2 resident=335544320 cold=0
+34: budget refusal stayed suppressed without queue work: failures=2
+34: [zvram] virtual free bytes=335544320
+34: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=4
+34: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+34: PASS: refusal stayed suppressed while idle, retried after queue work, and all 320 MiB remained intact
+34/67 Test #34: vulkan-automatic-budget-refusal ....................   Passed    1.25 sec
+test 35
+      Start 35: vulkan-automatic-budget-release
+
+35: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "98304" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "14" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--expect-budget-release"
+35: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+35: Test timeout computed to be: 60
+35: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=14680064
+35: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+35: [zvram] virtual allocate bytes=268435456 heap-capacity=103079215104
+35: [zvram] virtual allocate bytes=201326592 heap-capacity=103079215104
+35: [zvram] snapshot cold bytes=201326592 stored=7360298
+35: [zvram] snapshot state event=freeze resident=268435456 cold-logical=201326592 cold-stored=7360298 freezes=1 restores=0 failures=0
+35: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+35: budget release: first cold allocation=201326592 resident=268435456 failures=1
+35: [zvram] virtual free bytes=201326592
+35: [zvram] snapshot cold bytes=268435456 stored=9809248
+35: [zvram] snapshot state event=freeze resident=0 cold-logical=268435456 cold-stored=9809248 freezes=2 restores=0 failures=1
+35: [zvram] snapshot state event=restore resident=268435456 cold-logical=0 cold-stored=0 freezes=2 restores=1 failures=1
+35: [zvram] virtual free bytes=268435456
+35: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=1 failures=1
+35: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=469762048 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+35: PASS: freeing one cold allocation released budget; remaining allocation froze, woke, and verified all bytes
+35/67 Test #35: vulkan-automatic-budget-release ....................   Passed    0.87 sec
+test 36
+      Start 36: vulkan-automatic-partial-freeze
+
+36: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "11" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--expect-partial-freeze"
+36: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+36: Environment variables: 
+36:  VK_LOADER_LAYERS_DISABLE=~implicit~
+36: Test timeout computed to be: 180
+36: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=11534336
+36: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+36: [zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+36: [zvram] snapshot cold bytes=268435456 stored=9809248
+36: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=9809248 freezes=1 restores=0 failures=0
+36: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+36: partial freeze: cold=268435456 resident=67108864 stored=9809248
+36: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=1
+36: [zvram] virtual free bytes=335544320
+36: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=1
+36: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+36: PASS: first child released, second stayed resident, and all 320 MiB verified after wake
+36/67 Test #36: vulkan-automatic-partial-freeze ....................   Passed    0.59 sec
+test 37
+      Start 37: vulkan-automatic-partial-restore-retry
+
+37: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--expect-partial-restore"
+37: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+37: Environment variables: 
+37:  VK_LOADER_LAYERS_DISABLE=~implicit~
+37:  ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1
+37: Test timeout computed to be: 180
+37: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+37: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+37: [zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+37: [zvram] snapshot cold bytes=268435456 stored=9809248
+37: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=9809248 freezes=1 restores=0 failures=0
+37: [zvram] snapshot cold bytes=67108864 stored=2454267
+37: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=12263515 freezes=2 restores=0 failures=0
+37: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+37: fault-retry cold baseline: logical=335544320 stored=12263515 freezes=2
+37: partial restore fault: resident=268435456 cold=67108864 failures=1
+37: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=1
+37: [zvram] virtual free bytes=335544320
+37: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=1
+37: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+37: PASS: injected partial restore returned OOM, retry restored and verified all bytes, cleanup is empty
+37/67 Test #37: vulkan-automatic-partial-restore-retry .............   Passed    0.61 sec
+test 38
+      Start 38: vulkan-automatic-bda-integrity
+
+38: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--bda"
+38: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+38: Environment variables: 
+38:  VK_LOADER_LAYERS_DISABLE=~implicit~
+38: Test timeout computed to be: 60
+38: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+38: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+38: [zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+38: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+38: BDA hot address: 0xffff800102200000
+38: [zvram] snapshot cold bytes=268435456 stored=9809248
+38: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=9809248 freezes=1 restores=0 failures=0
+38: [zvram] snapshot cold bytes=67108864 stored=2454267
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=12263515 freezes=2 restores=0 failures=0
+38: cold snapshot: logical=335544320 stored=12263515 freezes=2
+38: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+38: wake cycle 1: verified 335544320 bytes
+38: [zvram] snapshot cold bytes=268435456 stored=268435456
+38: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=268435456 freezes=3 restores=2 failures=0
+38: [zvram] snapshot cold bytes=67108864 stored=67108864
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=4 restores=2 failures=0
+38: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+38: wake cycle 2: verified 335544320 bytes
+38: [zvram] snapshot cold bytes=268435456 stored=268435456
+38: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=268435456 freezes=5 restores=4 failures=0
+38: [zvram] snapshot cold bytes=67108864 stored=67108864
+38: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=6 restores=4 failures=0
+38: [zvram] virtual free bytes=335544320
+38: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=6 restores=4 failures=0
+38: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+38: PASS: two cold/wake compute cycles, full readback, metadata stayed cold, cold free did not restore
+38/67 Test #38: vulkan-automatic-bda-integrity .....................   Passed    1.89 sec
+test 39
+      Start 39: vulkan-automatic-native-two-queues
+
+39: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--native-allocation" "--two-queues" "--pending-wait"
+39: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+39: Environment variables: 
+39:  VK_LOADER_LAYERS_DISABLE=~implicit~
+39: Test timeout computed to be: 60
+39: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+39: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+39: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+39: pending-wait queued; resolving from second queue after 300 ms
+39: PASS: second queue resolved pending wait
+39: [zvram] native allocation adopted bytes=335544320 type=0
+39: [zvram] snapshot cold bytes=335544320 stored=12263515
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=12263515 freezes=1 restores=0 failures=0
+39: native adoption refused after prior ordinary buffer binding
+39: native adoption refused after prior image binding
+39: cold adopted pool refused ordinary buffer/image bindings without waking
+39: native token probes bound with distinct allocations; original cold token unchanged
+39: native allocation adopted cold: logical=335544320 stored=12263515 freezes=1
+39: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+39: wake cycle 1: verified 335544320 bytes
+39: [zvram] snapshot cold bytes=335544320 stored=335544320
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=2 restores=1 failures=0
+39: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+39: wake cycle 2: verified 335544320 bytes
+39: [zvram] snapshot cold bytes=335544320 stored=335544320
+39: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=3 restores=2 failures=0
+39: [zvram] virtual free bytes=335544320
+39: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=3 restores=2 failures=0
+39: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+39: PASS: two cold/wake compute cycles, full readback, metadata stayed cold, cold free did not restore
+39/67 Test #39: vulkan-automatic-native-two-queues .................   Passed    2.20 sec
+test 40
+      Start 40: vulkan-automatic-native-two-families
+
+40: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--native-allocation" "--two-families" "--bda"
+40: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+40: Environment variables: 
+40:  VK_LOADER_LAYERS_DISABLE=~implicit~
+40: Test timeout computed to be: 60
+40: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+40: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+40: [zvram] native allocation adopted bytes=335544320 type=0
+40: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+40: BDA hot address: 0xffff800102200000
+40: [zvram] snapshot cold bytes=335544320 stored=12263515
+40: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=12263515 freezes=1 restores=0 failures=0
+40: native adoption refused after prior ordinary buffer binding
+40: native adoption refused after prior image binding
+40: cold adopted pool refused ordinary buffer/image bindings without waking
+40: native token probes bound with distinct allocations; original cold token unchanged
+40: native allocation adopted cold: logical=335544320 stored=12263515 freezes=1
+40: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+40: wake cycle 1: verified 335544320 bytes
+40: [zvram] snapshot cold bytes=335544320 stored=335544320
+40: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=2 restores=1 failures=0
+40: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+40: wake cycle 2: verified 335544320 bytes
+40: [zvram] snapshot cold bytes=335544320 stored=335544320
+40: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=3 restores=2 failures=0
+40: [zvram] virtual free bytes=335544320
+40: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=3 restores=2 failures=0
+40: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+40: PASS: two cold/wake compute cycles, full readback, metadata stayed cold, cold free did not restore
+40/67 Test #40: vulkan-automatic-native-two-families ...............   Passed    2.01 sec
+test 41
+      Start 41: vulkan-automatic-exclusive-families
+
+41: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--exclusive-families" "--bda"
+41: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+41: Environment variables: 
+41:  VK_LOADER_LAYERS_DISABLE=~implicit~
+41: Test timeout computed to be: 60
+41: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+41: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+41: [zvram] virtual allocate bytes=335544320 heap-capacity=103079215104
+41: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+41: BDA hot address: 0xffff800102200000
+41: [zvram] snapshot cold bytes=268435456 stored=9809248
+41: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=9809248 freezes=1 restores=0 failures=0
+41: [zvram] snapshot cold bytes=67108864 stored=2454267
+41: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=12263515 freezes=2 restores=0 failures=0
+41: cold snapshot: logical=335544320 stored=12263515 freezes=2
+41: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+41: wake cycle 1: verified 335544320 bytes
+41: [zvram] snapshot cold bytes=268435456 stored=268435456
+41: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=268435456 freezes=3 restores=2 failures=0
+41: [zvram] snapshot cold bytes=67108864 stored=67108864
+41: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=4 restores=2 failures=0
+41: [zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+41: wake cycle 2: verified 335544320 bytes
+41: [zvram] snapshot cold bytes=268435456 stored=268435456
+41: [zvram] snapshot state event=freeze resident=67108864 cold-logical=268435456 cold-stored=268435456 freezes=5 restores=4 failures=0
+41: [zvram] snapshot cold bytes=67108864 stored=67108864
+41: [zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=6 restores=4 failures=0
+41: [zvram] virtual free bytes=335544320
+41: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=6 restores=4 failures=0
+41: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+41: PASS: two cold/wake compute cycles, full readback, metadata stayed cold, cold free did not restore
+41/67 Test #41: vulkan-automatic-exclusive-families ................   Passed    2.00 sec
+test 42
+      Start 42: vulkan-virtual-pending-bind
+
+42: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--native-allocation" "--two-queues" "--pending-bind"
+42: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+42: Environment variables: 
+42:  VK_LOADER_LAYERS_DISABLE=~implicit~
+42: Test timeout computed to be: 60
+42: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+42: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+42: pending-bind queued; bind before signal
+42: pending bind returned before timeline signal in 0 ms
+42: pending-bind integrity cycle 1: verified 335544320 bytes
+42: pending-bind integrity cycle 2: verified 335544320 bytes
+42: PASS: pending bind returned before signal; two full integrity cycles completed
+42: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+42/67 Test #42: vulkan-virtual-pending-bind ........................   Passed    0.42 sec
+test 43
+      Start 43: vulkan-virtual-concurrent-pending-wait
+
+43: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--native-allocation" "--two-queues" "--pending-wait" "--concurrent-wait"
+43: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+43: Environment variables: 
+43:  VK_LOADER_LAYERS_DISABLE=~implicit~
+43: Test timeout computed to be: 60
+43: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+43: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+43: pending-wait queued; resolving from second queue after 300 ms
+43: PASS: second queue resolved a wait while first queue was blocked
+43: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=0 allocation-failures=0
+43/67 Test #43: vulkan-virtual-concurrent-pending-wait .............   Passed    0.34 sec
+test 44
+      Start 44: managed-compute-integrity
+
+44: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--isolate-layers" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-managed-check"
+44: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+44: Environment variables: 
+44:  VK_LOADER_LAYERS_DISABLE=~implicit~
+44: Test timeout computed to be: 60
+44: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+44: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=16777216 live-nonlocal=0 peak-nonlocal=1060864 allocation-failures=0
+44: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+44: cycle 1: verified 64 MiB of GPU mutations after eviction/restoration
+44: cycle 2: verified 64 MiB of GPU mutations after eviction/restoration
+44: resident=0 stored=58721120 evictions=38 restores=30 raw-fallbacks=33
+44: PASS: compute integrity, LRU budgets, pinned refusal, raw fallback, and failed-eviction recovery
+44/67 Test #44: managed-compute-integrity ..........................   Passed    0.25 sec
+test 45
+      Start 45: managed-capacity-integrity
+
+45: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--isolate-layers" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-managed-check" "--capacity-mib" "320"
+45: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+45: Environment variables: 
+45:  VK_LOADER_LAYERS_DISABLE=~implicit~
+45: Test timeout computed to be: 60
+45: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+45: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=268435456 live-nonlocal=0 peak-nonlocal=8388608 allocation-failures=0
+45: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+45: PASS: 320 MiB of highly compressible GPU-mutated data verified; resident budget=256 MiB stored=31240 evictions=13 restores=3
+45: This synthetic pattern is not representative of model weights.
+45/67 Test #45: managed-capacity-integrity .........................   Passed    0.24 sec
+test 46
+      Start 46: sparse-compute-integrity
+
+46: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-sparse-check" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/managed_check.spv"
+46: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+46: Environment variables: 
+46:  VK_LOADER_LAYERS_DISABLE=~implicit~
+46: Test timeout computed to be: 60
+46: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+46: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=2097152 live-nonlocal=0 peak-nonlocal=524288 allocation-failures=0
+46: PASS: stable sparse VkBuffer handles and GPU data survived two eviction/restore cycles; evictions=15 restores=12; pinning, failed dirty eviction, and 3-byte alignment checked
+46/67 Test #46: sparse-compute-integrity ...........................   Passed    0.06 sec
+test 47
+      Start 47: hip-native-integrity
+
+47: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_check
+47: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+47: Test timeout computed to be: 60
+47: Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+47: Workload=32 MiB; 8 MiB allocations, all live through verification.
+47: small allocation cycle 1: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f2d38200000
+47: small allocation cycle 2: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f2d38200000
+47: HIP capacity before: total=25753026560 free=25589448704
+47: HIP capacity allocated: total=25753026560 free=25555894272
+47: GPU wrote and CPU verified all 4194304 words across 4 live HIP allocations.
+47: HIP capacity freed: total=25753026560 free=25432162304
+47: This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+47/67 Test #47: hip-native-integrity ...............................   Passed    0.05 sec
+test 48
+      Start 48: hip-spill-integrity
+
+48: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--hip" "--hip-local-mib" "16" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_check"
+48: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+48: Test timeout computed to be: 60
+48: Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+48: Workload=32 MiB; 8 MiB allocations, all live through verification.
+48: small allocation cycle 1: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7fdaab400000
+48: small allocation cycle 2: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7fdaab400000
+48: HIP capacity before: total=25753026560 free=25589448704
+48: HIP capacity allocated: total=25753026560 free=25572671488
+48: GPU wrote and CPU verified all 4194304 words across 4 live HIP allocations.
+48: HIP capacity freed: total=25753026560 free=25432162304
+48: [zvram-hip] summary: tracked=0 peak_allocations=4 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=4 mapped_host_allocations=2 hybrid_vmm_allocations=0 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+48: This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+48/67 Test #48: hip-spill-integrity ................................   Passed    0.08 sec
+test 49
+      Start 49: hip-procedure-native-query
+
+49: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--hip" "--hip-local-mib" "32" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-proc-check" "--expect-physical"
+49: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+49: Test timeout computed to be: 60
+49: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=33554432 host_pinned_backing_bytes_current=0 pending=0 peak=0 native_allocations=1 mapped_host_allocations=0 hybrid_vmm_allocations=0 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+49: PASS: hipGetProcAddress wrappers, capacity queries, and 32 MiB byte check; mode=physical total=25753026560 free=25589448704->25339887616->25436356608
+49/67 Test #49: hip-procedure-native-query .........................   Passed    0.08 sec
+test 50
+      Start 50: hip-automatic-idle-integrity
+
+50: Test command: /usr/bin/cmake "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "64" "--hip-auto-idle-ms" "100" "--hip-cold-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_auto_check"
+50: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+50: Test timeout computed to be: 60
+50: [zvram-hip] automatic dispatch ready: HIP=70200 slots=506
+50: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+50: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=27.164
+50: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=9.045
+50: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=22.249
+50: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=8.312
+50: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=24.469
+50: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=8.596
+50: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=24.303
+50: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=8.220
+50: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=24.380
+50: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=0.001
+50: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+50: cycle 1 autosnapshot cold=33554432
+50: cold metadata device=AMD Radeon RX 7900 XTX free=25415385088 total=25753026560
+50: cycle 1 restore route=direct hipDeviceSynchronize verified
+50: cycle 2 autosnapshot cold=33554432
+50: cold metadata device=AMD Radeon RX 7900 XTX free=25415385088 total=25753026560
+50: cycle 2 restore route=hipGetProcAddress hipDeviceSynchronize verified
+50: cycle 3 autosnapshot cold=33554432
+50: cold metadata device=AMD Radeon RX 7900 XTX free=25415385088 total=25753026560
+50: cycle 3 restore route=native-library dlsym hipDeviceSynchronize verified
+50: cycle 4 autosnapshot cold=33554432
+50: cold metadata device=AMD Radeon RX 7900 XTX free=25415385088 total=25753026560
+50: cycle 4 restore route=ordinary GPU launch verified
+50: cycle 5 autosnapshot cold=33554432
+50: HIP automatic idle integration PASS: 4 restores, final cold free, metadata while cold, GPU and full 32 MiB verification
+50/67 Test #50: hip-automatic-idle-integrity .......................   Passed    0.77 sec
+test 51
+      Start 51: hip-automatic-concurrent-integrity
+
+51: Test command: /usr/bin/cmake "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "128" "--hip-auto-idle-ms" "100" "--hip-cold-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_auto_thread_check"
+51: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+51: Test timeout computed to be: 60
+51: [zvram-hip] automatic dispatch ready: HIP=70200 slots=506
+51: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+51: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=0 host_pinned=33554432 handles=1
+51: [zvram-hip] auto hibernate: status=0 logical=67108864 stored=33558784 elapsed_ms=48.728
+51: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=12.312
+51: [zvram-hip] auto hibernate: status=0 logical=67108864 stored=33558784 elapsed_ms=45.862
+51: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=15.833
+51: [zvram-hip] summary: tracked=0 peak_allocations=2 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=50331648 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=2 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+51: cycle 1 both worker allocations cold=67108864
+51: cycle 1 concurrent GPU verification passed
+51: cycle 2 both worker allocations cold=67108864
+51: cycle 2 concurrent GPU verification passed
+51: HIP automatic thread integration PASS: 2 threads x 2 cycles, 64 MiB autosnapshot budget, concurrent GPU and full readback
+51/67 Test #51: hip-automatic-concurrent-integrity .................   Passed    0.43 sec
+test 52
+      Start 52: hip-automatic-local-integrity
+
+52: Test command: /usr/bin/cmake "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "64" "--hip-host-mib" "0" "--hip-auto-idle-ms" "100" "--hip-cold-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_auto_check"
+52: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+52: Test timeout computed to be: 60
+52: [zvram-hip] automatic dispatch ready: HIP=70200 slots=506
+52: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=33554432 host_pinned=0 handles=1
+52: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=22.040
+52: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=8.183
+52: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=26.116
+52: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=5.233
+52: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=22.688
+52: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=5.069
+52: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=24.327
+52: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=5.387
+52: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=16779392 elapsed_ms=22.657
+52: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=0.001
+52: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=33554432 host_pinned_backing_bytes_current=0 pending=0 peak=0 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+52: cycle 1 autosnapshot cold=33554432
+52: cold metadata device=AMD Radeon RX 7900 XTX free=25398607872 total=25753026560
+52: cycle 1 restore route=direct hipDeviceSynchronize verified
+52: cycle 2 autosnapshot cold=33554432
+52: cold metadata device=AMD Radeon RX 7900 XTX free=25398607872 total=25753026560
+52: cycle 2 restore route=hipGetProcAddress hipDeviceSynchronize verified
+52: cycle 3 autosnapshot cold=33554432
+52: cold metadata device=AMD Radeon RX 7900 XTX free=25398607872 total=25753026560
+52: cycle 3 restore route=native-library dlsym hipDeviceSynchronize verified
+52: cycle 4 autosnapshot cold=33554432
+52: cold metadata device=AMD Radeon RX 7900 XTX free=25398607872 total=25753026560
+52: cycle 4 restore route=ordinary GPU launch verified
+52: cycle 5 autosnapshot cold=33554432
+52: HIP automatic idle integration PASS: 4 restores, final cold free, metadata while cold, GPU and full 32 MiB verification
+52/67 Test #52: hip-automatic-local-integrity ......................   Passed    0.75 sec
+test 53
+      Start 53: hip-automatic-capture-guard
+
+53: Test command: /usr/bin/cmake "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "64" "--hip-auto-idle-ms" "100" "--hip-cold-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_auto_guard_check"
+53: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+53: Test timeout computed to be: 60
+53: [zvram-hip] automatic dispatch ready: HIP=70200 slots=506
+53: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+53: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=1984 elapsed_ms=24.011
+53: [zvram-hip] automatic hibernation disabled: hipStreamBeginCapture_fn
+53: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=5.190
+53: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+53: automatic snapshot observed: 33554432 bytes cold
+53: cold captured hipMemsetAsync safely restored and updated the allocation
+53: HIP automatic guard integration PASS: stream capture restored safely and suppressed future auto-release
+53/67 Test #53: hip-automatic-capture-guard ........................   Passed    0.61 sec
+test 54
+      Start 54: hip-automatic-callback-guard
+
+54: Test command: /usr/bin/cmake "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "64" "--hip-auto-idle-ms" "100" "--hip-cold-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_auto_guard_check" "--callback"
+54: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+54: Test timeout computed to be: 60
+54: [zvram-hip] automatic dispatch ready: HIP=70200 slots=506
+54: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+54: [zvram-hip] auto hibernate: status=0 logical=33554432 stored=1984 elapsed_ms=22.283
+54: [zvram-hip] automatic hibernation disabled: hipLaunchHostFunc_fn
+54: [zvram-hip] auto resume: status=0 logical=0 stored=0 elapsed_ms=5.527
+54: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+54: automatic snapshot observed: 33554432 bytes cold
+54: cold hipLaunchHostFunc safely restored and preserved the allocation
+54: HIP automatic guard integration PASS: host callback restored safely and suppressed future auto-release
+54/67 Test #54: hip-automatic-callback-guard .......................   Passed    0.61 sec
+test 55
+      Start 55: hip-hibernation-integrity
+
+55: Test command: /usr/bin/cmake "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_hibernate_check"
+55: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+55: Test timeout computed to be: 60
+55: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+55: cold logical=0 stored=0
+55: cold logical=0 stored=0
+55: driver hot mem_info_vram_used=3378405376 mem_info_gtt_used=1715867648
+55: fdinfo hot fd=6 drm-client-id:	24209
+55: fdinfo hot fd=6 drm-resident-cpu:	0
+55: fdinfo hot fd=6 drm-resident-gtt:	2 MiB
+55: fdinfo hot fd=6 drm-resident-vram:	12 KiB
+55: fdinfo hot fd=6 drm-resident-gds:	0
+55: fdinfo hot fd=6 drm-resident-gws:	0
+55: fdinfo hot fd=6 drm-resident-oa:	0
+55: fdinfo hot fd=6 drm-resident-doorbell:	0
+55: fdinfo hot fd=6 drm-resident-mmioremap:	0
+55: fdinfo hot fd=6 drm-memory-vram:	12 KiB
+55: fdinfo hot fd=6 drm-memory-gtt: 	2048 KiB
+55: fdinfo hot fd=6 drm-memory-cpu: 	0 KiB
+55: fdinfo hot fd=8 drm-client-id:	24203
+55: fdinfo hot fd=8 drm-resident-cpu:	0
+55: fdinfo hot fd=8 drm-resident-gtt:	24628 KiB
+55: fdinfo hot fd=8 drm-resident-vram:	159908 KiB
+55: fdinfo hot fd=8 drm-resident-gds:	0
+55: fdinfo hot fd=8 drm-resident-gws:	0
+55: fdinfo hot fd=8 drm-resident-oa:	0
+55: fdinfo hot fd=8 drm-resident-doorbell:	0
+55: fdinfo hot fd=8 drm-resident-mmioremap:	0
+55: fdinfo hot fd=8 drm-memory-vram:	159908 KiB
+55: fdinfo hot fd=8 drm-memory-gtt: 	24628 KiB
+55: fdinfo hot fd=8 drm-memory-cpu: 	0 KiB
+55: fdinfo hot fd=9 drm-client-id:	24204
+55: fdinfo hot fd=9 drm-resident-cpu:	0
+55: fdinfo hot fd=9 drm-resident-gtt:	8232 KiB
+55: fdinfo hot fd=9 drm-resident-vram:	48 KiB
+55: fdinfo hot fd=9 drm-resident-gds:	0
+55: fdinfo hot fd=9 drm-resident-gws:	0
+55: fdinfo hot fd=9 drm-resident-oa:	0
+55: fdinfo hot fd=9 drm-resident-doorbell:	0
+55: fdinfo hot fd=9 drm-resident-mmioremap:	0
+55: fdinfo hot fd=9 drm-memory-vram:	48 KiB
+55: fdinfo hot fd=9 drm-memory-gtt: 	8232 KiB
+55: fdinfo hot fd=9 drm-memory-cpu: 	0 KiB
+55: timing cycle=1 phase=hibernate elapsed_ms=25
+55: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+55: driver cold mem_info_vram_used=3378405376 mem_info_gtt_used=1715867648
+55: fdinfo cold fd=6 drm-client-id:	24209
+55: fdinfo cold fd=6 drm-resident-cpu:	0
+55: fdinfo cold fd=6 drm-resident-gtt:	2 MiB
+55: fdinfo cold fd=6 drm-resident-vram:	12 KiB
+55: fdinfo cold fd=6 drm-resident-gds:	0
+55: fdinfo cold fd=6 drm-resident-gws:	0
+55: fdinfo cold fd=6 drm-resident-oa:	0
+55: fdinfo cold fd=6 drm-resident-doorbell:	0
+55: fdinfo cold fd=6 drm-resident-mmioremap:	0
+55: fdinfo cold fd=6 drm-memory-vram:	12 KiB
+55: fdinfo cold fd=6 drm-memory-gtt: 	2048 KiB
+55: fdinfo cold fd=6 drm-memory-cpu: 	0 KiB
+55: fdinfo cold fd=8 drm-client-id:	24203
+55: fdinfo cold fd=8 drm-resident-cpu:	0
+55: fdinfo cold fd=8 drm-resident-gtt:	8244 KiB
+55: fdinfo cold fd=8 drm-resident-vram:	143524 KiB
+55: fdinfo cold fd=8 drm-resident-gds:	0
+55: fdinfo cold fd=8 drm-resident-gws:	0
+55: fdinfo cold fd=8 drm-resident-oa:	0
+55: fdinfo cold fd=8 drm-resident-doorbell:	0
+55: fdinfo cold fd=8 drm-resident-mmioremap:	0
+55: fdinfo cold fd=8 drm-memory-vram:	143524 KiB
+55: fdinfo cold fd=8 drm-memory-gtt: 	8244 KiB
+55: fdinfo cold fd=8 drm-memory-cpu: 	0 KiB
+55: fdinfo cold fd=9 drm-client-id:	24204
+55: fdinfo cold fd=9 drm-resident-cpu:	0
+55: fdinfo cold fd=9 drm-resident-gtt:	8232 KiB
+55: fdinfo cold fd=9 drm-resident-vram:	48 KiB
+55: fdinfo cold fd=9 drm-resident-gds:	0
+55: fdinfo cold fd=9 drm-resident-gws:	0
+55: fdinfo cold fd=9 drm-resident-oa:	0
+55: fdinfo cold fd=9 drm-resident-doorbell:	0
+55: fdinfo cold fd=9 drm-resident-mmioremap:	0
+55: fdinfo cold fd=9 drm-memory-vram:	48 KiB
+55: fdinfo cold fd=9 drm-memory-gtt: 	8232 KiB
+55: fdinfo cold fd=9 drm-memory-cpu: 	0 KiB
+55: cold logical=33554432 stored=16779392
+55: cold logical=33554432 stored=16779392
+55: timing cycle=1 phase=resume elapsed_ms=7
+55: driver restored mem_info_vram_used=3378401280 mem_info_gtt_used=1715867648
+55: fdinfo restored fd=6 drm-client-id:	24209
+55: fdinfo restored fd=6 drm-resident-cpu:	0
+55: fdinfo restored fd=6 drm-resident-gtt:	2 MiB
+55: fdinfo restored fd=6 drm-resident-vram:	12 KiB
+55: fdinfo restored fd=6 drm-resident-gds:	0
+55: fdinfo restored fd=6 drm-resident-gws:	0
+55: fdinfo restored fd=6 drm-resident-oa:	0
+55: fdinfo restored fd=6 drm-resident-doorbell:	0
+55: fdinfo restored fd=6 drm-resident-mmioremap:	0
+55: fdinfo restored fd=6 drm-memory-vram:	12 KiB
+55: fdinfo restored fd=6 drm-memory-gtt: 	2048 KiB
+55: fdinfo restored fd=6 drm-memory-cpu: 	0 KiB
+55: fdinfo restored fd=8 drm-client-id:	24203
+55: fdinfo restored fd=8 drm-resident-cpu:	0
+55: fdinfo restored fd=8 drm-resident-gtt:	24628 KiB
+55: fdinfo restored fd=8 drm-resident-vram:	159904 KiB
+55: fdinfo restored fd=8 drm-resident-gds:	0
+55: fdinfo restored fd=8 drm-resident-gws:	0
+55: fdinfo restored fd=8 drm-resident-oa:	0
+55: fdinfo restored fd=8 drm-resident-doorbell:	0
+55: fdinfo restored fd=8 drm-resident-mmioremap:	0
+55: fdinfo restored fd=8 drm-memory-vram:	159904 KiB
+55: fdinfo restored fd=8 drm-memory-gtt: 	24628 KiB
+55: fdinfo restored fd=8 drm-memory-cpu: 	0 KiB
+55: fdinfo restored fd=9 drm-client-id:	24204
+55: fdinfo restored fd=9 drm-resident-cpu:	0
+55: fdinfo restored fd=9 drm-resident-gtt:	8232 KiB
+55: fdinfo restored fd=9 drm-resident-vram:	48 KiB
+55: fdinfo restored fd=9 drm-resident-gds:	0
+55: fdinfo restored fd=9 drm-resident-gws:	0
+55: fdinfo restored fd=9 drm-resident-oa:	0
+55: fdinfo restored fd=9 drm-resident-doorbell:	0
+55: fdinfo restored fd=9 drm-resident-mmioremap:	0
+55: fdinfo restored fd=9 drm-memory-vram:	48 KiB
+55: fdinfo restored fd=9 drm-memory-gtt: 	8232 KiB
+55: fdinfo restored fd=9 drm-memory-cpu: 	0 KiB
+55: cold logical=0 stored=0
+55: driver hot mem_info_vram_used=3378405376 mem_info_gtt_used=1715867648
+55: fdinfo hot fd=6 drm-client-id:	24209
+55: fdinfo hot fd=6 drm-resident-cpu:	0
+55: fdinfo hot fd=6 drm-resident-gtt:	2 MiB
+55: fdinfo hot fd=6 drm-resident-vram:	12 KiB
+55: fdinfo hot fd=6 drm-resident-gds:	0
+55: fdinfo hot fd=6 drm-resident-gws:	0
+55: fdinfo hot fd=6 drm-resident-oa:	0
+55: fdinfo hot fd=6 drm-resident-doorbell:	0
+55: fdinfo hot fd=6 drm-resident-mmioremap:	0
+55: fdinfo hot fd=6 drm-memory-vram:	12 KiB
+55: fdinfo hot fd=6 drm-memory-gtt: 	2048 KiB
+55: fdinfo hot fd=6 drm-memory-cpu: 	0 KiB
+55: fdinfo hot fd=8 drm-client-id:	24203
+55: fdinfo hot fd=8 drm-resident-cpu:	0
+55: fdinfo hot fd=8 drm-resident-gtt:	24628 KiB
+55: fdinfo hot fd=8 drm-resident-vram:	159908 KiB
+55: fdinfo hot fd=8 drm-resident-gds:	0
+55: fdinfo hot fd=8 drm-resident-gws:	0
+55: fdinfo hot fd=8 drm-resident-oa:	0
+55: fdinfo hot fd=8 drm-resident-doorbell:	0
+55: fdinfo hot fd=8 drm-resident-mmioremap:	0
+55: fdinfo hot fd=8 drm-memory-vram:	159908 KiB
+55: fdinfo hot fd=8 drm-memory-gtt: 	24628 KiB
+55: fdinfo hot fd=8 drm-memory-cpu: 	0 KiB
+55: fdinfo hot fd=9 drm-client-id:	24204
+55: fdinfo hot fd=9 drm-resident-cpu:	0
+55: fdinfo hot fd=9 drm-resident-gtt:	8232 KiB
+55: fdinfo hot fd=9 drm-resident-vram:	48 KiB
+55: fdinfo hot fd=9 drm-resident-gds:	0
+55: fdinfo hot fd=9 drm-resident-gws:	0
+55: fdinfo hot fd=9 drm-resident-oa:	0
+55: fdinfo hot fd=9 drm-resident-doorbell:	0
+55: fdinfo hot fd=9 drm-resident-mmioremap:	0
+55: fdinfo hot fd=9 drm-memory-vram:	48 KiB
+55: fdinfo hot fd=9 drm-memory-gtt: 	8232 KiB
+55: fdinfo hot fd=9 drm-memory-cpu: 	0 KiB
+55: timing cycle=2 phase=hibernate elapsed_ms=22
+55: driver cold mem_info_vram_used=3378405376 mem_info_gtt_used=1715867648
+55: fdinfo cold fd=6 drm-client-id:	24209
+55: fdinfo cold fd=6 drm-resident-cpu:	0
+55: fdinfo cold fd=6 drm-resident-gtt:	2 MiB
+55: fdinfo cold fd=6 drm-resident-vram:	12 KiB
+55: fdinfo cold fd=6 drm-resident-gds:	0
+55: fdinfo cold fd=6 drm-resident-gws:	0
+55: fdinfo cold fd=6 drm-resident-oa:	0
+55: fdinfo cold fd=6 drm-resident-doorbell:	0
+55: fdinfo cold fd=6 drm-resident-mmioremap:	0
+55: fdinfo cold fd=6 drm-memory-vram:	12 KiB
+55: fdinfo cold fd=6 drm-memory-gtt: 	2048 KiB
+55: fdinfo cold fd=6 drm-memory-cpu: 	0 KiB
+55: fdinfo cold fd=8 drm-client-id:	24203
+55: fdinfo cold fd=8 drm-resident-cpu:	0
+55: fdinfo cold fd=8 drm-resident-gtt:	8244 KiB
+55: fdinfo cold fd=8 drm-resident-vram:	143524 KiB
+55: fdinfo cold fd=8 drm-resident-gds:	0
+55: fdinfo cold fd=8 drm-resident-gws:	0
+55: fdinfo cold fd=8 drm-resident-oa:	0
+55: fdinfo cold fd=8 drm-resident-doorbell:	0
+55: fdinfo cold fd=8 drm-resident-mmioremap:	0
+55: fdinfo cold fd=8 drm-memory-vram:	143524 KiB
+55: fdinfo cold fd=8 drm-memory-gtt: 	8244 KiB
+55: fdinfo cold fd=8 drm-memory-cpu: 	0 KiB
+55: fdinfo cold fd=9 drm-client-id:	24204
+55: fdinfo cold fd=9 drm-resident-cpu:	0
+55: fdinfo cold fd=9 drm-resident-gtt:	8232 KiB
+55: fdinfo cold fd=9 drm-resident-vram:	48 KiB
+55: fdinfo cold fd=9 drm-resident-gds:	0
+55: fdinfo cold fd=9 drm-resident-gws:	0
+55: fdinfo cold fd=9 drm-resident-oa:	0
+55: fdinfo cold fd=9 drm-resident-doorbell:	0
+55: fdinfo cold fd=9 drm-resident-mmioremap:	0
+55: fdinfo cold fd=9 drm-memory-vram:	48 KiB
+55: fdinfo cold fd=9 drm-memory-gtt: 	8232 KiB
+55: fdinfo cold fd=9 drm-memory-cpu: 	0 KiB
+55: cold logical=33554432 stored=16779392
+55: timing cycle=2 phase=resume elapsed_ms=7
+55: [zvram-hip] summary: tracked=0 peak_allocations=2 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=2 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+55: driver restored mem_info_vram_used=3378405376 mem_info_gtt_used=1715867648
+55: fdinfo restored fd=6 drm-client-id:	24209
+55: fdinfo restored fd=6 drm-resident-cpu:	0
+55: fdinfo restored fd=6 drm-resident-gtt:	2 MiB
+55: fdinfo restored fd=6 drm-resident-vram:	12 KiB
+55: fdinfo restored fd=6 drm-resident-gds:	0
+55: fdinfo restored fd=6 drm-resident-gws:	0
+55: fdinfo restored fd=6 drm-resident-oa:	0
+55: fdinfo restored fd=6 drm-resident-doorbell:	0
+55: fdinfo restored fd=6 drm-resident-mmioremap:	0
+55: fdinfo restored fd=6 drm-memory-vram:	12 KiB
+55: fdinfo restored fd=6 drm-memory-gtt: 	2048 KiB
+55: fdinfo restored fd=6 drm-memory-cpu: 	0 KiB
+55: fdinfo restored fd=8 drm-client-id:	24203
+55: fdinfo restored fd=8 drm-resident-cpu:	0
+55: fdinfo restored fd=8 drm-resident-gtt:	24628 KiB
+55: fdinfo restored fd=8 drm-resident-vram:	159908 KiB
+55: fdinfo restored fd=8 drm-resident-gds:	0
+55: fdinfo restored fd=8 drm-resident-gws:	0
+55: fdinfo restored fd=8 drm-resident-oa:	0
+55: fdinfo restored fd=8 drm-resident-doorbell:	0
+55: fdinfo restored fd=8 drm-resident-mmioremap:	0
+55: fdinfo restored fd=8 drm-memory-vram:	159908 KiB
+55: fdinfo restored fd=8 drm-memory-gtt: 	24628 KiB
+55: fdinfo restored fd=8 drm-memory-cpu: 	0 KiB
+55: fdinfo restored fd=9 drm-client-id:	24204
+55: fdinfo restored fd=9 drm-resident-cpu:	0
+55: fdinfo restored fd=9 drm-resident-gtt:	8232 KiB
+55: fdinfo restored fd=9 drm-resident-vram:	48 KiB
+55: fdinfo restored fd=9 drm-resident-gds:	0
+55: fdinfo restored fd=9 drm-resident-gws:	0
+55: fdinfo restored fd=9 drm-resident-oa:	0
+55: fdinfo restored fd=9 drm-resident-doorbell:	0
+55: fdinfo restored fd=9 drm-resident-mmioremap:	0
+55: fdinfo restored fd=9 drm-memory-vram:	48 KiB
+55: fdinfo restored fd=9 drm-memory-gtt: 	8232 KiB
+55: fdinfo restored fd=9 drm-memory-cpu: 	0 KiB
+55: cold logical=0 stored=0
+55: cold logical=0 stored=0
+55: HIP hibernation PASS: full 32 MiB GPU-mutated data, two cycles, stable pointer, budget refusal, cold free
+55/67 Test #55: hip-hibernation-integrity ..........................   Passed    0.21 sec
+test 56
+      Start 56: hip-hibernation-multisegment
+
+56: Test command: /usr/bin/cmake "-E" "env" "HIP_VISIBLE_DEVICES=0" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "768" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_hibernate_check" "--large"
+56: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+56: Test timeout computed to be: 60
+56: [zvram-hip] hybrid VMM allocation: logical=301989888 mapped=301989888 VRAM=16777216 host_pinned=285212672 handles=3
+56: cold logical=0 stored=0
+56: cold logical=0 stored=0
+56: driver hot mem_info_vram_used=3378409472 mem_info_gtt_used=1979645952
+56: fdinfo hot fd=6 drm-client-id:	24216
+56: fdinfo hot fd=6 drm-resident-cpu:	0
+56: fdinfo hot fd=6 drm-resident-gtt:	2 MiB
+56: fdinfo hot fd=6 drm-resident-vram:	12 KiB
+56: fdinfo hot fd=6 drm-resident-gds:	0
+56: fdinfo hot fd=6 drm-resident-gws:	0
+56: fdinfo hot fd=6 drm-resident-oa:	0
+56: fdinfo hot fd=6 drm-resident-doorbell:	0
+56: fdinfo hot fd=6 drm-resident-mmioremap:	0
+56: fdinfo hot fd=6 drm-memory-vram:	12 KiB
+56: fdinfo hot fd=6 drm-memory-gtt: 	2048 KiB
+56: fdinfo hot fd=6 drm-memory-cpu: 	0 KiB
+56: fdinfo hot fd=8 drm-client-id:	24210
+56: fdinfo hot fd=8 drm-resident-cpu:	0
+56: fdinfo hot fd=8 drm-resident-gtt:	286772 KiB
+56: fdinfo hot fd=8 drm-resident-vram:	159912 KiB
+56: fdinfo hot fd=8 drm-resident-gds:	0
+56: fdinfo hot fd=8 drm-resident-gws:	0
+56: fdinfo hot fd=8 drm-resident-oa:	0
+56: fdinfo hot fd=8 drm-resident-doorbell:	0
+56: fdinfo hot fd=8 drm-resident-mmioremap:	0
+56: fdinfo hot fd=8 drm-memory-vram:	159912 KiB
+56: fdinfo hot fd=8 drm-memory-gtt: 	286772 KiB
+56: fdinfo hot fd=8 drm-memory-cpu: 	0 KiB
+56: fdinfo hot fd=9 drm-client-id:	24211
+56: fdinfo hot fd=9 drm-resident-cpu:	0
+56: fdinfo hot fd=9 drm-resident-gtt:	8232 KiB
+56: fdinfo hot fd=9 drm-resident-vram:	52 KiB
+56: fdinfo hot fd=9 drm-resident-gds:	0
+56: fdinfo hot fd=9 drm-resident-gws:	0
+56: fdinfo hot fd=9 drm-resident-oa:	0
+56: fdinfo hot fd=9 drm-resident-doorbell:	0
+56: fdinfo hot fd=9 drm-resident-mmioremap:	0
+56: fdinfo hot fd=9 drm-memory-vram:	52 KiB
+56: fdinfo hot fd=9 drm-memory-gtt: 	8232 KiB
+56: fdinfo hot fd=9 drm-memory-cpu: 	0 KiB
+56: timing cycle=1 phase=hibernate elapsed_ms=217
+56: [zvram-hip] hybrid VMM allocation: logical=301989888 mapped=301989888 VRAM=16777216 host_pinned=285212672 handles=3
+56: driver cold mem_info_vram_used=3378409472 mem_info_gtt_used=1979645952
+56: fdinfo cold fd=6 drm-client-id:	24216
+56: fdinfo cold fd=6 drm-resident-cpu:	0
+56: fdinfo cold fd=6 drm-resident-gtt:	2 MiB
+56: fdinfo cold fd=6 drm-resident-vram:	12 KiB
+56: fdinfo cold fd=6 drm-resident-gds:	0
+56: fdinfo cold fd=6 drm-resident-gws:	0
+56: fdinfo cold fd=6 drm-resident-oa:	0
+56: fdinfo cold fd=6 drm-resident-doorbell:	0
+56: fdinfo cold fd=6 drm-resident-mmioremap:	0
+56: fdinfo cold fd=6 drm-memory-vram:	12 KiB
+56: fdinfo cold fd=6 drm-memory-gtt: 	2048 KiB
+56: fdinfo cold fd=6 drm-memory-cpu: 	0 KiB
+56: fdinfo cold fd=8 drm-client-id:	24210
+56: fdinfo cold fd=8 drm-resident-cpu:	0
+56: fdinfo cold fd=8 drm-resident-gtt:	8244 KiB
+56: fdinfo cold fd=8 drm-resident-vram:	143528 KiB
+56: fdinfo cold fd=8 drm-resident-gds:	0
+56: fdinfo cold fd=8 drm-resident-gws:	0
+56: fdinfo cold fd=8 drm-resident-oa:	0
+56: fdinfo cold fd=8 drm-resident-doorbell:	0
+56: fdinfo cold fd=8 drm-resident-mmioremap:	0
+56: fdinfo cold fd=8 drm-memory-vram:	143528 KiB
+56: fdinfo cold fd=8 drm-memory-gtt: 	8244 KiB
+56: fdinfo cold fd=8 drm-memory-cpu: 	0 KiB
+56: fdinfo cold fd=9 drm-client-id:	24211
+56: fdinfo cold fd=9 drm-resident-cpu:	0
+56: fdinfo cold fd=9 drm-resident-gtt:	8232 KiB
+56: fdinfo cold fd=9 drm-resident-vram:	52 KiB
+56: fdinfo cold fd=9 drm-resident-gds:	0
+56: fdinfo cold fd=9 drm-resident-gws:	0
+56: fdinfo cold fd=9 drm-resident-oa:	0
+56: fdinfo cold fd=9 drm-resident-doorbell:	0
+56: fdinfo cold fd=9 drm-resident-mmioremap:	0
+56: fdinfo cold fd=9 drm-memory-vram:	52 KiB
+56: fdinfo cold fd=9 drm-memory-gtt: 	8232 KiB
+56: fdinfo cold fd=9 drm-memory-cpu: 	0 KiB
+56: cold logical=301989888 stored=151014528
+56: cold logical=301989888 stored=151014528
+56: timing cycle=1 phase=resume elapsed_ms=79
+56: driver restored mem_info_vram_used=3378409472 mem_info_gtt_used=1979645952
+56: fdinfo restored fd=6 drm-client-id:	24216
+56: fdinfo restored fd=6 drm-resident-cpu:	0
+56: fdinfo restored fd=6 drm-resident-gtt:	2 MiB
+56: fdinfo restored fd=6 drm-resident-vram:	12 KiB
+56: fdinfo restored fd=6 drm-resident-gds:	0
+56: fdinfo restored fd=6 drm-resident-gws:	0
+56: fdinfo restored fd=6 drm-resident-oa:	0
+56: fdinfo restored fd=6 drm-resident-doorbell:	0
+56: fdinfo restored fd=6 drm-resident-mmioremap:	0
+56: fdinfo restored fd=6 drm-memory-vram:	12 KiB
+56: fdinfo restored fd=6 drm-memory-gtt: 	2048 KiB
+56: fdinfo restored fd=6 drm-memory-cpu: 	0 KiB
+56: fdinfo restored fd=8 drm-client-id:	24210
+56: fdinfo restored fd=8 drm-resident-cpu:	0
+56: fdinfo restored fd=8 drm-resident-gtt:	286772 KiB
+56: fdinfo restored fd=8 drm-resident-vram:	159912 KiB
+56: fdinfo restored fd=8 drm-resident-gds:	0
+56: fdinfo restored fd=8 drm-resident-gws:	0
+56: fdinfo restored fd=8 drm-resident-oa:	0
+56: fdinfo restored fd=8 drm-resident-doorbell:	0
+56: fdinfo restored fd=8 drm-resident-mmioremap:	0
+56: fdinfo restored fd=8 drm-memory-vram:	159912 KiB
+56: fdinfo restored fd=8 drm-memory-gtt: 	286772 KiB
+56: fdinfo restored fd=8 drm-memory-cpu: 	0 KiB
+56: fdinfo restored fd=9 drm-client-id:	24211
+56: fdinfo restored fd=9 drm-resident-cpu:	0
+56: fdinfo restored fd=9 drm-resident-gtt:	8232 KiB
+56: fdinfo restored fd=9 drm-resident-vram:	52 KiB
+56: fdinfo restored fd=9 drm-resident-gds:	0
+56: fdinfo restored fd=9 drm-resident-gws:	0
+56: fdinfo restored fd=9 drm-resident-oa:	0
+56: fdinfo restored fd=9 drm-resident-doorbell:	0
+56: fdinfo restored fd=9 drm-resident-mmioremap:	0
+56: fdinfo restored fd=9 drm-memory-vram:	52 KiB
+56: fdinfo restored fd=9 drm-memory-gtt: 	8232 KiB
+56: fdinfo restored fd=9 drm-memory-cpu: 	0 KiB
+56: cold logical=0 stored=0
+56: driver hot mem_info_vram_used=3378409472 mem_info_gtt_used=1979645952
+56: fdinfo hot fd=6 drm-client-id:	24216
+56: fdinfo hot fd=6 drm-resident-cpu:	0
+56: fdinfo hot fd=6 drm-resident-gtt:	2 MiB
+56: fdinfo hot fd=6 drm-resident-vram:	12 KiB
+56: fdinfo hot fd=6 drm-resident-gds:	0
+56: fdinfo hot fd=6 drm-resident-gws:	0
+56: fdinfo hot fd=6 drm-resident-oa:	0
+56: fdinfo hot fd=6 drm-resident-doorbell:	0
+56: fdinfo hot fd=6 drm-resident-mmioremap:	0
+56: fdinfo hot fd=6 drm-memory-vram:	12 KiB
+56: fdinfo hot fd=6 drm-memory-gtt: 	2048 KiB
+56: fdinfo hot fd=6 drm-memory-cpu: 	0 KiB
+56: fdinfo hot fd=8 drm-client-id:	24210
+56: fdinfo hot fd=8 drm-resident-cpu:	0
+56: fdinfo hot fd=8 drm-resident-gtt:	286772 KiB
+56: fdinfo hot fd=8 drm-resident-vram:	159912 KiB
+56: fdinfo hot fd=8 drm-resident-gds:	0
+56: fdinfo hot fd=8 drm-resident-gws:	0
+56: fdinfo hot fd=8 drm-resident-oa:	0
+56: fdinfo hot fd=8 drm-resident-doorbell:	0
+56: fdinfo hot fd=8 drm-resident-mmioremap:	0
+56: fdinfo hot fd=8 drm-memory-vram:	159912 KiB
+56: fdinfo hot fd=8 drm-memory-gtt: 	286772 KiB
+56: fdinfo hot fd=8 drm-memory-cpu: 	0 KiB
+56: fdinfo hot fd=9 drm-client-id:	24211
+56: fdinfo hot fd=9 drm-resident-cpu:	0
+56: fdinfo hot fd=9 drm-resident-gtt:	8232 KiB
+56: fdinfo hot fd=9 drm-resident-vram:	52 KiB
+56: fdinfo hot fd=9 drm-resident-gds:	0
+56: fdinfo hot fd=9 drm-resident-gws:	0
+56: fdinfo hot fd=9 drm-resident-oa:	0
+56: fdinfo hot fd=9 drm-resident-doorbell:	0
+56: fdinfo hot fd=9 drm-resident-mmioremap:	0
+56: fdinfo hot fd=9 drm-memory-vram:	52 KiB
+56: fdinfo hot fd=9 drm-memory-gtt: 	8232 KiB
+56: fdinfo hot fd=9 drm-memory-cpu: 	0 KiB
+56: timing cycle=2 phase=hibernate elapsed_ms=211
+56: driver cold mem_info_vram_used=3378409472 mem_info_gtt_used=1979645952
+56: fdinfo cold fd=6 drm-client-id:	24216
+56: fdinfo cold fd=6 drm-resident-cpu:	0
+56: fdinfo cold fd=6 drm-resident-gtt:	2 MiB
+56: fdinfo cold fd=6 drm-resident-vram:	12 KiB
+56: fdinfo cold fd=6 drm-resident-gds:	0
+56: fdinfo cold fd=6 drm-resident-gws:	0
+56: fdinfo cold fd=6 drm-resident-oa:	0
+56: fdinfo cold fd=6 drm-resident-doorbell:	0
+56: fdinfo cold fd=6 drm-resident-mmioremap:	0
+56: fdinfo cold fd=6 drm-memory-vram:	12 KiB
+56: fdinfo cold fd=6 drm-memory-gtt: 	2048 KiB
+56: fdinfo cold fd=6 drm-memory-cpu: 	0 KiB
+56: fdinfo cold fd=8 drm-client-id:	24210
+56: fdinfo cold fd=8 drm-resident-cpu:	0
+56: fdinfo cold fd=8 drm-resident-gtt:	8244 KiB
+56: fdinfo cold fd=8 drm-resident-vram:	143528 KiB
+56: fdinfo cold fd=8 drm-resident-gds:	0
+56: fdinfo cold fd=8 drm-resident-gws:	0
+56: fdinfo cold fd=8 drm-resident-oa:	0
+56: fdinfo cold fd=8 drm-resident-doorbell:	0
+56: fdinfo cold fd=8 drm-resident-mmioremap:	0
+56: fdinfo cold fd=8 drm-memory-vram:	143528 KiB
+56: fdinfo cold fd=8 drm-memory-gtt: 	8244 KiB
+56: fdinfo cold fd=8 drm-memory-cpu: 	0 KiB
+56: fdinfo cold fd=9 drm-client-id:	24211
+56: fdinfo cold fd=9 drm-resident-cpu:	0
+56: fdinfo cold fd=9 drm-resident-gtt:	8232 KiB
+56: fdinfo cold fd=9 drm-resident-vram:	52 KiB
+56: fdinfo cold fd=9 drm-resident-gds:	0
+56: fdinfo cold fd=9 drm-resident-gws:	0
+56: fdinfo cold fd=9 drm-resident-oa:	0
+56: fdinfo cold fd=9 drm-resident-doorbell:	0
+56: fdinfo cold fd=9 drm-resident-mmioremap:	0
+56: fdinfo cold fd=9 drm-memory-vram:	52 KiB
+56: fdinfo cold fd=9 drm-memory-gtt: 	8232 KiB
+56: fdinfo cold fd=9 drm-memory-cpu: 	0 KiB
+56: cold logical=301989888 stored=151014528
+56: timing cycle=2 phase=resume elapsed_ms=74
+56: [zvram-hip] summary: tracked=0 peak_allocations=2 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=285212672 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=2 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+56: driver restored mem_info_vram_used=3378409472 mem_info_gtt_used=1974927360
+56: fdinfo restored fd=6 drm-client-id:	24216
+56: fdinfo restored fd=6 drm-resident-cpu:	0
+56: fdinfo restored fd=6 drm-resident-gtt:	2 MiB
+56: fdinfo restored fd=6 drm-resident-vram:	12 KiB
+56: fdinfo restored fd=6 drm-resident-gds:	0
+56: fdinfo restored fd=6 drm-resident-gws:	0
+56: fdinfo restored fd=6 drm-resident-oa:	0
+56: fdinfo restored fd=6 drm-resident-doorbell:	0
+56: fdinfo restored fd=6 drm-resident-mmioremap:	0
+56: fdinfo restored fd=6 drm-memory-vram:	12 KiB
+56: fdinfo restored fd=6 drm-memory-gtt: 	2048 KiB
+56: fdinfo restored fd=6 drm-memory-cpu: 	0 KiB
+56: fdinfo restored fd=8 drm-client-id:	24210
+56: fdinfo restored fd=8 drm-resident-cpu:	0
+56: fdinfo restored fd=8 drm-resident-gtt:	286772 KiB
+56: fdinfo restored fd=8 drm-resident-vram:	159912 KiB
+56: fdinfo restored fd=8 drm-resident-gds:	0
+56: fdinfo restored fd=8 drm-resident-gws:	0
+56: fdinfo restored fd=8 drm-resident-oa:	0
+56: fdinfo restored fd=8 drm-resident-doorbell:	0
+56: fdinfo restored fd=8 drm-resident-mmioremap:	0
+56: fdinfo restored fd=8 drm-memory-vram:	159912 KiB
+56: fdinfo restored fd=8 drm-memory-gtt: 	286772 KiB
+56: fdinfo restored fd=8 drm-memory-cpu: 	0 KiB
+56: fdinfo restored fd=9 drm-client-id:	24211
+56: fdinfo restored fd=9 drm-resident-cpu:	0
+56: fdinfo restored fd=9 drm-resident-gtt:	8232 KiB
+56: fdinfo restored fd=9 drm-resident-vram:	52 KiB
+56: fdinfo restored fd=9 drm-resident-gds:	0
+56: fdinfo restored fd=9 drm-resident-gws:	0
+56: fdinfo restored fd=9 drm-resident-oa:	0
+56: fdinfo restored fd=9 drm-resident-doorbell:	0
+56: fdinfo restored fd=9 drm-resident-mmioremap:	0
+56: fdinfo restored fd=9 drm-memory-vram:	52 KiB
+56: fdinfo restored fd=9 drm-memory-gtt: 	8232 KiB
+56: fdinfo restored fd=9 drm-memory-cpu: 	0 KiB
+56: cold logical=0 stored=0
+56: cold logical=0 stored=0
+56: HIP hibernation PASS: full 288 MiB GPU-mutated data, two cycles, stable pointer, budget refusal, cold free
+56/67 Test #56: hip-hibernation-multisegment .......................   Passed    1.33 sec
+test 57
+      Start 57: hip-vmm-integrity
+
+57: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--hip" "--hip-vmm" "--hip-local-mib" "32" "--hip-host-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_check" "--single-allocation" "--mib" "64"
+57: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+57: Test timeout computed to be: 60
+57: Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+57: Workload=64 MiB; one live allocation, checked in 8 MiB chunks.
+57: small allocation cycle 1: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f704fc00000
+57: small allocation cycle 2: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f704fc00000
+57: HIP capacity before: total=25753026560 free=25526534144
+57: [zvram-hip] hybrid VMM allocation: logical=67108864 mapped=67108864 VRAM=33554432 host_pinned=33554432 handles=2
+57: single allocation pointer attributes: type=2 device=0 managed=0 hostPointer=0 devicePointer=0x7f6ef9000000
+57: HIP capacity allocated: total=25753026560 free=25339887616
+57: GPU wrote and CPU verified all 8388608 words across one live allocation checked in 8 chunks.
+57: HIP capacity freed: total=25753026560 free=25369247744
+57: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=33554432 host_pinned_backing_bytes_current=0 pending=0 peak=33554432 native_allocations=2 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+57: This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+57/67 Test #57: hip-vmm-integrity ..................................   Passed    0.08 sec
+test 58
+      Start 58: hip-vmm-host-integrity
+
+58: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--hip" "--hip-vmm" "--hip-local-mib" "0" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_check" "--single-allocation" "--mib" "32"
+58: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+58: Test timeout computed to be: 60
+58: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+58: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+58: Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+58: Workload=32 MiB; one live allocation, checked in 8 MiB chunks.
+58: small allocation cycle 1: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f6f7bc4e000
+58: mapped-host hipFreeAsync correctly rejected; pointer remains available for hipFree
+58: small allocation cycle 2: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7f6f7bc4e000
+58: mapped-host hipFreeAsync correctly rejected; pointer remains available for hipFree
+58: HIP capacity before: total=25753026560 free=25436356608
+58: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=0 host_pinned=33554432 handles=1
+58: single allocation pointer attributes: type=2 device=0 managed=0 hostPointer=0 devicePointer=0x7f6e1c200000
+58: HIP capacity allocated: total=25753026560 free=25436356608
+58: GPU wrote and CPU verified all 4194304 words across one live allocation checked in 4 chunks.
+58: HIP capacity freed: total=25753026560 free=25432162304
+58: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=0 host_pinned_backing_bytes_current=0 pending=0 peak=33554432 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=3 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=2 failures=0; mapped host is pinned host RAM, not compressed VRAM
+58: This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+58/67 Test #58: hip-vmm-host-integrity .............................   Passed    0.08 sec
+test 59
+      Start 59: hip-native-capacity-query
+
+59: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-capacity-check"
+59: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+59: Test timeout computed to be: 60
+59: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+59: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+59: PASS: native physical capacity total=25753026560 free(before,during,after)=25526534144,25419579392,25436356608; three HIP queries agree
+59/67 Test #59: hip-native-capacity-query ..........................   Passed    0.06 sec
+test 60
+      Start 60: hip-virtual-capacity-query
+
+60: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--hip" "--hip-vmm" "--hip-report-capacity" "--hip-local-mib" "16" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-capacity-check"
+60: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+60: Test timeout computed to be: 60
+60: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+60: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+60: PASS: configured virtual capacity total=83886080 free(before,during,after)=83886080,50331648,83886080; three HIP queries agree
+60/67 Test #60: hip-virtual-capacity-query .........................   Passed    0.06 sec
+test 61
+      Start 61: hip-vmm-descriptor-lifetime
+
+61: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--hip" "--hip-vmm" "--hip-local-mib" "0" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-vmm-fd-check"
+61: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+61: Test timeout computed to be: 60
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] hybrid VMM allocation: logical=4096 mapped=4096 VRAM=0 host_pinned=4096 handles=1
+61: [zvram-hip] summary: tracked=0 peak_allocations=256 hipMalloc_api_bytes_current=0 peak=0 host_pinned_backing_bytes_current=0 pending=0 peak=1048576 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=256 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+61: PASS: 256 live GTT VMM allocations, every byte verified; descriptors before=9 during=10 after=9
+61/67 Test #61: hip-vmm-descriptor-lifetime ........................   Passed    0.09 sec
+test 62
+      Start 62: hip-procedure-vmm-query
+
+62: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--hip" "--hip-vmm" "--hip-report-capacity" "--hip-local-mib" "16" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-proc-check"
+62: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+62: Test timeout computed to be: 60
+62: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+62: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+62: PASS: hipGetProcAddress wrappers, capacity queries, and 32 MiB byte check; mode=logical-vmm total=83886080 free=83886080->50331648->83886080
+62/67 Test #62: hip-procedure-vmm-query ............................   Passed    0.09 sec
+test 63
+      Start 63: hip-fallback-error-state
+
+63: Test command: /usr/bin/cmake "-E" "env" "LD_PRELOAD=/home/nerdrx/Documents/ChatGPT/NX/zvram/build/libzvram_hip_oom_test.so" "ZVRAM_TEST_NATIVE_ERROR=1" "HIP_VISIBLE_DEVICES=0" "--unset=ZVRAM_HIP_LOCAL_LIMIT_MIB" "--unset=ZVRAM_HIP_VMM" "--unset=ZVRAM_HIP_REPORT_CAPACITY" "--unset=ZVRAM_TEST_VMM_FAIL_AFTER" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-error-check"
+63: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+63: Test timeout computed to be: 60
+63: [zvram-hip] host backing reservation refused: reason=configured-host-limit requested=134217728 available=41856593920 reserve=8589934592 limit=67108864 current=0 pending=0
+63: [zvram-hip] mapped-host fallback refused by available-RAM/reserve or host limit
+63: [zvram-hip] host backing reservation refused: reason=configured-host-limit requested=134217728 available=41856593920 reserve=8589934592 limit=67108864 current=0 pending=0
+63: [zvram-hip] mapped-host fallback refused by available-RAM/reserve or host limit
+63: [zvram-hip] host backing reservation refused: reason=configured-host-limit requested=134217728 available=41856593920 reserve=8589934592 limit=67108864 current=0 pending=0
+63: [zvram-hip] mapped-host fallback refused by available-RAM/reserve or host limit
+63: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=134217728 host_pinned_backing_bytes_current=0 pending=0 peak=33554432 native_allocations=0 mapped_host_allocations=3 hybrid_vmm_allocations=0 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=1 failures=3; mapped host is pinned host RAM, not compressed VRAM
+63: HIP host error-state check PASS
+63/67 Test #63: hip-fallback-error-state ...........................   Passed    0.08 sec
+test 64
+      Start 64: hip-vmm-error-state
+
+64: Test command: /usr/bin/cmake "-E" "env" "LD_PRELOAD=/home/nerdrx/Documents/ChatGPT/NX/zvram/build/libzvram_hip_oom_test.so" "ZVRAM_TEST_NATIVE_ERROR=1" "HIP_VISIBLE_DEVICES=0" "--unset=ZVRAM_TEST_VMM_FAIL_AFTER" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-report-capacity" "--hip-local-mib" "16" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-error-check"
+64: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+64: Test timeout computed to be: 60
+64: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+64: [zvram-hip] hybrid VMM allocation: logical=65536 mapped=65536 VRAM=65536 host_pinned=0 handles=1
+64: [zvram-hip] host backing reservation refused: reason=configured-host-limit requested=117440512 available=41836236800 reserve=8589934592 limit=67108864 current=0 pending=0
+64: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+64: [zvram-hip] host backing reservation refused: reason=configured-host-limit requested=117440512 available=41835839488 reserve=8589934592 limit=67108864 current=0 pending=0
+64: [zvram-hip] host backing reservation refused: reason=configured-host-limit requested=117440512 available=41835839488 reserve=8589934592 limit=67108864 current=0 pending=0
+64: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=3 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=1 failures=3; mapped host is pinned host RAM, not compressed VRAM
+64: HIP host error-state check PASS
+64/67 Test #64: hip-vmm-error-state ................................   Passed    0.07 sec
+test 65
+      Start 65: hip-injected-oom-integrity
+
+65: Test command: /usr/bin/python3.14 "-c" "import os,subprocess; e=os.environ.copy(); e['LD_PRELOAD']='/home/nerdrx/Documents/ChatGPT/NX/zvram/build/libzvram_hip_oom_test.so'; e.pop('ZVRAM_HIP_LOCAL_LIMIT_MIB',None); e.pop('ZVRAM_HIP_VMM',None); p=subprocess.run(['/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram','--hip','--hip-host-mib','64','--','/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_check'],env=e,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True); print(p.stdout); assert p.returncode==0; assert 'mapped_host_allocations=6 ' in p.stdout"
+65: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+65: Test timeout computed to be: 60
+65: Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+65: Workload=32 MiB; 8 MiB allocations, all live through verification.
+65: small allocation cycle 1: pointer type=1 managed=0 hostPointer=0x7f0b5044e000 devicePointer=0x7f0b5044e000
+65: mapped-host hipFreeAsync correctly rejected; pointer remains available for hipFree
+65: small allocation cycle 2: pointer type=1 managed=0 hostPointer=0x7f0b5044e000 devicePointer=0x7f0b5044e000
+65: mapped-host hipFreeAsync correctly rejected; pointer remains available for hipFree
+65: HIP capacity before: total=25753026560 free=25526534144
+65: HIP capacity allocated: total=25753026560 free=25589448704
+65: GPU wrote and CPU verified all 4194304 words across 4 live HIP allocations.
+65: HIP capacity freed: total=25753026560 free=25432162304
+65: [zvram-hip] summary: tracked=0 peak_allocations=4 hipMalloc_api_bytes_current=0 peak=8388608 host_pinned_backing_bytes_current=0 pending=0 peak=33554432 native_allocations=0 mapped_host_allocations=6 hybrid_vmm_allocations=0 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=2 failures=0; mapped host is pinned host RAM, not compressed VRAM
+65: This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+65: 
+65/67 Test #65: hip-injected-oom-integrity .........................   Passed    0.09 sec
+test 66
+      Start 66: hip-hibernation-remap-recovery
+
+66: Test command: /usr/bin/cmake "-E" "env" "LD_PRELOAD=/home/nerdrx/Documents/ChatGPT/NX/zvram/build/libzvram_hip_oom_test.so" "HIP_VISIBLE_DEVICES=0" "ZVRAM_TEST_VMM_FAIL_AFTER=999999" "ZVRAM_TEST_VMM_MAP_FAIL_AFTER=3" "--unset=ZVRAM_TEST_NATIVE_ERROR" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-vmm" "--hip-local-mib" "16" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_hibernate_check" "--retry-map-failure"
+66: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+66: Test timeout computed to be: 60
+66: [zvram-hip] hybrid VMM allocation: logical=33554432 mapped=33554432 VRAM=16777216 host_pinned=16777216 handles=2
+66: cold logical=0 stored=0
+66: cold logical=0 stored=0
+66: driver hot mem_info_vram_used=3378405376 mem_info_gtt_used=1708150784
+66: fdinfo hot fd=6 drm-client-id:	24300
+66: fdinfo hot fd=6 drm-resident-cpu:	0
+66: fdinfo hot fd=6 drm-resident-gtt:	2 MiB
+66: fdinfo hot fd=6 drm-resident-vram:	12 KiB
+66: fdinfo hot fd=6 drm-resident-gds:	0
+66: fdinfo hot fd=6 drm-resident-gws:	0
+66: fdinfo hot fd=6 drm-resident-oa:	0
+66: fdinfo hot fd=6 drm-resident-doorbell:	0
+66: fdinfo hot fd=6 drm-resident-mmioremap:	0
+66: fdinfo hot fd=6 drm-memory-vram:	12 KiB
+66: fdinfo hot fd=6 drm-memory-gtt: 	2048 KiB
+66: fdinfo hot fd=6 drm-memory-cpu: 	0 KiB
+66: fdinfo hot fd=8 drm-client-id:	24294
+66: fdinfo hot fd=8 drm-resident-cpu:	0
+66: fdinfo hot fd=8 drm-resident-gtt:	24628 KiB
+66: fdinfo hot fd=8 drm-resident-vram:	159912 KiB
+66: fdinfo hot fd=8 drm-resident-gds:	0
+66: fdinfo hot fd=8 drm-resident-gws:	0
+66: fdinfo hot fd=8 drm-resident-oa:	0
+66: fdinfo hot fd=8 drm-resident-doorbell:	0
+66: fdinfo hot fd=8 drm-resident-mmioremap:	0
+66: fdinfo hot fd=8 drm-memory-vram:	159912 KiB
+66: fdinfo hot fd=8 drm-memory-gtt: 	24628 KiB
+66: fdinfo hot fd=8 drm-memory-cpu: 	0 KiB
+66: fdinfo hot fd=9 drm-client-id:	24295
+66: fdinfo hot fd=9 drm-resident-cpu:	0
+66: fdinfo hot fd=9 drm-resident-gtt:	8232 KiB
+66: fdinfo hot fd=9 drm-resident-vram:	56 KiB
+66: fdinfo hot fd=9 drm-resident-gds:	0
+66: fdinfo hot fd=9 drm-resident-gws:	0
+66: fdinfo hot fd=9 drm-resident-oa:	0
+66: fdinfo hot fd=9 drm-resident-doorbell:	0
+66: fdinfo hot fd=9 drm-resident-mmioremap:	0
+66: fdinfo hot fd=9 drm-memory-vram:	56 KiB
+66: fdinfo hot fd=9 drm-memory-gtt: 	8232 KiB
+66: fdinfo hot fd=9 drm-memory-cpu: 	0 KiB
+66: timing cycle=1 phase=hibernate elapsed_ms=25
+66: driver cold mem_info_vram_used=3378405376 mem_info_gtt_used=1708150784
+66: fdinfo cold fd=6 drm-client-id:	24300
+66: fdinfo cold fd=6 drm-resident-cpu:	0
+66: fdinfo cold fd=6 drm-resident-gtt:	2 MiB
+66: fdinfo cold fd=6 drm-resident-vram:	12 KiB
+66: fdinfo cold fd=6 drm-resident-gds:	0
+66: fdinfo cold fd=6 drm-resident-gws:	0
+66: fdinfo cold fd=6 drm-resident-oa:	0
+66: fdinfo cold fd=6 drm-resident-doorbell:	0
+66: fdinfo cold fd=6 drm-resident-mmioremap:	0
+66: fdinfo cold fd=6 drm-memory-vram:	12 KiB
+66: fdinfo cold fd=6 drm-memory-gtt: 	2048 KiB
+66: fdinfo cold fd=6 drm-memory-cpu: 	0 KiB
+66: fdinfo cold fd=8 drm-client-id:	24294
+66: fdinfo cold fd=8 drm-resident-cpu:	0
+66: fdinfo cold fd=8 drm-resident-gtt:	8244 KiB
+66: fdinfo cold fd=8 drm-resident-vram:	143528 KiB
+66: fdinfo cold fd=8 drm-resident-gds:	0
+66: fdinfo cold fd=8 drm-resident-gws:	0
+66: fdinfo cold fd=8 drm-resident-oa:	0
+66: fdinfo cold fd=8 drm-resident-doorbell:	0
+66: fdinfo cold fd=8 drm-resident-mmioremap:	0
+66: fdinfo cold fd=8 drm-memory-vram:	143528 KiB
+66: fdinfo cold fd=8 drm-memory-gtt: 	8244 KiB
+66: fdinfo cold fd=8 drm-memory-cpu: 	0 KiB
+66: fdinfo cold fd=9 drm-client-id:	24295
+66: fdinfo cold fd=9 drm-resident-cpu:	0
+66: fdinfo cold fd=9 drm-resident-gtt:	8232 KiB
+66: fdinfo cold fd=9 drm-resident-vram:	56 KiB
+66: fdinfo cold fd=9 drm-resident-gds:	0
+66: fdinfo cold fd=9 drm-resident-gws:	0
+66: fdinfo cold fd=9 drm-resident-oa:	0
+66: fdinfo cold fd=9 drm-resident-doorbell:	0
+66: fdinfo cold fd=9 drm-resident-mmioremap:	0
+66: fdinfo cold fd=9 drm-memory-vram:	56 KiB
+66: fdinfo cold fd=9 drm-memory-gtt: 	8232 KiB
+66: fdinfo cold fd=9 drm-memory-cpu: 	0 KiB
+66: cold logical=33554432 stored=16779392
+66: cold logical=33554432 stored=16779392
+66: timing cycle=1 phase=resume elapsed_ms=7
+66: driver restored mem_info_vram_used=3378405376 mem_info_gtt_used=1708150784
+66: fdinfo restored fd=6 drm-client-id:	24300
+66: fdinfo restored fd=6 drm-resident-cpu:	0
+66: fdinfo restored fd=6 drm-resident-gtt:	2 MiB
+66: fdinfo restored fd=6 drm-resident-vram:	12 KiB
+66: fdinfo restored fd=6 drm-resident-gds:	0
+66: fdinfo restored fd=6 drm-resident-gws:	0
+66: fdinfo restored fd=6 drm-resident-oa:	0
+66: fdinfo restored fd=6 drm-resident-doorbell:	0
+66: fdinfo restored fd=6 drm-resident-mmioremap:	0
+66: fdinfo restored fd=6 drm-memory-vram:	12 KiB
+66: fdinfo restored fd=6 drm-memory-gtt: 	2048 KiB
+66: fdinfo restored fd=6 drm-memory-cpu: 	0 KiB
+66: fdinfo restored fd=8 drm-client-id:	24294
+66: fdinfo restored fd=8 drm-resident-cpu:	0
+66: fdinfo restored fd=8 drm-resident-gtt:	24628 KiB
+66: fdinfo restored fd=8 drm-resident-vram:	159912 KiB
+66: fdinfo restored fd=8 drm-resident-gds:	0
+66: fdinfo restored fd=8 drm-resident-gws:	0
+66: fdinfo restored fd=8 drm-resident-oa:	0
+66: fdinfo restored fd=8 drm-resident-doorbell:	0
+66: fdinfo restored fd=8 drm-resident-mmioremap:	0
+66: fdinfo restored fd=8 drm-memory-vram:	159912 KiB
+66: fdinfo restored fd=8 drm-memory-gtt: 	24628 KiB
+66: fdinfo restored fd=8 drm-memory-cpu: 	0 KiB
+66: fdinfo restored fd=9 drm-client-id:	24295
+66: fdinfo restored fd=9 drm-resident-cpu:	0
+66: fdinfo restored fd=9 drm-resident-gtt:	8232 KiB
+66: fdinfo restored fd=9 drm-resident-vram:	56 KiB
+66: fdinfo restored fd=9 drm-resident-gds:	0
+66: fdinfo restored fd=9 drm-resident-gws:	0
+66: fdinfo restored fd=9 drm-resident-oa:	0
+66: fdinfo restored fd=9 drm-resident-doorbell:	0
+66: fdinfo restored fd=9 drm-resident-mmioremap:	0
+66: fdinfo restored fd=9 drm-memory-vram:	56 KiB
+66: fdinfo restored fd=9 drm-memory-gtt: 	8232 KiB
+66: fdinfo restored fd=9 drm-memory-cpu: 	0 KiB
+66: cold logical=0 stored=0
+66: driver hot mem_info_vram_used=3378405376 mem_info_gtt_used=1708150784
+66: fdinfo hot fd=6 drm-client-id:	24300
+66: fdinfo hot fd=6 drm-resident-cpu:	0
+66: fdinfo hot fd=6 drm-resident-gtt:	2 MiB
+66: fdinfo hot fd=6 drm-resident-vram:	12 KiB
+66: fdinfo hot fd=6 drm-resident-gds:	0
+66: fdinfo hot fd=6 drm-resident-gws:	0
+66: fdinfo hot fd=6 drm-resident-oa:	0
+66: fdinfo hot fd=6 drm-resident-doorbell:	0
+66: fdinfo hot fd=6 drm-resident-mmioremap:	0
+66: fdinfo hot fd=6 drm-memory-vram:	12 KiB
+66: fdinfo hot fd=6 drm-memory-gtt: 	2048 KiB
+66: fdinfo hot fd=6 drm-memory-cpu: 	0 KiB
+66: fdinfo hot fd=8 drm-client-id:	24294
+66: fdinfo hot fd=8 drm-resident-cpu:	0
+66: fdinfo hot fd=8 drm-resident-gtt:	24628 KiB
+66: fdinfo hot fd=8 drm-resident-vram:	159912 KiB
+66: fdinfo hot fd=8 drm-resident-gds:	0
+66: fdinfo hot fd=8 drm-resident-gws:	0
+66: fdinfo hot fd=8 drm-resident-oa:	0
+66: fdinfo hot fd=8 drm-resident-doorbell:	0
+66: fdinfo hot fd=8 drm-resident-mmioremap:	0
+66: fdinfo hot fd=8 drm-memory-vram:	159912 KiB
+66: fdinfo hot fd=8 drm-memory-gtt: 	24628 KiB
+66: fdinfo hot fd=8 drm-memory-cpu: 	0 KiB
+66: fdinfo hot fd=9 drm-client-id:	24295
+66: fdinfo hot fd=9 drm-resident-cpu:	0
+66: fdinfo hot fd=9 drm-resident-gtt:	8232 KiB
+66: fdinfo hot fd=9 drm-resident-vram:	56 KiB
+66: fdinfo hot fd=9 drm-resident-gds:	0
+66: fdinfo hot fd=9 drm-resident-gws:	0
+66: fdinfo hot fd=9 drm-resident-oa:	0
+66: fdinfo hot fd=9 drm-resident-doorbell:	0
+66: fdinfo hot fd=9 drm-resident-mmioremap:	0
+66: fdinfo hot fd=9 drm-memory-vram:	56 KiB
+66: fdinfo hot fd=9 drm-memory-gtt: 	8232 KiB
+66: fdinfo hot fd=9 drm-memory-cpu: 	0 KiB
+66: timing cycle=2 phase=hibernate elapsed_ms=24
+66: driver cold mem_info_vram_used=3378405376 mem_info_gtt_used=1708150784
+66: fdinfo cold fd=6 drm-client-id:	24300
+66: fdinfo cold fd=6 drm-resident-cpu:	0
+66: fdinfo cold fd=6 drm-resident-gtt:	2 MiB
+66: fdinfo cold fd=6 drm-resident-vram:	12 KiB
+66: fdinfo cold fd=6 drm-resident-gds:	0
+66: fdinfo cold fd=6 drm-resident-gws:	0
+66: fdinfo cold fd=6 drm-resident-oa:	0
+66: fdinfo cold fd=6 drm-resident-doorbell:	0
+66: fdinfo cold fd=6 drm-resident-mmioremap:	0
+66: fdinfo cold fd=6 drm-memory-vram:	12 KiB
+66: fdinfo cold fd=6 drm-memory-gtt: 	2048 KiB
+66: fdinfo cold fd=6 drm-memory-cpu: 	0 KiB
+66: fdinfo cold fd=8 drm-client-id:	24294
+66: fdinfo cold fd=8 drm-resident-cpu:	0
+66: fdinfo cold fd=8 drm-resident-gtt:	8244 KiB
+66: fdinfo cold fd=8 drm-resident-vram:	143528 KiB
+66: fdinfo cold fd=8 drm-resident-gds:	0
+66: fdinfo cold fd=8 drm-resident-gws:	0
+66: fdinfo cold fd=8 drm-resident-oa:	0
+66: fdinfo cold fd=8 drm-resident-doorbell:	0
+66: fdinfo cold fd=8 drm-resident-mmioremap:	0
+66: fdinfo cold fd=8 drm-memory-vram:	143528 KiB
+66: fdinfo cold fd=8 drm-memory-gtt: 	8244 KiB
+66: fdinfo cold fd=8 drm-memory-cpu: 	0 KiB
+66: fdinfo cold fd=9 drm-client-id:	24295
+66: fdinfo cold fd=9 drm-resident-cpu:	0
+66: fdinfo cold fd=9 drm-resident-gtt:	8232 KiB
+66: fdinfo cold fd=9 drm-resident-vram:	56 KiB
+66: fdinfo cold fd=9 drm-resident-gds:	0
+66: fdinfo cold fd=9 drm-resident-gws:	0
+66: fdinfo cold fd=9 drm-resident-oa:	0
+66: fdinfo cold fd=9 drm-resident-doorbell:	0
+66: fdinfo cold fd=9 drm-resident-mmioremap:	0
+66: fdinfo cold fd=9 drm-memory-vram:	56 KiB
+66: fdinfo cold fd=9 drm-memory-gtt: 	8232 KiB
+66: fdinfo cold fd=9 drm-memory-cpu: 	0 KiB
+66: cold logical=33554432 stored=16779392
+66: timing cycle=2 phase=resume elapsed_ms=6
+66: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=16777216 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=1 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+66: driver restored mem_info_vram_used=3378405376 mem_info_gtt_used=1708150784
+66: fdinfo restored fd=6 drm-client-id:	24300
+66: fdinfo restored fd=6 drm-resident-cpu:	0
+66: fdinfo restored fd=6 drm-resident-gtt:	2 MiB
+66: fdinfo restored fd=6 drm-resident-vram:	12 KiB
+66: fdinfo restored fd=6 drm-resident-gds:	0
+66: fdinfo restored fd=6 drm-resident-gws:	0
+66: fdinfo restored fd=6 drm-resident-oa:	0
+66: fdinfo restored fd=6 drm-resident-doorbell:	0
+66: fdinfo restored fd=6 drm-resident-mmioremap:	0
+66: fdinfo restored fd=6 drm-memory-vram:	12 KiB
+66: fdinfo restored fd=6 drm-memory-gtt: 	2048 KiB
+66: fdinfo restored fd=6 drm-memory-cpu: 	0 KiB
+66: fdinfo restored fd=8 drm-client-id:	24294
+66: fdinfo restored fd=8 drm-resident-cpu:	0
+66: fdinfo restored fd=8 drm-resident-gtt:	24628 KiB
+66: fdinfo restored fd=8 drm-resident-vram:	159912 KiB
+66: fdinfo restored fd=8 drm-resident-gds:	0
+66: fdinfo restored fd=8 drm-resident-gws:	0
+66: fdinfo restored fd=8 drm-resident-oa:	0
+66: fdinfo restored fd=8 drm-resident-doorbell:	0
+66: fdinfo restored fd=8 drm-resident-mmioremap:	0
+66: fdinfo restored fd=8 drm-memory-vram:	159912 KiB
+66: fdinfo restored fd=8 drm-memory-gtt: 	24628 KiB
+66: fdinfo restored fd=8 drm-memory-cpu: 	0 KiB
+66: fdinfo restored fd=9 drm-client-id:	24295
+66: fdinfo restored fd=9 drm-resident-cpu:	0
+66: fdinfo restored fd=9 drm-resident-gtt:	8232 KiB
+66: fdinfo restored fd=9 drm-resident-vram:	56 KiB
+66: fdinfo restored fd=9 drm-resident-gds:	0
+66: fdinfo restored fd=9 drm-resident-gws:	0
+66: fdinfo restored fd=9 drm-resident-oa:	0
+66: fdinfo restored fd=9 drm-resident-doorbell:	0
+66: fdinfo restored fd=9 drm-resident-mmioremap:	0
+66: fdinfo restored fd=9 drm-memory-vram:	56 KiB
+66: fdinfo restored fd=9 drm-memory-gtt: 	8232 KiB
+66: fdinfo restored fd=9 drm-memory-cpu: 	0 KiB
+66: cold logical=0 stored=0
+66: cold logical=0 stored=0
+66: HIP hibernation PASS: full 32 MiB GPU-mutated data, two cycles, stable pointer, budget refusal, cold free
+66: HIP hibernation partial-remap recovery PASS
+66/67 Test #66: hip-hibernation-remap-recovery .....................   Passed    0.22 sec
+test 67
+      Start 67: hip-vmm-partial-failure-cleanup
+
+67: Test command: /usr/bin/python3.14 "-c" "import os,subprocess; e=os.environ.copy(); e['LD_PRELOAD']='/home/nerdrx/Documents/ChatGPT/NX/zvram/build/libzvram_hip_oom_test.so'; e['ZVRAM_TEST_VMM_FAIL_AFTER']='1'; p=subprocess.run(['/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram','--hip','--hip-vmm','--hip-local-mib','512','--hip-host-mib','256','--','/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip_check','--single-allocation','--mib','768'],env=e,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True); print(p.stdout); assert p.returncode==1; assert 'failures=1' in p.stdout; assert 'hipMalloc_api_bytes_current=0' in p.stdout; assert 'host_pinned_backing_bytes_current=0 pending=0' in p.stdout; assert 'tracked=0 ' in p.stdout"
+67: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+67: Test timeout computed to be: 60
+67: Device 0: AMD Radeon RX 7900 XTX (gfx1100)
+67: Workload=768 MiB; one live allocation, checked in 8 MiB chunks.
+67: small allocation cycle 1: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7ff8e6800000
+67: small allocation cycle 2: pointer type=2 managed=0 hostPointer=0 devicePointer=0x7ff8e6800000
+67: HIP capacity before: total=25753026560 free=25526534144
+67: [zvram-hip] VMM device segment creation failed: out of memory
+67: single-allocation hipMalloc: out of memory (2)
+67: HIP capacity freed: total=25753026560 free=25436356608
+67: [zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=536870912 host_pinned_backing_bytes_current=0 pending=0 peak=268435456 native_allocations=2 mapped_host_allocations=0 hybrid_vmm_allocations=0 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=1; mapped host is pinned host RAM, not compressed VRAM
+67: This validates HIP pointer usability and data integrity only; it does not imply compression or transparent paging.
+67: 
+67/67 Test #67: hip-vmm-partial-failure-cleanup ....................   Passed    0.08 sec
+
+100% tests passed out of 67
+
+Total Test time (real) =  41.54 sec

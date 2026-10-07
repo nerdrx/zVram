@@ -1,0 +1,220 @@
+{
+  "passed": true,
+  "checks": {
+    "same_nonempty_stdout": true,
+    "full_gpu_offload_matches": true,
+    "automatic_enabled": true,
+    "model_buffer_cold_before_prompt": true,
+    "hot_and_cold_fdinfo_captured": true,
+    "resident_vram_captured": true,
+    "no_snapshot_errors": true,
+    "nonempty_cold_data": true,
+    "successful_restore": true,
+    "selective_enabled": true,
+    "tracked_restore_observed": true,
+    "active_eviction_enabled": true
+  },
+  "model": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/models/SmolLM2-135M-Instruct-f16.gguf",
+  "binary": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/llama-completion",
+  "command": [
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram",
+    "--vulkan-virtual-gib",
+    "96",
+    "--vulkan-auto-idle-ms",
+    "100",
+    "--vulkan-cold-mib",
+    "512",
+    "--vulkan-selective-restore",
+    "--vulkan-active-eviction",
+    "--",
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/llama-completion",
+    "--model",
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/models/SmolLM2-135M-Instruct-f16.gguf",
+    "--gpu-layers",
+    "999",
+    "--ctx-size",
+    "512",
+    "--batch-size",
+    "128",
+    "--predict",
+    "64",
+    "--temp",
+    "0",
+    "--seed",
+    "1",
+    "--load-mode",
+    "none",
+    "--fit",
+    "off",
+    "--flash-attn",
+    "off",
+    "--verbose",
+    "--simple-io",
+    "--no-display-prompt",
+    "--conversation",
+    "--interactive-first",
+    "--single-turn"
+  ],
+  "native": {
+    "model_buffers_mib": [
+      256.63
+    ],
+    "cold": [],
+    "cold_state": null,
+    "pre_prompt_cold_state": null,
+    "backing": {
+      "hot": {
+        "resident-vram": 319741952,
+        "memory-vram": 319741952,
+        "resident-gtt": 60596224,
+        "memory-gtt": 60596224,
+        "unique_drm_clients": 1,
+        "resident_vram_present": true
+      }
+    },
+    "offload": [
+      31,
+      31
+    ],
+    "performance": {
+      "decode_ms": 137.73,
+      "decode_runs": 44,
+      "tokens_per_second": 319.47,
+      "prompt_ms": 7.44,
+      "restore_ms": []
+    },
+    "first_stdout_after_input_ms": 7.768166979076341,
+    "returncode": 0
+  },
+  "automatic": {
+    "model_buffers_mib": [
+      256.63
+    ],
+    "cold": [
+      [
+        27131904,
+        212980
+      ],
+      [
+        11796480,
+        22228
+      ],
+      [
+        269156352,
+        206787490
+      ]
+    ],
+    "cold_state": [
+      308084736,
+      0,
+      0,
+      3,
+      3,
+      0
+    ],
+    "pre_prompt_cold_state": [
+      0,
+      308084736,
+      207022698,
+      3,
+      0,
+      0
+    ],
+    "backing": {
+      "hot": {
+        "resident-vram": 319938560,
+        "memory-vram": 319938560,
+        "resident-gtt": 94248960,
+        "memory-gtt": 94248960,
+        "unique_drm_clients": 1,
+        "resident_vram_present": true
+      },
+      "cold": {
+        "resident-vram": 12115968,
+        "memory-vram": 12115968,
+        "resident-gtt": 94248960,
+        "memory-gtt": 94248960,
+        "unique_drm_clients": 1,
+        "resident_vram_present": true
+      }
+    },
+    "offload": [
+      31,
+      31
+    ],
+    "performance": {
+      "decode_ms": 143.82,
+      "decode_runs": 44,
+      "tokens_per_second": 305.93,
+      "prompt_ms": 157.06,
+      "restore_ms": []
+    },
+    "first_stdout_after_input_ms": 157.4579019797966,
+    "returncode": 0
+  },
+  "automatic_cold_state_before_prompt": [
+    0,
+    308084736,
+    207022698,
+    3,
+    0,
+    0
+  ],
+  "automatic_cold_logical_bytes": 308084736,
+  "automatic_cold_stored_bytes": 207022698,
+  "automatic_snapshot_events": [
+    [
+      27131904,
+      212980
+    ],
+    [
+      11796480,
+      22228
+    ],
+    [
+      269156352,
+      206787490
+    ]
+  ],
+  "selective_restore_events": [
+    [
+      2,
+      1,
+      2
+    ],
+    [
+      2,
+      1,
+      1
+    ],
+    [
+      3,
+      1,
+      0
+    ]
+  ],
+  "selective_restore_fallbacks": 0,
+  "backing_bytes": {
+    "hot": {
+      "resident-vram": 319938560,
+      "memory-vram": 319938560,
+      "resident-gtt": 94248960,
+      "memory-gtt": 94248960,
+      "unique_drm_clients": 1,
+      "resident_vram_present": true
+    },
+    "cold": {
+      "resident-vram": 12115968,
+      "memory-vram": 12115968,
+      "resident-gtt": 94248960,
+      "memory-gtt": 94248960,
+      "unique_drm_clients": 1,
+      "resident_vram_present": true
+    }
+  },
+  "cleanup_log_lines": [
+    "[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912"
+  ],
+  "resident_vram_freed_bytes": 307822592,
+  "stdout_sha256": "40af802dfb2b6042c7e4ec011b0d82ed8057f634f9c724e68f23ca1917fef76b"
+}

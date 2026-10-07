@@ -44,6 +44,10 @@ add_executable(zvram-submission-tracking-check submission_tracking_check.cpp)
 target_compile_features(zvram-submission-tracking-check PRIVATE cxx_std_17)
 target_include_directories(zvram-submission-tracking-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 add_test(NAME vulkan-submission-tracking COMMAND zvram-submission-tracking-check)
+add_executable(zvram-active-refs-check active_refs_check.cpp)
+target_compile_features(zvram-active-refs-check PRIVATE cxx_std_17)
+target_include_directories(zvram-active-refs-check PRIVATE ${Vulkan_INCLUDE_DIRS})
+add_test(NAME cpu-active-refs COMMAND zvram-active-refs-check)
 add_test(NAME compression-roundtrip COMMAND zvram-compression-check)
 add_test(NAME layer-capacity-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --isolate-layers -- $<TARGET_FILE:zvram-capacity-check> --mib 64)
 add_test(NAME vulkan-virtual-single-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 40960 -- $<TARGET_FILE:zvram-capacity-check> --single-allocation --mib 320 --chunk-mib 64)
@@ -90,6 +94,22 @@ foreach(submit_mode synthetic-legacy synthetic-api2 native-legacy native-api2 sy
                 --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64 --vulkan-selective-restore --
                 $<TARGET_FILE:zvram-vulkan-auto-check> ${submit_flags})
     set_tests_properties(vulkan-selective-submit-${submit_mode} PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
+foreach(active_mode synthetic native synthetic-unknown native-unknown)
+    set(active_flags --active-submit --two-queues)
+    if(active_mode MATCHES "^native")
+        list(APPEND active_flags --native-allocation)
+    endif()
+    if(active_mode MATCHES "unknown$")
+        list(APPEND active_flags --selective-submit-unknown)
+    endif()
+    add_test(NAME vulkan-active-eviction-${active_mode}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${active_flags})
+    set_tests_properties(vulkan-active-eviction-${active_mode} PROPERTIES TIMEOUT 30
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
 foreach(selective_mode synthetic-legacy synthetic-api2 native-legacy native-api2)
     set(selective_flags --selective-bind)

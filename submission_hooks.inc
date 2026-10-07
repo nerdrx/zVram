@@ -189,3 +189,38 @@ VkResult restoreForQueue(Device& d,const char*,std::uint32_t count,const VkSubmi
         return restoreTrackedCommands(d,commands);
     } catch(const std::bad_alloc&) { d.selectiveRestore=false; return restoreColdLocked(d.handle,d); }
 }
+
+// Resolve live descriptor contents before recording an accepted submission.
+// Unknown accesses protect every pool until that queue epoch retires.
+template<class... Args>
+bool queueMemories(Device&,const char*,std::vector<VkDeviceMemory>&,Args...) { return false; }
+bool commandMemories(Device& d,const std::vector<VkCommandBuffer>& commands,std::vector<VkDeviceMemory>& memories) {
+    if(!d.selectiveRestore || unknownCommandProc) return false;
+    std::vector<VkBuffer> buffers;
+    if(!d.submission.collect(static_cast<std::uint32_t>(commands.size()),commands.data(),buffers)) return false;
+    for(auto buffer:buffers) {
+        const auto p=d.promotedBuffers.find(buffer);
+        if(p!=d.promotedBuffers.end() && p->second.memory &&
+           std::find(memories.begin(),memories.end(),p->second.memory)==memories.end()) memories.push_back(p->second.memory);
+    }
+    return true;
+}
+bool queueMemories(Device& d,const char*,std::vector<VkDeviceMemory>& memories,std::uint32_t count,const VkSubmitInfo* infos,VkFence) {
+    std::vector<VkCommandBuffer> commands;
+    for(std::uint32_t i=0;i<count;i++) {
+        if(!infos || !trackedSubmitChain(infos[i].pNext)) return false;
+        if(infos[i].commandBufferCount) commands.insert(commands.end(),infos[i].pCommandBuffers,infos[i].pCommandBuffers+infos[i].commandBufferCount);
+    }
+    return commandMemories(d,commands,memories);
+}
+bool queueMemories(Device& d,const char*,std::vector<VkDeviceMemory>& memories,std::uint32_t count,const VkSubmitInfo2* infos,VkFence) {
+    std::vector<VkCommandBuffer> commands;
+    for(std::uint32_t i=0;i<count;i++) {
+        if(!infos || infos[i].pNext) return false;
+        for(std::uint32_t j=0;j<infos[i].commandBufferInfoCount;j++) {
+            if(infos[i].pCommandBufferInfos[j].pNext) return false;
+            commands.push_back(infos[i].pCommandBufferInfos[j].commandBuffer);
+        }
+    }
+    return commandMemories(d,commands,memories);
+}

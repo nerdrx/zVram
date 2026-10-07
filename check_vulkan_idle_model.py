@@ -183,11 +183,14 @@ def main():
     parser.add_argument("--cold-mib", type=int, default=512)
     parser.add_argument("--selective-restore", action="store_true",
                         help="test opt-in per-submission Vulkan restoration")
+    parser.add_argument("--active-eviction", action="store_true",
+                        help="test tracked eviction while unrelated submissions remain active; enables selective restore")
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument("--output-dir", type=Path, default=Path("build/vulkan-idle-model-check"))
     parser.add_argument("--app-arg", action="append", default=[],
                         help="extra llama-completion option; repeat as --app-arg=VALUE")
     args = parser.parse_args()
+    args.selective_restore = args.selective_restore or args.active_eviction
     binary = args.binary.expanduser().resolve()
     model = args.model.expanduser().resolve()
     launcher = root / "zvram"
@@ -217,6 +220,8 @@ def main():
                str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib)]
     if args.selective_restore:
         command.append("--vulkan-selective-restore")
+    if args.active_eviction:
+        command.append("--vulkan-active-eviction")
     command += ["--", *app]
     auto = run_interactive("automatic", command, env, output, args.timeout, True)
     auto_text = auto["stderr"]
@@ -244,6 +249,8 @@ def main():
     if args.selective_restore:
         checks["selective_enabled"] = "selective Vulkan restore enabled" in auto_text
         checks["tracked_restore_observed"] = any(restored > 0 for _, restored, _ in selective_events)
+    if args.active_eviction:
+        checks["active_eviction_enabled"] = "active Vulkan eviction enabled" in auto_text
     result = {"passed": all(checks.values()), "checks": checks, "model": str(model),
               "binary": str(binary), "command": command,
               "native": {k: v for k, v in native.items() if k not in ("stdout", "stderr")},

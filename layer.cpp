@@ -23,6 +23,7 @@
 #include "auto_queues.hpp"
 #include "buffer_barriers.hpp"
 #include "submission_tracking.hpp"
+#include "active_refs.hpp"
 
 namespace {
 constexpr char kLayer[] = "VK_LAYER_NX_zvram";
@@ -120,6 +121,7 @@ struct VirtualMemory {
     bool bound{};
     bool everBound{};
     bool deferredFree{};
+    std::chrono::steady_clock::time_point lastUse{std::chrono::steady_clock::now()};
     VkAllocationCallbacks adoptedCallbacks{};
     bool hasAdoptedCallbacks{};
 };
@@ -207,6 +209,10 @@ struct Device {
     bool autoInitialized{};
     std::atomic<bool> selectiveRestore{false};
     VkSubmissionTracker submission;
+    ActiveRefs activeRefs;
+    bool activeEviction{};
+    std::uint64_t restoreGeneration{};
+    std::vector<std::pair<VkQueue,std::uint64_t>> restoreQueueGenerations;
     std::atomic<VkResult> gpuGateError{VK_SUCCESS};
     std::uint64_t idleMilliseconds{};
     std::uint64_t coldBudget{};
@@ -676,9 +682,17 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             else {
                 std::vector<VkQueue> handles;
                 VkResult autoResult=VK_SUCCESS;
-                try { handles=d->appQueues; handles.push_back(d->copyQueue); }
+                const char* selective=std::getenv("ZVRAM_VULKAN_SELECTIVE_RESTORE");
+                d->selectiveRestore=selective && std::strcmp(selective,"1")==0;
+                const char* active=std::getenv("ZVRAM_VULKAN_ACTIVE_EVICTION");
+                d->activeEviction=d->selectiveRestore && active && std::strcmp(active,"1")==0;
+                try {
+                    handles=d->appQueues; handles.push_back(d->copyQueue);
+                    if(d->activeEviction) for(auto queue:d->appQueues)
+                        d->restoreQueueGenerations.emplace_back(queue,0);
+                }
                 catch(const std::bad_alloc&) { autoResult=VK_ERROR_OUT_OF_HOST_MEMORY; }
-                if(autoResult==VK_SUCCESS) autoResult=d->autoQueues.init(*out,nextGdpa,d->copyQueue,handles);
+                if(autoResult==VK_SUCCESS) autoResult=d->autoQueues.init(*out,nextGdpa,d->copyQueue,handles,d->activeEviction);
                 if(autoResult==VK_SUCCESS) {
                     d->autoInitialized=true;
                     if(!initSnapshotResources(*d,privateFamily)) autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
@@ -688,13 +702,12 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     logf("automatic Vulkan snapshots disabled: private queue synchronization resources unavailable result=%d",static_cast<int>(autoResult));
                 } else {
                     d->autoEnabled=true;
-                    const char* selective=std::getenv("ZVRAM_VULKAN_SELECTIVE_RESTORE");
-                    d->selectiveRestore=selective && std::strcmp(selective,"1")==0;
                     try { d->snapshotWorker=std::thread(snapshotWorkerLoop,d); }
                     catch(...) { d->autoEnabled=false; d->autoInitialized=false; releaseSnapshotResources(*d); d->autoQueues.destroy(); }
                     if(d->autoEnabled) logf("automatic Vulkan snapshots enabled idle-ms=%llu cold-budget=%llu",static_cast<unsigned long long>(d->idleMilliseconds),static_cast<unsigned long long>(d->coldBudget));
                     else logf("automatic Vulkan snapshots disabled: worker creation failed");
                     if(d->autoEnabled && d->selectiveRestore) logf("selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all");
+                    if(d->autoEnabled && d->activeEviction) logf("active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction");
                 }
             }
         }
@@ -1022,7 +1035,12 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only) {
         if(only && pair.first!=only) continue;
         auto& memory=pair.second;
         if(!memory.cold) continue;
-        VkResult r=s.deviceWaitIdle(device); if(r!=VK_SUCCESS) return r;
+        // Active snapshots never unbind a pool with pending references. Restore
+        // visibility is acquired by every app queue before subsequent work.
+        VkResult r=VK_SUCCESS;
+        if(!d.activeEviction) {
+            r=s.deviceWaitIdle(device); if(r!=VK_SUCCESS) return r;
+        }
         if(memory.children.size()!=memory.childSizes.size() ||
            memory.children.size()!=memory.childTypes.size() || memory.children.size()!=memory.coldGroups.size() ||
            memory.poolViews.size()!=memory.children.size()) return VK_ERROR_UNKNOWN;
@@ -1100,7 +1118,14 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only) {
         memory.cold=std::any_of(memory.coldGroups.begin(),memory.coldGroups.end(),[](const auto& group){return group.cold;});
     }
     if(restoredAny && d.autoInitialized) {
-        const auto visible=d.autoQueues.fromCopyQueue();
+        VkResult visible=VK_SUCCESS;
+        if(d.activeEviction) {
+            // Each application queue acquires the latest restored writes before
+            // its next submission, including queues that did not trigger restore.
+            // Defer waits to avoid accumulating semaphores on a stalled queue.
+            if(d.restoreGeneration==std::numeric_limits<std::uint64_t>::max()) visible=VK_ERROR_UNKNOWN;
+            else ++d.restoreGeneration;
+        } else visible=d.autoQueues.fromCopyQueue();
         if(visible!=VK_SUCCESS) {
             d.gpuGateError=visible; d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
             return visible;
@@ -1113,27 +1138,32 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
     auto& d=*shared;
     std::unique_lock<std::mutex> lock(d.mutex);
     while(!d.stopWorker.load()) {
-        const auto deadline=d.lastActivity+std::chrono::milliseconds(d.idleMilliseconds);
-        d.activity.wait_until(lock,deadline);
+        const auto deadline=d.activeEviction?
+            std::chrono::steady_clock::now()+std::chrono::milliseconds(std::min<std::uint64_t>(d.idleMilliseconds,10)):
+            d.lastActivity+std::chrono::milliseconds(d.idleMilliseconds);
+        if(d.activeEviction) d.activity.wait_until(lock,deadline,[&]{return d.stopWorker.load();});
+        else d.activity.wait_until(lock,deadline);
         if(d.stopWorker.load()) break;
-        if(std::chrono::steady_clock::now()<d.lastActivity+std::chrono::milliseconds(d.idleMilliseconds)) continue;
+        if(!d.activeEviction && std::chrono::steady_clock::now()<d.lastActivity+std::chrono::milliseconds(d.idleMilliseconds)) continue;
         std::unique_lock<std::mutex> queueLock(d.queueMutex);
         bool allReady=false;
-        VkResult r=d.autoQueues.ready(allReady);
+        VkResult r=d.activeEviction?d.autoQueues.pollActive(
+            [&](VkQueue queue){d.activeRefs.retire(queue);},
+            [&](VkQueue queue){d.activeRefs.cover(queue);}):d.autoQueues.ready(allReady);
         if(r!=VK_SUCCESS) {
             d.autoEnabled=false; d.stopWorker.store(true); d.gpuGateError=r; d.lastSnapshotError=r; ++d.snapshotFailures;
             d.lastActivity=std::chrono::steady_clock::now();
             queueLock.unlock(); continue;
         }
-        if(!allReady) { d.lastActivity=std::chrono::steady_clock::now(); queueLock.unlock(); continue; }
-        r=d.autoQueues.toCopyQueue();
+        if(!d.activeEviction && !allReady) { d.lastActivity=std::chrono::steady_clock::now(); queueLock.unlock(); continue; }
+        r=d.activeEviction?VK_SUCCESS:d.autoQueues.toCopyQueue();
         if(r!=VK_SUCCESS) {
             d.autoEnabled=false; d.stopWorker.store(true); d.gpuGateError=r; d.lastSnapshotError=r; ++d.snapshotFailures;
             d.lastActivity=std::chrono::steady_clock::now();
             queueLock.unlock(); continue;
         }
         const auto start=std::chrono::steady_clock::now();
-        r=d.snapshot.deviceWaitIdle(d.handle);
+        r=d.activeEviction?VK_SUCCESS:d.snapshot.deviceWaitIdle(d.handle);
         const auto waited=std::chrono::steady_clock::now()-start;
         if(r!=VK_SUCCESS || waited>std::chrono::milliseconds(20)) {
             d.lastActivity=std::chrono::steady_clock::now(); if(r!=VK_SUCCESS) { ++d.snapshotFailures; d.lastSnapshotError=r; }
@@ -1141,6 +1171,8 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
         }
         for(auto& pair:d.virtualMemory) {
             auto& memory=pair.second;
+            if(d.activeEviction && (d.activeRefs.busy(pair.first) ||
+               std::chrono::steady_clock::now()<memory.lastUse+std::chrono::milliseconds(d.idleMilliseconds))) continue;
             if(memory.children.empty() || memory.children.size()!=memory.coldGroups.size() ||
                memory.poolViews.size()!=memory.children.size()) continue;
             for(std::size_t i=0;i<memory.children.size();i++) {
@@ -1236,7 +1268,7 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
             }
             if(canRetry) break;
         }
-        if(!canRetry) {
+        if(!canRetry && !d.activeEviction) {
             const auto observedBudgetGeneration=d.coldBudgetGeneration;
             d.activity.wait(lock,[&]{return d.stopWorker.load() ||
                 d.gpuSubmissionGeneration!=observedGeneration || d.coldBudgetGeneration!=observedBudgetGeneration;});
@@ -1844,12 +1876,40 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     if(unsupportedOrdering && d->autoEnabled) {
         d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
     }
+    if(d->activeEviction) {
+        const auto p=std::find_if(d->restoreQueueGenerations.begin(),d->restoreQueueGenerations.end(),
+            [&](const auto& entry){return entry.first==queue;});
+        if(p==d->restoreQueueGenerations.end()) return VK_ERROR_FEATURE_NOT_PRESENT;
+        if(p->second!=d->restoreGeneration) {
+            const auto visible=d->autoQueues.fromCopyQueueActive(queue);
+            if(visible!=VK_SUCCESS) {
+                d->gpuGateError=visible; d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
+                return visible;
+            }
+            p->second=d->restoreGeneration;
+        }
+    }
     const auto r=next(queue,args...);
     const bool submitted=r==VK_SUCCESS && d->autoInitialized &&
        (std::strcmp(name,"vkQueueSubmit")==0 || std::strcmp(name,"vkQueueSubmit2")==0 || std::strcmp(name,"vkQueueSubmit2KHR")==0);
     if(submitted) ++d->gpuSubmissionGeneration;
     if(submitted && !unsupportedOrdering) {
-        const auto marker=d->autoQueues.submitted(queue);
+        if(d->activeEviction && d->autoEnabled) {
+            try {
+                std::vector<VkDeviceMemory> memories;
+                const bool known=queueMemories(*d,name,memories,args...);
+                d->activeRefs.record(queue,memories,known);
+                for(auto& pair:d->virtualMemory)
+                    if(!known || std::find(memories.begin(),memories.end(),pair.first)!=memories.end())
+                        pair.second.lastUse=std::chrono::steady_clock::now();
+            } catch(const std::bad_alloc&) {
+                d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
+                logf("active Vulkan eviction disabled: tracking allocation failed");
+            }
+        }
+        bool marked=false;
+        const auto marker=d->autoQueues.submitted(queue,marked);
+        if(d->activeEviction && marked) d->activeRefs.cover(queue);
         if(marker!=VK_SUCCESS) {
             d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
             ++d->snapshotFailures; d->lastSnapshotError=marker;

@@ -95,6 +95,7 @@ struct Context {
     bool exclusiveFamilies{};
     bool pendingWait{};
     bool pendingBind{};
+    bool activeSubmit{};
     std::uint32_t secondFamily{};
     std::uint32_t chainIndex{};
     bool chainStarted{};
@@ -115,11 +116,12 @@ struct Context {
     }
 
     void initialize(bool enableBda, bool native, bool twoSame, bool twoSeparate, bool exclusive,
-                    bool pending, bool bindWhilePending) {
+                    bool pending, bool bindWhilePending, bool active) {
         twoSeparate = twoSeparate || exclusive;
         bdaMode = enableBda;
         nativeAllocation = native; twoQueues = twoSame; twoFamilies = twoSeparate;
         exclusiveFamilies = exclusive; pendingWait = pending; pendingBind = bindWhilePending;
+        activeSubmit = active;
         if (exclusive) twoFamilies = true;
         require(!(twoSame && twoSeparate), "choose only one of --two-queues and --two-families");
         require(!(pending && bindWhilePending), "choose only one pending queue test");
@@ -127,7 +129,7 @@ struct Context {
                 "pending queue tests require a multi-queue mode");
         require(!(pending || bindWhilePending) || native, "pending queue tests require --native-allocation");
         VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
-        app.apiVersion = (enableBda || pending || bindWhilePending) ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1;
+        app.apiVersion = (enableBda || pending || bindWhilePending || active) ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1;
         VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
         ici.pApplicationInfo = &app;
         check(vkCreateInstance(&ici, nullptr, &instance), "create instance");
@@ -147,18 +149,18 @@ struct Context {
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES};
             VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures{
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
-            if (enableBda || pending || bindWhilePending) {
+            if (enableBda || pending || bindWhilePending || active) {
                 VkPhysicalDeviceFeatures2 features2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
                 if (enableBda) {
                     features2.pNext = &bdaFeatures;
-                    if (pending || bindWhilePending) bdaFeatures.pNext = &timelineFeatures;
+                    if (pending || bindWhilePending || active) bdaFeatures.pNext = &timelineFeatures;
                 } else {
                     features2.pNext = &timelineFeatures;
                 }
                 vkGetPhysicalDeviceFeatures2(candidate, &features2);
                 features = features2.features;
                 if (enableBda && (!bdaFeatures.bufferDeviceAddress || !features.shaderInt64)) continue;
-                if ((pending || bindWhilePending) && !timelineFeatures.timelineSemaphore) continue;
+                if ((pending || bindWhilePending || active) && !timelineFeatures.timelineSemaphore) continue;
             } else {
                 vkGetPhysicalDeviceFeatures(candidate, &features);
             }
@@ -192,7 +194,9 @@ struct Context {
             }
             if (physical) break;
         }
-        require(physical != VK_NULL_HANDLE, "no discrete AMD RADV GPU has the requested sparse/compute queue setup");
+        require(physical != VK_NULL_HANDLE, activeSubmit
+            ? "UNSUPPORTED: no discrete AMD RADV GPU exposes two queues in one sparse/compute family"
+            : "no discrete AMD RADV GPU has the requested sparse/compute queue setup");
         std::cout << "GPU: " << properties.deviceName << '\n';
         require(properties.limits.maxStorageBufferRange >= ChunkBytes &&
                 properties.limits.minStorageBufferOffsetAlignment != 0 &&
@@ -227,14 +231,14 @@ struct Context {
             enabled2.features.sparseBinding = VK_TRUE;
             enabled2.features.shaderInt64 = VK_TRUE;
             enabled2.pNext = &enabledBda;
-            if (pendingWait || pendingBind) {
+            if (pendingWait || pendingBind || activeSubmit) {
                 enabledTimeline.timelineSemaphore = VK_TRUE;
                 enabledBda.pNext = &enabledTimeline;
             }
             dci.pNext = &enabled2;
         } else {
             dci.pEnabledFeatures = &enabled;
-            if (pendingWait || pendingBind) {
+            if (pendingWait || pendingBind || activeSubmit) {
                 enabledTimeline.timelineSemaphore = VK_TRUE;
                 dci.pNext = &enabledTimeline;
             }
@@ -270,7 +274,7 @@ struct Context {
             check(vkCreateSemaphore(device, &sci, nullptr, &chainSemaphores[0]), "create queue-chain semaphore");
             check(vkCreateSemaphore(device, &sci, nullptr, &chainSemaphores[1]), "create queue-chain semaphore");
         }
-        if (pendingWait || pendingBind) {
+        if (pendingWait || pendingBind || activeSubmit) {
             VkSemaphoreTypeCreateInfo type{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
             type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
             VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO}; sci.pNext = &type;
@@ -391,6 +395,42 @@ struct Staging {
         if (mapped) vkUnmapMemory(device, memory);
         if (buffer) vkDestroyBuffer(device, buffer, nullptr);
         if (memory) vkFreeMemory(device, memory, nullptr);
+    }
+};
+
+struct TimelineWatchdog {
+    VkDevice device{};
+    VkSemaphore semaphore{};
+    std::uint64_t value{};
+    std::atomic<bool> closed{false};
+    std::atomic<bool> fired{false};
+    std::atomic<bool> attempted{false};
+    std::atomic<VkResult> result{VK_NOT_READY};
+    std::thread thread;
+
+    TimelineWatchdog(VkDevice d, VkSemaphore s, std::uint64_t v)
+        : device(d), semaphore(s), value(v), thread([this] {
+              for (int i = 0; i < 200 && !closed.load(); ++i)
+                  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+              if (!closed.load()) { fired = true; signalOnce(); }
+          }) {}
+    TimelineWatchdog(const TimelineWatchdog&) = delete;
+    TimelineWatchdog& operator=(const TimelineWatchdog&) = delete;
+
+    void signalOnce() {
+        bool expected = false;
+        if (!attempted.compare_exchange_strong(expected, true)) return;
+        VkSemaphoreSignalInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+        info.semaphore = semaphore; info.value = value;
+        result = vkSignalSemaphore(device, &info);
+    }
+    void cancelAndJoin() {
+        closed = true;
+        if (thread.joinable()) thread.join();
+    }
+    ~TimelineWatchdog() {
+        if (!closed.exchange(true)) signalOnce();
+        if (thread.joinable()) thread.join();
     }
 };
 
@@ -707,7 +747,8 @@ VkResult computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle,
 
 void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
                        int cycle, bool releaseForCompute = false,
-                       VkDeviceSize byteSize = TotalBytes) {
+                       VkDeviceSize byteSize = TotalBytes,
+                       std::uint32_t queueIndex = 0) {
     auto* actual = static_cast<const std::uint32_t*>(staging.mapped);
     require(byteSize % ChunkBytes == 0, "readback size must contain whole chunks");
     const std::uint32_t chunkCount = static_cast<std::uint32_t>(byteSize / ChunkBytes);
@@ -748,7 +789,7 @@ void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
                                      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
                                      0, nullptr, 1, &release, 0, nullptr);
             }
-        });
+        }, queueIndex);
         const std::uint32_t base = chunk * ChunkWords;
         for (std::uint32_t i = 0; i < ChunkWords; ++i) {
             std::uint32_t expected = initialWord(base + i);
@@ -1054,7 +1095,7 @@ void selectiveBindCheck(Context& context, bool api2) {
               << " independent pools froze cold, woke selectively, and preserved distinct full-byte patterns" << std::endl;
 }
 
-void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand) {
+void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool activeSubmit) {
     Buffer a, b;
     a.device = b.device = context.device;
     auto create = [&](Buffer& buffer) {
@@ -1135,6 +1176,152 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand) {
     readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
     setAddress(b.handle);
     readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+
+    if (activeSubmit) {
+        require(context.twoQueues && context.secondQueue && context.secondQueue != context.queue,
+                "UNSUPPORTED: --active-submit requires --two-queues on one queue family");
+        const auto beforeActive = context.stats();
+        VkCommandBufferAllocateInfo commandInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        commandInfo.commandPool = context.secondCommands;
+        commandInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        commandInfo.commandBufferCount = 1;
+        VkCommandBuffer blockedCommand{};
+        check(vkAllocateCommandBuffers(context.device, &commandInfo, &blockedCommand),
+              "allocate active-submit command buffer");
+        VkEvent unknownEvent{};
+        if (unknownCommand) {
+            VkEventCreateInfo eventInfo{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
+            check(vkCreateEvent(context.device, &eventInfo, nullptr, &unknownEvent),
+                  "create active-submit unknown event");
+        }
+        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        check(vkBeginCommandBuffer(blockedCommand, &begin), "begin active-submit command buffer");
+        VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(blockedCommand, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+        VkBufferCopy copy{0, 0, ChunkBytes};
+        vkCmdCopyBuffer(blockedCommand, a.handle, staging.buffer, 1, &copy);
+        if (unknownEvent)
+            vkCmdSetEvent(blockedCommand, unknownEvent, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        vkCmdPipelineBarrier(blockedCommand, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+        check(vkEndCommandBuffer(blockedCommand), "end active-submit command buffer");
+
+        VkTimelineSemaphoreSubmitInfo waitValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+        const std::uint64_t signalValue = 1;
+        waitValues.waitSemaphoreValueCount = 1;
+        waitValues.pWaitSemaphoreValues = &signalValue;
+        const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        VkSubmitInfo blockedSubmit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        blockedSubmit.pNext = &waitValues;
+        blockedSubmit.waitSemaphoreCount = 1;
+        blockedSubmit.pWaitSemaphores = &context.pendingTimeline;
+        blockedSubmit.pWaitDstStageMask = &waitStage;
+        blockedSubmit.commandBufferCount = 1;
+        blockedSubmit.pCommandBuffers = &blockedCommand;
+        check(vkQueueSubmit(context.secondQueue, 1, &blockedSubmit, VK_NULL_HANDLE),
+              "submit A behind host timeline wait");
+
+        auto unblockA = [&] {
+            std::uint64_t currentValue = 0;
+            check(vkGetSemaphoreCounterValue(context.device, context.pendingTimeline, &currentValue),
+                  "query active-submit timeline");
+            if (currentValue < signalValue) {
+                VkSemaphoreSignalInfo unblock{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+                unblock.semaphore = context.pendingTimeline; unblock.value = signalValue;
+                check(vkSignalSemaphore(context.device, &unblock), "host-signal active-submit timeline");
+            }
+            check(vkQueueWaitIdle(context.secondQueue), "finish host-unblocked A submission");
+            vkFreeCommandBuffers(context.device, context.secondCommands, 1, &blockedCommand);
+            if (unknownEvent) vkDestroyEvent(context.device, unknownEvent, nullptr);
+        };
+
+        if (unknownCommand) {
+            const auto pendingStart = context.stats();
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            const auto pendingEnd = context.stats();
+            const bool protectedAll = pendingEnd.coldLogicalBytes == 0 &&
+                pendingEnd.residentBytes == reqA.size + reqB.size &&
+                pendingEnd.failures == pendingStart.failures;
+            const auto freezeDelta = pendingEnd.freezes - pendingStart.freezes;
+            unblockA();
+            require(protectedAll && freezeDelta == 0,
+                    "unknown pending submission did not protect every pool from active eviction");
+            setAddress(a.handle);
+            readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
+            setAddress(b.handle);
+            readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+            const auto restored = context.stats();
+            require(restored.coldLogicalBytes == 0 && restored.failures == pendingStart.failures,
+                    "unknown-submit A/B readback changed snapshot failure accounting");
+            std::cout << "PASS: unknown A submission kept both pools resident while pending; both byte patterns verified\n";
+            vkDestroyBuffer(context.device, a.handle, nullptr); a.handle = VK_NULL_HANDLE;
+            vkDestroyBuffer(context.device, b.handle, nullptr); b.handle = VK_NULL_HANDLE;
+            vkFreeMemory(context.device, a.memory, nullptr); a.memory = VK_NULL_HANDLE;
+            vkFreeMemory(context.device, b.memory, nullptr); b.memory = VK_NULL_HANDLE;
+            const auto empty = context.stats();
+            require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 && empty.coldStoredBytes == 0,
+                    "active-submit unknown cleanup retained pool bytes");
+            return;
+        }
+
+        const auto deadline = std::chrono::steady_clock::now() + ColdTimeout;
+        ZvramSnapshotStatsNX active{};
+        do {
+            active = context.stats();
+            if (active.coldLogicalBytes == reqB.size && active.residentBytes == reqA.size &&
+                active.coldStoredBytes > 0 && active.freezes > beforeActive.freezes &&
+                active.failures == beforeActive.failures) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        } while (std::chrono::steady_clock::now() < deadline);
+        if (active.coldLogicalBytes != reqB.size || active.residentBytes != reqA.size ||
+            active.coldStoredBytes == 0 || active.freezes <= beforeActive.freezes ||
+            active.failures != beforeActive.failures) {
+            const auto error = "active eviction did not cold B alone while A's queue submission was pending: cold=" +
+                std::to_string(active.coldLogicalBytes) + " resident=" + std::to_string(active.residentBytes) +
+                " failures=" + std::to_string(active.failures);
+            unblockA();
+            throw std::runtime_error(error);
+        }
+
+        bool watchdogFired = false;
+        ZvramSnapshotStatsNX afterB{};
+        {
+            TimelineWatchdog watchdog(context.device, context.pendingTimeline, signalValue);
+            setAddress(b.handle);
+            readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+            afterB = context.stats();
+            watchdogFired = watchdog.fired.load();
+            watchdog.cancelAndJoin();
+        }
+        unblockA();
+        require(!watchdogFired,
+                "B restore blocked behind A and required the 2 s timeline watchdog signal");
+        require(afterB.coldLogicalBytes == 0 && afterB.residentBytes == reqA.size + reqB.size,
+                "B readback did not restore B while A remained host-blocked");
+        setAddress(b.handle);
+        readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes, 1);
+        setAddress(a.handle);
+        readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
+        const auto restored = context.stats();
+        require(restored.coldLogicalBytes == 0 && restored.failures == beforeActive.failures,
+                "A/B readback did not restore cold B cleanly");
+        std::cout << "PASS: B restored while A stayed host-blocked without watchdog; both byte patterns verified\n";
+
+        vkDestroyBuffer(context.device, a.handle, nullptr); a.handle = VK_NULL_HANDLE;
+        vkDestroyBuffer(context.device, b.handle, nullptr); b.handle = VK_NULL_HANDLE;
+        vkFreeMemory(context.device, a.memory, nullptr); a.memory = VK_NULL_HANDLE;
+        vkFreeMemory(context.device, b.memory, nullptr); b.memory = VK_NULL_HANDLE;
+        const auto empty = context.stats();
+        require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 && empty.coldStoredBytes == 0,
+                "active-submit cleanup retained pool bytes");
+        return;
+    }
 
     const auto coldBytes = reqA.size + reqB.size;
     const auto deadline = std::chrono::steady_clock::now() + ColdTimeout;
@@ -1225,6 +1412,7 @@ int main(int argc, char** argv) try {
     bool bdaMode = false, nativeAllocation = false;
     bool twoQueues = false, twoFamilies = false, exclusiveFamilies = false;
     bool pendingWait = false, pendingBind = false;
+    bool activeSubmit = false;
     bool concurrentWait = false;
     bool suballocation = false, suballocationAuto = false, suballocationApi2 = false;
     bool selectiveBind = false, selectiveBindApi2 = false;
@@ -1250,7 +1438,8 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--selective-submit") == 0) selectiveSubmit = true;
         else if (std::strcmp(argv[i], "--selective-submit-api2") == 0) { selectiveSubmit = true; selectiveSubmitApi2 = true; }
         else if (std::strcmp(argv[i], "--selective-submit-unknown") == 0) { selectiveSubmit = true; selectiveSubmitUnknown = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown]");
+        else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--active-submit --two-queues]");
     }
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||
@@ -1272,9 +1461,15 @@ int main(int argc, char** argv) try {
                                 twoFamilies || exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
             "selective-bind mode is independent of other Vulkan checks");
     require(!selectiveSubmit || !(selectiveBind || suballocation || expectBudgetRefusal || expectBudgetRelease ||
-                                  expectPartialFreeze || expectPartialRestore || twoQueues || twoFamilies ||
+                                  expectPartialFreeze || expectPartialRestore || (twoQueues && !activeSubmit) || twoFamilies ||
                                   exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
             "selective-submit mode is independent of other Vulkan checks");
+    if (activeSubmit && !twoQueues) {
+        std::cerr << "UNSUPPORTED: --active-submit requires --two-queues (two queues in one family)\n";
+        return 77;
+    }
+    require(!activeSubmit || !bdaMode,
+            "--active-submit requires descriptor-tracked mode without BDA");
     require(!pendingBind || (nativeAllocation && (twoQueues || twoFamilies || exclusiveFamilies)),
             "--pending-bind requires --native-allocation and a multi-queue mode");
     Context context;
@@ -1284,9 +1479,9 @@ int main(int argc, char** argv) try {
     require(!suballocation || !nativeAllocation || suballocationAuto,
             "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
-                       pendingWait, pendingBind);
+                       pendingWait, pendingBind, activeSubmit);
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
-    if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown); return 0; }
+    if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }
     if (pendingWait || pendingBind) {
         VkTimelineSemaphoreSubmitInfo waitValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};

@@ -1,0 +1,122 @@
+Focused excerpt from final 67/67 full-suite run; all five tests passed.
+
+test 2
+      Start  2: cpu-active-refs
+
+2: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-active-refs-check
+2: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+2: Test timeout computed to be: 60
+2: active refs checks passed
+ 2/67 Test  #2: cpu-active-refs ....................................   Passed    0.00 sec
+test 25
+      Start 25: vulkan-active-eviction-synthetic
+
+25: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--active-submit" "--two-queues"
+25: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+25: Environment variables: 
+25:  VK_LOADER_LAYERS_DISABLE=~implicit~
+25: Test timeout computed to be: 60
+25: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+25: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+25: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+25: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+25: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+25: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+25: [zvram] snapshot cold bytes=33554432 stored=33554432
+25: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+25: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+25: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+25: [zvram] snapshot cold bytes=33554432 stored=33554432
+25: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+25: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+25: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+25: [zvram] virtual free bytes=33554432
+25: [zvram] virtual free bytes=33554432
+25: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+25: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+25: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+25: PASS: B restored while A stayed host-blocked without watchdog; both byte patterns verified
+25/67 Test #25: vulkan-active-eviction-synthetic ...................   Passed    0.26 sec
+test 26
+      Start 26: vulkan-active-eviction-native
+
+26: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--active-submit" "--two-queues" "--native-allocation"
+26: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+26: Environment variables: 
+26:  VK_LOADER_LAYERS_DISABLE=~implicit~
+26: Test timeout computed to be: 60
+26: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+26: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+26: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+26: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+26: [zvram] native allocation adopted bytes=33554432 type=0
+26: [zvram] native allocation adopted bytes=33554432 type=0
+26: [zvram] snapshot cold bytes=33554432 stored=33554432
+26: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+26: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+26: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+26: [zvram] snapshot cold bytes=33554432 stored=33554432
+26: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+26: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+26: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+26: [zvram] virtual free bytes=33554432
+26: [zvram] virtual free bytes=33554432
+26: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+26: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+26: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+26: PASS: B restored while A stayed host-blocked without watchdog; both byte patterns verified
+26/67 Test #26: vulkan-active-eviction-native ......................   Passed    0.27 sec
+test 27
+      Start 27: vulkan-active-eviction-synthetic-unknown
+
+27: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--active-submit" "--two-queues" "--selective-submit-unknown"
+27: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+27: Environment variables: 
+27:  VK_LOADER_LAYERS_DISABLE=~implicit~
+27: Test timeout computed to be: 60
+27: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+27: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+27: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+27: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+27: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+27: [zvram] virtual allocate bytes=33554432 heap-capacity=134217728
+27: [zvram] snapshot cold bytes=33554432 stored=33554432
+27: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+27: [zvram] snapshot cold bytes=33554432 stored=33554432
+27: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+27: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+27: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=1
+27: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+27: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+27: [zvram] virtual free bytes=33554432
+27: [zvram] virtual free bytes=33554432
+27: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+27: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+27: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+27: PASS: unknown A submission kept both pools resident while pending; both byte patterns verified
+27/67 Test #27: vulkan-active-eviction-synthetic-unknown ...........   Passed    0.47 sec
+test 28
+      Start 28: vulkan-active-eviction-native-unknown
+
+28: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--active-submit" "--two-queues" "--native-allocation" "--selective-submit-unknown"
+28: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+28: Environment variables: 
+28:  VK_LOADER_LAYERS_DISABLE=~implicit~
+28: Test timeout computed to be: 60
+28: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+28: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+28: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+28: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+28: [zvram] native allocation adopted bytes=33554432 type=0
+28: [zvram] native allocation adopted bytes=33554432 type=0
+28: [zvram] snapshot cold bytes=33554432 stored=33554432
+28: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+28: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+28: [zvram] selective restore selected-pools=1 restored-pools=1 cold-pools-left=0
+28: [zvram] virtual free bytes=33554432
+28: [zvram] virtual free bytes=33554432
+28: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+28: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+28: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+28: PASS: unknown A submission kept both pools resident while pending; both byte patterns verified
+28/67 Test #28: vulkan-active-eviction-native-unknown ..............   Passed    0.44 sec
