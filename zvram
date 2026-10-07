@@ -16,7 +16,7 @@ parser.add_argument("--hip-cold-mib", type=int, help="limit automatic lossless c
 virtual_size = parser.add_mutually_exclusive_group()
 virtual_size.add_argument("--vulkan-virtual-mib", type=int, help="set the experimental Vulkan logical heap size at launch, in positive MiB (requires sparse binding)")
 virtual_size.add_argument("--vulkan-virtual-gib", type=int, help="set the experimental Vulkan logical heap size at launch, in positive GiB (requires sparse binding)")
-parser.add_argument("--vulkan-auto-idle-ms", type=int, help="compress idle synthetic Vulkan allocations after this delay (experimental, single queue only)")
+parser.add_argument("--vulkan-auto-idle-ms", type=int, help="compress eligible idle Vulkan storage allocations after this delay (experimental)")
 parser.add_argument("--vulkan-cold-mib", type=int, help="limit retained Vulkan snapshots in MiB; requires --vulkan-auto-idle-ms")
 parser.add_argument("--verbose", action="store_true", help="log each Vulkan allocation")
 parser.add_argument("--validate", action="store_true", help="enable Vulkan core and synchronization validation")

@@ -1,0 +1,35 @@
+9/35 Testing: vulkan-automatic-native-two-families
+9/35 Test: vulkan-automatic-native-two-families
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--native-allocation" "--two-families" "--bda"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"vulkan-automatic-native-two-families" start time: Oct 07 05:50 CEST
+Output:
+----------------------------------------------------------
+[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] native allocation adopted bytes=335544320 type=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+BDA hot address: 0xffff800102200000
+[zvram] snapshot cold bytes=335544320 stored=12263515
+[zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=12263515 freezes=1 restores=0 failures=0
+native token probes bound with distinct allocations; original cold token unchanged
+native allocation adopted cold: logical=335544320 stored=12263515 freezes=1
+[zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0
+wake cycle 1: verified 335544320 bytes
+[zvram] snapshot cold bytes=335544320 stored=335544320
+[zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=2 restores=1 failures=0
+[zvram] snapshot state event=restore resident=335544320 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+wake cycle 2: verified 335544320 bytes
+[zvram] snapshot cold bytes=335544320 stored=335544320
+[zvram] snapshot state event=freeze resident=0 cold-logical=335544320 cold-stored=335544320 freezes=3 restores=2 failures=0
+[zvram] virtual free bytes=335544320
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=3 restores=2 failures=0
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=335544320 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+PASS: two cold/wake compute cycles, full readback, metadata stayed cold, cold free did not restore
+<end of output>
+Test time =   2.18 sec
+----------------------------------------------------------
+Test Passed.
+"vulkan-automatic-native-two-families" end time: Oct 07 05:50 CEST
+"vulkan-automatic-native-two-families" time elapsed: 00:00:02
+----------------------------------------------------------

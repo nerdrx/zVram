@@ -19,9 +19,12 @@
 #include <atomic>
 #include <thread>
 #include <zstd.h>
+#include "auto_queues.hpp"
+#include "buffer_barriers.hpp"
 
 namespace {
 constexpr char kLayer[] = "VK_LAYER_NX_zvram";
+struct Device;
 template<class H> void* key(H h) { return h ? *reinterpret_cast<void**>(h) : nullptr; }
 template<class H> H tokenHandle(std::uintptr_t value) {
     if constexpr (std::is_pointer_v<H>) return reinterpret_cast<H>(value);
@@ -33,6 +36,7 @@ template<class H> std::uintptr_t handleToken(H value) {
 }
 bool verbose() { const char* p=std::getenv("ZVRAM_VERBOSE"); return p && std::strcmp(p,"1")==0; }
 void logf(const char* fmt,...) { std::fputs("[zvram] ",stderr); va_list ap; va_start(ap,fmt); std::vfprintf(stderr,fmt,ap); va_end(ap); std::fputc('\n',stderr); }
+void logSnapshotState(const char* event,const Device& d);
 
 struct PhysicalMemoryView {
     VkPhysicalDeviceMemoryProperties native{};
@@ -56,9 +60,26 @@ struct Instance {
     std::mutex physicalMutex;
     std::unordered_map<VkPhysicalDevice,PhysicalMemoryView> physicalViews;
 };
-struct Allocation { VkDeviceSize size; bool local; std::uint32_t type{}; bool bound{}; };
+struct Allocation {
+    VkDeviceSize size{};
+    bool local{};
+    std::uint32_t type{};
+    bool bound{};
+    VkDeviceMemory nativeHandle{};
+    void* token{};
+    bool wrapped{};
+    VkAllocationCallbacks callbacks{};
+    bool hasCallbacks{};
+    VkMemoryAllocateFlags flags{};
+    float priority{0.5f};
+    bool hasPriority{};
+    bool adoptable{};
+};
 struct VirtualMemory {
     VkDeviceSize size{};
+    VkMemoryAllocateFlags allocationFlags{};
+    float priority{0.5f};
+    bool hasPriority{};
     VkDeviceSize residentBytes{};
     std::vector<VkDeviceMemory> children;
     std::vector<VkDeviceSize> childSizes;
@@ -68,11 +89,15 @@ struct VirtualMemory {
     VkDeviceSize coldStoredBytes{};
     VkDeviceSize coldLogicalSize{};
     bool cold{};
+    bool capacityAccounted{};
+    bool trackPhysicalStats{};
     VkBuffer buffer{};
     void* token{};
     bool bound{};
     bool everBound{};
     bool deferredFree{};
+    VkAllocationCallbacks adoptedCallbacks{};
+    bool hasAdoptedCallbacks{};
 };
 struct ZvramSnapshotStatsNX {
     std::uint32_t structSize{};
@@ -118,6 +143,8 @@ struct PromotedBuffer {
     VkMemoryRequirements requirements{};
     VkDeviceMemory memory{};
     bool synthetic{};
+    bool deviceAddress{};
+    bool concurrentForced{};
 };
 struct Device {
     VkDevice handle{};
@@ -135,17 +162,26 @@ struct Device {
     PFN_vkQueueBindSparse queueBindSparse{};
     PFN_vkQueueWaitIdle queueWaitIdle{};
     PFN_vkGetDeviceQueue getDeviceQueue{};
+    PFN_vkGetDeviceQueue2 getDeviceQueue2{};
     PFN_vkSetDeviceLoaderData setDeviceLoaderData{};
     std::unordered_map<VkDeviceMemory,VirtualMemory> virtualMemory;
     std::unordered_map<VkBuffer,PromotedBuffer> promotedBuffers;
     std::unordered_map<VkDeviceMemory,Allocation> allocations;
     VkQueue sparseQueue{};
+    VkQueue copyQueue{};
+    std::vector<VkQueue> appQueues;
+    std::vector<std::uint32_t> queueFamilies;
+    ZvramAutoQueues autoQueues;
     std::uint32_t virtualType{UINT32_MAX};
     std::uint32_t virtualHeap{UINT32_MAX};
     VkDeviceSize virtualBytes{};
     bool virtualEnabled{};
+    bool bufferDeviceAddressEnabled{};
+    bool nativeWrappingAllowed{true};
     std::uint64_t virtualUsage{};
     bool autoEnabled{};
+    bool autoInitialized{};
+    VkResult gpuGateError{VK_SUCCESS};
     std::uint64_t idleMilliseconds{};
     std::uint64_t coldBudget{};
     std::uint64_t coldBytes{};
@@ -167,6 +203,12 @@ struct Device {
     std::mutex queueMutex;
     uint64_t liveLocal{}, peakLocal{}, liveOther{}, peakOther{}, failures{};
 };
+void logSnapshotState(const char* event,const Device& d) {
+    logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu",
+         event,static_cast<unsigned long long>(d.residentBytes),static_cast<unsigned long long>(d.coldLogicalBytes),
+         static_cast<unsigned long long>(d.coldBytes),static_cast<unsigned long long>(d.freezeCount),
+         static_cast<unsigned long long>(d.restoreCount),static_cast<unsigned long long>(d.snapshotFailures));
+}
 std::mutex mapsMutex;
 PFN_vkGetInstanceProcAddr globalGipa{};
 std::unordered_map<void*,std::shared_ptr<Instance>> instances;
@@ -177,6 +219,10 @@ std::shared_ptr<Instance> findInstance(void* k) {
 }
 std::shared_ptr<Device> findDevice(VkDevice d) {
     std::lock_guard<std::mutex> lock(mapsMutex); auto i=devices.find(key(d)); return i==devices.end()?nullptr:i->second;
+}
+VkDeviceMemory nativeMemoryLocked(const Device& d,VkDeviceMemory memory) {
+    const auto found=d.allocations.find(memory);
+    return found!=d.allocations.end() && found->second.wrapped ? found->second.nativeHandle : memory;
 }
 VkLayerInstanceCreateInfo* instanceLink(const VkInstanceCreateInfo* ci) {
     for(auto* p=static_cast<const VkBaseInStructure*>(ci->pNext);p;p=p->pNext)
@@ -203,6 +249,17 @@ bool appEnabled(const VkDeviceCreateInfo* ci,const char* name) {
     for(uint32_t i=0;i<ci->enabledExtensionCount;i++) if(std::strcmp(ci->ppEnabledExtensionNames[i],name)==0) return true;
     return false;
 }
+bool enabledBufferDeviceAddress(const VkDeviceCreateInfo* ci) {
+    for(auto* p=static_cast<const VkBaseInStructure*>(ci->pNext);p;p=p->pNext) {
+#ifdef VK_VERSION_1_2
+        if(p->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES &&
+           reinterpret_cast<const VkPhysicalDeviceVulkan12Features*>(p)->bufferDeviceAddress) return true;
+#endif
+        if(p->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES &&
+           reinterpret_cast<const VkPhysicalDeviceBufferDeviceAddressFeatures*>(p)->bufferDeviceAddress) return true;
+    }
+    return false;
+}
 
 VKAPI_ATTR VkResult VKAPI_CALL layerCreateInstance(const VkInstanceCreateInfo*,const VkAllocationCallbacks*,VkInstance*);
 VKAPI_ATTR void VKAPI_CALL layerDestroyInstance(VkInstance,const VkAllocationCallbacks*);
@@ -215,6 +272,7 @@ void releaseSnapshotResources(Device&);
 void snapshotWorkerLoop(const std::shared_ptr<Device>&);
 VkResult restoreColdLocked(VkDevice,Device&);
 std::vector<std::uint32_t> backingMemoryTypes(const Device&,const VkMemoryRequirements&);
+VkResult allocateBackingChild(Device&,VkDevice,VkDeviceSize,std::uint32_t,VkMemoryAllocateFlags,bool,float,VkDeviceMemory*);
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetInstanceProcAddr(VkInstance,const char*);
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice,const char*);
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetPhysicalDeviceProcAddr(VkInstance,const char*);
@@ -372,31 +430,108 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     }
     bool inject=supported && !policy;
     if(!supported) logf("AMD overallocation extension unavailable; passing device creation through unchanged");
+    const bool snapshotRequested=std::getenv("ZVRAM_VULKAN_AUTO_IDLE_MS") || std::getenv("ZVRAM_VULKAN_COLD_MIB");
+    bool deviceGroupRequested=false;
+    for(auto* p=static_cast<const VkBaseInStructure*>(ci->pNext);p;p=p->pNext)
+        if(p->sType==VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO) deviceGroupRequested=true;
     std::uint32_t sparseFamily=UINT32_MAX, familyCount=0, sparseQueueFlags=0;
+    std::uint32_t appSparseFamily=UINT32_MAX, appSparseQueueFlags=0;
+    std::uint32_t privateFamily=UINT32_MAX, privateIndex=UINT32_MAX;
+    VkDeviceQueueCreateFlags privateQueueFlags{};
+    bool unsupportedQueueFlags=false;
+    bool queuePlanOutOfHostMemory=false;
+    std::vector<VkQueueFamilyProperties> queueProps;
+    std::vector<VkDeviceQueueCreateInfo> queueInfos;
+    std::vector<std::vector<float>> queuePriorities;
+    bool privateQueuePlanned=false;
     if(view.enabled && in->queueFamilies) {
         in->queueFamilies(physical,&familyCount,nullptr);
-        std::vector<VkQueueFamilyProperties> queueProps(familyCount);
+        try { queueProps.resize(familyCount); }
+        catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
         in->queueFamilies(physical,&familyCount,queueProps.data());
         for(std::uint32_t i=0;i<familyCount;i++) {
             if((queueProps[i].queueFlags&VK_QUEUE_SPARSE_BINDING_BIT)==0) continue;
             for(std::uint32_t q=0;q<ci->queueCreateInfoCount;q++)
-                if(ci->pQueueCreateInfos[q].queueFamilyIndex==i && ci->pQueueCreateInfos[q].queueCount) { sparseFamily=i; sparseQueueFlags=queueProps[i].queueFlags; break; }
+                if(ci->pQueueCreateInfos[q].queueFamilyIndex==i && ci->pQueueCreateInfos[q].queueCount &&
+                   (ci->pQueueCreateInfos[q].flags&~VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR)==0) {
+                    sparseFamily=i; sparseQueueFlags=queueProps[i].queueFlags; break;
+                }
             if(sparseFamily!=UINT32_MAX) break;
+        }
+        appSparseFamily=sparseFamily; appSparseQueueFlags=sparseQueueFlags;
+        if(!deviceGroupRequested) {
+            bool appQueuesSupported=true;
+            for(std::uint32_t q=0;q<ci->queueCreateInfoCount;q++)
+                if(ci->pQueueCreateInfos[q].flags&~VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR) {
+                    appQueuesSupported=false; unsupportedQueueFlags=true;
+                }
+            for(std::uint32_t i=0;i<familyCount;i++) {
+                if(!appQueuesSupported) break;
+                const auto flags=queueProps[i].queueFlags;
+                if((flags&VK_QUEUE_SPARSE_BINDING_BIT)==0) continue;
+                if(snapshotRequested &&
+                   ((flags&(VK_QUEUE_TRANSFER_BIT|VK_QUEUE_SPARSE_BINDING_BIT))!=
+                        (VK_QUEUE_TRANSFER_BIT|VK_QUEUE_SPARSE_BINDING_BIT) ||
+                    (flags&(VK_QUEUE_COMPUTE_BIT|VK_QUEUE_GRAPHICS_BIT))==0)) continue;
+                std::uint32_t used=0; bool supportedFlags=true; std::uint32_t existing=UINT32_MAX;
+                for(std::uint32_t q=0;q<ci->queueCreateInfoCount;q++) if(ci->pQueueCreateInfos[q].queueFamilyIndex==i) {
+                    existing=q; used=ci->pQueueCreateInfos[q].queueCount;
+                    if(ci->pQueueCreateInfos[q].flags&~VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR) supportedFlags=false;
+                    break;
+                }
+                if(!supportedFlags || used>=queueProps[i].queueCount) continue;
+                privateFamily=i; privateIndex=used; privateQueueFlags=existing==UINT32_MAX?0:ci->pQueueCreateInfos[existing].flags;
+                privateQueuePlanned=true;
+                try {
+                    if(ci->queueCreateInfoCount) queueInfos.assign(ci->pQueueCreateInfos,ci->pQueueCreateInfos+ci->queueCreateInfoCount);
+                    queuePriorities.resize(queueInfos.size()+(existing==UINT32_MAX?1u:0u));
+                    for(std::size_t q=0;q<queueInfos.size();q++) {
+                        const auto& original=ci->pQueueCreateInfos[q];
+                        queuePriorities[q].assign(original.pQueuePriorities,original.pQueuePriorities+original.queueCount);
+                    }
+                    if(existing==UINT32_MAX) {
+                        queueInfos.push_back(VkDeviceQueueCreateInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO});
+                        auto& qci=queueInfos.back(); qci.queueFamilyIndex=i; qci.queueCount=1;
+                        qci.flags=privateQueueFlags;
+                        queuePriorities.back().push_back(1.0f);
+                    } else {
+                        queueInfos[existing].queueCount++;
+                        queuePriorities[existing].push_back(1.0f);
+                    }
+                    for(std::size_t q=0;q<queueInfos.size();q++) queueInfos[q].pQueuePriorities=queuePriorities[q].data();
+                } catch(const std::bad_alloc&) { privateQueuePlanned=false; queuePlanOutOfHostMemory=true; queueInfos.clear(); queuePriorities.clear(); }
+                if(privateQueuePlanned) { sparseFamily=i; sparseQueueFlags=flags; break; }
+                privateFamily=privateIndex=UINT32_MAX;
+            }
         }
     }
     bool virtualEnabled=view.enabled && sparseFamily!=UINT32_MAX;
-    const bool singleTransferQueue=ci->queueCreateInfoCount==1 && ci->pQueueCreateInfos &&
-        ci->pQueueCreateInfos[0].queueCount==1 && ci->pQueueCreateInfos[0].flags==0 &&
-        (sparseQueueFlags&(VK_QUEUE_SPARSE_BINDING_BIT|VK_QUEUE_TRANSFER_BIT))==
-            (VK_QUEUE_SPARSE_BINDING_BIT|VK_QUEUE_TRANSFER_BIT);
     VkPhysicalDeviceFeatures injectedFeatures{};
     VkPhysicalDeviceFeatures2 injectedFeatures2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
     const auto* featureChain=static_cast<const VkBaseInStructure*>(ci->pNext);
-    bool hasFeatures2=false;
-    for(auto* p=featureChain;p;p=p->pNext) if(p->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) { hasFeatures2=true; break; }
+    const VkPhysicalDeviceFeatures2* requestedFeatures2=nullptr;
+    for(auto* p=featureChain;p;p=p->pNext)
+        if(p->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) { requestedFeatures2=reinterpret_cast<const VkPhysicalDeviceFeatures2*>(p); break; }
+    const bool hasFeatures2=requestedFeatures2!=nullptr;
     const bool features2AtHead=ci->pNext && static_cast<const VkBaseInStructure*>(ci->pNext)->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    if(hasFeatures2 && !features2AtHead) virtualEnabled=false;
+    const bool sparseBindingEnabled=hasFeatures2?requestedFeatures2->features.sparseBinding!=VK_FALSE:
+        (ci->pEnabledFeatures && ci->pEnabledFeatures->sparseBinding!=VK_FALSE);
+    const bool bdaEnabled=enabledBufferDeviceAddress(ci);
+    if(hasFeatures2 && !features2AtHead && !sparseBindingEnabled) {
+        virtualEnabled=false;
+        if(privateQueuePlanned) {
+            privateQueuePlanned=false; privateFamily=privateIndex=UINT32_MAX;
+            sparseFamily=UINT32_MAX;
+            if(view.enabled && in->queueFamilies) {
+                // Only the pre-existing app queue is safe when the feature chain
+                // cannot be amended without changing an earlier loader node.
+                sparseFamily=appSparseFamily; sparseQueueFlags=appSparseQueueFlags;
+            }
+            queueInfos.clear(); queuePriorities.clear();
+        }
+    }
     VkDeviceCreateInfo copy=*ci; VkDeviceMemoryOverallocationCreateInfoAMD behavior{VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD};
+    if(privateQueuePlanned) { copy.queueCreateInfoCount=static_cast<std::uint32_t>(queueInfos.size()); copy.pQueueCreateInfos=queueInfos.data(); }
     std::vector<const char*> extensions;
     if(inject) {
         try {
@@ -410,11 +545,12 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     }
     if(virtualEnabled) {
         if(hasFeatures2) {
-            auto* f2=const_cast<VkPhysicalDeviceFeatures2*>(reinterpret_cast<const VkPhysicalDeviceFeatures2*>(ci->pNext));
-            injectedFeatures2=*f2; injectedFeatures2.features.sparseBinding=VK_TRUE;
-            if(copy.pNext==ci->pNext) copy.pNext=&injectedFeatures2;
-            else behavior.pNext=&injectedFeatures2;
-        } else {
+            if(!sparseBindingEnabled) {
+                injectedFeatures2=*requestedFeatures2; injectedFeatures2.features.sparseBinding=VK_TRUE;
+                if(copy.pNext==ci->pNext) copy.pNext=&injectedFeatures2;
+                else behavior.pNext=&injectedFeatures2;
+            }
+        } else if(!sparseBindingEnabled) {
             if(ci->pEnabledFeatures) injectedFeatures=*ci->pEnabledFeatures;
             injectedFeatures.sparseBinding=VK_TRUE;
             copy.pEnabledFeatures=&injectedFeatures;
@@ -440,26 +576,92 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         d->queueBindSparse=reinterpret_cast<PFN_vkQueueBindSparse>(nextGdpa(*out,"vkQueueBindSparse"));
         d->queueWaitIdle=reinterpret_cast<PFN_vkQueueWaitIdle>(nextGdpa(*out,"vkQueueWaitIdle"));
         d->getDeviceQueue=reinterpret_cast<PFN_vkGetDeviceQueue>(nextGdpa(*out,"vkGetDeviceQueue"));
-        d->virtualEnabled=virtualEnabled; d->virtualType=view.virtualType; d->virtualHeap=view.virtualHeap; d->virtualBytes=view.virtualBytes;
-        if(virtualEnabled && d->getDeviceQueue) d->getDeviceQueue(*out,sparseFamily,0,&d->sparseQueue);
-        in->memoryProperties(physical,&d->memory); VkPhysicalDeviceProperties props{}; in->properties(physical,&props); d->gpu=props.deviceName; d->autoPolicy=inject;
-        { std::lock_guard<std::mutex> lock(mapsMutex); devices[key(*out)]=d; }
-        const bool snapshotRequested=std::getenv("ZVRAM_VULKAN_AUTO_IDLE_MS") || std::getenv("ZVRAM_VULKAN_COLD_MIB");
-        if(snapshotRequested) {
-            if(!singleTransferQueue || !virtualEnabled || !d->sparseQueue)
-                logf("automatic Vulkan snapshots disabled: requires one created sparse+transfer queue and virtual-memory opt-in");
-            else if(!snapshotConfig(*d,d->idleMilliseconds,d->coldBudget))
-                logf("automatic Vulkan snapshots disabled: invalid idle interval or cold budget");
-            else if(!initSnapshotResources(*d,sparseFamily))
-                { releaseSnapshotResources(*d); logf("automatic Vulkan snapshots disabled: private staging resources unavailable"); }
-            else {
-                d->autoEnabled=true;
-                try { d->snapshotWorker=std::thread(snapshotWorkerLoop,d); }
-                catch(...) { d->autoEnabled=false; releaseSnapshotResources(*d); }
-                if(d->autoEnabled) logf("automatic Vulkan snapshots enabled idle-ms=%llu cold-budget=%llu",static_cast<unsigned long long>(d->idleMilliseconds),static_cast<unsigned long long>(d->coldBudget));
-                else logf("automatic Vulkan snapshots disabled: worker creation failed");
+        d->getDeviceQueue2=reinterpret_cast<PFN_vkGetDeviceQueue2>(nextGdpa(*out,"vkGetDeviceQueue2"));
+        d->virtualEnabled=virtualEnabled; d->bufferDeviceAddressEnabled=bdaEnabled;
+        d->virtualType=view.virtualType; d->virtualHeap=view.virtualHeap; d->virtualBytes=view.virtualBytes;
+        if(deviceGroupRequested) d->nativeWrappingAllowed=false;
+        constexpr const char* rawMemoryHandleExtensions[]={"VK_KHR_video_queue","VK_NV_ray_tracing","VK_ARM_tensors",
+            "VK_ARM_data_graph","VK_QCOM_tile_memory_heap","VK_EXT_device_memory_report"};
+        for(const auto* extension:rawMemoryHandleExtensions)
+            if(appEnabled(ci,extension)) d->nativeWrappingAllowed=false;
+        if(!d->nativeWrappingAllowed) logf("native memory-handle wrapping/adoption disabled by device-group or raw-handle extension");
+        if(d->getDeviceQueue || d->getDeviceQueue2) {
+            for(std::uint32_t q=0;q<ci->queueCreateInfoCount;q++) {
+                const auto& requested=ci->pQueueCreateInfos[q];
+                if(std::find(d->queueFamilies.begin(),d->queueFamilies.end(),requested.queueFamilyIndex)==d->queueFamilies.end())
+                    d->queueFamilies.push_back(requested.queueFamilyIndex);
+                for(std::uint32_t n=0;n<requested.queueCount;n++) {
+                    VkQueue queue{};
+                    if(requested.flags==0 && d->getDeviceQueue) d->getDeviceQueue(*out,requested.queueFamilyIndex,n,&queue);
+                    else if(d->getDeviceQueue2) {
+                        VkDeviceQueueInfo2 queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_INFO_2};
+                        queueInfo.flags=requested.flags; queueInfo.queueFamilyIndex=requested.queueFamilyIndex; queueInfo.queueIndex=n;
+                        d->getDeviceQueue2(*out,&queueInfo,&queue);
+                    }
+                    if(queue) d->appQueues.push_back(queue);
+                }
+            }
+            if(privateQueuePlanned) {
+                if(privateQueueFlags==0 && d->getDeviceQueue) d->getDeviceQueue(*out,privateFamily,privateIndex,&d->copyQueue);
+                else if(d->getDeviceQueue2) {
+                    VkDeviceQueueInfo2 queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_INFO_2};
+                    queueInfo.flags=privateQueueFlags; queueInfo.queueFamilyIndex=privateFamily; queueInfo.queueIndex=privateIndex;
+                    d->getDeviceQueue2(*out,&queueInfo,&d->copyQueue);
+                }
+                if(d->copyQueue && d->setDeviceLoaderData && d->setDeviceLoaderData(*out,d->copyQueue)!=VK_SUCCESS)
+                    d->copyQueue=VK_NULL_HANDLE;
+                if(std::find(d->queueFamilies.begin(),d->queueFamilies.end(),privateFamily)==d->queueFamilies.end())
+                    d->queueFamilies.push_back(privateFamily);
+            }
+            if(privateQueuePlanned && d->copyQueue) d->sparseQueue=d->copyQueue;
+            else if(virtualEnabled) {
+                if(d->getDeviceQueue) d->getDeviceQueue(*out,sparseFamily,0,&d->sparseQueue);
+                else if(d->getDeviceQueue2) {
+                    VkDeviceQueueInfo2 queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_INFO_2};
+                    queueInfo.queueFamilyIndex=sparseFamily; queueInfo.queueIndex=0;
+                    d->getDeviceQueue2(*out,&queueInfo,&d->sparseQueue);
+                }
             }
         }
+        in->memoryProperties(physical,&d->memory); VkPhysicalDeviceProperties props{}; in->properties(physical,&props); d->gpu=props.deviceName; d->autoPolicy=inject;
+        { std::lock_guard<std::mutex> lock(mapsMutex); devices[key(*out)]=d; }
+        if(snapshotRequested) {
+            if(deviceGroupRequested)
+                logf("automatic Vulkan snapshots disabled: device-group device queues are unsupported");
+            else if(unsupportedQueueFlags)
+                logf("automatic Vulkan snapshots disabled: unsupported application queue creation flags");
+            else if(queuePlanOutOfHostMemory)
+                logf("automatic Vulkan snapshots disabled: host memory exhausted while planning private queue");
+            else if(!virtualEnabled)
+                logf("automatic Vulkan snapshots disabled: sparse-binding queue or safe sparse feature chain unavailable");
+            else if(!privateQueuePlanned || !virtualEnabled || !d->copyQueue)
+                logf("automatic Vulkan snapshots disabled: no unused sparse+transfer+compute/graphics queue and virtual-memory opt-in");
+            else if(!snapshotConfig(*d,d->idleMilliseconds,d->coldBudget))
+                logf("automatic Vulkan snapshots disabled: invalid idle interval or cold budget");
+            else {
+                std::vector<VkQueue> handles;
+                VkResult autoResult=VK_SUCCESS;
+                try { handles=d->appQueues; handles.push_back(d->copyQueue); }
+                catch(const std::bad_alloc&) { autoResult=VK_ERROR_OUT_OF_HOST_MEMORY; }
+                if(autoResult==VK_SUCCESS) autoResult=d->autoQueues.init(*out,nextGdpa,d->copyQueue,handles);
+                if(autoResult==VK_SUCCESS) {
+                    d->autoInitialized=true;
+                    if(!initSnapshotResources(*d,privateFamily)) autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
+                }
+                if(autoResult!=VK_SUCCESS) {
+                    releaseSnapshotResources(*d); d->autoQueues.destroy(); d->autoInitialized=false;
+                    logf("automatic Vulkan snapshots disabled: private queue synchronization resources unavailable result=%d",static_cast<int>(autoResult));
+                } else {
+                    d->autoEnabled=true;
+                    try { d->snapshotWorker=std::thread(snapshotWorkerLoop,d); }
+                    catch(...) { d->autoEnabled=false; d->autoInitialized=false; releaseSnapshotResources(*d); d->autoQueues.destroy(); }
+                    if(d->autoEnabled) logf("automatic Vulkan snapshots enabled idle-ms=%llu cold-budget=%llu",static_cast<unsigned long long>(d->idleMilliseconds),static_cast<unsigned long long>(d->coldBudget));
+                    else logf("automatic Vulkan snapshots disabled: worker creation failed");
+                }
+            }
+        }
+        if(virtualEnabled && !privateQueuePlanned)
+            logf("virtual sparse binds use an application queue and wait synchronously: no unused sparse queue is available");
         logf("device=%s policy=%s",d->gpu.c_str(),policy?"application-specified":inject?"allowed":"unchanged");
     } catch(const std::bad_alloc&) {
         auto destroy=reinterpret_cast<PFN_vkDestroyDevice>(nextGdpa(*out,"vkDestroyDevice")); if(destroy) destroy(*out,allocator);
@@ -468,8 +670,14 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     return r;
 }
 VkResult bindSparseLocked(VkDevice d,Device& state,VkBuffer buffer,const VkSparseMemoryBind* binds,std::uint32_t count) {
-    if(!state.sparseQueue || !state.queueBindSparse || !state.queueWaitIdle) return VK_ERROR_FEATURE_NOT_PRESENT;
+    if(state.gpuGateError!=VK_SUCCESS) return state.gpuGateError;
     VkSparseBufferMemoryBindInfo bufferInfo{}; bufferInfo.buffer=buffer; bufferInfo.bindCount=count; bufferInfo.pBinds=binds;
+    if(state.autoInitialized) {
+        const auto r=state.autoQueues.sparseBind(bufferInfo);
+        if(r!=VK_SUCCESS) state.gpuGateError=r;
+        return r;
+    }
+    if(!state.sparseQueue || !state.queueBindSparse || !state.queueWaitIdle) return VK_ERROR_FEATURE_NOT_PRESENT;
     VkBindSparseInfo info{VK_STRUCTURE_TYPE_BIND_SPARSE_INFO}; info.bufferBindCount=1; info.pBufferBinds=&bufferInfo;
     VkResult r=state.queueBindSparse(state.sparseQueue,1,&info,VK_NULL_HANDLE);
     if(r!=VK_SUCCESS) return r;
@@ -480,8 +688,25 @@ VkResult bindSparse(VkDevice d,Device& state,VkBuffer buffer,const VkSparseMemor
     return bindSparseLocked(d,state,buffer,binds,count);
 }
 void releaseChildren(Device& d,VirtualMemory& memory) {
-    for(auto child:memory.children) if(child) d.free(d.handle,child,nullptr);
+    for(std::size_t i=0;i<memory.children.size();i++) {
+        const auto child=memory.children[i];
+        if(memory.trackPhysicalStats && i<memory.childSizes.size() && i<memory.childTypes.size()) {
+            const auto type=memory.childTypes[i];
+            const bool local=type<d.memory.memoryTypeCount &&
+                (d.memory.memoryHeaps[d.memory.memoryTypes[type].heapIndex].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
+            auto& live=local?d.liveLocal:d.liveOther;
+            live=live>=memory.childSizes[i]?live-memory.childSizes[i]:0;
+        }
+        if(child) d.free(d.handle,child,memory.hasAdoptedCallbacks && i==0?&memory.adoptedCallbacks:nullptr);
+    }
+    memory.hasAdoptedCallbacks=false;
     memory.children.clear(); memory.childSizes.clear(); memory.childTypes.clear(); memory.residentBytes=0;
+}
+void trackBackingAllocation(Device& d,std::uint32_t type,VkDeviceSize size) {
+    const auto heap=type<d.memory.memoryTypeCount?d.memory.memoryTypes[type].heapIndex:UINT32_MAX;
+    const bool local=heap<d.memory.memoryHeapCount && (d.memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
+    auto& live=local?d.liveLocal:d.liveOther; auto& peak=local?d.peakLocal:d.peakOther;
+    live+=size; peak=std::max(peak,live);
 }
 bool initSnapshotResources(Device& d,std::uint32_t family) {
     auto get=[&](const char* name){return d.gdpa(d.handle,name);};
@@ -568,11 +793,14 @@ VkResult copyChunkLocked(Device& d,VkBuffer source,VkBuffer destination,VkDevice
                          0,1,&after,0,nullptr,0,nullptr);
     r=s.endCommandBuffer(s.commandBuffer); if(r!=VK_SUCCESS) return r;
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.commandBufferCount=1; submit.pCommandBuffers=&s.commandBuffer;
-    r=s.queueSubmit(d.sparseQueue,1,&submit,VK_NULL_HANDLE);
-    return r==VK_SUCCESS?d.queueWaitIdle(d.sparseQueue):r;
+    r=s.queueSubmit(d.copyQueue?d.copyQueue:d.sparseQueue,1,&submit,VK_NULL_HANDLE);
+    const auto queue=d.copyQueue?d.copyQueue:d.sparseQueue;
+    return r==VK_SUCCESS?d.queueWaitIdle(queue):r;
 }
 VkResult restoreColdLocked(VkDevice device,Device& d) {
+    if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
     auto& s=d.snapshot;
+    bool restoredAny=false;
     for(auto& pair:d.virtualMemory) {
         auto& memory=pair.second;
         if(!memory.cold || !memory.buffer) continue;
@@ -595,9 +823,12 @@ VkResult restoreColdLocked(VkDevice device,Device& d) {
                 while(offset<bi->second.requirements.size) {
                     const auto amount=std::min(chunk,bi->second.requirements.size-offset);
                     VkDeviceMemory child{}; std::uint32_t used=UINT32_MAX; r=VK_ERROR_OUT_OF_DEVICE_MEMORY;
-                    for(auto type:types) { VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; ai.allocationSize=amount; ai.memoryTypeIndex=type;
-                        r=d.allocate(device,&ai,nullptr,&child); if(r==VK_SUCCESS) { used=type; break; } }
+                    for(auto type:types) {
+                        r=allocateBackingChild(d,device,amount,type,memory.allocationFlags,memory.hasPriority,memory.priority,&child);
+                        if(r==VK_SUCCESS) { used=type; break; }
+                    }
                     if(r!=VK_SUCCESS) { releaseChildren(d,memory); return r; }
+                    if(memory.trackPhysicalStats) trackBackingAllocation(d,used,amount);
                     memory.children.push_back(child); memory.childSizes.push_back(amount); memory.childTypes.push_back(used);
                     VkSparseMemoryBind bind{}; bind.resourceOffset=offset; bind.size=amount; bind.memory=child; binds.push_back(bind); offset+=amount;
                 }
@@ -629,7 +860,16 @@ VkResult restoreColdLocked(VkDevice device,Device& d) {
         memory.coldChunks.clear(); memory.coldStoredBytes=0; memory.cold=false;
         memory.coldLogicalSize=0;
         memory.bound=true;
+        restoredAny=true;
         ++d.restoreCount;
+    }
+    if(restoredAny && d.autoInitialized) {
+        const auto visible=d.autoQueues.fromCopyQueue();
+        if(visible!=VK_SUCCESS) {
+            d.gpuGateError=visible; d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
+            return visible;
+        }
+        logSnapshotState("restore",d);
     }
     return VK_SUCCESS;
 }
@@ -642,8 +882,22 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
         if(d.stopWorker.load()) break;
         if(std::chrono::steady_clock::now()<d.lastActivity+std::chrono::milliseconds(d.idleMilliseconds)) continue;
         std::unique_lock<std::mutex> queueLock(d.queueMutex);
+        bool allReady=false;
+        VkResult r=d.autoQueues.ready(allReady);
+        if(r!=VK_SUCCESS) {
+            d.autoEnabled=false; d.stopWorker.store(true); d.gpuGateError=r; d.lastSnapshotError=r; ++d.snapshotFailures;
+            d.lastActivity=std::chrono::steady_clock::now();
+            queueLock.unlock(); continue;
+        }
+        if(!allReady) { d.lastActivity=std::chrono::steady_clock::now(); queueLock.unlock(); continue; }
+        r=d.autoQueues.toCopyQueue();
+        if(r!=VK_SUCCESS) {
+            d.autoEnabled=false; d.stopWorker.store(true); d.gpuGateError=r; d.lastSnapshotError=r; ++d.snapshotFailures;
+            d.lastActivity=std::chrono::steady_clock::now();
+            queueLock.unlock(); continue;
+        }
         const auto start=std::chrono::steady_clock::now();
-        VkResult r=d.snapshot.deviceWaitIdle(d.handle);
+        r=d.snapshot.deviceWaitIdle(d.handle);
         const auto waited=std::chrono::steady_clock::now()-start;
         if(r!=VK_SUCCESS || waited>std::chrono::milliseconds(20)) {
             d.lastActivity=std::chrono::steady_clock::now(); if(r!=VK_SUCCESS) { ++d.snapshotFailures; d.lastSnapshotError=r; }
@@ -690,25 +944,38 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
             memory.coldChunks=std::move(chunks); memory.coldStoredBytes=stored; memory.cold=true;
             d.coldBytes+=stored; d.coldLogicalBytes+=memory.coldLogicalSize; ++d.freezeCount;
             logf("snapshot cold bytes=%llu stored=%llu",static_cast<unsigned long long>(memory.coldLogicalSize),static_cast<unsigned long long>(stored));
+            logSnapshotState("freeze",d);
         }
         d.lastActivity=std::chrono::steady_clock::now();
         queueLock.unlock();
     }
 }
 bool eligibleBuffer(const Device& d,const VkBufferCreateInfo* ci) {
-    constexpr VkBufferUsageFlags allowed=VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    constexpr VkBufferUsageFlags allowed=VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     return d.virtualEnabled && ci && !ci->pNext && ci->flags==0 &&
         ci->size>=1024u*1024u && ci->size%4u==0 &&
-        (ci->usage&VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)!=0 && (ci->usage&~allowed)==0;
+        (ci->usage&VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)!=0 && (ci->usage&~allowed)==0 &&
+        (!(ci->usage&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)||d.bufferDeviceAddressEnabled);
 }
-bool priorityOnlyChain(const void* chain) {
+bool parseVirtualAllocationChain(const void* chain,VkMemoryAllocateFlags& flags,float& priority,bool& hasPriority) {
+    bool hasFlags=false;
+    flags=0; priority=0.5f; hasPriority=false;
+    for(auto* p=static_cast<const VkBaseInStructure*>(chain);p;p=p->pNext) {
+        if(p->sType==VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO) {
+            if(hasFlags) return false;
+            const auto* info=reinterpret_cast<const VkMemoryAllocateFlagsInfo*>(p);
+            if(info->deviceMask!=0 || (info->flags&~VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)!=0) return false;
+            flags=info->flags; hasFlags=true;
 #ifdef VK_EXT_memory_priority
-    for(auto* p=static_cast<const VkBaseInStructure*>(chain);p;p=p->pNext)
-        if(p->sType!=VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT) return false;
-    return true;
-#else
-    return chain==nullptr;
+        } else if(p->sType==VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT) {
+            if(hasPriority) return false;
+            priority=reinterpret_cast<const VkMemoryPriorityAllocateInfoEXT*>(p)->priority;
+            hasPriority=true;
 #endif
+        } else return false;
+    }
+    return true;
 }
 std::vector<std::uint32_t> backingMemoryTypes(const Device& d,const VkMemoryRequirements& req) {
     std::vector<std::uint32_t> types;
@@ -724,6 +991,20 @@ std::vector<std::uint32_t> backingMemoryTypes(const Device& d,const VkMemoryRequ
         if(heap<d.memory.memoryHeapCount && (d.memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)==0) types.push_back(i);
     }
     return types;
+}
+VkResult allocateBackingChild(Device& d,VkDevice device,VkDeviceSize size,std::uint32_t type,
+                              VkMemoryAllocateFlags flags,bool hasPriority,float priority,VkDeviceMemory* out) {
+    VkMemoryPriorityAllocateInfoEXT priorityInfo{VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT};
+    priorityInfo.priority=priority;
+    VkMemoryAllocateFlagsInfo flagsInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
+    flagsInfo.flags=flags;
+    flagsInfo.deviceMask=0;
+    flagsInfo.pNext=hasPriority?&priorityInfo:nullptr;
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize=size; allocation.memoryTypeIndex=type;
+    if(flags) allocation.pNext=&flagsInfo;
+    else if(hasPriority) allocation.pNext=&priorityInfo;
+    return d.allocate(device,&allocation,nullptr,out);
 }
 VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer buffer,
                       VkDeviceMemory memory,VkDeviceSize memoryOffset) {
@@ -743,16 +1024,47 @@ VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer 
     if(vi==d->virtualMemory.end()) {
         auto ai=d->allocations.find(memory);
         if(ai==d->allocations.end() || ai->second.bound || ai->second.type>=32 ||
+           (promoted.concurrentForced && !ai->second.adoptable) ||
+           (promoted.deviceAddress && !(ai->second.flags&VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)) ||
            (promoted.requirements.memoryTypeBits&(1u<<ai->second.type))==0 ||
            promoted.requirements.alignment==0 || memoryOffset%promoted.requirements.alignment!=0 ||
            memoryOffset>ai->second.size || promoted.requirements.size>ai->second.size-memoryOffset)
             return VK_ERROR_FEATURE_NOT_PRESENT;
-        VkSparseMemoryBind bind{}; bind.size=promoted.requirements.size; bind.memory=memory; bind.memoryOffset=memoryOffset;
+        const auto props=d->memory.memoryTypes[ai->second.type].propertyFlags;
+        const bool gpuOnlyLocal=ai->second.local &&
+            (props&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT|VK_MEMORY_PROPERTY_PROTECTED_BIT))==0;
+        const bool adopt=d->autoEnabled && d->nativeWrappingAllowed && gpuOnlyLocal && ai->second.adoptable &&
+            memoryOffset==0 && ai->second.size==promoted.requirements.size;
+        if(adopt) {
+            VirtualMemory adopted{}; adopted.size=ai->second.size; adopted.allocationFlags=ai->second.flags;
+            adopted.priority=ai->second.priority; adopted.hasPriority=ai->second.hasPriority;
+            adopted.buffer=buffer; adopted.everBound=true; adopted.trackPhysicalStats=true;
+            adopted.token=ai->second.token;
+            adopted.adoptedCallbacks=ai->second.callbacks; adopted.hasAdoptedCallbacks=ai->second.hasCallbacks;
+            try {
+                adopted.children.push_back(ai->second.nativeHandle); adopted.childSizes.push_back(ai->second.size);
+                adopted.childTypes.push_back(ai->second.type);
+                auto inserted=d->virtualMemory.emplace(memory,std::move(adopted));
+                if(!inserted.second) return VK_ERROR_FEATURE_NOT_PRESENT;
+                vi=inserted.first;
+            }
+            catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+            VkSparseMemoryBind bind{}; bind.size=promoted.requirements.size; bind.memory=ai->second.nativeHandle;
+            const VkResult r=bindSparse(device,*d,buffer,&bind,1);
+            if(r!=VK_SUCCESS) { d->virtualMemory.erase(vi); return r; }
+            vi->second.bound=true; vi->second.residentBytes=promoted.requirements.size;
+            d->residentBytes+=vi->second.residentBytes;
+            d->allocations.erase(ai); promoted.memory=memory; promoted.synthetic=true;
+            logf("native allocation adopted bytes=%llu type=%u",static_cast<unsigned long long>(promoted.requirements.size),vi->second.childTypes.front());
+            return VK_SUCCESS;
+        }
+        VkSparseMemoryBind bind{}; bind.size=promoted.requirements.size; bind.memory=ai->second.nativeHandle; bind.memoryOffset=memoryOffset;
         VkResult r=bindSparse(device,*d,buffer,&bind,1);
         if(r==VK_SUCCESS) { ai->second.bound=true; promoted.memory=memory; promoted.synthetic=false; }
         return r;
     }
     auto& virtualMem=vi->second;
+    if(promoted.deviceAddress && !(virtualMem.allocationFlags&VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)) return VK_ERROR_FEATURE_NOT_PRESENT;
     if(virtualMem.bound || virtualMem.everBound || virtualMem.deferredFree || virtualMem.size!=promoted.requirements.size ||
        promoted.requirements.alignment==0 || memoryOffset!=0) return VK_ERROR_FEATURE_NOT_PRESENT;
     std::vector<std::uint32_t> types;
@@ -777,8 +1089,10 @@ VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer 
         while(offset<promoted.requirements.size) {
             const VkDeviceSize amount=std::min(chunk,promoted.requirements.size-offset);
             VkDeviceMemory child{}; std::uint32_t usedType=UINT32_MAX; VkResult r=VK_ERROR_OUT_OF_DEVICE_MEMORY;
-            for(auto type:types) { VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; ai.allocationSize=amount; ai.memoryTypeIndex=type;
-                r=d->allocate(device,&ai,nullptr,&child); if(r==VK_SUCCESS) { usedType=type; break; } }
+            for(auto type:types) {
+                r=allocateBackingChild(*d,device,amount,type,virtualMem.allocationFlags,virtualMem.hasPriority,virtualMem.priority,&child);
+                if(r==VK_SUCCESS) { usedType=type; break; }
+            }
             if(r!=VK_SUCCESS) { for(auto h:children) d->free(device,h,nullptr); return r; }
             children.push_back(child); childSizes.push_back(amount); childTypes.push_back(usedType);
             VkSparseMemoryBind bind{}; bind.resourceOffset=offset; bind.size=amount; bind.memory=child; binds.push_back(bind);
@@ -800,8 +1114,35 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateBuffer(VkDevice device,const VkBufferC
     if(!eligibleBuffer(*d,ci)) return d->createBuffer(device,ci,allocator,out);
     VkBufferCreateInfo copy=*ci; copy.flags|=VK_BUFFER_CREATE_SPARSE_BINDING_BIT;
     if(d->autoEnabled) copy.usage|=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    std::vector<std::uint32_t> sharingFamilies;
+    bool concurrentForced=false;
+    if(d->autoEnabled && d->queueFamilies.size()>1) {
+        try {
+            if(ci->sharingMode==VK_SHARING_MODE_EXCLUSIVE) {
+                sharingFamilies=d->queueFamilies;
+                copy.sharingMode=VK_SHARING_MODE_CONCURRENT;
+                copy.queueFamilyIndexCount=static_cast<std::uint32_t>(sharingFamilies.size());
+                copy.pQueueFamilyIndices=sharingFamilies.data();
+                concurrentForced=true;
+            } else {
+                sharingFamilies.assign(ci->pQueueFamilyIndices,ci->pQueueFamilyIndices+ci->queueFamilyIndexCount);
+                for(auto family:d->queueFamilies)
+                    if(std::find(sharingFamilies.begin(),sharingFamilies.end(),family)==sharingFamilies.end()) sharingFamilies.push_back(family);
+                if(sharingFamilies.size()>ci->queueFamilyIndexCount) {
+                    copy.queueFamilyIndexCount=static_cast<std::uint32_t>(sharingFamilies.size());
+                    copy.pQueueFamilyIndices=sharingFamilies.data();
+                }
+            }
+        } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+    }
     VkResult r=d->createBuffer(device,&copy,allocator,out); if(r!=VK_SUCCESS) return r;
-    try { std::lock_guard<std::mutex> lock(d->mutex); d->promotedBuffers.emplace(*out,PromotedBuffer{ci->size}); }
+    try {
+        std::lock_guard<std::mutex> lock(d->mutex);
+        PromotedBuffer promoted{}; promoted.size=ci->size;
+        promoted.deviceAddress=(ci->usage&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)!=0;
+        promoted.concurrentForced=concurrentForced;
+        d->promotedBuffers.emplace(*out,promoted);
+    }
     catch(const std::bad_alloc&) { d->destroyBuffer(device,*out,allocator); *out=VK_NULL_HANDLE; return VK_ERROR_OUT_OF_HOST_MEMORY; }
     return VK_SUCCESS;
 }
@@ -824,8 +1165,9 @@ VKAPI_ATTR VkResult VKAPI_CALL layerBindBufferMemory(VkDevice device,VkBuffer bu
     { std::lock_guard<std::mutex> lock(d->mutex); promoted=d->promotedBuffers.count(buffer)!=0; synthetic=d->virtualMemory.count(memory)!=0; }
     if(!promoted) {
         if(synthetic) return VK_ERROR_FEATURE_NOT_PRESENT;
-        const VkResult r=d->bindBufferMemory(device,buffer,memory,memoryOffset);
-        if(r==VK_SUCCESS) { std::lock_guard<std::mutex> lock(d->mutex); auto i=d->allocations.find(memory); if(i!=d->allocations.end()) i->second.bound=true; }
+        VkDeviceMemory native=memory;
+        { std::lock_guard<std::mutex> lock(d->mutex); native=nativeMemoryLocked(*d,memory); auto i=d->allocations.find(memory); if(i!=d->allocations.end()) i->second.bound=true; }
+        const VkResult r=d->bindBufferMemory(device,buffer,native,memoryOffset);
         return r;
     }
     return bindPromoted(device,d,buffer,memory,memoryOffset);
@@ -839,43 +1181,178 @@ VKAPI_ATTR VkResult VKAPI_CALL layerBindBufferMemory2(VkDevice device,std::uint3
             if(infos[i].pNext) return VK_ERROR_FEATURE_NOT_PRESENT;
             r=bindPromoted(device,d,infos[i].buffer,infos[i].memory,infos[i].memoryOffset);
         } else if(synthetic) return VK_ERROR_FEATURE_NOT_PRESENT;
-        else if(d->bindBufferMemory2) r=d->bindBufferMemory2(device,1,&infos[i]);
-        else r=d->bindBufferMemory(device,infos[i].buffer,infos[i].memory,infos[i].memoryOffset);
-        if(r==VK_SUCCESS && !promoted) { std::lock_guard<std::mutex> lock(d->mutex); auto ai=d->allocations.find(infos[i].memory); if(ai!=d->allocations.end()) ai->second.bound=true; }
+        else {
+            VkBindBufferMemoryInfo translated=infos[i];
+            { std::lock_guard<std::mutex> lock(d->mutex); translated.memory=nativeMemoryLocked(*d,infos[i].memory); auto ai=d->allocations.find(infos[i].memory); if(ai!=d->allocations.end()) ai->second.bound=true; }
+            if(d->bindBufferMemory2) r=d->bindBufferMemory2(device,1,&translated);
+            else r=d->bindBufferMemory(device,translated.buffer,translated.memory,translated.memoryOffset);
+        }
         if(r!=VK_SUCCESS) return r;
     }
     return VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerMapMemory(VkDevice device,VkDeviceMemory memory,VkDeviceSize offset,VkDeviceSize size,VkMemoryMapFlags flags,void** data) {
     auto d=findDevice(device); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
-    { std::lock_guard<std::mutex> lock(d->mutex); if(d->virtualMemory.count(memory)) return VK_ERROR_MEMORY_MAP_FAILED; }
-    auto f=reinterpret_cast<PFN_vkMapMemory>(d->gdpa(device,"vkMapMemory")); return f?f(device,memory,offset,size,flags,data):VK_ERROR_FEATURE_NOT_PRESENT;
+    VkDeviceMemory native=memory;
+    { std::lock_guard<std::mutex> lock(d->mutex); if(d->virtualMemory.count(memory)) return VK_ERROR_MEMORY_MAP_FAILED;
+      auto allocation=d->allocations.find(memory); if(allocation!=d->allocations.end() && allocation->second.wrapped) return VK_ERROR_MEMORY_MAP_FAILED;
+      native=nativeMemoryLocked(*d,memory); }
+    auto f=reinterpret_cast<PFN_vkMapMemory>(d->gdpa(device,"vkMapMemory")); return f?f(device,native,offset,size,flags,data):VK_ERROR_FEATURE_NOT_PRESENT;
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerBindImageMemory(VkDevice device,VkImage image,VkDeviceMemory memory,VkDeviceSize offset) {
     auto d=findDevice(device); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
     { std::lock_guard<std::mutex> lock(d->mutex); if(d->virtualMemory.count(memory)) return VK_ERROR_FEATURE_NOT_PRESENT; }
     auto f=reinterpret_cast<PFN_vkBindImageMemory>(d->gdpa(device,"vkBindImageMemory"));
-    const VkResult r=f?f(device,image,memory,offset):VK_ERROR_FEATURE_NOT_PRESENT;
-    if(r==VK_SUCCESS) { std::lock_guard<std::mutex> lock(d->mutex); auto i=d->allocations.find(memory); if(i!=d->allocations.end()) i->second.bound=true; }
+    VkDeviceMemory native=memory;
+    { std::lock_guard<std::mutex> lock(d->mutex); native=nativeMemoryLocked(*d,memory); auto i=d->allocations.find(memory); if(i!=d->allocations.end()) i->second.bound=true; }
+    const VkResult r=f?f(device,image,native,offset):VK_ERROR_FEATURE_NOT_PRESENT;
     return r;
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerBindImageMemory2(VkDevice device,std::uint32_t count,const VkBindImageMemoryInfo* infos) {
     auto d=findDevice(device); if(!d || !infos) return VK_ERROR_INITIALIZATION_FAILED;
     { std::lock_guard<std::mutex> lock(d->mutex); for(std::uint32_t i=0;i<count;i++) if(d->virtualMemory.count(infos[i].memory)) return VK_ERROR_FEATURE_NOT_PRESENT; }
     auto f=reinterpret_cast<PFN_vkBindImageMemory2>(d->gdpa(device,"vkBindImageMemory2")); if(!f) f=reinterpret_cast<PFN_vkBindImageMemory2>(d->gdpa(device,"vkBindImageMemory2KHR"));
-    const VkResult r=f?f(device,count,infos):VK_ERROR_FEATURE_NOT_PRESENT;
-    if(r==VK_SUCCESS) { std::lock_guard<std::mutex> lock(d->mutex); for(std::uint32_t i=0;i<count;i++) { auto a=d->allocations.find(infos[i].memory); if(a!=d->allocations.end()) a->second.bound=true; } }
+    std::vector<VkBindImageMemoryInfo> translated;
+    try { translated.assign(infos,infos+count); }
+    catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+    { std::lock_guard<std::mutex> lock(d->mutex); for(std::uint32_t i=0;i<count;i++) { translated[i].memory=nativeMemoryLocked(*d,infos[i].memory); auto a=d->allocations.find(infos[i].memory); if(a!=d->allocations.end()) a->second.bound=true; } }
+    const VkResult r=f?f(device,count,translated.data()):VK_ERROR_FEATURE_NOT_PRESENT;
     return r;
 }
 VKAPI_ATTR void VKAPI_CALL layerGetDeviceMemoryCommitment(VkDevice device,VkDeviceMemory memory,VkDeviceSize* bytes) {
     auto d=findDevice(device); if(!d || !bytes) return;
-    { std::lock_guard<std::mutex> lock(d->mutex); if(d->virtualMemory.count(memory)) { *bytes=0; return; } }
-    auto f=reinterpret_cast<PFN_vkGetDeviceMemoryCommitment>(d->gdpa(device,"vkGetDeviceMemoryCommitment")); if(f) f(device,memory,bytes);
+    VkDeviceMemory native=memory;
+    { std::lock_guard<std::mutex> lock(d->mutex); if(d->virtualMemory.count(memory)) { *bytes=0; return; } native=nativeMemoryLocked(*d,memory); }
+    auto f=reinterpret_cast<PFN_vkGetDeviceMemoryCommitment>(d->gdpa(device,"vkGetDeviceMemoryCommitment")); if(f) f(device,native,bytes);
+}
+std::uint64_t memoryOpaqueCaptureAddress(VkDevice device,const VkDeviceMemoryOpaqueCaptureAddressInfo* info,const char* name) {
+    auto d=findDevice(device); if(!d || !info) return 0;
+    VkDeviceMemory native=info->memory;
+    { std::lock_guard<std::mutex> lock(d->mutex); if(d->virtualMemory.count(info->memory)) return 0; native=nativeMemoryLocked(*d,info->memory); }
+    auto f=reinterpret_cast<PFN_vkGetDeviceMemoryOpaqueCaptureAddress>(d->gdpa(device,name));
+    if(!f) return 0;
+    auto translated=*info; translated.memory=native;
+    return f(device,&translated);
+}
+VKAPI_ATTR std::uint64_t VKAPI_CALL layerGetDeviceMemoryOpaqueCaptureAddress(VkDevice device,const VkDeviceMemoryOpaqueCaptureAddressInfo* info) {
+    return memoryOpaqueCaptureAddress(device,info,"vkGetDeviceMemoryOpaqueCaptureAddress");
+}
+VKAPI_ATTR std::uint64_t VKAPI_CALL layerGetDeviceMemoryOpaqueCaptureAddressKHR(VkDevice device,const VkDeviceMemoryOpaqueCaptureAddressInfo* info) {
+    return memoryOpaqueCaptureAddress(device,info,"vkGetDeviceMemoryOpaqueCaptureAddressKHR");
+}
+VKAPI_ATTR void VKAPI_CALL layerSetDeviceMemoryPriorityEXT(VkDevice device,VkDeviceMemory memory,float priority) {
+    auto d=findDevice(device); if(!d) return;
+    auto set=reinterpret_cast<PFN_vkSetDeviceMemoryPriorityEXT>(d->gdpa(device,"vkSetDeviceMemoryPriorityEXT"));
+    VkDeviceMemory native=memory;
+    bool isVirtual=false;
+    {
+        std::lock_guard<std::mutex> lock(d->mutex);
+        auto virtualMemory=d->virtualMemory.find(memory);
+        if(virtualMemory!=d->virtualMemory.end()) {
+            isVirtual=true;
+            virtualMemory->second.priority=priority; virtualMemory->second.hasPriority=true;
+            if(set) for(auto child:virtualMemory->second.children) set(device,child,priority);
+        } else {
+            native=nativeMemoryLocked(*d,memory);
+            auto allocation=d->allocations.find(memory);
+            if(allocation!=d->allocations.end()) { allocation->second.priority=priority; allocation->second.hasPriority=true; }
+        }
+    }
+    if(!isVirtual && set) set(device,native,priority);
+}
+VKAPI_ATTR VkResult VKAPI_CALL layerSetDebugUtilsObjectNameEXT(VkDevice device,const VkDebugUtilsObjectNameInfoEXT* info) {
+    auto d=findDevice(device); if(!d || !info) return VK_ERROR_INITIALIZATION_FAILED;
+    auto fn=reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(d->gdpa(device,"vkSetDebugUtilsObjectNameEXT"));
+    if(!fn) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    auto translated=*info;
+    if(info->objectType==VK_OBJECT_TYPE_DEVICE_MEMORY) {
+        std::lock_guard<std::mutex> lock(d->mutex);
+        const auto memory=tokenHandle<VkDeviceMemory>(static_cast<std::uintptr_t>(info->objectHandle));
+        if(d->virtualMemory.count(memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
+        translated.objectHandle=static_cast<std::uint64_t>(handleToken(nativeMemoryLocked(*d,memory)));
+    }
+    return fn(device,&translated);
+}
+VKAPI_ATTR VkResult VKAPI_CALL layerSetDebugUtilsObjectTagEXT(VkDevice device,const VkDebugUtilsObjectTagInfoEXT* info) {
+    auto d=findDevice(device); if(!d || !info) return VK_ERROR_INITIALIZATION_FAILED;
+    auto fn=reinterpret_cast<PFN_vkSetDebugUtilsObjectTagEXT>(d->gdpa(device,"vkSetDebugUtilsObjectTagEXT"));
+    if(!fn) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    auto translated=*info;
+    if(info->objectType==VK_OBJECT_TYPE_DEVICE_MEMORY) {
+        std::lock_guard<std::mutex> lock(d->mutex);
+        const auto memory=tokenHandle<VkDeviceMemory>(static_cast<std::uintptr_t>(info->objectHandle));
+        if(d->virtualMemory.count(memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
+        translated.objectHandle=static_cast<std::uint64_t>(handleToken(nativeMemoryLocked(*d,memory)));
+    }
+    return fn(device,&translated);
+}
+VKAPI_ATTR VkResult VKAPI_CALL layerDebugMarkerSetObjectNameEXT(VkDevice device,const VkDebugMarkerObjectNameInfoEXT* info) {
+    auto d=findDevice(device); if(!d || !info) return VK_ERROR_INITIALIZATION_FAILED;
+    auto fn=reinterpret_cast<PFN_vkDebugMarkerSetObjectNameEXT>(d->gdpa(device,"vkDebugMarkerSetObjectNameEXT"));
+    if(!fn) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    auto translated=*info;
+    if(info->objectType==VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT) {
+        std::lock_guard<std::mutex> lock(d->mutex);
+        const auto memory=tokenHandle<VkDeviceMemory>(static_cast<std::uintptr_t>(info->object));
+        if(d->virtualMemory.count(memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
+        translated.object=static_cast<std::uint64_t>(handleToken(nativeMemoryLocked(*d,memory)));
+    }
+    return fn(device,&translated);
+}
+VKAPI_ATTR VkResult VKAPI_CALL layerDebugMarkerSetObjectTagEXT(VkDevice device,const VkDebugMarkerObjectTagInfoEXT* info) {
+    auto d=findDevice(device); if(!d || !info) return VK_ERROR_INITIALIZATION_FAILED;
+    auto fn=reinterpret_cast<PFN_vkDebugMarkerSetObjectTagEXT>(d->gdpa(device,"vkDebugMarkerSetObjectTagEXT"));
+    if(!fn) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    auto translated=*info;
+    if(info->objectType==VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT) {
+        std::lock_guard<std::mutex> lock(d->mutex);
+        const auto memory=tokenHandle<VkDeviceMemory>(static_cast<std::uintptr_t>(info->object));
+        if(d->virtualMemory.count(memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
+        translated.object=static_cast<std::uint64_t>(handleToken(nativeMemoryLocked(*d,memory)));
+    }
+    return fn(device,&translated);
+}
+bool containsVirtualMemory(const std::shared_ptr<Device>& d,VkDeviceMemory memory) {
+    std::lock_guard<std::mutex> lock(d->mutex);
+    return d->virtualMemory.count(memory)!=0;
+}
+VKAPI_ATTR VkResult VKAPI_CALL layerBindVideoSessionMemoryKHR(VkDevice device,VkVideoSessionKHR session,
+    std::uint32_t count,const VkBindVideoSessionMemoryInfoKHR* infos) {
+    auto d=findDevice(device); if(!d || !infos) return VK_ERROR_INITIALIZATION_FAILED;
+    for(std::uint32_t i=0;i<count;i++) if(containsVirtualMemory(d,infos[i].memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
+    auto fn=reinterpret_cast<PFN_vkBindVideoSessionMemoryKHR>(d->gdpa(device,"vkBindVideoSessionMemoryKHR"));
+    return fn?fn(device,session,count,infos):VK_ERROR_FEATURE_NOT_PRESENT;
+}
+VKAPI_ATTR VkResult VKAPI_CALL layerBindAccelerationStructureMemoryNV(VkDevice device,std::uint32_t count,
+    const VkBindAccelerationStructureMemoryInfoNV* infos) {
+    auto d=findDevice(device); if(!d || !infos) return VK_ERROR_INITIALIZATION_FAILED;
+    for(std::uint32_t i=0;i<count;i++) if(containsVirtualMemory(d,infos[i].memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
+    auto fn=reinterpret_cast<PFN_vkBindAccelerationStructureMemoryNV>(d->gdpa(device,"vkBindAccelerationStructureMemoryNV"));
+    return fn?fn(device,count,infos):VK_ERROR_FEATURE_NOT_PRESENT;
+}
+VKAPI_ATTR VkResult VKAPI_CALL layerBindTensorMemoryARM(VkDevice device,std::uint32_t count,const VkBindTensorMemoryInfoARM* infos) {
+    auto d=findDevice(device); if(!d || !infos) return VK_ERROR_INITIALIZATION_FAILED;
+    for(std::uint32_t i=0;i<count;i++) if(containsVirtualMemory(d,infos[i].memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
+    auto fn=reinterpret_cast<PFN_vkBindTensorMemoryARM>(d->gdpa(device,"vkBindTensorMemoryARM"));
+    return fn?fn(device,count,infos):VK_ERROR_FEATURE_NOT_PRESENT;
+}
+VKAPI_ATTR VkResult VKAPI_CALL layerBindDataGraphPipelineSessionMemoryARM(VkDevice device,std::uint32_t count,
+    const VkBindDataGraphPipelineSessionMemoryInfoARM* infos) {
+    auto d=findDevice(device); if(!d || !infos) return VK_ERROR_INITIALIZATION_FAILED;
+    for(std::uint32_t i=0;i<count;i++) if(containsVirtualMemory(d,infos[i].memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
+    auto fn=reinterpret_cast<PFN_vkBindDataGraphPipelineSessionMemoryARM>(d->gdpa(device,"vkBindDataGraphPipelineSessionMemoryARM"));
+    return fn?fn(device,count,infos):VK_ERROR_FEATURE_NOT_PRESENT;
+}
+VKAPI_ATTR void VKAPI_CALL layerCmdBindTileMemoryQCOM(VkCommandBuffer commandBuffer,const VkTileMemoryBindInfoQCOM* info) {
+    auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d || !info) return;
+    if(containsVirtualMemory(d,info->memory)) { logf("rejected synthetic memory in vkCmdBindTileMemoryQCOM"); return; }
+    auto fn=reinterpret_cast<PFN_vkCmdBindTileMemoryQCOM>(d->gdpa(d->handle,"vkCmdBindTileMemoryQCOM"));
+    if(fn) fn(commandBuffer,info);
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerGetSnapshotStats(VkDevice device,ZvramSnapshotStatsNX* out) {
     auto d=findDevice(device); if(!d || !out || out->structSize<sizeof(ZvramSnapshotStatsNX)) return VK_ERROR_INITIALIZATION_FAILED;
     std::lock_guard<std::mutex> lock(d->mutex);
-    if(!d->autoEnabled) return VK_ERROR_FEATURE_NOT_PRESENT;
+    if(!d->autoInitialized) return VK_ERROR_FEATURE_NOT_PRESENT;
     out->version=1; out->coldLogicalBytes=d->coldLogicalBytes; out->coldStoredBytes=d->coldBytes;
     out->coldBudgetBytes=d->coldBudget; out->residentBytes=d->residentBytes;
     out->freezes=d->freezeCount; out->restores=d->restoreCount; out->failures=d->snapshotFailures;
@@ -885,13 +1362,20 @@ VKAPI_ATTR VkResult VKAPI_CALL layerGetSnapshotStats(VkDevice device,ZvramSnapsh
 VKAPI_ATTR VkResult VKAPI_CALL layerAllocateMemory(VkDevice device,const VkMemoryAllocateInfo* info,const VkAllocationCallbacks* allocator,VkDeviceMemory* out) {
     auto d=findDevice(device); if(!d || !d->allocate) return VK_ERROR_INITIALIZATION_FAILED;
     if(info && info->memoryTypeIndex==d->virtualType) {
-        if(!d->virtualEnabled || !out || !priorityOnlyChain(info->pNext)) return VK_ERROR_FEATURE_NOT_PRESENT;
+        VkMemoryAllocateFlags flags{}; float priority{}; bool hasPriority{};
+        if(!d->virtualEnabled || !out || !parseVirtualAllocationChain(info->pNext,flags,priority,hasPriority) ||
+           ((flags&VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT) && !d->bufferDeviceAddressEnabled)) return VK_ERROR_FEATURE_NOT_PRESENT;
         std::lock_guard<std::mutex> lock(d->mutex);
         if(info->allocationSize==0 || info->allocationSize>d->virtualBytes-d->virtualUsage) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         auto* token=new(std::nothrow) std::uint8_t{}; if(!token) return VK_ERROR_OUT_OF_HOST_MEMORY;
         VkDeviceMemory handle=tokenHandle<VkDeviceMemory>(reinterpret_cast<std::uintptr_t>(token));
-        VirtualMemory entry; entry.size=info->allocationSize; entry.token=token;
-        try { d->virtualMemory.emplace(handle,std::move(entry)); }
+        if(d->allocations.count(handle)) { delete token; return VK_ERROR_OUT_OF_HOST_MEMORY; }
+        VirtualMemory entry; entry.size=info->allocationSize; entry.token=token; entry.capacityAccounted=true;
+        entry.allocationFlags=flags; entry.priority=priority; entry.hasPriority=hasPriority;
+        try {
+            const auto inserted=d->virtualMemory.emplace(handle,std::move(entry));
+            if(!inserted.second) { delete token; return VK_ERROR_OUT_OF_HOST_MEMORY; }
+        }
         catch(const std::bad_alloc&) { delete token; return VK_ERROR_OUT_OF_HOST_MEMORY; }
         d->virtualUsage+=info->allocationSize; *out=handle;
         logf("virtual allocate bytes=%llu heap-capacity=%llu",static_cast<unsigned long long>(info->allocationSize),static_cast<unsigned long long>(d->virtualBytes));
@@ -900,11 +1384,47 @@ VKAPI_ATTR VkResult VKAPI_CALL layerAllocateMemory(VkDevice device,const VkMemor
     VkResult r=d->allocate(device,info,allocator,out);
     std::unique_lock<std::mutex> lock(d->mutex);
     if(r!=VK_SUCCESS) { ++d->failures; if(verbose()) logf("allocation failed result=%d",static_cast<int>(r)); return r; }
-    bool local=false; if(info->memoryTypeIndex<d->memory.memoryTypeCount) { auto heap=d->memory.memoryTypes[info->memoryTypeIndex].heapIndex; local=(d->memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)!=0; }
-    try { d->allocations.emplace(*out,Allocation{info->allocationSize,local,info->memoryTypeIndex,false}); }
-    catch(const std::bad_alloc&) { ++d->failures; lock.unlock(); d->free(device,*out,allocator); *out=VK_NULL_HANDLE; return VK_ERROR_OUT_OF_HOST_MEMORY; }
+    bool local=false; VkMemoryPropertyFlags typeFlags=0;
+    if(info->memoryTypeIndex<d->memory.memoryTypeCount) {
+        const auto heap=d->memory.memoryTypes[info->memoryTypeIndex].heapIndex;
+        typeFlags=d->memory.memoryTypes[info->memoryTypeIndex].propertyFlags;
+        local=heap<d->memory.memoryHeapCount && (d->memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)!=0;
+    }
+    VkMemoryAllocateFlags allocationFlags{};
+    float allocationPriority=0.5f; bool hasPriority=false;
+    const bool adoptable=parseVirtualAllocationChain(info->pNext,allocationFlags,allocationPriority,hasPriority);
+    for(auto* p=static_cast<const VkBaseInStructure*>(info->pNext);p;p=p->pNext)
+        if(p->sType==VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO)
+            allocationFlags=reinterpret_cast<const VkMemoryAllocateFlagsInfo*>(p)->flags;
+    const bool wrap=d->autoEnabled && d->nativeWrappingAllowed && local &&
+        (typeFlags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT|VK_MEMORY_PROPERTY_PROTECTED_BIT))==0 && adoptable;
+    const VkDeviceMemory native=*out;
+    if(!wrap && d->virtualMemory.count(native)) {
+        lock.unlock(); d->free(device,native,allocator); *out=VK_NULL_HANDLE; return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    }
+    void* token=nullptr;
+    VkDeviceMemory api=native;
+    if(wrap) {
+        token=new(std::nothrow) std::uint8_t{};
+        if(!token) { lock.unlock(); d->free(device,native,allocator); *out=VK_NULL_HANDLE; return VK_ERROR_OUT_OF_HOST_MEMORY; }
+        api=tokenHandle<VkDeviceMemory>(reinterpret_cast<std::uintptr_t>(token));
+        if(api==native || d->allocations.count(api) || d->virtualMemory.count(api)) {
+            delete static_cast<std::uint8_t*>(token); lock.unlock(); d->free(device,native,allocator);
+            *out=VK_NULL_HANDLE; return VK_ERROR_OUT_OF_HOST_MEMORY;
+        }
+    }
+    Allocation tracked{}; tracked.size=info->allocationSize; tracked.local=local; tracked.type=info->memoryTypeIndex;
+    tracked.nativeHandle=native; tracked.token=token; tracked.wrapped=wrap;
+    if(allocator) { tracked.callbacks=*allocator; tracked.hasCallbacks=true; }
+    tracked.flags=allocationFlags; tracked.priority=allocationPriority; tracked.hasPriority=hasPriority; tracked.adoptable=adoptable;
+    try {
+        const auto inserted=d->allocations.emplace(api,tracked);
+        if(!inserted.second) { delete static_cast<std::uint8_t*>(token); lock.unlock(); d->free(device,native,allocator); *out=VK_NULL_HANDLE; return VK_ERROR_OUT_OF_HOST_MEMORY; }
+    }
+    catch(const std::bad_alloc&) { ++d->failures; delete static_cast<std::uint8_t*>(token); lock.unlock(); d->free(device,native,allocator); *out=VK_NULL_HANDLE; return VK_ERROR_OUT_OF_HOST_MEMORY; }
+    *out=api;
     auto& live=local?d->liveLocal:d->liveOther; auto& peak=local?d->peakLocal:d->peakOther; live+=info->allocationSize; peak=std::max(peak,live);
-    if(verbose()) logf("allocate %s bytes=%llu",local?"local":"nonlocal",static_cast<unsigned long long>(info->allocationSize));
+    if(verbose()) logf("allocate %s bytes=%llu%s",local?"local":"nonlocal",static_cast<unsigned long long>(info->allocationSize),wrap?" wrapped":"");
     return r;
 }
 VKAPI_ATTR void VKAPI_CALL layerDestroyBuffer(VkDevice device,VkBuffer buffer,const VkAllocationCallbacks* allocator) {
@@ -948,7 +1468,7 @@ VKAPI_ATTR void VKAPI_CALL layerDestroyBuffer(VkDevice device,VkBuffer buffer,co
         if(vm.deferredFree) {
             if(vm.residentBytes) d->residentBytes-=vm.residentBytes;
             d->coldBytes-=vm.coldStoredBytes; d->coldLogicalBytes-=vm.coldLogicalSize;
-            releaseChildren(*d,vm); d->virtualUsage-=vm.size;
+            releaseChildren(*d,vm); if(vm.capacityAccounted) d->virtualUsage-=vm.size;
             delete static_cast<std::uint8_t*>(vm.token); d->virtualMemory.erase(vi);
         }
     } else if(nativeAllocation) {
@@ -960,10 +1480,16 @@ VKAPI_ATTR void VKAPI_CALL layerDestroyDevice(VkDevice device,const VkAllocation
     auto d=findDevice(device); if(!d) return;
     d->stopWorker.store(true); d->activity.notify_all();
     if(d->snapshotWorker.joinable()) d->snapshotWorker.join();
-    { std::lock_guard<std::mutex> lock(d->mutex);
+    { std::lock_guard<std::mutex> lock(d->mutex); std::lock_guard<std::mutex> queueLock(d->queueMutex);
+      if(d->autoInitialized && d->snapshot.deviceWaitIdle) d->snapshot.deviceWaitIdle(device);
+      if(d->autoInitialized) logSnapshotState("destroy-cleanup",*d);
       for(auto& pair:d->virtualMemory) { releaseChildren(*d,pair.second); delete static_cast<std::uint8_t*>(pair.second.token); }
       d->virtualMemory.clear();
+      for(auto& pair:d->allocations) delete static_cast<std::uint8_t*>(pair.second.token);
+      d->allocations.clear();
       releaseSnapshotResources(*d);
+      if(d->autoInitialized) d->autoQueues.destroy();
+      d->autoInitialized=false;
       logf("device=%s live-local=%llu peak-local=%llu live-nonlocal=%llu peak-nonlocal=%llu allocation-failures=%llu",d->gpu.c_str(),static_cast<unsigned long long>(d->liveLocal),static_cast<unsigned long long>(d->peakLocal),static_cast<unsigned long long>(d->liveOther),static_cast<unsigned long long>(d->peakOther),static_cast<unsigned long long>(d->failures)); }
     { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(device)); }
     if(d->destroy) d->destroy(device,allocator);
@@ -975,7 +1501,7 @@ VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice device,VkDeviceMemory memory
           if(i->second.bound) { i->second.deferredFree=true; return; }
           if(i->second.residentBytes) d->residentBytes-=i->second.residentBytes;
           d->coldBytes-=i->second.coldStoredBytes; d->coldLogicalBytes-=i->second.coldLogicalSize;
-          releaseChildren(*d,i->second); d->virtualUsage-=i->second.size;
+          releaseChildren(*d,i->second); if(i->second.capacityAccounted) d->virtualUsage-=i->second.size;
           logf("virtual free bytes=%llu",static_cast<unsigned long long>(i->second.size));
           delete static_cast<std::uint8_t*>(i->second.token); d->virtualMemory.erase(i); return;
       } }
@@ -983,7 +1509,9 @@ VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice device,VkDeviceMemory memory
     { std::lock_guard<std::mutex> lock(d->mutex); auto i=d->allocations.find(memory);
       if(i!=d->allocations.end()) { a=i->second; auto& live=a.local?d->liveLocal:d->liveOther; live-=a.size; d->allocations.erase(i); found=true; } }
     if(found && verbose()) logf("free bytes=%llu",static_cast<unsigned long long>(a.size));
-    d->free(device,memory,allocator);
+    if(found) delete static_cast<std::uint8_t*>(a.token);
+    const VkAllocationCallbacks* nativeAllocator=found && a.wrapped?(a.hasCallbacks?&a.callbacks:nullptr):allocator;
+    d->free(device,found?a.nativeHandle:memory,nativeAllocator);
 }
 
 template<class Function,class... Args>
@@ -993,8 +1521,22 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     std::unique_lock<std::mutex> deviceLock(d->mutex,std::defer_lock);
     std::unique_lock<std::mutex> queueLock(d->queueMutex,std::defer_lock);
     if(d->virtualEnabled) { deviceLock.lock(); queueLock.lock(); }
-    if(d->autoEnabled) { const auto r=restoreColdLocked(d->handle,*d); if(r!=VK_SUCCESS) return r; }
+    if(d->gpuGateError!=VK_SUCCESS) return d->gpuGateError;
+    const bool hasCold=std::any_of(d->virtualMemory.begin(),d->virtualMemory.end(),[](const auto& pair){return pair.second.cold;});
+    if(hasCold) { const auto r=restoreColdLocked(d->handle,*d); if(r!=VK_SUCCESS) return r; }
+    const bool unsupportedOrdering=std::strcmp(name,"vkQueueBindSparse")==0 || std::strcmp(name,"vkQueuePresentKHR")==0;
+    if(unsupportedOrdering && d->autoEnabled) {
+        d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
+    }
     const auto r=next(queue,args...);
+    if(r==VK_SUCCESS && d->autoInitialized && !unsupportedOrdering &&
+       (std::strcmp(name,"vkQueueSubmit")==0 || std::strcmp(name,"vkQueueSubmit2")==0 || std::strcmp(name,"vkQueueSubmit2KHR")==0)) {
+        const auto marker=d->autoQueues.submitted(queue);
+        if(marker!=VK_SUCCESS) {
+            d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
+            ++d->snapshotFailures; d->lastSnapshotError=marker;
+        }
+    }
     if(d->autoEnabled) { d->lastActivity=std::chrono::steady_clock::now(); d->activity.notify_all(); }
     return r;
 }
@@ -1008,7 +1550,68 @@ VKAPI_ATTR VkResult VKAPI_CALL layerQueueSubmit2KHR(VkQueue q,std::uint32_t coun
     return queueCall<PFN_vkQueueSubmit2>(q,"vkQueueSubmit2KHR",count,info,fence);
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerQueueBindSparse(VkQueue q,std::uint32_t count,const VkBindSparseInfo* info,VkFence fence) {
-    return queueCall<PFN_vkQueueBindSparse>(q,"vkQueueBindSparse",count,info,fence);
+    auto d=findDevice(reinterpret_cast<VkDevice>(q)); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
+    if(!info || count==0) return queueCall<PFN_vkQueueBindSparse>(q,"vkQueueBindSparse",count,info,fence);
+    std::vector<VkBindSparseInfo> translated;
+    std::vector<std::vector<VkSparseBufferMemoryBindInfo>> bufferInfos;
+    std::vector<std::vector<std::vector<VkSparseMemoryBind>>> bufferBinds;
+    std::vector<std::vector<VkSparseImageOpaqueMemoryBindInfo>> opaqueInfos;
+    std::vector<std::vector<std::vector<VkSparseMemoryBind>>> opaqueBinds;
+    std::vector<std::vector<VkSparseImageMemoryBindInfo>> imageInfos;
+    std::vector<std::vector<std::vector<VkSparseImageMemoryBind>>> imageBinds;
+    try {
+        translated.assign(info,info+count);
+        bufferInfos.resize(count); bufferBinds.resize(count); opaqueInfos.resize(count); opaqueBinds.resize(count);
+        imageInfos.resize(count); imageBinds.resize(count);
+        for(std::uint32_t n=0;n<count;n++) {
+            if(info[n].bufferBindCount) {
+                bufferInfos[n].assign(info[n].pBufferBinds,info[n].pBufferBinds+info[n].bufferBindCount);
+                bufferBinds[n].resize(info[n].bufferBindCount);
+                for(std::uint32_t i=0;i<info[n].bufferBindCount;i++) {
+                    const auto& src=info[n].pBufferBinds[i];
+                    if(src.bindCount) bufferBinds[n][i].assign(src.pBinds,src.pBinds+src.bindCount);
+                    bufferInfos[n][i].pBinds=bufferBinds[n][i].data();
+                }
+                translated[n].pBufferBinds=bufferInfos[n].data();
+            }
+            if(info[n].imageOpaqueBindCount) {
+                opaqueInfos[n].assign(info[n].pImageOpaqueBinds,info[n].pImageOpaqueBinds+info[n].imageOpaqueBindCount);
+                opaqueBinds[n].resize(info[n].imageOpaqueBindCount);
+                for(std::uint32_t i=0;i<info[n].imageOpaqueBindCount;i++) {
+                    const auto& src=info[n].pImageOpaqueBinds[i];
+                    if(src.bindCount) opaqueBinds[n][i].assign(src.pBinds,src.pBinds+src.bindCount);
+                    opaqueInfos[n][i].pBinds=opaqueBinds[n][i].data();
+                }
+                translated[n].pImageOpaqueBinds=opaqueInfos[n].data();
+            }
+            if(info[n].imageBindCount) {
+                imageInfos[n].assign(info[n].pImageBinds,info[n].pImageBinds+info[n].imageBindCount);
+                imageBinds[n].resize(info[n].imageBindCount);
+                for(std::uint32_t i=0;i<info[n].imageBindCount;i++) {
+                    const auto& src=info[n].pImageBinds[i];
+                    if(src.bindCount) imageBinds[n][i].assign(src.pBinds,src.pBinds+src.bindCount);
+                    imageInfos[n][i].pBinds=imageBinds[n][i].data();
+                }
+                translated[n].pImageBinds=imageInfos[n].data();
+            }
+        }
+    } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+    {
+        std::lock_guard<std::mutex> lock(d->mutex);
+        auto translate=[&](VkDeviceMemory& memory) {
+            if(!memory) return VK_SUCCESS;
+            if(d->virtualMemory.count(memory)) return VK_ERROR_FEATURE_NOT_PRESENT;
+            const auto found=d->allocations.find(memory);
+            if(found!=d->allocations.end()) { found->second.bound=true; memory=found->second.nativeHandle; }
+            return VK_SUCCESS;
+        };
+        for(std::uint32_t n=0;n<count;n++) {
+            for(auto& group:bufferBinds[n]) for(auto& bind:group) { const auto r=translate(bind.memory); if(r!=VK_SUCCESS) return r; }
+            for(auto& group:opaqueBinds[n]) for(auto& bind:group) { const auto r=translate(bind.memory); if(r!=VK_SUCCESS) return r; }
+            for(auto& group:imageBinds[n]) for(auto& bind:group) { const auto r=translate(bind.memory); if(r!=VK_SUCCESS) return r; }
+        }
+    }
+    return queueCall<PFN_vkQueueBindSparse>(q,"vkQueueBindSparse",count,translated.data(),fence);
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerQueueWaitIdle(VkQueue q) {
     return queueCall<PFN_vkQueueWaitIdle>(q,"vkQueueWaitIdle");
@@ -1016,13 +1619,61 @@ VKAPI_ATTR VkResult VKAPI_CALL layerQueueWaitIdle(VkQueue q) {
 VKAPI_ATTR VkResult VKAPI_CALL layerQueuePresent(VkQueue q,const VkPresentInfoKHR* info) {
     return queueCall<PFN_vkQueuePresentKHR>(q,"vkQueuePresentKHR",info);
 }
+auto isForcedBuffer(const std::shared_ptr<Device>& d) {
+    return [d](VkBuffer buffer) {
+        std::lock_guard<std::mutex> lock(d->mutex);
+        const auto found=d->promotedBuffers.find(buffer);
+        return found!=d->promotedBuffers.end() && found->second.concurrentForced;
+    };
+}
+VKAPI_ATTR void VKAPI_CALL layerCmdPipelineBarrier(VkCommandBuffer commandBuffer,
+    VkPipelineStageFlags srcStage,VkPipelineStageFlags dstStage,VkDependencyFlags flags,
+    std::uint32_t memoryCount,const VkMemoryBarrier* memoryBarriers,
+    std::uint32_t bufferCount,const VkBufferMemoryBarrier* bufferBarriers,
+    std::uint32_t imageCount,const VkImageMemoryBarrier* imageBarriers) {
+    auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
+    auto fn=reinterpret_cast<PFN_vkCmdPipelineBarrier>(d->gdpa(d->handle,"vkCmdPipelineBarrier"));
+    if(!d->autoInitialized) { if(fn) fn(commandBuffer,srcStage,dstStage,flags,memoryCount,memoryBarriers,bufferCount,bufferBarriers,imageCount,imageBarriers); return; }
+    auto forced=isForcedBuffer(d);
+    zvram::cmdPipelineBarrier(fn,forced,commandBuffer,srcStage,dstStage,flags,memoryCount,memoryBarriers,
+                              bufferCount,bufferBarriers,imageCount,imageBarriers);
+}
+VKAPI_ATTR void VKAPI_CALL layerCmdWaitEvents(VkCommandBuffer commandBuffer,
+    std::uint32_t eventCount,const VkEvent* events,VkPipelineStageFlags srcStage,VkPipelineStageFlags dstStage,
+    std::uint32_t memoryCount,const VkMemoryBarrier* memoryBarriers,
+    std::uint32_t bufferCount,const VkBufferMemoryBarrier* bufferBarriers,
+    std::uint32_t imageCount,const VkImageMemoryBarrier* imageBarriers) {
+    auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
+    auto fn=reinterpret_cast<PFN_vkCmdWaitEvents>(d->gdpa(d->handle,"vkCmdWaitEvents"));
+    if(!d->autoInitialized) { if(fn) fn(commandBuffer,eventCount,events,srcStage,dstStage,memoryCount,memoryBarriers,bufferCount,bufferBarriers,imageCount,imageBarriers); return; }
+    auto forced=isForcedBuffer(d);
+    zvram::cmdWaitEvents(fn,forced,commandBuffer,eventCount,events,srcStage,dstStage,memoryCount,memoryBarriers,
+                         bufferCount,bufferBarriers,imageCount,imageBarriers);
+}
+VKAPI_ATTR void VKAPI_CALL layerCmdPipelineBarrier2(VkCommandBuffer commandBuffer,const VkDependencyInfo* dependency) {
+    auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
+    auto fn=reinterpret_cast<PFN_vkCmdPipelineBarrier2>(d->gdpa(d->handle,"vkCmdPipelineBarrier2"));
+    if(!fn) fn=reinterpret_cast<PFN_vkCmdPipelineBarrier2>(d->gdpa(d->handle,"vkCmdPipelineBarrier2KHR"));
+    if(!d->autoInitialized) { if(fn) fn(commandBuffer,dependency); return; }
+    auto forced=isForcedBuffer(d); zvram::cmdPipelineBarrier2(fn,forced,commandBuffer,dependency);
+}
+VKAPI_ATTR void VKAPI_CALL layerCmdWaitEvents2(VkCommandBuffer commandBuffer,std::uint32_t eventCount,
+    const VkEvent* events,const VkDependencyInfo* dependencies) {
+    auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
+    auto fn=reinterpret_cast<PFN_vkCmdWaitEvents2>(d->gdpa(d->handle,"vkCmdWaitEvents2"));
+    if(!fn) fn=reinterpret_cast<PFN_vkCmdWaitEvents2>(d->gdpa(d->handle,"vkCmdWaitEvents2KHR"));
+    if(!d->autoInitialized) { if(fn) fn(commandBuffer,eventCount,events,dependencies); return; }
+    auto forced=isForcedBuffer(d); zvram::cmdWaitEvents2(fn,forced,commandBuffer,eventCount,events,dependencies);
+}
 VKAPI_ATTR VkResult VKAPI_CALL layerDeviceWaitIdle(VkDevice device) {
     auto d=findDevice(device); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
     auto next=reinterpret_cast<PFN_vkDeviceWaitIdle>(d->gdpa(device,"vkDeviceWaitIdle")); if(!next) return VK_ERROR_INITIALIZATION_FAILED;
     std::unique_lock<std::mutex> deviceLock(d->mutex,std::defer_lock);
     std::unique_lock<std::mutex> queueLock(d->queueMutex,std::defer_lock);
     if(d->virtualEnabled) { deviceLock.lock(); queueLock.lock(); }
-    if(d->autoEnabled) { const auto r=restoreColdLocked(device,*d); if(r!=VK_SUCCESS) return r; }
+    if(d->gpuGateError!=VK_SUCCESS) return d->gpuGateError;
+    const bool hasCold=std::any_of(d->virtualMemory.begin(),d->virtualMemory.end(),[](const auto& pair){return pair.second.cold;});
+    if(hasCold) { const auto r=restoreColdLocked(device,*d); if(r!=VK_SUCCESS) return r; }
     const auto r=next(device);
     if(d->autoEnabled) { d->lastActivity=std::chrono::steady_clock::now(); d->activity.notify_all(); }
     return r;
@@ -1047,10 +1698,25 @@ PFN_vkVoidFunction lookup(const char* name) {
     MATCH("vkMapMemory",layerMapMemory); MATCH("vkBindImageMemory",layerBindImageMemory);
     MATCH("vkBindImageMemory2",layerBindImageMemory2); MATCH("vkBindImageMemory2KHR",layerBindImageMemory2);
     MATCH("vkGetDeviceMemoryCommitment",layerGetDeviceMemoryCommitment);
+    MATCH("vkGetDeviceMemoryOpaqueCaptureAddress",layerGetDeviceMemoryOpaqueCaptureAddress);
+    MATCH("vkGetDeviceMemoryOpaqueCaptureAddressKHR",layerGetDeviceMemoryOpaqueCaptureAddressKHR);
+    MATCH("vkSetDeviceMemoryPriorityEXT",layerSetDeviceMemoryPriorityEXT);
+    MATCH("vkSetDebugUtilsObjectNameEXT",layerSetDebugUtilsObjectNameEXT);
+    MATCH("vkSetDebugUtilsObjectTagEXT",layerSetDebugUtilsObjectTagEXT);
+    MATCH("vkDebugMarkerSetObjectNameEXT",layerDebugMarkerSetObjectNameEXT);
+    MATCH("vkDebugMarkerSetObjectTagEXT",layerDebugMarkerSetObjectTagEXT);
+    MATCH("vkBindVideoSessionMemoryKHR",layerBindVideoSessionMemoryKHR);
+    MATCH("vkBindAccelerationStructureMemoryNV",layerBindAccelerationStructureMemoryNV);
+    MATCH("vkBindTensorMemoryARM",layerBindTensorMemoryARM);
+    MATCH("vkBindDataGraphPipelineSessionMemoryARM",layerBindDataGraphPipelineSessionMemoryARM);
+    MATCH("vkCmdBindTileMemoryQCOM",layerCmdBindTileMemoryQCOM);
     MATCH("vkZVramGetSnapshotStatsNX",layerGetSnapshotStats);
     MATCH("vkQueueSubmit",layerQueueSubmit); MATCH("vkQueueSubmit2",layerQueueSubmit2);
     MATCH("vkQueueSubmit2KHR",layerQueueSubmit2KHR); MATCH("vkQueueBindSparse",layerQueueBindSparse);
     MATCH("vkQueueWaitIdle",layerQueueWaitIdle); MATCH("vkQueuePresentKHR",layerQueuePresent);
+    MATCH("vkCmdPipelineBarrier",layerCmdPipelineBarrier); MATCH("vkCmdWaitEvents",layerCmdWaitEvents);
+    MATCH("vkCmdPipelineBarrier2",layerCmdPipelineBarrier2); MATCH("vkCmdPipelineBarrier2KHR",layerCmdPipelineBarrier2);
+    MATCH("vkCmdWaitEvents2",layerCmdWaitEvents2); MATCH("vkCmdWaitEvents2KHR",layerCmdWaitEvents2);
     MATCH("vkDeviceWaitIdle",layerDeviceWaitIdle);
 #undef MATCH
     return nullptr;
@@ -1063,7 +1729,32 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetInstanceProcAddr(VkInstance ins
 }
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,const char* name) {
     auto d=findDevice(device);
+    const bool barrierCommand=name && (
+        std::strcmp(name,"vkCmdPipelineBarrier")==0 || std::strcmp(name,"vkCmdWaitEvents")==0 ||
+        std::strcmp(name,"vkCmdPipelineBarrier2")==0 || std::strcmp(name,"vkCmdPipelineBarrier2KHR")==0 ||
+        std::strcmp(name,"vkCmdWaitEvents2")==0 || std::strcmp(name,"vkCmdWaitEvents2KHR")==0);
+    if(barrierCommand && d && !d->autoInitialized) return d->gdpa?d->gdpa(device,name):nullptr;
     if(name && (std::strcmp(name,"vkQueuePresentKHR")==0 || std::strcmp(name,"vkQueueSubmit2")==0 || std::strcmp(name,"vkQueueSubmit2KHR")==0))
+        if(!d || !d->gdpa || !d->gdpa(device,name)) return nullptr;
+    if(name && (std::strcmp(name,"vkCmdPipelineBarrier2")==0 || std::strcmp(name,"vkCmdPipelineBarrier2KHR")==0))
+        if(!d || !d->gdpa || (!d->gdpa(device,name) && !d->gdpa(device,"vkCmdPipelineBarrier2") && !d->gdpa(device,"vkCmdPipelineBarrier2KHR"))) return nullptr;
+    if(name && (std::strcmp(name,"vkCmdWaitEvents2")==0 || std::strcmp(name,"vkCmdWaitEvents2KHR")==0))
+        if(!d || !d->gdpa || (!d->gdpa(device,name) && !d->gdpa(device,"vkCmdWaitEvents2") && !d->gdpa(device,"vkCmdWaitEvents2KHR"))) return nullptr;
+    if(name && (std::strcmp(name,"vkGetDeviceMemoryOpaqueCaptureAddress")==0 ||
+                std::strcmp(name,"vkGetDeviceMemoryOpaqueCaptureAddressKHR")==0))
+        if(!d || !d->gdpa || !d->gdpa(device,name)) return nullptr;
+    if(name && std::strcmp(name,"vkSetDeviceMemoryPriorityEXT")==0)
+        if(!d || !d->gdpa || !d->gdpa(device,name)) return nullptr;
+    if(name && (std::strcmp(name,"vkSetDebugUtilsObjectNameEXT")==0 ||
+                std::strcmp(name,"vkSetDebugUtilsObjectTagEXT")==0 ||
+                std::strcmp(name,"vkDebugMarkerSetObjectNameEXT")==0 ||
+                std::strcmp(name,"vkDebugMarkerSetObjectTagEXT")==0))
+        if(!d || !d->gdpa || !d->gdpa(device,name)) return nullptr;
+    if(name && (std::strcmp(name,"vkBindVideoSessionMemoryKHR")==0 ||
+                std::strcmp(name,"vkBindAccelerationStructureMemoryNV")==0 ||
+                std::strcmp(name,"vkBindTensorMemoryARM")==0 ||
+                std::strcmp(name,"vkBindDataGraphPipelineSessionMemoryARM")==0 ||
+                std::strcmp(name,"vkCmdBindTileMemoryQCOM")==0))
         if(!d || !d->gdpa || !d->gdpa(device,name)) return nullptr;
     if(auto f=lookup(name)) return f;
     return d&&d->gdpa?d->gdpa(device,name):nullptr;

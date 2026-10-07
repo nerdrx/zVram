@@ -24,7 +24,7 @@
       <div class="hero-copy">
         <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> Experimental <span class="dot">·</span> v0.2</p>
         <h1 id="hero-title">Explore memory<br>beyond <span>VRAM.</span></h1>
-        <p class="lede">GPU memory experiments: segmented Vulkan allocations with native RAM backing, plus lossless idle snapshots for supported HIP applications.</p>
+        <p class="lede">GPU memory experiments: segmented Vulkan allocations with native RAM backing, plus lossless idle snapshots for eligible Vulkan and HIP allocations.</p>
         <div class="hero-actions">
           <a class="button primary" href="#get-started">Build from source <span aria-hidden="true">↓</span></a>
           <a class="text-link" href="https://github.com/nerdrx/zVram#readme">View on GitHub <span aria-hidden="true">↗</span></a>
@@ -44,12 +44,12 @@
 
     <section class="notice wrap" aria-label="Important limitation">
       <span class="notice-icon" aria-hidden="true">i</span>
-      <p><strong>Experimental boundary:</strong> opt-in Vulkan idle snapshots cover only eligible app-created storage buffers on one queue; explicitly managed Vulkan buffers have a separate pool API. HIP idle hibernation covers tracked VMM allocations on one tested ROCm ABI. HIP can expand allocations with mapped host RAM or GTT backing; the GTT path verified a 40 GiB single allocation that native HIP rejected on this machine. Active work still needs VRAM plus GTT.</p>
+      <p><strong>Experimental boundary:</strong> opt-in Vulkan idle snapshots now pass one unchanged llama.cpp model across multiple queue families, plus a standalone buffer test. Images, external/protected memory, suballocations, capture/replay, and active fault-driven paging remain unsupported. HIP idle hibernation covers tracked VMM allocations on one tested ROCm ABI. Active work still needs VRAM plus GTT.</p>
     </section>
 
     <section class="results wrap" aria-labelledby="results-title">
       <div><p class="eyebrow">Measured on hardware</p><h2 id="results-title">Capacity verified. Compression measured.</h2></div>
-      <p>One 40 GiB Vulkan buffer passed full readback through 160 native chunks. A 96 GiB logical heap passed a bounded 2 GiB memtest; full 96 GiB backing remains unverified. A separate 320 MiB automatic-idle test compressed its first snapshot to 12,263,515 bytes and released exactly 320 MiB of process DRM resident VRAM; randomized GPU-mutated data used raw backing and passed two full-byte GPU wake cycles with a stable buffer handle. This narrow path does not cover arbitrary Vulkan applications or the unchanged llama.cpp Vulkan path, which uses native allocations/BDA and multiple queues. One 40 GiB HIP pointer passed full GPU-write verification using 20 GiB VRAM and 20 GiB GTT; native HIP rejected that single allocation. Unchanged 30B and 27B models ran concurrently with 34.2 GB of combined GPU model buffers on the 24 GiB card. A small unchanged 135M F16 llama.cpp HIP run also matched native stdout with automatic idle compression enabled and all 31/31 layers offloaded. A 40 GiB model remains untested.</p>
+      <p>One 40 GiB Vulkan buffer passed full readback through 160 native chunks. A 96 GiB logical heap passed a bounded 2 GiB memtest; full 96 GiB backing remains unverified. A 320 MiB automatic-idle test released exactly 320 MiB of process DRM resident VRAM and passed two full-byte GPU wake cycles. An unchanged 135M F16 llama.cpp Vulkan run also passed automatic idle snapshots: 31/31 layers offloaded, native and wrapped output matched, and 307,998,976 cold logical bytes stored in 207,039,004 bytes. This is one tested app path, not a larger-than-VRAM model, general Vulkan compatibility, or a speedup. One 40 GiB HIP pointer passed GPU-write verification using 20 GiB VRAM and 20 GiB GTT; unchanged 30B and 27B models ran concurrently with 34.2 GB of combined GPU model buffers on the 24 GiB card. A 40 GiB model remains untested.</p>
       <p>The existing 27B Q4_K_M HIP model matched output after idle restore with fully VRAM-resident active buffers: native 24.41 versus automatic 24.33 tokens/s over 45 decode runs each. Idle process VRAM fell from 16.30 GB to 0.155 GB; cold payload saved 2.86%, with a 12.9-second wake. The earlier forced-spill placement measured about 3 tokens/s and used a different memory placement.</p>
       <a class="text-link" href="https://github.com/nerdrx/zVram/blob/main/VALIDATION.md">Read the test evidence <span aria-hidden="true">↗</span></a>
     </section>
@@ -60,7 +60,7 @@
         <article class="feature-card">
           <span class="feature-index">01 / TELEMETRY</span>
           <h3>See allocation behavior</h3>
-          <p>An opt-in layer can expose a configurable 96 GiB logical heap for eligible storage buffers, using stable sparse buffers backed by native chunks. A 40 GiB allocation passed full readback. A separate narrow idle-snapshot test released one 320 MiB buffer from process DRM resident VRAM after compressing its cold contents; broader Vulkan coverage remains untested.</p>
+          <p>An opt-in layer can expose a configurable 96 GiB logical heap for eligible storage buffers, using stable sparse buffers backed by native chunks. A 40 GiB allocation passed full readback. Idle snapshots released one 320 MiB test buffer and also passed an unchanged 135M F16 llama.cpp Vulkan run across multiple queue families. Broader model and API coverage remains untested.</p>
           <span class="tag">Vulkan virtual heap</span><span class="tag">AMD RADV</span>
         </article>
         <article class="feature-card">
@@ -87,6 +87,7 @@
         <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>HIP VMM with GTT backing</h3><p>One 40 GiB pointer passed GPU-write/CPU-verify using 20 GiB VRAM and 20 GiB GTT; 30B and 27B models also ran together with 34.2 GB of GPU model buffers. A single 40 GiB model remains untested.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
         <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>Userspace HIP cold snapshots</h3><p>32 MiB and 288 MiB allocations passed lossless restore, native readback, stable pointers, and failure recovery. Measured process backing was released while cold. Explicit lifecycle only; no root service needed.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
         <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>HIP automatic idle snapshots</h3><p>Opt-in idle hibernation and restore passed on HIP 7.2.53211 with the tested dispatch ABI, including a small unchanged 135M F16 llama.cpp run. Other ABI versions disable this mode; raw HSA/direct submissions and broader app paths are outside its coverage.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
+        <article class="milestone current"><span class="milestone-state">NOW</span><div><h3>Vulkan automatic idle snapshots</h3><p>Native GPU-only allocations and stable device addresses passed full-byte checks across multiple queues. An unchanged 135M F16 model also matched native output after automatic restore.</p></div><span class="milestone-mark" aria-hidden="true">●</span></article>
         <article class="milestone"><span class="milestone-state">NEXT</span><div><h3>Broader workloads</h3><p>Measure performance at normal GPU placement and more application paths. A single 40 GiB model and universal paging remain untested.</p></div><span class="milestone-mark" aria-hidden="true">○</span></article>
       </div>
     </section>
@@ -112,6 +113,10 @@ cmake --build build -j
 ./zvram --verbose --isolate-layers --vulkan-virtual-gib 96 \
   --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- \
   ./build/zvram-vulkan-auto-check
+
+<span class="comment"># Compare an unchanged Vulkan llama-completion run with idle snapshots</span>
+python3 check_vulkan_idle_model.py --binary /path/to/llama-completion \
+  --model /path/to/SmolLM2-135M-F16.gguf
 
 <span class="comment"># HIP VMM/GTT, with opt-in capacity reporting through supported HIP queries</span>
 ./zvram --hip --hip-vmm --hip-report-capacity \

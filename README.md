@@ -2,9 +2,9 @@
 
 <p align="center"><b>Experimental GPU memory research · Vulkan · AMD RADV · HIP · C++17</b><br><a href="https://nerdrx.github.io/zVram/">Project website</a> · <a href="#quick-start">Quick start</a> · <a href="VALIDATION.md">Measured results</a> · <a href="KERNEL_PAGING.md">Linux paging research</a></p>
 
-zVram tests explicit strategies for GPU memory beyond local VRAM: native driver migration, a managed Vulkan buffer pool with lossless zstd snapshots, and an opt-in HIP `hipMalloc` spillover layer.
+zVram tests GPU memory beyond local VRAM: segmented Vulkan allocations, lossless idle snapshots for eligible Vulkan/HIP allocations, and an explicit managed buffer pool.
 
-**Status: experimental v0.2.0.** The managed pool controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing, plus opt-in automatic compression of idle, tracked VMM allocations on one exact ROCm HIP dispatch ABI. The VMM/GTT provider passed one 40 GiB single-pointer integrity check using 20 GiB of VRAM and 20 GiB of GTT on this machine. An unmodified ROCm copy example and a small 135M-parameter llama.cpp HIP run both passed; the latter produced identical output on native and VMM/GTT paths. Native HIP rejected one 40 GiB allocation with out-of-memory; the VMM/GTT provider accepted and verified that size. Unchanged 30B and 27B models also passed concurrent inference, with 32,612.75 MiB of combined GPU model buffers on this 24 GiB card. A single 40 GiB model and broad application compatibility remain untested; idle compression is process hibernation, not transparent active-working-set paging.
+**Status: experimental v0.2.0.** The managed pool controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing, plus opt-in automatic compression of idle, tracked VMM allocations on one exact ROCm HIP dispatch ABI. The VMM/GTT provider passed a 40 GiB single-pointer integrity check using 20 GiB of VRAM and 20 GiB of GTT. Unchanged 30B and 27B models passed concurrent inference with 32,612.75 MiB of combined GPU model buffers on this 24 GiB card. Vulkan automatic idle snapshots also passed one unchanged 135M F16 llama.cpp run across multiple queue families: 31/31 layers, matching native output, and 307,998,976 cold logical bytes stored in 207,039,004 bytes. These tests do not establish a 40 GiB model, broad app compatibility, or a performance gain; idle compression is not transparent active-working-set paging.
 
 ## What works today
 
@@ -12,6 +12,7 @@ zVram tests explicit strategies for GPU memory beyond local VRAM: native driver 
 |---|---|
 | Vulkan launcher and layer | Opt-in allocation telemetry; requests AMD `ALLOWED` overallocation when available and preserves an explicit application policy. |
 | Vulkan segmented memory | Experimental virtual GPU-only memory type for eligible storage buffers. Sparse binding backs one logical allocation with native chunks; a 40 GiB single-buffer transfer/readback check passed on the tested RADV driver. |
+| Vulkan automatic snapshots | Opt-in idle compression now passes both a standalone buffer integrity test and one unchanged Vulkan llama.cpp run; see the exact limits below. |
 | Managed Vulkan pool | Logical IDs, pinned acquire/release, LRU eviction, zstd snapshots with raw fallback, and restore/readback under resident and host-store budgets. |
 | HIP allocation layer | Opt-in `hipMalloc` routing to native device memory, mapped pinned host memory, or experimental imported GTT BOs through HIP VMM. |
 | HIP cold snapshots | Explicit userspace hibernate/resume for owned VMM allocations: lossless Zstd/raw backing, reserved GPU pointers, and retryable restore. |
@@ -31,9 +32,9 @@ RADV already migrates allocations between VRAM and GPU-accessible system memory.
   ./build/zvram-capacity-check --single-allocation --api2 --mib 40960
 ```
 
-This userspace mode adds a GPU-only virtual heap/type while preserving native heaps and memory types. On the tested discrete RADV device, it enables sparse binding and promotes storage buffers of at least 1 MiB with only storage/transfer usage, no creation flags, and no buffer `pNext` chain. Synthetic allocations are backed at bind time by aligned native chunks of at most 256 MiB; native local allocation types are preferred, with compatible system types as fallback. RADV remains responsible for migration between VRAM and RAM. The 40 GiB transfer check verified one logical allocation, one buffer, and 160 native chunks; unchanged memtest completed a bounded 2 GiB compute check with eight chunks and displayed 40 GB.
+This userspace mode adds a GPU-only virtual heap/type while preserving native heaps and memory types. On the tested discrete RADV device, it enables sparse binding and promotes storage buffers of at least 1 MiB with storage/transfer usage (and optionally BDA), no creation flags, and no buffer `pNext` chain. Synthetic allocations are backed at bind time by aligned native chunks of at most 256 MiB; native local allocation types are preferred, with compatible system types as fallback. RADV remains responsible for migration between VRAM and RAM. The 40 GiB transfer check verified one logical allocation, one buffer, and 160 native chunks; unchanged memtest completed a bounded 2 GiB compute check with eight chunks and displayed 40 GB.
 
-The configured heap is a logical cap, not reserved memory or a free-capacity guarantee. Binding can fail if actual backing cannot be allocated. This phase supports one bind per synthetic allocation, with zero offset; it retains backing until allocation free unless the narrow automatic-idle mode below is enabled. It requires an application-created sparse-capable queue and currently injects sparse features through legacy features or a head `VkPhysicalDeviceFeatures2` chain. Other feature-chain layouts keep this mode disabled. Images, external/protected memory, device addresses, synthetic host mapping, and synthetic suballocation are unsupported. Native buffer/allocation limits remain unchanged; the 40 GiB check used Vulkan 1.1 on this particular RADV driver. Ctrl+C stops memtest.
+The configured heap is a logical cap, not reserved memory or a free-capacity guarantee. Binding can fail if actual backing cannot be allocated. Synthetic allocations support one zero-offset bind. The layer uses a spare sparse queue when available, avoiding a wait on the app queue during binding; without one it retains the synchronous app-queue fallback. Sparse features can be injected through legacy features or a head `VkPhysicalDeviceFeatures2`; other layouts work when the app already enables sparse binding. BDA storage buffers are supported with the required device-address allocation flag. Image expansion/snapshots, external/protected memory, capture/replay, synthetic host mapping, and synthetic suballocation remain unsupported. Native buffer/allocation limits remain unchanged; the 40 GiB check used Vulkan 1.1 on this RADV driver. Ctrl+C stops memtest.
 
 Choose the heap size at each launch with `--vulkan-virtual-gib 96`, or use `--vulkan-virtual-mib 98304` for the same 96 GiB budget. Use one size option per launch. There is no artificial upper cap; only positivity and Vulkan's 64-bit byte-size overflow are checked. The heap remains a logical budget. Full 40 GiB backing is verified; both 48 GiB and 96 GiB settings passed bounded 2 GiB memtest checks. Full 48 GiB or 96 GiB backing remains unverified.
 
@@ -41,15 +42,27 @@ Choose the heap size at each launch with `--vulkan-virtual-gib 96`, or use `--vu
 
 `--vulkan-auto-idle-ms 100 --vulkan-cold-mib 512` opts eligible app-created storage buffers into lossless idle snapshots. This was validated with one 320 MiB buffer, two native backing chunks, and a 32 MiB coherent staging buffer. The first idle snapshot retained 12,263,515 bytes (96.345% smaller); after GPU mutation to randomized data, the next snapshot used raw 335,544,320-byte backing. Two GPU XOR wake cycles verified every byte while the `VkBuffer` handle stayed stable. Cold metadata queries and freeing a cold buffer did not restore it. A 1 MiB cold-store budget refused eviction and preserved the original contents.
 
-The first cold transition released exactly 335,544,320 bytes of process DRM resident VRAM (345,059,328 to 9,515,008 bytes); resident GTT stayed at 69,210,112 bytes. This only applies when a single app-created sparse+transfer queue and an eligible storage buffer meet the layer's restrictions, and the complete snapshot fits the cold budget before unbinding. Active work still needs native VRAM plus GTT. Images, BDA, protected/external memory, suballocations, multiple queues, and general application paging are outside this path. The unchanged 135M llama.cpp Vulkan check is not proof of automatic compression: it uses native allocations/BDA and multiple queues.
+The first cold transition released exactly 335,544,320 bytes of process DRM resident VRAM (345,059,328 to 9,515,008 bytes); resident GTT stayed at 69,210,112 bytes. A separate unchanged 135M F16 llama.cpp Vulkan run passed with automatic snapshots enabled: 31/31 layers offloaded, native and wrapped stdout matched exactly, and 307,998,976 cold logical bytes were stored in 207,039,004 bytes before input. This validates one actual model path, not a larger-than-VRAM model, a speedup, or broad app compatibility. The tested path now covers multiple queues/families and BDA for this app's native GPU-only allocations. Images, external/protected memory, suballocations, capture/replay, and active fault-driven paging remain unsupported. Active work still needs native VRAM plus GTT.
 
 ```sh
 # 96 GiB logical heap, narrow 320 MiB idle-snapshot integrity check
 ./zvram --verbose --isolate-layers --vulkan-virtual-gib 96 \
   --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- ./build/zvram-vulkan-auto-check
+
+# Compare an unchanged Vulkan llama-completion run with automatic idle snapshots
+python3 check_vulkan_idle_model.py --binary /path/to/llama-completion \
+  --model /path/to/SmolLM2-135M-F16.gguf
 ```
 
 See [hardware evidence and limits](VALIDATION.md#automatic-vulkan-idle-snapshots).
+
+In automatic mode, eligible exact-size GPU-only native allocations use stable app-facing memory tokens and can be adopted into snapshots. A private sparse/transfer queue performs copies; completion markers postpone snapshotting while app work is pending. The tested path supports ordinary and internally synchronized queues, BDA, and cross-family storage-buffer barriers. App presentation or explicit sparse submissions stop future automatic snapshots after restoring cold data. This is for idle workloads; frame-by-frame compression and general image paging are not implemented.
+
+Steam launch options can chain CPU affinity, using the installed `zvram` command:
+
+```text
+zvram --vulkan-virtual-gib 96 -- taskset -c 1-7,16-23 %command%
+```
 
 ## Managed Vulkan buffer pool
 
