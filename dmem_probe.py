@@ -18,8 +18,14 @@ MIB = 1024 * 1024
 MEMORY_LIMIT = 512 * MIB
 SWAP_LIMIT = 256 * MIB
 PROBE_TIMEOUT = 30
+MAX_TIMEOUT = 300
 OUTPUT_LIMIT = 64 * 1024
 POLL_INTERVAL = 0.05
+
+
+class ProbeSignal(Exception):
+    def __init__(self, signum):
+        self.signum = signum
 
 
 def read_text(path):
@@ -104,6 +110,18 @@ def dmem_regions(path):
     return valid
 
 
+def select_region(regions, requested, arbitrary):
+    if requested:
+        if requested not in regions:
+            raise RuntimeError(f"unknown AMDGPU dmem region {requested!r}; choose one of: {', '.join(sorted(regions))}")
+        return requested, regions[requested]
+    if not regions:
+        raise RuntimeError("no AMDGPU VRAM region found in root dmem.capacity")
+    if arbitrary and len(regions) != 1:
+        raise RuntimeError(f"multiple AMDGPU dmem regions found; specify --dmem-region from: {', '.join(sorted(regions))}")
+    return max(regions.items(), key=lambda item: item[1])
+
+
 def required_identity():
     if os.geteuid() != 0:
         raise RuntimeError("--run requires root; invoke through sudo")
@@ -121,15 +139,25 @@ def required_identity():
     return uid, gid, user
 
 
-def set_child_limits(cgroup, region, gpu_limit):
+def set_child_limits(cgroup, region, gpu_limit, memory_max, swap_max, memory_high):
     controllers = set((read_text(CGROUP / "cgroup.controllers") or "").split())
     enabled = set((read_text(CGROUP / "cgroup.subtree_control") or "").split())
     for name in ("dmem", "memory"):
         if name not in controllers or name not in enabled:
             raise RuntimeError(f"root cgroup must expose and enable {name}")
     (cgroup / "dmem.max").write_text(f"{region} {gpu_limit}\n")
-    (cgroup / "memory.max").write_text(f"{MEMORY_LIMIT}\n")
-    (cgroup / "memory.swap.max").write_text(f"{SWAP_LIMIT}\n")
+    (cgroup / "memory.max").write_text(f"{memory_max}\n")
+    swap_file = cgroup / "memory.swap.max"
+    if not swap_file.exists():
+        raise RuntimeError("memory.swap.max is unavailable; cannot enforce the requested swap cap")
+    swap_file.write_text(f"{swap_max}\n")
+    if memory_high is not None:
+        high_file = cgroup / "memory.high"
+        if not high_file.exists():
+            raise RuntimeError("memory.high is unavailable")
+        if memory_high > memory_max:
+            raise RuntimeError("memory-high-mib must be less than or equal to memory-max-mib")
+        high_file.write_text(f"{memory_high}\n")
 
 
 def drop_into_cgroup(cgroup_procs, uid, gid, user):
@@ -144,11 +172,15 @@ def drop_into_cgroup(cgroup_procs, uid, gid, user):
     os.setresuid(uid, uid, uid)
 
 
-def child_environment(user):
+def child_environment(user, keep_library_path=False):
     env = {}
     for name, value in os.environ.items():
         upper = name.upper()
-        if name.startswith("SUDO_") or name.startswith(("LD_", "PYTHON")):
+        if name.startswith("SUDO_") or name.startswith("PYTHON"):
+            continue
+        if name.startswith("LD_"):
+            if keep_library_path and name == "LD_LIBRARY_PATH":
+                env[name] = value
             continue
         if name in {"PATH", "LANG", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR",
                     "DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY"} \
@@ -168,6 +200,28 @@ def sample(cgroup, region):
     memory = scalar_bytes(cgroup / "memory.current") or 0
     swap = scalar_bytes(cgroup / "memory.swap.current") or 0
     return dmem, memory, swap
+
+
+def cgroup_stats(cgroup, region):
+    stats = {}
+    for name in ("dmem.peak", "memory.peak", "memory.events", "memory.swap.peak",
+                 "memory.swap.events", "memory.stat", "memory.pressure", "memory.zswap.current"):
+        value = read_text(cgroup / name)
+        if value is not None:
+            stats[name] = value
+    for name in ("dmem.peak",):
+        if name in stats:
+            stats[name] = keyed_bytes(cgroup / name).get(region, "unavailable")
+    return stats
+
+
+def system_zram_stats():
+    result = {}
+    for path in sorted(Path("/sys/block").glob("zram*/mm_stat")):
+        value = read_text(path)
+        if value is not None:
+            result[path.parent.name] = value
+    return result
 
 
 def append_tail(buffer, chunk):
@@ -198,36 +252,55 @@ def stop_owned_process(proc, cgroup):
             pass
 
 
-def run_probe(limit_mib):
+def run_probe(limit_mib, command, args):
     uid, gid, user = required_identity()
     root_capacity = dmem_regions(CGROUP / "dmem.capacity")
-    if not root_capacity:
-        raise RuntimeError("no AMDGPU VRAM region found in root dmem.capacity")
-    region, capacity = max(root_capacity.items(), key=lambda item: item[1])
+    region, capacity = select_region(root_capacity, args.dmem_region, bool(command))
     gpu_limit = limit_mib * MIB
     if gpu_limit > capacity:
         raise RuntimeError("GPU cgroup limit exceeds selected VRAM region capacity")
+    if not command and limit_mib > 256:
+        raise RuntimeError("built-in probe --gpu-limit-mib must be 1..256")
 
     cgroup = CGROUP / f"zvram-probe-{os.getpid()}"
-    if cgroup.exists():
-        raise RuntimeError(f"refusing to reuse existing cgroup: {cgroup}")
-    cgroup.mkdir(mode=0o755)
+    old_handlers = {}
+    def interrupt(signum, _frame):
+        raise ProbeSignal(signum)
+
+    for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        old_handlers[signum] = signal.signal(signum, interrupt)
     proc = None
+    selector = None
+    created = False
     try:
-        set_child_limits(cgroup, region, gpu_limit)
+        if cgroup.exists():
+            raise RuntimeError(f"refusing to reuse existing cgroup: {cgroup}")
+        cgroup.mkdir(mode=0o755)
+        created = True
+        memory_max = args.memory_max_mib * MIB
+        swap_max = args.swap_max_mib * MIB
+        memory_high = None if args.memory_high_mib is None else args.memory_high_mib * MIB
+        set_child_limits(cgroup, region, gpu_limit, memory_max, swap_max, memory_high)
         baseline = sample(cgroup, region)
+        baseline_stats = cgroup_stats(cgroup, region)
+        zram_before = system_zram_stats()
         repo = Path(__file__).resolve().parent
-        command = [
-            str(repo / "zvram"), "--validate", "--isolate-layers", "--",
-            str(repo / "build" / "zvram-capacity-check"),
-            "--mib", "64", "--chunk-mib", "8",
-        ]
-        if not os.access(command[0], os.X_OK) or not os.access(command[4], os.X_OK):
-            raise RuntimeError("build the launcher and capacity check before --run")
+        if command:
+            run_command = command
+            cwd = Path.cwd()
+        else:
+            run_command = [
+                str(repo / "zvram"), "--validate", "--isolate-layers", "--",
+                str(repo / "build" / "zvram-capacity-check"),
+                "--mib", "64", "--chunk-mib", "8",
+            ]
+            cwd = repo
+            if not os.access(run_command[0], os.X_OK) or not os.access(run_command[4], os.X_OK):
+                raise RuntimeError("build the launcher and capacity check before --run")
 
         preexec = lambda: drop_into_cgroup(cgroup / "cgroup.procs", uid, gid, user)
         proc = subprocess.Popen(
-            command, cwd=repo, env=child_environment(user),
+            run_command, cwd=cwd, env=child_environment(user, args.keep_library_path),
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             bufsize=0, close_fds=True, start_new_session=True, preexec_fn=preexec,
         )
@@ -237,7 +310,7 @@ def run_probe(limit_mib):
             os.set_blocking(pipe.fileno(), False)
             selector.register(pipe, selectors.EVENT_READ)
         peak = list(baseline)
-        deadline = time.monotonic() + PROBE_TIMEOUT
+        deadline = time.monotonic() + args.timeout_sec
         timed_out = False
         while True:
             current = sample(cgroup, region)
@@ -277,13 +350,21 @@ def run_probe(limit_mib):
                 pipe.close()
         stdout = outputs[proc.stdout].decode(errors="replace")
         stderr = outputs[proc.stderr].decode(errors="replace")
-        print(f"probe command: {' '.join(command)}")
+        final_stats = cgroup_stats(cgroup, region)
+        zram_after = system_zram_stats()
+        print(f"probe command: {run_command!r}")
         print(f"child uid/gid: {uid}/{gid} ({user.pw_name})")
         print(f"cgroup: {cgroup}")
         print(f"dmem region: {region}; capacity={capacity}; limit={gpu_limit}")
-        print(f"child memory limits: memory.max={MEMORY_LIMIT}; memory.swap.max={SWAP_LIMIT}")
+        print(f"child memory limits: memory.max={memory_max}; memory.swap.max={swap_max}; memory.high={memory_high if memory_high is not None else 'unchanged'}")
         print(f"baseline bytes (dmem,memory,swap): {tuple(baseline)}")
         print(f"sampled peak bytes (dmem,memory,swap): {tuple(peak)}; interval={POLL_INTERVAL}s")
+        if baseline_stats or final_stats:
+            print(f"cgroup accounting baseline: {baseline_stats}")
+            print(f"cgroup accounting final: {final_stats}")
+        if zram_before or zram_after:
+            print(f"system-wide zram mm_stat before: {zram_before}")
+            print(f"system-wide zram mm_stat after: {zram_after} (not attributable to this cgroup)")
         if stdout:
             print("--- child stdout (last 64 KiB) ---")
             print(stdout, end="" if stdout.endswith("\n") else "\n")
@@ -291,50 +372,98 @@ def run_probe(limit_mib):
             print("--- child stderr (last 64 KiB) ---", file=sys.stderr)
             print(stderr, end="" if stderr.endswith("\n") else "\n", file=sys.stderr)
         if timed_out:
-            print(f"probe timed out after {PROBE_TIMEOUT}s; only its cgroup/process group was stopped")
+            print(f"probe timed out after {args.timeout_sec}s; only its cgroup/process group was stopped")
             return 124
-        if returncode == 0:
+        if command:
+            print(f"command result: exited {returncode}; cgroup metrics show pressure only and do not prove TTM shmem swap or compression")
+        elif returncode == 0:
             print("integrity result: capacity-check exited successfully; this does not prove TTM shmem swap or compression")
         else:
             print(f"integrity result: capacity-check exited {returncode}")
         return returncode
     finally:
+        for signum in old_handlers:
+            signal.signal(signum, signal.SIG_IGN)
         if proc is not None and proc.poll() is None:
             stop_owned_process(proc, cgroup)
-        kill_file = cgroup / "cgroup.kill"
-        if kill_file.exists():
-            try:
-                kill_file.write_text("1\n")
-            except OSError:
-                pass
-        for _ in range(20):
-            events = read_text(cgroup / "cgroup.events")
-            if events is None or "populated 0" in events.splitlines():
+        if selector is not None:
+            selector.close()
+        if proc is not None:
+            for pipe in (proc.stdout, proc.stderr):
+                if pipe is not None:
+                    pipe.close()
+        if created:
+            kill_file = cgroup / "cgroup.kill"
+            if kill_file.exists():
                 try:
-                    cgroup.rmdir()
-                    break
+                    kill_file.write_text("1\n")
                 except OSError:
                     pass
-            time.sleep(0.05)
-        if cgroup.exists():
-            print(f"warning: probe cgroup still exists after cleanup: {cgroup}", file=sys.stderr)
+            empty = False
+            for _ in range(100):
+                events = read_text(cgroup / "cgroup.events")
+                if events is None or "populated 0" in events.splitlines():
+                    empty = True
+                    break
+                time.sleep(0.05)
+            if empty:
+                try:
+                    cgroup.rmdir()
+                except OSError:
+                    empty = False
+            if not empty:
+                print(f"warning: probe cgroup still populated or could not be removed: {cgroup}", file=sys.stderr)
+        for signum, handler in old_handlers.items():
+            signal.signal(signum, handler)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--inspect", action="store_true", help="read cgroup, RAM, and swap state only")
-    mode.add_argument("--run", action="store_true", help="run the fixed 64 MiB integrity probe in a temporary cgroup")
-    parser.add_argument("--gpu-limit-mib", type=int, default=16, metavar="1..256",
-                        help="child dmem.max limit in MiB (default: 16)")
+    mode.add_argument("--run", action="store_true", help="run a command or the fixed 64 MiB integrity probe in a temporary cgroup")
+    parser.add_argument("--gpu-limit-mib", type=int, default=16,
+                        help="child dmem.max limit in MiB (built-in probe: 1..256; command: up to region capacity; default: 16)")
+    parser.add_argument("--dmem-region", help="exact AMDGPU region token from dmem.capacity (required for commands if multiple AMD regions exist)")
+    parser.add_argument("--memory-high-mib", type=int, help="optional child memory.high pressure threshold")
+    parser.add_argument("--memory-max-mib", type=int, default=MEMORY_LIMIT // MIB, help="child memory.max limit in MiB (default: 512)")
+    parser.add_argument("--swap-max-mib", type=int, default=SWAP_LIMIT // MIB, help="child memory.swap.max limit in MiB (default: 256; 0 disables swap)")
+    parser.add_argument("--timeout-sec", type=int, default=PROBE_TIMEOUT, help="maximum command time in seconds (default: 30; maximum: 300)")
+    parser.add_argument("--keep-library-path", action="store_true", help="pass LD_LIBRARY_PATH to the dropped-privilege command")
+    parser.add_argument("command", nargs=argparse.REMAINDER, help="argv to run after --; not interpreted by a shell")
     args = parser.parse_args()
-    if not 1 <= args.gpu_limit_mib <= 256:
-        parser.error("--gpu-limit-mib must be 1..256")
+    command = args.command
+    if command and command[0] == "--":
+        command = command[1:]
+    if command and not args.run:
+        parser.error("a command after -- requires --run")
+    if args.inspect and args.dmem_region:
+        parser.error("--dmem-region requires --run")
+    if args.memory_max_mib < 1 or args.swap_max_mib < 0:
+        parser.error("--memory-max-mib must be positive and --swap-max-mib must be nonnegative")
+    if args.memory_high_mib is not None and args.memory_high_mib < 1:
+        parser.error("--memory-high-mib must be positive")
+    if not 1 <= args.timeout_sec <= MAX_TIMEOUT:
+        parser.error(f"--timeout-sec must be 1..{MAX_TIMEOUT}")
+    if args.run and not command and not 1 <= args.gpu_limit_mib <= 256:
+        parser.error("built-in probe --gpu-limit-mib must be 1..256")
+    if args.run and command and args.gpu_limit_mib < 1:
+        parser.error("command --gpu-limit-mib must be positive")
+    if args.memory_high_mib is not None and args.memory_high_mib > args.memory_max_mib:
+        parser.error("--memory-high-mib must be less than or equal to --memory-max-mib")
     try:
         if args.run:
-            return run_probe(args.gpu_limit_mib)
+            if not command:
+                args.keep_library_path = False
+            return run_probe(args.gpu_limit_mib, command, args)
         inspect()
         return 0
+    except ProbeSignal as interrupted:
+        print(f"dmem_probe: interrupted by signal {interrupted.signum}", file=sys.stderr)
+        return 128 + interrupted.signum
+    except KeyboardInterrupt:
+        print("dmem_probe: interrupted", file=sys.stderr)
+        return 130
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         print(f"dmem_probe: {error}", file=sys.stderr)
         return 1

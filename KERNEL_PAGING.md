@@ -38,7 +38,7 @@ python3 dmem_probe.py --inspect
 sudo python3 dmem_probe.py --run
 ```
 
-`--run` requires the root cgroup to already expose and enable `dmem` and `memory`. It creates a unique child cgroup, sets a 16 MiB VRAM limit by default (configurable from 1 to 256 MiB), a 512 MiB memory limit, and a 256 MiB swap limit, then runs only the 64 MiB capacity integrity check. The child drops to the invoking sudo user; a 30-second timeout kills only that child cgroup/process group, and cleanup removes the temporary cgroup. It does not alter global swap, TTM parameters, or other cgroups.
+`--run` requires the root cgroup to already expose and enable `dmem` and `memory`. It creates a unique child cgroup, sets a 16 MiB VRAM limit by default (configurable from 1 to 256 MiB), a 512 MiB memory limit, and a 256 MiB swap limit, then runs the 64 MiB capacity integrity check by default. The child drops to the invoking sudo user; a 30-second timeout kills only that child cgroup/process group, and cleanup removes the temporary cgroup. It does not alter global swap, TTM parameters, or other cgroups.
 
 The probe reports cgroup `dmem.current`, memory, and swap peaks plus the check's integrity result. These readings can show that pressure and migration occurred; they cannot by themselves prove TTM shmem swapout, zram use for those pages, or compression. A later probe would need correlated kernel/driver evidence of BO placement and swap activity to establish that path. The privileged run has not yet been performed.
 
@@ -47,3 +47,15 @@ The probe reports cgroup `dmem.current`, memory, and swap peaks plus the check's
 This kernel capability does not remove the need for application- or driver-level correctness. Applications must still respect queue synchronization and BO lifetimes; pinning, external memory, BO usage flags, placement limits, GPUVM updates, and migration budgets affect eligibility. zVram's managed Vulkan pool remains a separate explicit buffer API with its own zstd host snapshots. Its checks do not establish that arbitrary Vulkan or HIP allocations can use TTM paging transparently.
 
 The HIP `--hip-report-capacity` option is separate from Linux TTM paging: it changes the reported logical capacity only for `hipMemGetInfo`, `hipDeviceTotalMem`, and the installed `hipGetDeviceProperties` ABI when explicitly enabled with HIP VMM and configured limits. Default physical queries, older property ABIs, and external interfaces remain outside that reporting hook. Small three-query consistency and 40 GiB single-pointer checks passed, but a larger reported logical value does not itself establish TTM swapout, RAM availability beyond the tested backing, or universal allocation compatibility.
+
+## Scoped application pressure experiment
+
+The same helper accepts an explicit command after `--`, executed as the original unprivileged sudo user without a shell. `--gpu-limit-mib`, `--memory-high-mib`, `--memory-max-mib`, `--swap-max-mib`, and `--timeout-sec` set only that temporary child cgroup. Timeout is bounded to 300 seconds. With multiple AMD GPU regions, arbitrary commands require an exact `--dmem-region` token from `--inspect`; the built-in check retains its largest-region selection. SIGINT, SIGTERM, and SIGHUP trigger scoped cleanup.
+
+```sh
+sudo python3 dmem_probe.py --run --dmem-region drm/0000:03:00.0/vram \
+  --gpu-limit-mib 16 --memory-high-mib 384 --memory-max-mib 512 \
+  --swap-max-mib 256 --timeout-sec 30 -- /path/to/application arguments
+```
+
+These example caps suit a small probe, not a large model or normal gaming session. Ordinary credential-like variables, Python startup variables, and loader variables are filtered; `--keep-library-path` explicitly forwards only an existing `LD_LIBRARY_PATH` after dropping privilege. The helper also reports available cgroup peak/events/stat/pressure fields and before/after system-wide zram `mm_stat`. A zram change is not attributable to this child, and none of these counters alone proves GPU-backed pages were compressed. This extension passed syntax, CLI, region-selection, read-only inspection, and safe non-root refusal checks; its privileged execution and signal cleanup have not been validated live.

@@ -1,0 +1,4 @@
+A deterministic GPU memory test is a type of memory test that uses a deterministic algorithm to test the memory of a GPU. The algorithm is designed to be deterministic,
+> EOF by user
+
+

@@ -31,6 +31,13 @@ namespace {
 #define ZVRAM_STRINGIFY_IMPL(name) #name
 #define ZVRAM_STRINGIFY(name) ZVRAM_STRINGIFY_IMPL(name)
 
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipMalloc(void**, size_t);
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipFree(void*);
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipFreeAsync(void*, hipStream_t);
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipMemGetInfo(size_t*, size_t*);
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipDeviceTotalMem(size_t*, hipDevice_t);
+extern "C" __attribute__((visibility("hidden"))) hipError_t zvramWrappedHipGetDeviceProperties(hipDeviceProp_t*, int);
+
 using HipMallocFn = hipError_t (*)(void**, size_t);
 using HipHostMallocFn = hipError_t (*)(void**, size_t, unsigned int);
 using HipHostGetDevicePointerFn = hipError_t (*)(void**, void*, unsigned int);
@@ -41,6 +48,11 @@ using HipSetDeviceFn = hipError_t (*)(int);
 using HipDeviceSynchronizeFn = hipError_t (*)();
 using HipGetDeviceAttributeFn = hipError_t (*)(int*, hipDeviceAttribute_t, int);
 using HipFreeAsyncFn = hipError_t (*)(void*, hipStream_t);
+using HipMemGetInfoFn = hipError_t (*)(size_t*, size_t*);
+using HipDeviceTotalMemFn = hipError_t (*)(size_t*, hipDevice_t);
+using HipGetDevicePropertiesFn = hipError_t (*)(hipDeviceProp_t*, int);
+using HipGetProcAddressFn = hipError_t (*)(const char*, void**, int, uint64_t,
+                                            hipDriverProcAddressQueryResult*);
 using HipMemGetGranularityFn = hipError_t (*)(size_t*, const hipMemAllocationProp*,
                                                hipMemAllocationGranularity_flags);
 using HipMemCreateFn = hipError_t (*)(hipMemGenericAllocationHandle_t*, size_t,
@@ -107,6 +119,23 @@ HipGetDeviceAttributeFn realHipGetDeviceAttribute() {
 }
 HipFreeAsyncFn realHipFreeAsync() {
   static const auto function = nextSymbol<HipFreeAsyncFn>("hipFreeAsync");
+  return function;
+}
+HipMemGetInfoFn realHipMemGetInfo() {
+  static const auto function = nextSymbol<HipMemGetInfoFn>("hipMemGetInfo");
+  return function;
+}
+HipDeviceTotalMemFn realHipDeviceTotalMem() {
+  static const auto function = nextSymbol<HipDeviceTotalMemFn>("hipDeviceTotalMem");
+  return function;
+}
+HipGetDevicePropertiesFn realHipGetDeviceProperties() {
+  static const auto function = nextSymbol<HipGetDevicePropertiesFn>(
+      ZVRAM_STRINGIFY(hipGetDeviceProperties));
+  return function;
+}
+HipGetProcAddressFn realHipGetProcAddress() {
+  static const auto function = nextSymbol<HipGetProcAddressFn>("hipGetProcAddress");
   return function;
 }
 HipMemGetGranularityFn realHipMemGetGranularity() {
@@ -1238,9 +1267,10 @@ bool combinedCapacity(int device, size_t nativeTotal, size_t nativeFree,
 
 }  // namespace
 
-extern "C" hipError_t hipMemGetInfo(size_t* free, size_t* total) {
-  using Function = hipError_t (*)(size_t*, size_t*);
-  static auto next = nextSymbol<Function>("hipMemGetInfo");
+namespace {
+
+hipError_t wrapHipMemGetInfo(size_t* free, size_t* total) {
+  const auto next = realHipMemGetInfo();
   if (!next) return hipErrorNotSupported;
   const bool report = capacityReportingEnabled();
   CapacityQueryGuard guard;
@@ -1255,9 +1285,8 @@ extern "C" hipError_t hipMemGetInfo(size_t* free, size_t* total) {
   return status;
 }
 
-extern "C" hipError_t hipDeviceTotalMem(size_t* bytes, hipDevice_t device) {
-  using Function = hipError_t (*)(size_t*, hipDevice_t);
-  static auto next = nextSymbol<Function>("hipDeviceTotalMem");
+hipError_t wrapHipDeviceTotalMem(size_t* bytes, hipDevice_t device) {
+  const auto next = realHipDeviceTotalMem();
   if (!next) return hipErrorNotSupported;
   const bool report = capacityReportingEnabled();
   CapacityQueryGuard guard;
@@ -1272,9 +1301,8 @@ extern "C" hipError_t hipDeviceTotalMem(size_t* bytes, hipDevice_t device) {
 
 // The installed HIP headers name this ABI hipGetDevicePropertiesR0600. Older
 // property ABIs and queries outside HIP continue to report physical capacity.
-extern "C" hipError_t hipGetDeviceProperties(hipDeviceProp_t* properties, int device) {
-  using Function = hipError_t (*)(hipDeviceProp_t*, int);
-  static auto next = nextSymbol<Function>(ZVRAM_STRINGIFY(hipGetDeviceProperties));
+hipError_t wrapHipGetDeviceProperties(hipDeviceProp_t* properties, int device) {
+  const auto next = realHipGetDeviceProperties();
   if (!next) return hipErrorNotSupported;
   const bool report = capacityReportingEnabled();
   CapacityQueryGuard guard;
@@ -1288,7 +1316,7 @@ extern "C" hipError_t hipGetDeviceProperties(hipDeviceProp_t* properties, int de
   return status;
 }
 
-extern "C" hipError_t hipMalloc(void** pointer, size_t bytes) {
+hipError_t wrapHipMalloc(void** pointer, size_t bytes) {
   try {
     const auto nativeMalloc = realHipMalloc();
     if (!nativeMalloc) return hipErrorNotSupported;
@@ -1355,7 +1383,7 @@ extern "C" hipError_t hipMalloc(void** pointer, size_t bytes) {
   }
 }
 
-extern "C" hipError_t hipFree(void* pointer) {
+hipError_t wrapHipFree(void* pointer) {
   try {
     registerSummary();
     Allocation allocation{};
@@ -1377,7 +1405,7 @@ extern "C" hipError_t hipFree(void* pointer) {
   }
 }
 
-extern "C" hipError_t hipFreeAsync(void* pointer, hipStream_t stream) {
+hipError_t wrapHipFreeAsync(void* pointer, hipStream_t stream) {
   try {
     registerSummary();
     Allocation allocation{};
@@ -1402,4 +1430,102 @@ extern "C" hipError_t hipFreeAsync(void* pointer, hipStream_t stream) {
     noteFailure();
     return hipErrorOutOfMemory;
   }
+}
+
+template <typename Function>
+void* functionAddress(Function function) {
+  return reinterpret_cast<void*>(function);
+}
+
+void* wrappedProcedure(const char* symbol, void* realAddress) {
+  if (!symbol) return nullptr;
+  if (std::strcmp(symbol, "hipMalloc") == 0 && realAddress == functionAddress(realHipMalloc()))
+    return functionAddress(&zvramWrappedHipMalloc);
+  if (std::strcmp(symbol, "hipFree") == 0 && realAddress == functionAddress(realHipFree()))
+    return functionAddress(&zvramWrappedHipFree);
+  if (std::strcmp(symbol, "hipFreeAsync") == 0 && realAddress == functionAddress(realHipFreeAsync()))
+    return functionAddress(&zvramWrappedHipFreeAsync);
+  if (std::strcmp(symbol, "hipMemGetInfo") == 0 && realAddress == functionAddress(realHipMemGetInfo()))
+    return functionAddress(&zvramWrappedHipMemGetInfo);
+  if (std::strcmp(symbol, "hipDeviceTotalMem") == 0 && realAddress == functionAddress(realHipDeviceTotalMem()))
+    return functionAddress(&zvramWrappedHipDeviceTotalMem);
+  const bool devicePropertiesName =
+      std::strcmp(symbol, "hipGetDeviceProperties") == 0 ||
+      std::strcmp(symbol, ZVRAM_STRINGIFY(hipGetDeviceProperties)) == 0;
+  if (devicePropertiesName &&
+      realAddress == functionAddress(realHipGetDeviceProperties()))
+    return functionAddress(&zvramWrappedHipGetDeviceProperties);
+  return nullptr;
+}
+
+}  // namespace
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t
+zvramWrappedHipMalloc(void** pointer, size_t bytes) {
+  return wrapHipMalloc(pointer, bytes);
+}
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t
+zvramWrappedHipFree(void* pointer) {
+  return wrapHipFree(pointer);
+}
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t
+zvramWrappedHipFreeAsync(void* pointer, hipStream_t stream) {
+  return wrapHipFreeAsync(pointer, stream);
+}
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t
+zvramWrappedHipMemGetInfo(size_t* free, size_t* total) {
+  return wrapHipMemGetInfo(free, total);
+}
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t
+zvramWrappedHipDeviceTotalMem(size_t* bytes, hipDevice_t device) {
+  return wrapHipDeviceTotalMem(bytes, device);
+}
+
+extern "C" __attribute__((visibility("hidden"))) hipError_t
+zvramWrappedHipGetDeviceProperties(hipDeviceProp_t* properties, int device) {
+  return wrapHipGetDeviceProperties(properties, device);
+}
+
+extern "C" hipError_t hipMalloc(void** pointer, size_t bytes) {
+  return zvramWrappedHipMalloc(pointer, bytes);
+}
+
+extern "C" hipError_t hipFree(void* pointer) {
+  return zvramWrappedHipFree(pointer);
+}
+
+extern "C" hipError_t hipFreeAsync(void* pointer, hipStream_t stream) {
+  return zvramWrappedHipFreeAsync(pointer, stream);
+}
+
+extern "C" hipError_t hipMemGetInfo(size_t* free, size_t* total) {
+  return zvramWrappedHipMemGetInfo(free, total);
+}
+
+extern "C" hipError_t hipDeviceTotalMem(size_t* bytes, hipDevice_t device) {
+  return zvramWrappedHipDeviceTotalMem(bytes, device);
+}
+
+// The installed headers expose this ABI as hipGetDevicePropertiesR0600.
+extern "C" hipError_t hipGetDeviceProperties(hipDeviceProp_t* properties, int device) {
+  return zvramWrappedHipGetDeviceProperties(properties, device);
+}
+
+extern "C" hipError_t hipGetProcAddress(
+    const char* symbol, void** pfn, int hipVersion, uint64_t flags,
+    hipDriverProcAddressQueryResult* symbolStatus) {
+  const auto next = realHipGetProcAddress();
+  if (!next) return hipErrorNotSupported;
+  const hipError_t status = next(symbol, pfn, hipVersion, flags, symbolStatus);
+  // Interpose only the documented default lookup mode. Some runtimes accept
+  // malformed versions/flags; preserve their result rather than guessing an ABI.
+  if (status != hipSuccess || flags != 0 || hipVersion < 0 || !symbol || !pfn || !*pfn ||
+      (symbolStatus && *symbolStatus != HIP_GET_PROC_ADDRESS_SUCCESS))
+    return status;
+  if (void* replacement = wrappedProcedure(symbol, *pfn)) *pfn = replacement;
+  return status;
 }

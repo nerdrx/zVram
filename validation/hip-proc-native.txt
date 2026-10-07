@@ -1,0 +1,15 @@
+8/16 Testing: hip-procedure-native-query
+8/16 Test: hip-procedure-native-query
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--hip" "--hip-local-mib" "32" "--hip-host-mib" "64" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-hip-proc-check" "--expect-physical"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"hip-procedure-native-query" start time: Oct 07 02:36 CEST
+Output:
+----------------------------------------------------------
+[zvram-hip] summary: tracked=0 peak_allocations=1 hipMalloc_api_bytes_current=0 peak=33554432 host_pinned_backing_bytes_current=0 pending=0 peak=0 native_allocations=1 mapped_host_allocations=0 hybrid_vmm_allocations=0 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM
+PASS: hipGetProcAddress wrappers, capacity queries, and 32 MiB byte check; mode=physical total=25753026560 free=25589448704->25402802176->25436356608
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"hip-procedure-native-query" end time: Oct 07 02:36 CEST
+"hip-procedure-native-query" time elapsed: 00:00:00

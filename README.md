@@ -19,7 +19,7 @@ RADV already migrates allocations between VRAM and GPU-accessible system memory.
 
 ## Managed Vulkan buffer pool
 
-Include [`managed_pool.hpp`](managed_pool.hpp) and link `zvram_pool`. The pool owns each Vulkan buffer and allocation. `upload` creates a stable logical ID; `acquire` returns the current `VkBuffer` and pins it; `release` is valid only after the caller has synchronized all GPU work using that buffer. By default a restored allocation can have a different `VkBuffer`, so refresh descriptors and other references after every acquire. With `Config::stableSparseBuffers = true`, each buffer keeps its handle while physical backing is removed and restored through sparse binding. That mode requires `sparseBinding` and `sparseResidencyBuffer` enabled at device creation, plus a sparse-binding transfer queue; physical support checks cannot verify what the caller enabled on an existing device. It still requires the same explicit acquire/release boundaries. The supplied queue must be externally synchronized with pool calls.
+Include [`managed_pool.hpp`](managed_pool.hpp) and link `zvram_pool`. The pool owns each Vulkan buffer and allocation. `upload` creates a stable logical ID; `acquire` returns the current `VkBuffer` and pins it; `release` is valid only after the caller has synchronized all GPU work using that buffer. By default a restored allocation can have a different `VkBuffer`, so refresh descriptors and other references after every acquire. With `Config::stableSparseBuffers = true`, each buffer keeps its handle while physical backing is removed and restored through sparse binding. That mode requires `sparseBinding` and `sparseResidencyBuffer` enabled at device creation, plus a sparse-binding transfer queue; physical support checks cannot verify what the caller enabled on an existing device. It still requires the same explicit acquire/release boundaries. Serialize all calls on a pool instance. The supplied queue must be externally synchronized with pool calls.
 
 The pool assumes resident data can be modified by GPU work and reads it back before eviction. Host storage uses zstd when smaller and raw bytes otherwise. Snapshot encoding and restoration stream by staging chunk; temporary codec scratch is bounded by the configured chunk and zstd compression bound, while caller-owned readbacks are outside the pool budget. The pool is an explicit application integration API. Sparse mode rebinds memory at synchronized application boundaries; it does not supply fault-driven paging or discover arbitrary application buffer use. After an uncertain queue operation the pool retains backing and stops further acquire/upload operations.
 
@@ -29,7 +29,7 @@ Builds when HIP/ROCm development files are available. The `--hip` shim covers `h
 
 With `--hip-vmm`, overflow is backed by AMDGPU GTT buffer objects exported through libdrm and imported into one HIP VMM virtual address range. This experimental path requires the `libdrm_amdgpu` development files in addition to ROCm/HIP. One 40 GiB synthetic integrity check passed with 20 GiB each of local VRAM and GTT backing. An earlier HIP host-location VMM provider failed and consumed VRAM in a separate probe; that superseded path is not the current GTT provider. A native HIP 40 GiB single-allocation baseline returned out-of-memory, so the current GTT provider demonstrated extra single-allocation capacity on this stack. A small unmodified llama.cpp HIP run also passed on both native and VMM/GTT paths; this does not establish 40 GiB model loading, performance gain, or broad application compatibility.
 
-By default HIP capacity queries keep reporting native physical capacity. `--hip-report-capacity` opts into reporting the configured local cap plus available GTT-backed tier through `hipMemGetInfo`, `hipDeviceTotalMem`, and the installed `hipGetDeviceProperties` ABI. Use it only with `--hip-vmm`, an explicit `--hip-local-mib`, and a positive `--hip-host-mib`; it does not change physical VRAM, external queries, or older property-query ABIs. This logical report passed both an 80 MiB three-query consistency check and a 40 GiB single-pointer GPU integrity run. It applies only to those HIP entry points and does not reserve memory or promise general application compatibility. See [validation details](VALIDATION.md#hip-vmm-research-probe).
+By default HIP capacity queries keep reporting native physical capacity. `--hip-report-capacity` opts into reporting the configured local cap plus available GTT-backed tier through `hipMemGetInfo`, `hipDeviceTotalMem`, and the installed `hipGetDeviceProperties` ABI. Supported `hipGetProcAddress` lookups also return these wrappers when their ABI matches the installed runtime. Use it only with `--hip-vmm`, an explicit `--hip-local-mib`, and a positive `--hip-host-mib`; it does not change physical VRAM, external queries, or older property-query ABIs. This logical report passed both an 80 MiB three-query consistency check and a 40 GiB single-pointer GPU integrity run. It applies only to those HIP entry points and does not reserve memory or promise general application compatibility. See [validation details](VALIDATION.md#hip-vmm-research-probe).
 
 ## Quick start
 
@@ -98,3 +98,14 @@ ctest --test-dir build --output-on-failure
 GPU tests require supported AMD hardware and the relevant runtime. Contributions should include reproducible workloads and distinguish native driver behavior from zVram behavior.
 
 MIT licensed.
+
+### Check an existing model
+
+`check_model.py` runs an existing unmodified llama.cpp HIP `llama-completion` with an existing GGUF, compares native/zVram output, and verifies full layer offload, actual model-buffer size, and cleanup. It disables llama.cpp's fit pass and unified-memory shortcut so the tested buffers use `hipMalloc`. It does not download or quantize a model.
+
+```sh
+python3 check_model.py --binary /path/to/llama-completion --model /path/to/model.gguf \
+  --local-mib 64 --host-mib 2048 --min-model-mib 250
+```
+
+For a model that exceeds physical VRAM, `--vmm-only` skips native comparison and explicitly makes no native-baseline claim. Set backing caps to match available resources; the configured total must also accommodate context and compute allocations. Logs and the JSON report default to `build/model-check`. A small F16 model passed the reproducible comparison; larger-model results must be verified separately.
