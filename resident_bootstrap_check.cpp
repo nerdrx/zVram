@@ -10,8 +10,10 @@ namespace {
 constexpr VkDeviceSize MiB = 1024ull * 1024ull;
 unsigned allocations{};
 unsigned sparseBinds{};
+unsigned queueWaitCalls{};
 int failAllocations{};
 int failSparseBinds{};
+unsigned failQueueWaitAt{};
 unsigned frees{};
 unsigned budgetQueries{};
 VkDeviceSize mockHeapBudget{};
@@ -26,6 +28,8 @@ std::unordered_set<VkDeviceMemory> liveAllocations;
 unsigned trackedSyncForwards{};
 unsigned trackedLabelForwards{};
 unsigned unsupportedCommandForwards{};
+struct CapturedBufferBind { VkBuffer buffer{}; std::vector<VkSparseMemoryBind> binds; };
+std::vector<std::vector<CapturedBufferBind>> sparseBindCalls;
 
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
 
@@ -48,12 +52,25 @@ VKAPI_ATTR VkResult VKAPI_CALL mockAllocate(VkDevice,const VkMemoryAllocateInfo*
 VKAPI_ATTR void VKAPI_CALL mockFree(VkDevice,VkDeviceMemory memory,const VkAllocationCallbacks*) {
     ++frees; liveAllocations.erase(memory);
 }
-VKAPI_ATTR VkResult VKAPI_CALL mockSparse(VkQueue,std::uint32_t,const VkBindSparseInfo*,VkFence) {
+VKAPI_ATTR VkResult VKAPI_CALL mockSparse(VkQueue,std::uint32_t count,const VkBindSparseInfo* infos,VkFence) {
     ++sparseBinds;
+    std::vector<CapturedBufferBind> call;
+    for(std::uint32_t i=0;i<count;i++) {
+        for(std::uint32_t j=0;j<infos[i].bufferBindCount;j++) {
+            CapturedBufferBind captured; captured.buffer=infos[i].pBufferBinds[j].buffer;
+            const auto& source=infos[i].pBufferBinds[j];
+            captured.binds.assign(source.pBinds,source.pBinds+source.bindCount);
+            call.push_back(std::move(captured));
+        }
+    }
+    sparseBindCalls.push_back(std::move(call));
     if(failSparseBinds>0) { --failSparseBinds; return VK_ERROR_OUT_OF_DEVICE_MEMORY; }
     return VK_SUCCESS;
 }
-VKAPI_ATTR VkResult VKAPI_CALL mockQueueWait(VkQueue) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockQueueWait(VkQueue) {
+    ++queueWaitCalls;
+    return failQueueWaitAt==queueWaitCalls?VK_ERROR_DEVICE_LOST:VK_SUCCESS;
+}
 VKAPI_ATTR VkResult VKAPI_CALL mockDeviceWait(VkDevice) { return VK_SUCCESS; }
 VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDeviceMemoryProperties2* out) {
     ++budgetQueries;
@@ -87,6 +104,13 @@ VKAPI_ATTR VkResult VKAPI_CALL mockCreateSemaphore(VkDevice,const VkSemaphoreCre
 }
 VKAPI_ATTR void VKAPI_CALL mockDestroySemaphore(VkDevice,VkSemaphore,const VkAllocationCallbacks*) {}
 VKAPI_ATTR VkResult VKAPI_CALL mockSubmit(VkQueue,std::uint32_t,const VkSubmitInfo*,VkFence) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockResetCommandPool(VkDevice,VkCommandPool,VkCommandPoolResetFlags) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockBeginCommandBuffer(VkCommandBuffer,const VkCommandBufferBeginInfo*) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockEndCommandBuffer(VkCommandBuffer) { return VK_SUCCESS; }
+VKAPI_ATTR void VKAPI_CALL mockPipelineBarrier(VkCommandBuffer,VkPipelineStageFlags,VkPipelineStageFlags,
+    VkDependencyFlags,std::uint32_t,const VkMemoryBarrier*,std::uint32_t,const VkBufferMemoryBarrier*,
+    std::uint32_t,const VkImageMemoryBarrier*) {}
+VKAPI_ATTR void VKAPI_CALL mockCopyBuffer(VkCommandBuffer,VkBuffer,VkBuffer,std::uint32_t,const VkBufferCopy*) {}
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const char* name) {
     if(std::strcmp(name,"vkQueuePresentKHR")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockPresent);
     if(std::strcmp(name,"vkCmdSetEvent")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSetEvent);
@@ -104,6 +128,11 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const ch
     if(std::strcmp(name,"vkCreateSemaphore")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCreateSemaphore);
     if(std::strcmp(name,"vkDestroySemaphore")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockDestroySemaphore);
     if(std::strcmp(name,"vkQueueSubmit")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSubmit);
+    if(std::strcmp(name,"vkResetCommandPool")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockResetCommandPool);
+    if(std::strcmp(name,"vkBeginCommandBuffer")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockBeginCommandBuffer);
+    if(std::strcmp(name,"vkEndCommandBuffer")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockEndCommandBuffer);
+    if(std::strcmp(name,"vkCmdPipelineBarrier")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockPipelineBarrier);
+    if(std::strcmp(name,"vkCmdCopyBuffer")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCopyBuffer);
     if(std::strcmp(name,"vkQueueBindSparse")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSparse);
     if(std::strcmp(name,"vkQueueWaitIdle")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockQueueWait);
     return nullptr;
@@ -117,7 +146,7 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=frees=budgetQueries=presentCalls=0; failAllocations=failSparseBinds=0; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear();
+        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=0; failAllocations=failSparseBinds=0; failQueueWaitAt=0; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear();
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
         mockHeapBudget=mockHeapUsage=mockNativeHeapSize=0;
         device.handle=handle; device.autoEnabled=true; device.lazyBacking=true;
@@ -128,6 +157,10 @@ struct Fixture {
         device.snapshot.deviceWaitIdle=mockDeviceWait;
         device.snapshot.createBuffer=mockCreateBuffer; device.snapshot.destroyBuffer=mockDestroyBuffer;
         device.snapshot.getBufferMemoryRequirements=mockGetBufferMemoryRequirements;
+        device.snapshot.resetCommandPool=mockResetCommandPool; device.snapshot.beginCommandBuffer=mockBeginCommandBuffer;
+        device.snapshot.endCommandBuffer=mockEndCommandBuffer; device.snapshot.cmdPipelineBarrier=mockPipelineBarrier;
+        device.snapshot.cmdCopyBuffer=mockCopyBuffer; device.snapshot.queueSubmit=mockSubmit;
+        device.snapshot.commandPool=tokenHandle<VkCommandPool>(10); device.snapshot.commandBuffer=tokenHandle<VkCommandBuffer>(11);
         device.memory.memoryTypeCount=1; device.memory.memoryHeapCount=1;
         device.memory.memoryTypes[0].heapIndex=0;
         device.memory.memoryHeaps[0].flags=VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
@@ -215,6 +248,85 @@ void checkBootstrapAlignmentRollback() {
             f.device.coldLogicalBytes==0 && m.coldLogicalSize==0 && f.device.coldBytes==0 &&
             f.device.cacheBytes==0 && f.device.freezeCount==0,
             "failed bootstrap binding did not roll back cold/resident counters");
+}
+
+void checkMergedRestoreMapping() {
+    auto prepare=[](Fixture& f) {
+        const auto half=MiB/2;
+        f.bind(0,half);
+        f.bind(half,half);
+        auto& m=f.state(); auto& group=m.coldGroups[0];
+        const auto child=tokenHandle<VkDeviceMemory>(0xface);
+        m.children[0]=child; m.childTypes[0]=0; m.residentBytes=MiB; f.device.residentBytes=MiB;
+        group.pristine=false; group.restoreBound=true;
+        VirtualMemory::ColdChunk chunk; chunk.bytes.assign(MiB,0x5a); chunk.rawSize=MiB; chunk.compressed=false;
+        group.chunks.push_back(std::move(chunk)); group.storedBytes=MiB;
+        m.coldStoredBytes=MiB; f.device.coldBytes=MiB;
+        f.device.residentAdmissionArmed=false;
+        auto staging=std::make_unique<std::vector<std::uint8_t>>(MiB);
+        f.device.snapshot.mapped=staging->data(); f.device.snapshot.stagingSize=MiB;
+        f.device.snapshot.chunkSize=MiB; f.device.snapshot.stagingBuffer=tokenHandle<VkBuffer>(0xbabe);
+        f.device.snapshot.commandPool=tokenHandle<VkCommandPool>(0xbeef);
+        f.device.snapshot.commandBuffer=tokenHandle<VkCommandBuffer>(0xcafe);
+        f.device.copyQueue=tokenHandle<VkQueue>(0xabc);
+        return staging;
+    };
+
+    {
+        Fixture f; auto staging=prepare(f); auto& m=f.state();
+        const auto result=restoreColdLocked(f.handle,f.device,f.memory,0);
+        require(result==VK_SUCCESS,"merged private-view/app restore bind failed");
+        require(sparseBinds==1 && queueWaitCalls==2 && sparseBindCalls.size()==1,
+                "final mapping did not use one sparse call and one bind completion wait");
+        const auto& binds=sparseBindCalls[0];
+        require(binds.size()==3,"merged bind must contain view unbind and two app aliases");
+        require(binds[0].buffer==m.poolViews[0] && binds[0].binds.size()==1 &&
+                binds[0].binds[0].memory==VK_NULL_HANDLE && binds[0].binds[0].resourceOffset==0 &&
+                binds[0].binds[0].size==MiB,"private view release bind was malformed or not first");
+        require(binds[1].buffer==m.bindings[0].buffer && binds[2].buffer==m.bindings[1].buffer,
+                "merged app alias bind order did not follow the recorded aliases");
+        require(binds[1].binds.size()==1 && binds[1].binds[0].memory==m.children[0] &&
+                binds[1].binds[0].resourceOffset==0 && binds[1].binds[0].memoryOffset==0 &&
+                binds[1].binds[0].size==MiB/2,"first app alias mapping was incorrect");
+        require(binds[2].binds.size()==1 && binds[2].binds[0].memory==m.children[0] &&
+                binds[2].binds[0].resourceOffset==0 && binds[2].binds[0].memoryOffset==MiB/2 &&
+                binds[2].binds[0].size==MiB/2,"second app alias mapping was incorrect");
+        require(!m.coldGroups[0].cold && !m.coldGroups[0].restoreBound &&
+                m.coldGroups[0].logicalBytes==0 && m.coldGroups[0].chunks.empty() &&
+                f.device.coldLogicalBytes==3*MiB && f.device.coldBytes==0,
+                "successful merged restore did not retire the cold snapshot");
+        f.device.snapshot.mapped=nullptr;
+    }
+    {
+        Fixture f; auto staging=prepare(f); auto& m=f.state(); auto& group=m.coldGroups[0];
+        const auto logicalBefore=f.device.coldLogicalBytes;
+        failSparseBinds=1;
+        const auto result=restoreColdLocked(f.handle,f.device,f.memory,0);
+        require(result==VK_ERROR_OUT_OF_DEVICE_MEMORY,"injected merged-bind failure was not returned");
+        require(sparseBinds==1 && queueWaitCalls==1 && sparseBindCalls.size()==1 &&
+                sparseBindCalls[0].size()==3,"failed transition did not issue exactly one merged sparse call");
+        require(f.device.gpuGateError==VK_ERROR_OUT_OF_DEVICE_MEMORY && group.cold && group.restoreBound &&
+                group.logicalBytes==MiB && group.storedBytes==MiB && group.chunks.size()==1,
+                "failed merged transition did not preserve cold state behind the sticky gate");
+        require(m.children[0]==tokenHandle<VkDeviceMemory>(0xface) && m.residentBytes==MiB &&
+                f.device.residentBytes==MiB && f.device.coldLogicalBytes==logicalBefore &&
+                f.device.coldBytes==MiB && frees==0,
+                "failed merged transition changed backing/cold accounting or freed memory");
+        f.device.snapshot.mapped=nullptr;
+    }
+    {
+        Fixture f; auto staging=prepare(f); auto& m=f.state(); auto& group=m.coldGroups[0];
+        failQueueWaitAt=2; // Copy completed; final mapping was accepted but its wait fails.
+        require(restoreColdLocked(f.handle,f.device,f.memory,0)==VK_ERROR_DEVICE_LOST,
+                "merged completion failure was not returned");
+        require(sparseBinds==1 && queueWaitCalls==2 &&
+                f.device.gpuGateError==VK_ERROR_DEVICE_LOST && group.cold && group.restoreBound &&
+                group.chunks.size()==1 && group.storedBytes==MiB &&
+                f.device.coldBytes==MiB && f.device.coldLogicalBytes==4*MiB &&
+                m.children[0]==tokenHandle<VkDeviceMemory>(0xface) && frees==0,
+                "completion failure retired cold data or freed potentially referenced backing");
+        f.device.snapshot.mapped=nullptr;
+    }
 }
 
 void checkUnknownSubmitAdmission() {
@@ -590,6 +702,7 @@ int main() try {
     checkNoActionCommandHooksStaySelective();
     checkAllocationFailureRetry();
     checkBindFailureAccounting();
+    checkMergedRestoreMapping();
     std::cout<<"PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry\n";
     return 0;
 } catch(const std::exception& e) {

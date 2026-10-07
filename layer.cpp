@@ -1102,15 +1102,23 @@ VkResult bindSparseLocked(VkDevice d,Device& state,VkBuffer buffer,const VkSpars
     VkSparseBufferMemoryBindInfo bufferInfo{}; bufferInfo.buffer=buffer; bufferInfo.bindCount=count; bufferInfo.pBinds=binds;
     return bindSparseBatchLocked(d,state,&bufferInfo,1);
 }
-VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std::size_t childIndex,bool unbind) {
+VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std::size_t childIndex,bool unbind,
+                             VkBuffer releaseView=VK_NULL_HANDLE) {
     if(childIndex>=memory.children.size() || childIndex>=memory.childSizes.size()) return VK_ERROR_FEATURE_NOT_PRESENT;
+    if(releaseView && unbind) return VK_ERROR_FEATURE_NOT_PRESENT;
     struct Plan { VkBuffer buffer; VkSparseMemoryBind bind; };
     std::vector<Plan> plans;
-    try { plans.reserve(memory.bindings.size()); }
+    try { plans.reserve(memory.bindings.size()+(releaseView?1:0)); }
     catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
     VkDeviceSize childBase=0;
     for(std::size_t i=0;i<childIndex;i++) childBase+=memory.childSizes[i];
     const VkDeviceSize childEnd=childBase+memory.childSizes[childIndex];
+    // Decode/copy has completed before this transition. Retire the private view
+    // and expose app aliases in one operation, followed by one completion wait.
+    if(releaseView) {
+        VkSparseMemoryBind release{}; release.size=memory.childSizes[childIndex];
+        plans.push_back({releaseView,release});
+    }
     for(const auto& app:memory.bindings) {
         const VkDeviceSize appEnd=app.memoryOffset+app.size;
         const VkDeviceSize lo=std::max(app.memoryOffset,childBase), hi=std::min(appEnd,childEnd);
@@ -1137,7 +1145,8 @@ VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std
     }
     const auto result=bindSparseBatchLocked(device,d,buffers.data(),static_cast<std::uint32_t>(buffers.size()));
     if(result==VK_SUCCESS && buffers.size()>1)
-        logf("snapshot app sparse bind batch count=%zu unbind=%u",buffers.size(),unbind?1u:0u);
+        logf("snapshot app sparse bind batch count=%zu unbind=%u view-release=%u",
+            buffers.size()-(releaseView?1:0),unbind?1u:0u,releaseView?1u:0u);
     return result;
 }
 VkResult createPoolViews(Device& d,VirtualMemory& memory,const std::vector<VkDeviceSize>& sizes) {
@@ -1673,14 +1682,13 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                 group.restoreBound=false;
                 return r;
             }
-            if(group.restoreBound) {
-                VkSparseMemoryBind unbindView{}; unbindView.size=amount;
-                r=bindSparseLocked(device,d,memory.poolViews[i],&unbindView,1);
-                if(r!=VK_SUCCESS) { d.gpuGateError=r; return r; }
-                group.restoreBound=false;
-            }
-            r=bindChildAppsLocked(device,d,memory,i,false);
+            const bool finishingView=group.restoreBound;
+            r=bindChildAppsLocked(device,d,memory,i,false,
+                finishingView?memory.poolViews[i]:VK_NULL_HANDLE);
             if(r!=VK_SUCCESS) {
+                // The failed merged transition can leave either mapping in
+                // flight. Retain the view, backing and cold data behind the gate.
+                if(finishingView) { d.gpuGateError=r; return r; }
                 const auto rollback=bindChildAppsLocked(device,d,memory,i,true);
                 if(rollback!=VK_SUCCESS) d.gpuGateError=VK_ERROR_DEVICE_LOST;
                 else if(allocatedNow && group.pristine && d.gpuGateError==VK_SUCCESS) {
@@ -1689,6 +1697,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                 }
                 return r;
             }
+            group.restoreBound=false;
             memory.bound=!memory.bindings.empty();
             d.coldBytes-=group.storedBytes; d.coldLogicalBytes-=group.logicalBytes;
             // Bootstrap admission permits the whole model to remain resident.

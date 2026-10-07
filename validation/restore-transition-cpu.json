@@ -1,0 +1,25 @@
+{
+  "scope": "CPU production restore mapping; no GPU execution or throughput claim",
+  "command": [
+    "ctest",
+    "--test-dir",
+    "build",
+    "--output-on-failure",
+    "-R",
+    "^(cpu-|vulkan-submission-tracking)"
+  ],
+  "returncode": 0,
+  "stdout": "Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build\n      Start  1: cpu-resident-budget\n 1/11 Test  #1: cpu-resident-budget ..............   Passed    0.00 sec\n      Start  2: cpu-resident-bootstrap\n 2/11 Test  #2: cpu-resident-bootstrap ...........   Passed    0.00 sec\n      Start  6: cpu-vulkan-ram-guard\n 3/11 Test  #6: cpu-vulkan-ram-guard .............   Passed    0.24 sec\n      Start  7: cpu-vulkan-compression-options\n 4/11 Test  #7: cpu-vulkan-compression-options ...   Passed    1.85 sec\n      Start  8: cpu-vulkan-model-budget\n 5/11 Test  #8: cpu-vulkan-model-budget ..........   Passed    1.85 sec\n      Start  9: cpu-compression-policy\n 6/11 Test  #9: cpu-compression-policy ...........   Passed    0.01 sec\n      Start 10: cpu-snapshot-decode\n 7/11 Test #10: cpu-snapshot-decode ..............   Passed    0.03 sec\n      Start 11: cpu-gdeflate-envelope\n 8/11 Test #11: cpu-gdeflate-envelope ............   Passed    0.00 sec\n      Start 12: cpu-snapshot-pipeline\n 9/11 Test #12: cpu-snapshot-pipeline ............   Passed    0.01 sec\n      Start 13: vulkan-submission-tracking\n10/11 Test #13: vulkan-submission-tracking .......   Passed    0.00 sec\n      Start 14: cpu-active-refs\n11/11 Test #14: cpu-active-refs ..................   Passed    0.00 sec\n\n100% tests passed out of 11\n\nTotal Test time (real) =   4.01 sec\n",
+  "stderr": "",
+  "checks": [
+    "one final sparse batch releases private view and binds two adjacent app aliases",
+    "one mapping completion wait plus copy completion",
+    "sparse bind refusal retains cold state and backing behind sticky error gate",
+    "accepted mapping with failed completion retains potentially referenced backing"
+  ],
+  "source_sha256": {
+    "layer.cpp": "c94443a860ac18623236f57b7aaae978e9ee6869984b406776115cca7bed53a9",
+    "resident_bootstrap_check.cpp": "eba7d3087b6e2f636502f76aac3327e4cc51bac19fa00efb6364ee26977bc0ee"
+  },
+  "hardware_retest": "pending; GPU stress prohibited during gaming"
+}
