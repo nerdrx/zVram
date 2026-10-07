@@ -201,6 +201,18 @@ The unchanged SmolLM2-135M F16 pair used the same binary, model, 1,000 ms idle i
 
 See the [0% summary](validation/vulkan-cutoff-0-small-model-result.json), [100% summary](validation/vulkan-cutoff-100-small-model-result.json), and `validation/vulkan-cutoff-{0,100}-small-model-*` output and fdinfo captures.
 
+### Matched 27B run at a 5% cutoff
+
+The unchanged **16.8107 GB Q4** model also passed **27/27** checks with a 5% minimum-savings cutoff, 60,000 ms idle interval, 20,000 MiB cold quota, 32 MiB ranges, 12 GiB resident cap, MRU, clean cache, strict robustness, and one node per submit. It matched the previous 27B native/wrapped stdout (SHA-256 `61c5375468005f6c1436b328f039ef4a5fbb6b73687461b4cfe4d7f5e6d20a5b`), offloaded **66/66** layers, and had zero VUIDs, admission refusals, or restore fallbacks. The layer recorded **4,891 pressure admissions** and reached the exact **12 GiB** tracked cap. The full job recorded **1,774 compressed** and **1,715 RAW** fresh snapshot chunks; before input, cold storage held **16,151,085,056 logical bytes** in **15,826,134,806 stored bytes** (about **2.01%** saved). Minimum system `MemAvailable` was **28,056 MiB**, above the **16,384 MiB** guard. Across 45 decode runs, wrapped throughput was **0.41 tokens/s**, versus **13.30 native**. The prior no-cutoff run measured **0.28 wrapped** and **6.00 native**; because the native baseline changed, the 47% wrapped difference cannot be attributed to the cutoff alone. This confirms mixed encoding and pressure admission on this model, but remains very slow and is not evidence for a 40 GiB model, game behavior, or a general speed benefit.
+
+Reproduce with the model helper and the same loading options:
+
+```sh
+python3 check_vulkan_idle_model.py --binary build/third-party/llama-vulkan-build/bin/llama-completion --model /path/to/27B-Q4_K_M.gguf --tokens 64 --idle-ms 60000 --cold-mib 20000 --range-mib 32 --resident-mib 12288 --resident-after-cold --strict-robustness --max-nodes-per-submit 1 --validate --clean-cache --eviction-policy mru --min-savings-percent 5 --min-available-mib 16384 --app-arg=--load-mode --app-arg=mmap --output-dir build/vulkan-cutoff-5-27b-model --timeout 600
+```
+
+See the [summary](validation/vulkan-cutoff-5-27b-model-result.json), [wrapped diagnostics](validation/vulkan-cutoff-5-27b-model-automatic.stderr.txt.gz), [native diagnostics](validation/vulkan-cutoff-5-27b-model-native.stderr.txt), [wrapped output](validation/vulkan-cutoff-5-27b-model-automatic.stdout.txt), [native output](validation/vulkan-cutoff-5-27b-model-native.stdout.txt), and [wrapped hot fdinfo](validation/vulkan-cutoff-5-27b-model-automatic-hot.fdinfo.txt)/[wrapped cold fdinfo](validation/vulkan-cutoff-5-27b-model-automatic-cold.fdinfo.txt)/[native hot fdinfo](validation/vulkan-cutoff-5-27b-model-native-hot.fdinfo.txt).
+
 ## Managed Vulkan pool
 
 ### Mixed-data lifecycle check
