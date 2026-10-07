@@ -16,10 +16,11 @@ idle_model = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(idle_model)
 
 
-def main():
+def check_phase(phase):
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         marker = root / "child.pid"
+        prompt_marker = root / "prompt.received"
         output = root / "output"
         output.mkdir()
         unrelated = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
@@ -27,19 +28,24 @@ def main():
             deadline = time.monotonic() + 3
             while not marker.exists() and time.monotonic() < deadline:
                 time.sleep(0.01)
-            return 2
+            return 2 if phase == "load" or prompt_marker.exists() else 5
 
         idle_model.available_memory_mib = available
         child = ("import os,time; print('child-start', flush=True); "
                  "print('child-error', file=__import__('sys').stderr, flush=True); "
-                 "open(os.environ['PID_FILE'],'w').write(str(os.getpid())); time.sleep(30)")
+                 "open(os.environ['PID_FILE'],'w').write(str(os.getpid())); "
+                 "print('Vulkan0 model buffer size = 1 MiB\\n== Running in interactive mode. ==', "
+                 "file=__import__('sys').stderr, flush=True); "
+                 "__import__('sys').stdin.readline(); "
+                 "open(os.environ['PROMPT_FILE'],'w').write('received'); time.sleep(30)")
         env = os.environ.copy()
         env["PID_FILE"] = str(marker)
+        env["PROMPT_FILE"] = str(prompt_marker)
         try:
             try:
                 idle_model.run_interactive("guard", [sys.executable, "-c", child], env,
                                            output, 10, False,
-                                           min_available_mib=(1 << 64) - 1)
+                                           min_available_mib=3)
             except RuntimeError as error:
                 assert "below guard floor" in str(error), error
             else:
@@ -57,10 +63,13 @@ def main():
             assert unrelated.poll() is None, "unrelated process was affected"
             assert "child-start" in (output / "guard.stdout.txt").read_text()
             assert "child-error" in (output / "guard.stderr.txt").read_text()
+            assert prompt_marker.exists() == (phase == "generate")
         finally:
             unrelated.terminate()
             unrelated.wait()
 
 
 if __name__ == "__main__":
-    main()
+    assert idle_model.available_memory_mib() > 0
+    for phase in ("load", "generate"):
+        check_phase(phase)
