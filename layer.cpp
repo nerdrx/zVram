@@ -250,7 +250,7 @@ struct Device {
     unsigned minSavingsPercent{};
     unsigned byteShuffle{};
     zvram::snapshot::Codec snapshotCodec{zvram::snapshot::Codec::Zstd};
-    unsigned gdeflateWorkers{1};
+    unsigned gdeflateWorkers{1}, bp16Workers{1};
     bool gpuRestoreEnabled{}, gpuRestoreUnsafe{};
     VkDeviceSize gpuStorageAlignment{1};
     VkDeviceSize gpuStorageRange{};
@@ -351,6 +351,12 @@ void logSnapshotState(const char* event,const Device& d) {
          static_cast<unsigned long long>(d.snapshot.prefetchWaitNanoseconds),
          static_cast<unsigned long long>(d.gpuDecodeCalls),static_cast<unsigned long long>(d.gpuDecodeBytes),
          static_cast<unsigned long long>(d.gpuDecodeNanoseconds),static_cast<unsigned long long>(d.gpuDecodeFallbacks));
+    if(d.gpuDecoder && d.gpuDecoder->profilingEnabled() && std::strcmp(event,"restore")==0) {
+        const auto profile=d.gpuDecoder->profile();
+        logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu",
+             static_cast<unsigned long long>(profile.calls),static_cast<unsigned long long>(profile.validationNs),
+             static_cast<unsigned long long>(profile.inputPrepareNs),static_cast<unsigned long long>(profile.submitWaitNs));
+    }
 }
 std::mutex mapsMutex;
 // Future command entry points absent from our build cannot be tracked safely.
@@ -1018,6 +1024,13 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                         logf("GDeflate workers require the GDeflate codec and a count from 1 to 32");
                     } else d->gdeflateWorkers=static_cast<unsigned>(count);
                 }
+                if(const char* workers=std::getenv("ZVRAM_VULKAN_BP16_WORKERS")) {
+                    const auto count=positiveEnv("ZVRAM_VULKAN_BP16_WORKERS",32);
+                    if(!count || d->snapshotCodec!=zvram::snapshot::Codec::BP16) {
+                        autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
+                        logf("BP16 workers require the BP16 codec and a count from 1 to 32");
+                    } else d->bp16Workers=static_cast<unsigned>(count);
+                }
                 if(d->activeEviction && d->rangeChunkBytes) {
                     const auto residentMiB=positiveEnv("ZVRAM_VULKAN_RESIDENT_MIB",std::numeric_limits<std::uint64_t>::max()/(1024ull*1024ull));
                     d->residentLimitBytes=residentMiB*1024ull*1024ull;
@@ -1068,7 +1081,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     if(d->autoEnabled && d->snapshotCodec==zvram::snapshot::Codec::GDeflate)
                         logf("Vulkan snapshot codec=gdeflate decode=%s experimental=1",d->gpuRestoreEnabled?"GPU":"CPU");
                     if(d->autoEnabled && d->snapshotCodec==zvram::snapshot::Codec::BP16)
-                        logf("Vulkan snapshot codec=bp16 decode=%s experimental=1",d->gpuRestoreEnabled?"GPU":"CPU");
+                        logf("Vulkan snapshot codec=bp16 decode=%s workers=%u experimental=1",d->gpuRestoreEnabled?"GPU":"CPU",d->bp16Workers);
                 }
             }
         }
@@ -1823,7 +1836,7 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
 #endif
                 if(d.snapshotCodec==zvram::snapshot::Codec::BP16) {
                     if(amount<=zvram::bp16::MaxRawBytes && amount%zvram::bp16::RawBytesPerBlock==0) {
-                        if(!zvram::bp16::encodeFast(source,static_cast<std::size_t>(amount),encoded)) {
+                        if(!zvram::bp16::encodeFast(source,static_cast<std::size_t>(amount),encoded,d.bp16Workers)) {
                             okay=false; r=VK_ERROR_UNKNOWN; break;
                         }
                         compressed=encoded.size();
@@ -1900,7 +1913,7 @@ namespace {
 constexpr VkDeviceSize kAsyncSnapshotMaxRaw=32ull*1024ull*1024ull;
 bool encodeAsyncSnapshot(const std::uint8_t* raw,std::size_t rawSize,std::size_t chunkLimit,
                          unsigned minSavings,unsigned shuffle,zvram::snapshot::Codec codec,
-                         unsigned gdeflateWorkers,VirtualMemory::ColdGroup& candidate,
+                         unsigned encodingWorkers,VirtualMemory::ColdGroup& candidate,
                          VkDeviceSize& stored) noexcept {
     try {
         if(!raw || !rawSize || !chunkLimit || rawSize>kAsyncSnapshotMaxRaw) return false;
@@ -1916,7 +1929,7 @@ bool encodeAsyncSnapshot(const std::uint8_t* raw,std::size_t rawSize,std::size_t
                 if(codec==zvram::snapshot::Codec::GDeflate) {
 #ifdef ZVRAM_HAVE_GDEFLATE
                     if(shuffle) return false;
-                    if(!zvram::gdeflate::encode(source,amount,encoded,gdeflateWorkers)) return false;
+                    if(!zvram::gdeflate::encode(source,amount,encoded,encodingWorkers)) return false;
                     compressed=encoded.size(); keepCompressed=retainCompression(amount,compressed,minSavings);
 #else
                     return false;
@@ -1924,7 +1937,7 @@ bool encodeAsyncSnapshot(const std::uint8_t* raw,std::size_t rawSize,std::size_t
                 } else if(codec==zvram::snapshot::Codec::BP16) {
                     if(shuffle) return false;
                     if(amount<=zvram::bp16::MaxRawBytes && amount%zvram::bp16::RawBytesPerBlock==0) {
-                        if(!zvram::bp16::encodeFast(source,amount,encoded)) return false;
+                        if(!zvram::bp16::encodeFast(source,amount,encoded,encodingWorkers)) return false;
                         compressed=encoded.size(); keepCompressed=retainCompression(amount,compressed,minSavings);
                     }
                 } else {
@@ -2007,7 +2020,7 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
         token={handle,memory.identityGeneration,child,backing,memory.childGenerations[child],
                memory.bindingGeneration,group.writeEpoch};
         chunkLimit=static_cast<std::size_t>(d.snapshot.chunkSize);
-        minSavings=d.minSavingsPercent; shuffle=d.byteShuffle; codec=d.snapshotCodec; workers=d.gdeflateWorkers;
+        minSavings=d.minSavingsPercent; shuffle=d.byteShuffle; codec=d.snapshotCodec; workers=codec==zvram::snapshot::Codec::BP16?d.bp16Workers:d.gdeflateWorkers;
     } // No map iterators or VirtualMemory/ColdGroup references survive the unlock.
     d.asyncFreezePending=true;
     VirtualMemory::ColdGroup candidate; VkDeviceSize stored=0; bool encoded=false;

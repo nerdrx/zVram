@@ -88,6 +88,15 @@ with tempfile.TemporaryDirectory() as temporary:
     (build / "bp16.spv").touch()
     result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "bp16", "--vulkan-bp16-gpu", "--", sys.executable, "-c", bp16_child)
     assert result.returncode == 0 and result.stdout == "bp16\n1\n" + str(build / "bp16.spv") + "\n", (result.stdout, result.stderr)
+    for workers in (1, 4, 16, 32):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "bp16",
+                     "--vulkan-bp16-workers", str(workers), "--", sys.executable, "-c",
+                     "import os; print(os.environ['ZVRAM_VULKAN_BP16_WORKERS'])")
+        assert result.returncode == 0 and result.stdout == str(workers) + "\n", (result.stdout, result.stderr)
+    for extra in (("--vulkan-bp16-workers", "0"), ("--vulkan-bp16-workers", "33"),
+                  ("--vulkan-bp16-workers", "2", "--vulkan-codec", "zstd")):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", *extra, "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2, result.stderr
     for extra in (("--vulkan-bp16-gpu",), ("--vulkan-codec", "bp16", "--vulkan-bp16-gpu", "--vulkan-gdeflate-gpu"),
                   ("--vulkan-codec", "bp16", "--vulkan-byte-shuffle", "2")):
         result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", *extra, "--", sys.executable, "-c", "pass")

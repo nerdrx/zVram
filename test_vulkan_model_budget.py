@@ -69,6 +69,7 @@ def check_launch_forwarding():
         if label == "native":
             assert "--vulkan-lazy-backing" not in command
             assert "--vulkan-gdeflate-workers" not in command
+            assert "--vulkan-bp16-workers" not in command
             assert "--vulkan-headroom-mib" not in command
             assert "--vulkan-async-compression" not in command
             return {}
@@ -104,8 +105,67 @@ def check_launch_forwarding():
     assert "--no-warmup" in captured, captured
 
 
+def check_bp16_launch_forwarding():
+    class Captured(Exception):
+        pass
+    captured = []
+    original_run, original_argv = idle_model.run_interactive, sys.argv
+    def fake_run(label, command, *args, **kwargs):
+        if label == "native":
+            return {}
+        captured.extend(command)
+        raise Captured
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        model = root / "fixture.gguf"
+        model.write_bytes(b"CPU fixture only")
+        sys.argv = [str(MODULE), "--binary", sys.executable, "--model", str(model),
+                    "--output-dir", str(root / "output"), "--codec", "bp16",
+                    "--bp16-workers", "16"]
+        idle_model.run_interactive = fake_run
+        try:
+            try:
+                idle_model.main()
+            except Captured:
+                pass
+            else:
+                raise AssertionError("BP16 automatic launch was not reached")
+        finally:
+            idle_model.run_interactive, sys.argv = original_run, original_argv
+    options = captured[:captured.index("--")]
+    assert options[options.index("--vulkan-codec") + 1] == "bp16", captured
+    assert options[options.index("--vulkan-bp16-workers") + 1] == "16", captured
+
+
+def check_gpu_restore_evidence():
+    for codec in ("BP16", "GDeflate"):
+        enabled = f"GPU {codec} restore enabled"
+        state = ("snapshot state event=restore resident=0 cold-logical=0 cold-stored=0 "
+                 "freezes=1 restores=1 failures=0 gpu-decode-calls=3 gpu-decode-bytes=4096 "
+                 "gpu-decode-ns=120 gpu-decode-fallbacks=0")
+        profile, used, no_fallback = idle_model.gpu_restore_evidence(enabled + "\n" + state, codec)
+        assert profile == (3, 4096, 120, 0) and used and no_fallback, (codec, profile, used, no_fallback)
+    enabled = "GPU BP16 restore enabled\n"
+    state = "snapshot state event=restore gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0"
+    profile, used, no_fallback = idle_model.gpu_restore_evidence(enabled + state, "BP16")
+    assert profile == (0, 0, 0, 0) and not used and no_fallback
+    fallback = "snapshot state event=restore gpu-decode-calls=3 gpu-decode-bytes=4096 gpu-decode-ns=120 gpu-decode-fallbacks=1"
+    profile, used, no_fallback = idle_model.gpu_restore_evidence(enabled + fallback, "BP16")
+    assert profile == (3, 4096, 120, 1) and used and not no_fallback
+    malformed = "snapshot state event=restore gpu-decode-calls=3 gpu-decode-bytes=4096 gpu-decode-ns=bad gpu-decode-fallbacks=0"
+    profile, used, no_fallback = idle_model.gpu_restore_evidence(enabled + malformed, "BP16")
+    assert profile is None and not used and not no_fallback
+    profile, used, no_fallback = idle_model.gpu_restore_evidence(fallback, "BP16")
+    assert profile is None and not used and not no_fallback
+    summary = "GPU BP16 restore calls=2 bytes=2048 host-ns=70 fallbacks=0\n" + fallback
+    profile, used, no_fallback = idle_model.gpu_restore_evidence(enabled + summary, "BP16")
+    assert profile == (2, 2048, 70, 0) and used and no_fallback
+
+
 def main():
     check_launch_forwarding()
+    check_bp16_launch_forwarding()
+    check_gpu_restore_evidence()
     assert idle_model.has_decode_tokens({"decode_runs": 1, "tokens_per_second": 0.1})
     for metrics in ({"decode_runs": 0, "tokens_per_second": 1},
                     {"decode_runs": 1, "tokens_per_second": 0},
@@ -166,6 +226,9 @@ def main():
                             (["--codec", "gdeflate", "--gdeflate-workers", "33"], "invalid choice"),
                             (["--lazy-backing", "--resident-after-cold"], "requires immediate"),
                             (["--gdeflate-gpu"], "requires --codec gdeflate"),
+                            (["--bp16-workers", "4"], "requires --codec bp16"),
+                            (["--codec", "bp16", "--bp16-workers", "0"], "invalid choice"),
+                            (["--codec", "bp16", "--bp16-workers", "33"], "invalid choice"),
                             (["--codec", "gdeflate", "--byte-shuffle", "2"], "requires the zstd codec")):
         result = subprocess.run(pressure + extra, capture_output=True, text=True)
         assert result.returncode == 2 and expected in result.stderr, result.stderr

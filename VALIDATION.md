@@ -746,7 +746,7 @@ After a compressed child's decode or staging copy completes, restoration now ret
 
 A failed merged transition leaves the GPU gate in an error state and retains the backing, private-view state and cold metadata; it does not assume which bindings completed or free potentially referenced memory. The batch operates on distinct buffer ranges; Vulkan permits multiple sparse buffer binding operations in a batch and requires a resource range not be bound more than once in that batch. See [the primary sparse-binding specification](https://docs.vulkan.org/refpages/latest/refpages/source/vkQueueBindSparse.html).
 
-CPU production-path regression results are recorded in [restore-transition-cpu.json](validation/restore-transition-cpu.json). The subsequent full 16 GiB Zstd run below exercised restored mappings and matched native output. GPU-decoder correctness for this transition remains pending. This reduces required mapping operations; an isolated token-throughput benefit has not been measured.
+CPU production-path regression results are recorded in [restore-transition-cpu.json](validation/restore-transition-cpu.json). The subsequent full 16 GiB Zstd run below exercised restored mappings and matched native output. The subsequent completed GPU GDeflate and BP16 runs below also matched native output through this transition. This reduces required mapping operations; an isolated token-throughput benefit has not been measured.
 
 
 ## Full InternLM lazy backing under 16 GiB
@@ -755,7 +755,7 @@ The unchanged 39,725,643,136-byte InternLM2.5-20B F16 GGUF completed inference w
 
 Twelve actual decode runs took **361,534.38 ms**, calculated **0.03319 tokens/s**, versus **1.69 tokens/s** for the fresh native reference (7,088.30 ms). Prompt evaluation took 67,111.33 ms versus 1,339.69 ms native. The `--predict 32` interactive budget included 20 input tokens; this was 12 generated tokens, not 32. Desktop activity and GPU clocks were not locked, and this is one short inference comparison. Native Vulkan already spills into driver-managed GTT; native is not a VRAM-only reference.
 
-Tracked backing peaked at **17,177,772,032 bytes**, below the 17,179,869,184-byte cap throughout recorded state events. Driver observations also include staging and other allocations outside that cap. The final state recorded 16,916 freezes, 17,433 restores and zero snapshot failures. CPU decoding processed 539,687,518,208 bytes with 238,657,956,509 ns accumulated decode time; copy, prefetch and wait counters can overlap, so they must not be summed as independent elapsed time. This path works but is extremely slow. GPU GDeflate plus MRU caching is being evaluated separately.
+Tracked backing peaked at **17,177,772,032 bytes**, below the 17,179,869,184-byte cap throughout recorded state events. Driver observations also include staging and other allocations outside that cap. The final state recorded 16,916 freezes, 17,433 restores and zero snapshot failures. CPU decoding processed 539,687,518,208 bytes with 238,657,956,509 ns accumulated decode time; copy, prefetch and wait counters can overlap, so they must not be summed as independent elapsed time. This Zstd path works but is extremely slow. GPU GDeflate plus MRU was evaluated later; see the completed run below.
 
 Available system RAM stayed at or above 18,107 MiB in sampled observations. Logical used swap grew by 6,450 MiB; the configured guard was 16,384 MiB growth with a 16,384 MiB available-RAM floor. These are system-wide samples, not continuous peaks or physical zram consumption. No tracking fallback or admission-refusal diagnostic occurred, and the journal check found no new GPU fault/reset during the run. This establishes this model's compressed-pressure inference, not game compatibility, a 40 GiB GPU model buffer, or universal paging.
 
@@ -763,7 +763,7 @@ Available system RAM stayed at or above 18,107 MiB in sampled observations. Logi
 
 ## Bounded admission retry for changing driver estimates
 
-A separate 18 GiB loading attempt observed the native driver estimate fall about 30 MiB between admission and the next child restore. The first selected child had restored; a subsequent 32 MiB child then failed the fresh budget preflight. The queue path now permits one re-admission attempt only for an explicitly identified budget-preflight refusal before application work is submitted. It keeps already restored selected children, evicts other eligible children if needed, then retries restoration once. A persistent refusal remains out-of-memory. Allocation, sparse-binding, copy/decode and sticky GPU-gate errors are not retried through this path.
+A separate 18 GiB loading attempt observed the native driver estimate fall about 30 MiB between admission and the next child restore. The first selected child had restored; a subsequent 32 MiB child then failed the fresh budget preflight. Separately, an 18 GiB limit with 4 GiB headroom left only 24 MiB after the reserve—less than one 32 MiB child—so that abort was a structural sizing shortfall, not evidence of a budget-estimate race. The queue path now permits one re-admission attempt only for an explicitly identified budget-preflight refusal before application work is submitted. It keeps already restored selected children, evicts other eligible children if needed, then retries restoration once. A persistent refusal remains out-of-memory. Allocation, sparse-binding, copy/decode and sticky GPU-gate errors are not retried through this path.
 
 CPU production-path fixtures cover successful retry, persistent refusal, allocation failure, sticky sparse failure, and a partial restore where the reduced budget stays low and an unselected resident child must be evicted. Both default and optional GDeflate CPU suites were rebuilt for this change and passed 10/10 and 12/12 respectively. [Fixture results and source hashes](validation/budget-preflight-retry-cpu.json). This is not a guarantee against driver-budget changes or global contention.
 
@@ -782,4 +782,36 @@ The GPU decoder also avoids zeroing encoded bytes immediately before overwriting
 
 A subsequent full-model GPU GDeflate/MRU attempt used 16 GiB tracked residency, 32 MiB ranges, four CPU encoding workers, a 24 GiB cold/cache quota and the budget-preflight retry. It reached inference but the owned helper stopped it after **322.64 seconds** when sampled `MemAvailable` fell to **16,336 MiB**, below its **16,384 MiB** floor. Logical swap grew by **6,133 MiB**. It produced no completed output comparison or accepted token rate.
 
-The last state reported **10,315 GPU restores / 340,599,767,040 bytes**, zero GPU fallback and zero snapshot failures, with **142,752,635,735 ns** accumulated GPU-restore host time. It retained 17,047,056,624 cold bytes and 8,709,529,388 clean-cache bytes; these are not all process/system RAM costs. This is partial restore evidence, not full-model correctness or a throughput result. The next trial reduces the host quota and tests the newer dispatch attribution separately. [Guard result and counters](validation/internlm-gpu-16g-ram-stop/summary.json), [wrapped log](validation/internlm-gpu-16g-ram-stop/automatic.stderr.txt.gz), [resource samples](validation/internlm-gpu-16g-ram-stop/automatic.resources.json.gz), and [source/runtime hashes](validation/internlm-gpu-16g-ram-stop/runtime-binary-sha256.json).
+The last state reported **10,315 GPU restores / 340,599,767,040 bytes**, zero GPU fallback and zero snapshot failures, with **142,752,635,735 ns** accumulated GPU-restore host time. It retained 17,047,056,624 cold bytes and 8,709,529,388 clean-cache bytes; these are not all process/system RAM costs. This is partial restore evidence, not full-model correctness or a throughput result. A later full-model trial completed under the configuration below. [Guard result and counters](validation/internlm-gpu-16g-ram-stop/summary.json), [wrapped log](validation/internlm-gpu-16g-ram-stop/automatic.stderr.txt.gz), [resource samples](validation/internlm-gpu-16g-ram-stop/automatic.resources.json.gz), and [source/runtime hashes](validation/internlm-gpu-16g-ram-stop/runtime-binary-sha256.json).
+
+## Full InternLM GPU GDeflate with MRU under 18 GiB
+
+The unchanged **39,725,643,136-byte** InternLM2.5-20B F16 GGUF completed 12 actual decode runs with **49/49** layers offloaded and output matching the native run byte for byte (SHA-256 `8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`). This run used GPU GDeflate restore, 32 CPU encoding workers, MRU eviction, 32 MiB ranges, lazy backing, and an 18 GiB tracked-residency limit with a 3 GiB native-budget reserve. It recorded **8,883 GPU decode calls / 294,139,330,560 bytes**, zero GPU fallbacks, and zero snapshot failures.
+
+Wrapped decode throughput was **0.09 tokens/s**. A separate native reference configured with `GGML_VK_MAX_NODES_PER_SUBMIT=4` measured **1.11 tokens/s**; it was not a simultaneous paired run. The earlier 16 GiB Zstd run measured **0.03319 tokens/s versus 1.69 native**, but its configuration and native reference differ, so these results do not form a controlled codec or scheduling comparison. The completed run proves this configuration can finish this model with matching output; it remains very slow and does not establish a general speed benefit, game behavior, or universal compatibility.
+
+A separate paired GPU component test decoded the same 32 MiB model slice exactly with zero validation diagnostics: BP16's median decoder time was **0.11784 ms** versus GDeflate's **5.77616 ms** (about **49×** for decoder-only timing). BP16 stored **29,202,816 bytes (87.0% of raw)**, while GDeflate stored **27,219,160 bytes (81.1%)**. This bounded component result does not predict full restore or inference throughput. [Paired GPU result](validation/bp16-component/paired-gpu-result.json), [BP16 log](validation/bp16-component/bp16-paired.log), and [GDeflate log](validation/bp16-component/gdeflate-paired.log).
+
+[Run summary](validation/internlm-gpu-18g/summary.json), [exact command](validation/internlm-gpu-18g/command.json), [runtime hashes](validation/internlm-gpu-18g/runtime-binary-sha256.json), [source commit](validation/internlm-gpu-18g/source-commit.txt), and [full run result](validation/internlm-gpu-18g/result.json.gz).
+
+## Full InternLM GPU BP16 under 18 GiB
+
+The same 39.73 GB F16 model completed all 49/49 layers with BP16 GPU restore,
+MRU, one encoding worker, 32 MiB ranges, lazy backing, an 18 GiB tracked cap
+and a 3 GiB budget reserve. Twelve actual decode runs took 85,806.84 ms: **0.14
+tokens/s**, versus the earlier GDeflate trial's 0.09. The exact throughput ratio
+is about 1.53, far below the decoder component's 49x difference. These sequential
+trials did not control desktop activity or GPU clocks. The separate native
+nodes=4 reference was 1.11 tokens/s.
+
+Output matched native byte for byte (SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`).
+There were 8,797 GPU decode calls / 290,958,082,048 bytes, zero GPU fallback,
+zero CPU decode bytes, and zero snapshot failures. Minimum available RAM was
+21,065 MiB; logical swap growth was 4,802 MiB. Tracked residency is not a cap
+on all application allocations or all physical VRAM usage.
+
+[Summary](validation/internlm-bp16-18g/summary.json),
+[command](validation/internlm-bp16-18g/command.json),
+[binary and source hashes](validation/internlm-bp16-18g/runtime-binary-sha256.json),
+and [full stderr](validation/internlm-bp16-18g/automatic.stderr.txt.gz).

@@ -1,9 +1,14 @@
 #include "bp16_codec.hpp"
 
+#include <algorithm>
+#include <array>
+#include <chrono>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -165,13 +170,112 @@ void testMalformed() {
             "accepted overlapping input/output");
 }
 
+void testWorkerEncoding() {
+    Bytes raw(1024u * 1024u);
+    for (std::size_t block = 0; block < raw.size() / RawBytesPerBlock; ++block) {
+        const unsigned k = static_cast<unsigned>(block % 17);
+        const auto mask = static_cast<std::uint16_t>(k == 16 ? 0xffffu : ((1u << k) - 1u));
+        const auto base = static_cast<std::uint16_t>(0xa55au & ~mask);
+        for (std::size_t i = 0; i < WordsPerBlock; ++i) {
+            const auto variable = static_cast<std::uint16_t>((block * 0x0765u + i * 0x1234u) & mask);
+            put16(raw, block * RawBytesPerBlock + i * 2,
+                  static_cast<std::uint16_t>(base | variable));
+        }
+    }
+    Bytes serial;
+    require(encodeFast(raw, serial, 1), "serial 1 MiB encode failed");
+    Bytes portableSerial;
+    require(detail::encodeImpl(raw.data(), raw.size(), portableSerial, false, 1),
+            "portable serial 1 MiB encode failed");
+    require(portableSerial == serial, "serial portable/BMI2 frame bytes differ");
+    for (const auto workers : {2u, 4u, 8u}) {
+        Bytes parallel;
+        require(encodeFast(raw, parallel, workers), "parallel 1 MiB encode failed");
+        require(parallel == serial, "parallel frame differs from serial bytes");
+        Bytes portableParallel;
+        require(detail::encodeImpl(raw.data(), raw.size(), portableParallel, false, workers),
+                "parallel portable 1 MiB encode failed");
+        require(portableParallel == portableSerial,
+                "parallel portable frame differs from serial portable bytes");
+        require(validate(parallel.data(), parallel.size(), raw.size()), "parallel frame invalid");
+    }
+    Bytes decoded(raw.size());
+    require(decode(serial.data(), serial.size(), decoded.data(), raw.size()),
+            "parallel regression frame decode failed");
+    require(decoded == raw, "parallel regression decoded bytes differ");
+
+    Bytes unchanged{0x12, 0x34};
+    require(!encodeFast(raw, unchanged, 0) && unchanged == Bytes({0x12, 0x34}),
+            "zero workers changed output or succeeded");
+    require(!encodeFast(raw, unchanged, 33) && unchanged == Bytes({0x12, 0x34}),
+            "excess workers changed output or succeeded");
+}
+
+Bytes readRawFixture(const std::string& path) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) throw std::runtime_error("cannot open 32 MiB BP16 raw fixture");
+    if (file.tellg() != static_cast<std::streamoff>(MaxRawBytes))
+        throw std::runtime_error("BP16 benchmark fixture must be exactly 32 MiB");
+    file.seekg(0);
+    Bytes raw(MaxRawBytes);
+    if (!file.read(reinterpret_cast<char*>(raw.data()), static_cast<std::streamsize>(raw.size())))
+        throw std::runtime_error("failed reading BP16 benchmark fixture");
+    return raw;
+}
+
+void benchmarkWorkers(const std::string& rawPath, const std::string& outputPath) {
+    const auto raw = readRawFixture(rawPath);
+    Bytes serial;
+    require(encodeFast(raw, serial, 1), "32 MiB serial encode failed");
+    require(validate(serial.data(), serial.size(), raw.size()), "32 MiB serial frame invalid");
+    Bytes decoded(raw.size());
+    require(decode(serial.data(), serial.size(), decoded.data(), raw.size()) && decoded == raw,
+            "32 MiB serial round trip failed");
+
+    struct Result { unsigned workers; std::array<std::uint64_t, 3> ns; };
+    std::array<Result, 4> results{{{1,{}},{2,{}},{4,{}},{8,{}}}};
+    Bytes encoded;
+    for (auto& result : results) {
+        for (auto& elapsed : result.ns) {
+            const auto start = std::chrono::steady_clock::now();
+            require(encodeFast(raw, encoded, result.workers), "32 MiB worker encode failed");
+            elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - start).count());
+            require(encoded == serial, "32 MiB parallel frame differs from serial bytes");
+        }
+        std::sort(result.ns.begin(), result.ns.end());
+    }
+    std::ofstream report(outputPath, std::ios::trunc);
+    if (!report) throw std::runtime_error("failed opening BP16 worker benchmark output");
+    report << "{\n  \"raw_bytes\": " << raw.size()
+           << ",\n  \"encoded_bytes\": " << serial.size()
+           << ",\n  \"bmi2_selected\": " << (detail::cpuHasBmi2() ? "true" : "false")
+           << ",\n  \"round_trip_equal\": true,\n  \"runs\": [\n";
+    for (std::size_t i = 0; i < results.size(); ++i) {
+        const auto& result = results[i];
+        report << "    {\"workers\": " << result.workers << ", \"median_ns\": "
+               << result.ns[1] << ", \"runs_ns\": [" << result.ns[0] << ", "
+               << result.ns[1] << ", " << result.ns[2] << "]}"
+               << (i + 1 == results.size() ? "\n" : ",\n");
+        std::cout << "BP16 workers=" << result.workers << " median-ns=" << result.ns[1]
+                  << " runs-ns=" << result.ns[0] << ',' << result.ns[1] << ','
+                  << result.ns[2] << '\n';
+    }
+    report << "  ]\n}\n";
+    if (!report) throw std::runtime_error("failed writing BP16 worker benchmark output");
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     try {
+        if (argc != 1 && argc != 3)
+            throw std::runtime_error("usage: bp16_codec_check [32MiB-raw-fixture timing.json]");
         testPatterns();
         testMalformed();
-        std::cout << "PASS: BP16 reference/portable-fast/BMI2 streams, decode, and malformed frames\n";
+        testWorkerEncoding();
+        std::cout << "PASS: BP16 reference/portable-fast/BMI2 streams, worker byte identity, decode, and malformed frames\n";
+        if (argc == 3) benchmarkWorkers(argv[1], argv[2]);
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';

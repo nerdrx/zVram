@@ -100,6 +100,7 @@ add_executable(zvram-compression-policy-check compression_policy_check.cpp)
 target_compile_features(zvram-compression-policy-check PRIVATE cxx_std_17)
 add_executable(zvram-bp16-codec-check bp16_codec_check.cpp)
 target_compile_features(zvram-bp16-codec-check PRIVATE cxx_std_17)
+target_link_libraries(zvram-bp16-codec-check PRIVATE Threads::Threads)
 add_executable(zvram-resident-bootstrap-check resident_bootstrap_check.cpp)
 target_include_directories(zvram-resident-bootstrap-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_compile_features(zvram-resident-bootstrap-check PRIVATE cxx_std_17)
@@ -635,6 +636,14 @@ if(ZVRAM_ENABLE_BP16_GPU_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/zvram --build-dir ${CMAKE_CURRENT_BINARY_DIR}
         --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100
         --vulkan-cold-mib 512 --vulkan-codec bp16 --vulkan-bp16-gpu)
+    add_test(NAME vulkan-bp16-gpu-idle-integrity COMMAND ${bp16_gpu_launch}
+        -- $<TARGET_FILE:zvram-vulkan-auto-check>)
+    add_test(NAME vulkan-bp16-gpu-native-two-queues COMMAND ${bp16_gpu_launch}
+        -- $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation --two-queues --pending-wait)
+    add_test(NAME vulkan-bp16-gpu-partial-restore COMMAND ${bp16_gpu_launch}
+        -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-partial-restore)
+    set_tests_properties(vulkan-bp16-gpu-partial-restore PROPERTIES
+        ENVIRONMENT "ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1;VK_LOADER_LAYERS_DISABLE=~implicit~")
     foreach(bp16_range_mode synthetic native)
         set(bp16_range_flags --range-compressed)
         if(bp16_range_mode STREQUAL "native")
@@ -655,7 +664,7 @@ if(ZVRAM_ENABLE_BP16_GPU_TESTS)
         set(bp16_test vulkan-bp16-gpu-pressure-${bp16_pressure_mode})
         add_test(NAME ${bp16_test} COMMAND ${bp16_gpu_launch}
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
-            --vulkan-resident-mib 32 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${bp16_pressure_flags})
+            --vulkan-resident-mib 32 --vulkan-auto-idle-ms 60000 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${bp16_pressure_flags})
         set_tests_properties(${bp16_test} PROPERTIES TIMEOUT 60
             ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
     endforeach()

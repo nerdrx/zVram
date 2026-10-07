@@ -1,8 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 #if (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
@@ -113,6 +115,14 @@ inline void packBlock(std::uint8_t* payload, const std::uint8_t* raw,
     }
 }
 
+struct JoinThreads {
+    std::vector<std::thread>& threads;
+    void join() noexcept {
+        for (auto& thread : threads) if (thread.joinable()) thread.join();
+    }
+    ~JoinThreads() { join(); }
+};
+
 } // namespace detail
 
 inline bool inspect(const std::uint8_t* encoded, std::size_t encodedBytes,
@@ -164,9 +174,9 @@ namespace detail {
 
 inline bool encodeImpl(const std::uint8_t* raw, std::size_t rawBytes,
                        std::vector<std::uint8_t>& encoded,
-                       bool useBmi2) {
+                       bool useBmi2, unsigned workers = 1) {
     if (!raw || !rawBytes || rawBytes > MaxRawBytes ||
-        rawBytes % RawBytesPerBlock) {
+        rawBytes % RawBytesPerBlock || workers < 1 || workers > 32) {
         return false;
     }
     const auto blockCount = static_cast<std::uint32_t>(rawBytes / RawBytesPerBlock);
@@ -193,26 +203,49 @@ inline bool encodeImpl(const std::uint8_t* raw, std::size_t rawBytes,
     store32(encoded.data() + 12, blockCount);
 
     std::size_t nextPayload = HeaderBytes + std::size_t(blockCount) * DescriptorBytes;
+    std::vector<std::uint32_t> payloadOffsets(blockCount);
     for (std::uint32_t block = 0; block < blockCount; ++block) {
-        const auto* src = raw + std::size_t(block) * RawBytesPerBlock;
         const auto packedMeta = blockMeta[block];
         const auto allAnd = static_cast<std::uint16_t>(packedMeta);
         const auto mask = static_cast<std::uint16_t>(packedMeta >> 16);
         auto* descriptor = encoded.data() + HeaderBytes + std::size_t(block) * DescriptorBytes;
+        payloadOffsets[block] = static_cast<std::uint32_t>(nextPayload);
         store32(descriptor, static_cast<std::uint32_t>(nextPayload));
         store32(descriptor + 4, std::uint32_t(allAnd) | (std::uint32_t(mask) << 16));
-        auto* payload = encoded.data() + nextPayload;
-        const unsigned bitsPerWord = popcount16(mask);
-        if (useBmi2) {
+        nextPayload += WordsPerBlock * popcount16(mask) / 8;
+    }
+    auto packRange = [&](std::uint32_t begin, std::uint32_t end) {
+        for (std::uint32_t block = begin; block < end; ++block) {
+            const auto* src = raw + std::size_t(block) * RawBytesPerBlock;
+            const auto packedMeta = blockMeta[block];
+            const auto mask = static_cast<std::uint16_t>(packedMeta >> 16);
+            auto* payload = encoded.data() + payloadOffsets[block];
+            const unsigned bitsPerWord = popcount16(mask);
+            if (useBmi2) {
 #if ZVRAM_BP16_X86_BMI2
-            packBlock<gatherBmi2>(payload, src, mask, bitsPerWord);
+                packBlock<gatherBmi2>(payload, src, mask, bitsPerWord);
 #else
-            packBlock<gatherPortable>(payload, src, mask, bitsPerWord);
+                packBlock<gatherPortable>(payload, src, mask, bitsPerWord);
 #endif
-        } else {
-            packBlock<gatherPortable>(payload, src, mask, bitsPerWord);
+            } else {
+                packBlock<gatherPortable>(payload, src, mask, bitsPerWord);
+            }
         }
-        nextPayload += WordsPerBlock * bitsPerWord / 8;
+    };
+    // ponytail: local bounded fanout; below 1 MiB thread startup costs more than packing.
+    if (workers > 1 && rawBytes >= 1024u * 1024u) {
+        const auto threadCount = std::min<unsigned>(workers, blockCount);
+        std::vector<std::thread> threads;
+        threads.reserve(threadCount);
+        JoinThreads joiner{threads};
+        for (unsigned worker = 0; worker < threadCount; ++worker) {
+            const auto begin = blockCount * worker / threadCount;
+            const auto end = blockCount * (worker + 1) / threadCount;
+            threads.emplace_back(packRange, begin, end);
+        }
+        joiner.join();
+    } else {
+        packRange(0, blockCount);
     }
     return nextPayload == encoded.size();
 }
@@ -232,14 +265,24 @@ inline bool encode(const std::vector<std::uint8_t>& raw,
 }
 
 inline bool encodeFast(const std::uint8_t* raw, std::size_t rawBytes,
+                       std::vector<std::uint8_t>& encoded, unsigned workers) {
+    return detail::encodeImpl(raw, rawBytes, encoded, detail::cpuHasBmi2(), workers);
+}
+
+inline bool encodeFast(const std::uint8_t* raw, std::size_t rawBytes,
                        std::vector<std::uint8_t>& encoded) {
-    return encode(raw, rawBytes, encoded);
+    return encodeFast(raw, rawBytes, encoded, 1);
+}
+
+inline bool encodeFast(const std::vector<std::uint8_t>& raw,
+                       std::vector<std::uint8_t>& encoded, unsigned workers) {
+    if (&raw == &encoded) return false;
+    return encodeFast(raw.data(), raw.size(), encoded, workers);
 }
 
 inline bool encodeFast(const std::vector<std::uint8_t>& raw,
                        std::vector<std::uint8_t>& encoded) {
-    if (&raw == &encoded) return false;
-    return encodeFast(raw.data(), raw.size(), encoded);
+    return encodeFast(raw, encoded, 1);
 }
 
 inline bool rangesOverlap(const void* left, std::size_t leftBytes,

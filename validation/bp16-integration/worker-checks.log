@@ -1,0 +1,37 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+      Start   1: cpu-bp16-codec
+ 1/16 Test   #1: cpu-bp16-codec .......................   Passed    0.01 sec
+      Start   2: cpu-resident-budget
+ 2/16 Test   #2: cpu-resident-budget ..................   Passed    0.00 sec
+      Start   3: cpu-resident-bootstrap
+ 3/16 Test   #3: cpu-resident-bootstrap ...............   Passed    0.00 sec
+      Start   7: cpu-vulkan-ram-guard
+ 4/16 Test   #7: cpu-vulkan-ram-guard .................   Passed    0.23 sec
+      Start   8: cpu-vulkan-compression-options
+ 5/16 Test   #8: cpu-vulkan-compression-options .......   Passed    2.04 sec
+      Start   9: cpu-vulkan-model-budget
+ 6/16 Test   #9: cpu-vulkan-model-budget ..............   Passed    1.79 sec
+      Start  10: cpu-compression-policy
+ 7/16 Test  #10: cpu-compression-policy ...............   Passed    0.01 sec
+      Start  11: cpu-snapshot-decode
+ 8/16 Test  #11: cpu-snapshot-decode ..................   Passed    0.03 sec
+      Start  12: cpu-gdeflate-envelope
+ 9/16 Test  #12: cpu-gdeflate-envelope ................   Passed    0.00 sec
+      Start  13: cpu-snapshot-pipeline
+10/16 Test  #13: cpu-snapshot-pipeline ................   Passed    0.01 sec
+      Start  14: vulkan-submission-tracking
+11/16 Test  #14: vulkan-submission-tracking ...........   Passed    0.00 sec
+      Start  15: cpu-active-refs
+12/16 Test  #15: cpu-active-refs ......................   Passed    0.00 sec
+      Start 113: vulkan-bp16-gpu-range-synthetic
+13/16 Test #113: vulkan-bp16-gpu-range-synthetic ......   Passed    0.41 sec
+      Start 114: vulkan-bp16-gpu-range-native
+14/16 Test #114: vulkan-bp16-gpu-range-native .........   Passed    0.41 sec
+      Start 115: vulkan-bp16-gpu-pressure-synthetic
+15/16 Test #115: vulkan-bp16-gpu-pressure-synthetic ...   Passed    0.56 sec
+      Start 116: vulkan-bp16-gpu-pressure-native
+16/16 Test #116: vulkan-bp16-gpu-pressure-native ......   Passed    0.52 sec
+
+100% tests passed out of 16
+
+Total Test time (real) =   6.04 sec

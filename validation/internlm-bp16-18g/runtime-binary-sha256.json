@@ -1,0 +1,12 @@
+{
+  "build/bp16-codec/libzvram_layer.so": "27f4c0c513992a11eb64d7ab6de5fd9d26c463341c2399f033733b9abbe415a3",
+  "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+  "zvram": "425121913b32747524e2b652904c1fd8b4188032d55b2b3f06e5d4038ce6104f",
+  "layer.cpp": "aac43e553d94beaff62763bec24ff59c7dc07c966a79978985ed47aeb9e8d71e",
+  "gdeflate_gpu.hpp": "b701242ee104134521ced0aefaaefd61bc4895d421c4637553f3a756628ef484",
+  "bp16_codec.hpp": "8892dc24ec5f21fda5295434ff0218519c3c7e66586468bed39e513a496667c4",
+  "snapshot_decode.hpp": "dbfcd0e7ac9c447550cff26d11da38831d0eae555c43661b588c6097c6c0e7cb",
+  "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+  "submission_hooks.inc": "30e0eff8e64a8003fd5487ca3c29f167f23b6402d9d0c44126eef4a7c2ffab8a",
+  "check_vulkan_idle_model.py": "d99b1c72cd7fb8396c36f54f9842a703c1179b7b36d4535a5e6e75398d3accc4"
+}

@@ -1346,11 +1346,19 @@ void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
 
         VkEvent event{};
         VkEventCreateInfo eventInfo{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
-        check(vkCreateEvent(context.device, &eventInfo, nullptr, &event), "create pressure unknown-command event");
-        refuseWholeBuffer("unknown-command submit was not refused under the resident cap",
-            [&](VkCommandBuffer command) {
-                vkCmdSetEvent(command, event, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-            });
+        check(vkCreateEvent(context.device, &eventInfo, nullptr, &event), "create pressure marker event");
+        // Event-only markers access no allocation. They remain legal under a
+        // resident cap while the whole-buffer fill above is conservatively refused.
+        const auto beforeMarker=context.stats();
+        check(context.submit([&](VkCommandBuffer command) {
+            vkCmdSetEvent(command, event, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        }), "submit resource-free marker under resident cap");
+        const auto afterMarker=context.stats();
+        require(afterMarker.restores==beforeMarker.restores &&
+                afterMarker.residentBytes==beforeMarker.residentBytes &&
+                afterMarker.coldLogicalBytes==beforeMarker.coldLogicalBytes,
+                "resource-free marker restored cold chunks");
+        requirePressure();
         vkDestroyEvent(context.device, event, nullptr);
         for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
             readbackAndVerify(context, pool.handle, staging, 3, false, ChunkBytes, 0, chunk);

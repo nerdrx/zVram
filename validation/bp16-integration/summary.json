@@ -1,0 +1,13 @@
+{
+  "scope": "Release BP16 integration; CPU regressions, synthetic/native ranges and pressure, twoqueues, injected partial restore,8workerrealbuffer integrity, defaultZstd pressure",
+  "cpu_and_range_pressure_ctest": 16,
+  "gpu_lifetime_ctest": 3,
+  "additional_checks": [
+    "nativeBP16 GPU pressure8workers,fullbyteszerofallback",
+    "Zstd nativepressuretwoqueues fullbytes"
+  ],
+  "limits": [
+    "CPUworkercomponent timingswerefromsharedsystemwindow",
+    "componenttimingsnotmodelinferencespeed"
+  ]
+}

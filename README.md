@@ -271,7 +271,8 @@ BP16 losslessly packs constant bits within blocks of 128 16-bit words. It accept
 any byte data in complete 256-byte blocks; unsupported sizes or frames without
 savings retain exact RAW bytes. It is built in without an external codec library,
 with Zstd remaining the default. Opt in with `--vulkan-codec bp16`; add
-`--vulkan-bp16-gpu` for GPU restoration. Byte shuffle is restricted to Zstd.
+`--vulkan-bp16-gpu` for GPU restoration. `--vulkan-bp16-workers 1..32` controls
+bounded CPU packing (default 1). Byte shuffle is restricted to Zstd.
 
 The paired 32 MiB component check measured median GPU decode at 0.118 ms for BP16
 and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored

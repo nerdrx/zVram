@@ -7,7 +7,9 @@
 #include <vulkan/vk_layer.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -19,6 +21,13 @@ enum class Format { GDeflate, BP16 };
 
 class Decoder {
 public:
+    struct Profile {
+        std::uint64_t calls{};
+        std::uint64_t validationNs{};
+        std::uint64_t inputPrepareNs{};
+        std::uint64_t submitWaitNs{};
+    };
+
     Decoder() = default;
     Decoder(const Decoder&) = delete;
     Decoder& operator=(const Decoder&) = delete;
@@ -26,6 +35,8 @@ public:
     Decoder& operator=(Decoder&&) = delete;
     ~Decoder() { destroy(); }
     bool unsafe() const noexcept { return poisoned_; }
+    bool profilingEnabled() const noexcept { return profileEnabled_; }
+    Profile profile() const noexcept { return profile_; }
 
     // GDeflate requires shaderInt64, subgroup-size-control, computeFullSubgroups,
     // and a compute-capable private queue. BP16 needs the supplied device limits
@@ -37,6 +48,9 @@ public:
                         const char* shaderPath,
                         const VkPhysicalDeviceProperties* properties = nullptr,
                         Format format = Format::GDeflate) {
+        const char* profileEnv = std::getenv("ZVRAM_VULKAN_GPU_PROFILE");
+        profileEnabled_ = profileEnv && std::strcmp(profileEnv, "1") == 0;
+        profile_ = {};
         if (initialized_ || poisoned_ || !device || !nextGdpa || !queue || !setLoaderData || !shaderPath)
             return VK_ERROR_INITIALIZATION_FAILED;
         if (format != Format::GDeflate && format != Format::BP16)
@@ -95,43 +109,63 @@ public:
     // caller excludes concurrent use and synchronizes later access across queues.
     VkResult restore(const std::uint8_t* encoded, std::size_t encodedSize,
                      VkBuffer output, VkDeviceSize offset, std::size_t rawSize) {
-        if (!initialized_ || poisoned_) return VK_ERROR_DEVICE_LOST;
+        using Clock = std::chrono::steady_clock;
+        const auto validationStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
+        if (profileEnabled_) ++profile_.calls;
+        auto finishValidation = [&](VkResult result) {
+            if (profileEnabled_)
+                profile_.validationNs += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - validationStarted).count());
+            return result;
+        };
+        if (!initialized_ || poisoned_) return finishValidation(VK_ERROR_DEVICE_LOST);
         const auto maxInputBytes = format_ == Format::BP16 ? MaxBP16InputBytes : MaxInputBytes;
         if (!encoded || !output || !rawSize || rawSize > MaxRawBytes ||
             encodedSize > maxInputBytes || encodedSize > MaxEncodedBytes ||
             (offset & 3u))
-            return VK_ERROR_VALIDATION_FAILED_EXT;
+            return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
         const auto paddedRaw = (rawSize + 3u) & ~std::size_t(3u);
         if (offset > std::numeric_limits<VkDeviceSize>::max() - paddedRaw)
-            return VK_ERROR_VALIDATION_FAILED_EXT;
+            return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
         std::uint32_t dispatchGroups{};
         if (format_ == Format::BP16) {
             if (!bp16::validate(encoded, encodedSize, static_cast<std::uint32_t>(rawSize)))
-                return VK_ERROR_VALIDATION_FAILED_EXT;
+                return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
             if (paddedRaw > maxStorageBufferRange_)
-                return VK_ERROR_VALIDATION_FAILED_EXT;
+                return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
             dispatchGroups = static_cast<std::uint32_t>((rawSize + 1023u) / 1024u);
             if (!dispatchGroups || dispatchGroups > maxDispatchGroupsX_)
-                return VK_ERROR_VALIDATION_FAILED_EXT;
+                return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
         } else {
             Info info{};
             const Limits limits{MaxEncodedBytes, MaxRawBytes, rawSize, 0, 0, 512};
             if (!validateEnvelope(encoded, encodedSize, limits, &info))
-                return VK_ERROR_VALIDATION_FAILED_EXT;
+                return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
             dispatchGroups = info.tileCount;
         }
         const auto inputBytes = (encodedSize + 3u) & ~std::size_t(3u);
         if (format_ == Format::BP16 && inputBytes > maxStorageBufferRange_)
-            return VK_ERROR_VALIDATION_FAILED_EXT;
+            return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
+        (void)finishValidation(VK_SUCCESS);
+
+        const auto inputPrepareStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
         VkResult result = checked(ensureInputBuffers(inputBytes, output, offset,
                                              static_cast<VkDeviceSize>(paddedRaw)));
-        if (result != VK_SUCCESS) return result;
+        if (result != VK_SUCCESS) {
+            if (profileEnabled_)
+                profile_.inputPrepareNs += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - inputPrepareStarted).count());
+            return result;
+        }
 
         auto* upload = static_cast<std::uint8_t*>(upload_.mapped);
         std::memcpy(upload, encoded, encodedSize);
         std::memset(upload + encodedSize, 0, inputBytes - encodedSize);
         const std::uint32_t controlWords[3]{1u, 0u, 0u};
         std::memcpy(control_.mapped, controlWords, sizeof(controlWords));
+        if (profileEnabled_)
+            profile_.inputPrepareNs += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - inputPrepareStarted).count());
         result = checked(api_.resetCommandPool(device_, commandPool_, 0));
         if (result != VK_SUCCESS) return result;
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -206,13 +240,25 @@ public:
         VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         submit.commandBufferCount = 1;
         submit.pCommandBuffers = &commandBuffer_;
+        const auto submitWaitStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
         result = checked(api_.queueSubmit(queue_, 1, &submit, fence_));
-        if (result != VK_SUCCESS) return result;
+        if (result != VK_SUCCESS) {
+            if (profileEnabled_)
+                profile_.submitWaitNs += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
+            return result;
+        }
         result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
         if (result != VK_SUCCESS) {
             poisoned_ = true; // Work may still be in flight; never reset/free these objects.
+            if (profileEnabled_)
+                profile_.submitWaitNs += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
             return result;
         }
+        if (profileEnabled_)
+            profile_.submitWaitNs += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
         std::uint32_t errorMask{};
         std::memcpy(&errorMask, errorReadback_.mapped, sizeof(errorMask));
         return errorMask ? VK_ERROR_UNKNOWN : VK_SUCCESS;
@@ -602,6 +648,8 @@ private:
     VkFence fence_{};
     bool initialized_{};
     bool poisoned_{};
+    bool profileEnabled_{};
+    Profile profile_{};
 };
 
 } // namespace zvram::gdeflate::gpu

@@ -1,0 +1,12 @@
+{
+  "raw_bytes": 33554432,
+  "encoded_bytes": 29202816,
+  "bmi2_selected": true,
+  "round_trip_equal": true,
+  "runs": [
+    {"workers": 1, "median_ns": 17867296, "runs_ns": [17861216, 17867296, 18575098]},
+    {"workers": 2, "median_ns": 10357983, "runs_ns": [10115932, 10357983, 11716987]},
+    {"workers": 4, "median_ns": 6406420, "runs_ns": [6024539, 6406420, 6567591]},
+    {"workers": 8, "median_ns": 3402251, "runs_ns": [3288030, 3402251, 3639411]}
+  ]
+}

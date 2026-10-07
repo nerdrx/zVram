@@ -1,0 +1,68 @@
+{
+  "performance": {
+    "decode_ms": 85806.84,
+    "decode_runs": 12,
+    "tokens_per_second": 0.14,
+    "prompt_ms": 17649.87,
+    "restore_ms": []
+  },
+  "minimum_available_mib": 21065,
+  "swap_growth_mib": 4802,
+  "returncode": 0,
+  "stdout_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "offload": [
+    49,
+    49
+  ],
+  "backing": {
+    "hot": {
+      "resident-vram": 9977856,
+      "memory-vram": 9977856,
+      "resident-gtt": 1206468608,
+      "memory-gtt": 1206468608,
+      "unique_drm_clients": 1,
+      "resident_vram_present": true
+    },
+    "pressure": {
+      "resident-vram": 18257530880,
+      "memory-vram": 18257530880,
+      "resident-gtt": 1248481280,
+      "memory-gtt": 1248481280,
+      "unique_drm_clients": 1,
+      "resident_vram_present": true
+    }
+  },
+  "source_commit": "a7abfbbae26d07d05ba9f81f90c6fc426745791d",
+  "scope": "BP16 GPU MRU 18GiB tracked cap,3GiB reserve,1 encoding worker,nodes4,full39.73GBF16;12 actual decode runs",
+  "final_counters": {
+    "resident": 19319226368,
+    "cold-logical": 19430572032,
+    "cold-stored": 15598304112,
+    "freezes": 9385,
+    "restores": 9965,
+    "failures": 0,
+    "cache-stored": 5876441184,
+    "clean-reuses": 6923,
+    "cache-invalidations": 1654,
+    "copy-calls": 2463,
+    "copy-bytes": 81507057664,
+    "copy-ns": 7526658374,
+    "decode-bytes": 0,
+    "decode-ns": 0,
+    "pipeline-prefetches": 0,
+    "pipeline-restores": 0,
+    "pipeline-wait-ns": 0,
+    "gpu-decode-calls": 8797,
+    "gpu-decode-bytes": 290958082048,
+    "gpu-decode-ns": 65392472299,
+    "gpu-decode-fallbacks": 0
+  },
+  "native_output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "exact_tokens_per_second": 0.139848991059454,
+  "limits": [
+    "sequential GDeflate/BP16 trials under same stated settings except codec and encoder workers; GPU clocks/background processes uncontrolled",
+    "12 actual decode runs; not a long-duration throughput result",
+    "native nodes4 reference was separate",
+    "decoder component speedup does not translate directly into model speedup"
+  ]
+}
