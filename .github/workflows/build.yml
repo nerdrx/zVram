@@ -32,4 +32,9 @@ jobs:
           python3 research/gdeflate/test_software.py --binary build/research/zvram-gdeflate-research
       - name: Check bounded snapshot decode look-ahead
         run: ctest --test-dir build -R cpu-snapshot-pipeline --output-on-failure
+      - name: Build optional GDeflate CPU codec and check mixed snapshot restoration
+        run: |
+          cmake -S . -B build/codecs -DZVRAM_ENABLE_GDEFLATE=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/codecs -j 2
+          ctest --test-dir build/codecs -R '^cpu-' --output-on-failure
       # GPU integrity checks are run on the hardware documented in VALIDATION.md.

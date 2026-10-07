@@ -1,0 +1,31 @@
+{
+  "scope": "CPU encode and production snapshot::decodeOne component comparison, one run; no GPU/Vulkan dispatch or model inference",
+  "command": [
+    "build/gdeflate-codec/zvram-gdeflate-codec-model",
+    "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+    "build/gdeflate-codec-produced-f16.gdeflate"
+  ],
+  "source_sha256": {
+    "gdeflate_codec.hpp": "f7a6a70b8d6e5250a94b35830d2f00a607b77e3fc669f0bbc0d1e5d70d50bdd6",
+    "snapshot_decode.hpp": "a4dafad7ba91ac2eaf6309950347d5bb5b93fbf6c5ac04f43e34d6d021321e36",
+    "research/gdeflate/check_codec_model.cpp": "fc5a920b88ca804a5ffed20b13ee944a94548e9f27418602956736d905c6ba12",
+    "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895",
+    "build/gdeflate-codec-produced-f16.gdeflate": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602"
+  },
+  "measurements": {
+    "raw_bytes": 33554432,
+    "gdeflate_encoded_bytes": 27219160,
+    "gdeflate_encode_cpu_ns": 355970397,
+    "gdeflate_decodeOne_cpu_ns": 114457323,
+    "exact": 1,
+    "zstd1_encoded_bytes": 26673213,
+    "zstd1_encode_cpu_ns": 19193614,
+    "zstd1_decodeOne_cpu_ns": 13906504,
+    "ratio_gdeflate": 0,
+    "ratio_zstd1": 0
+  },
+  "same_encoded_stream_as_prior_cpu_shader_proof": true,
+  "upstream_encoded_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+  "gpu_speed_or_tokens_proven": false,
+  "log": "validation/gdeflate-codec-model.txt"
+}

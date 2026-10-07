@@ -608,11 +608,13 @@ int main(int argc, char** argv) {
     std::cout.setf(std::ios::unitbuf);
     if (argc != 5 || (std::strcmp(argv[1], "--preflight-only") != 0 &&
                       std::strcmp(argv[1], "--gpu-smoke") != 0 &&
+                      std::strcmp(argv[1], "--gpu-bounded-smoke") != 0 &&
                       std::strcmp(argv[1], "--software-smoke") != 0)) {
-        std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n";
+        std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n";
         return 2;
     }
-    const bool gpu = std::strcmp(argv[1], "--gpu-smoke") == 0;
+    const bool singleTile = std::strcmp(argv[1], "--gpu-smoke") == 0;
+    const bool gpu = singleTile || std::strcmp(argv[1], "--gpu-bounded-smoke") == 0;
     const bool software = std::strcmp(argv[1], "--software-smoke") == 0;
     ValidationCounts validation;
     int status = 1;
@@ -634,8 +636,8 @@ int main(int argc, char** argv) {
             std::cout << "CPU-only envelope preflight; compressed payload and GPU decoder are unverified\n";
             return 0;
         }
-        if (gpu && (envelope.tileCount != 1 || expected.size() > TileBytes))
-            throw std::runtime_error("GPU research is restricted to one tile pending hardware validation");
+        if (singleTile && (envelope.tileCount != 1 || expected.size() > TileBytes))
+            throw std::runtime_error("--gpu-smoke is restricted to one tile; use --gpu-bounded-smoke for up to 32 MiB");
         if (software) {
             const auto* driver = std::getenv("VK_DRIVER_FILES");
             if (!driver || !*driver || std::strchr(driver, ':'))

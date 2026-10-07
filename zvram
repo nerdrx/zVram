@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Launch one process with the local zVram Vulkan or HIP backend."""
 import argparse
+import json
 import os
 from pathlib import Path
 import sys
 
 parser = argparse.ArgumentParser(description="zVram experimental GPU memory launcher")
+parser.add_argument("--build-dir", type=Path, help="use backend files from this CMake build directory (default: local build/)")
 parser.add_argument("--hip", action="store_true", help="use the HIP allocation spillover backend instead of the Vulkan layer")
 parser.add_argument("--hip-vmm", action="store_true", help="use HIP virtual memory for a single pointer backed by VRAM and RAM (experimental)")
 parser.add_argument("--hip-report-capacity", action="store_true", help="report the configured VRAM plus GTT capacity through supported HIP queries (opt-in)")
@@ -20,6 +22,7 @@ parser.add_argument("--vulkan-auto-idle-ms", type=int, help="compress eligible i
 parser.add_argument("--vulkan-cold-mib", type=int, help="limit retained Vulkan snapshots in MiB; requires --vulkan-auto-idle-ms")
 parser.add_argument("--vulkan-min-savings-percent", type=int, help="minimum snapshot savings 0..100; 0 keeps any saving, 100 uses raw snapshots; requires automatic snapshots")
 parser.add_argument("--vulkan-byte-shuffle", type=int, choices=(2,4), help="losslessly reorder byte planes before Zstd; requires automatic snapshots (experimental)")
+parser.add_argument("--vulkan-codec", choices=("zstd", "gdeflate"), help="snapshot codec (default zstd); experimental gdeflate currently decodes on CPU and requires an optional build")
 parser.add_argument("--vulkan-selective-restore", action="store_true", help="restore only allocations referenced by tracked Vulkan submissions; unknown access restores all (experimental)")
 parser.add_argument("--vulkan-active-eviction", action="store_true", help="compress unused whole Vulkan allocations while other tracked submissions remain active; requires selective restore (experimental)")
 parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residency and chunk native pools at this positive MiB granularity; requires active eviction (experimental)")
@@ -40,7 +43,7 @@ if command and command[0] == "--":
     command = command[1:]
 if not command:
     parser.error("supply an application after --")
-build = Path(__file__).resolve().parent / "build"
+build = args.build_dir.expanduser().resolve() if args.build_dir else Path(__file__).resolve().parent / "build"
 if args.hip and args.validate:
     parser.error("--validate applies to the Vulkan backend")
 if args.vulkan_virtual_mib is not None:
@@ -60,6 +63,20 @@ if args.vulkan_cold_mib is not None:
         parser.error("--vulkan-cold-mib requires automatic snapshots and a positive size fitting 64-bit bytes")
 if args.vulkan_byte_shuffle is not None and (args.hip or args.vulkan_auto_idle_ms is None):
     parser.error("--vulkan-byte-shuffle requires Vulkan automatic snapshots")
+if args.vulkan_codec is not None and (args.hip or args.vulkan_auto_idle_ms is None):
+    parser.error("--vulkan-codec requires Vulkan automatic snapshots")
+effective_codec = args.vulkan_codec or os.environ.get("ZVRAM_VULKAN_CODEC", "zstd")
+if not args.hip and effective_codec not in ("zstd", "gdeflate"):
+    parser.error("invalid inherited ZVRAM_VULKAN_CODEC; expected zstd or gdeflate")
+if not args.hip and effective_codec == "gdeflate":
+    if args.vulkan_byte_shuffle is not None or os.environ.get("ZVRAM_VULKAN_BYTE_SHUFFLE") is not None:
+        parser.error("--vulkan-byte-shuffle requires the zstd codec")
+    try:
+        codecs = json.loads((build / "zvram-codecs.json").read_text())
+    except (OSError, ValueError):
+        codecs = {}
+    if not isinstance(codecs, dict) or codecs.get("gdeflate") is not True:
+        parser.error("GDeflate codec missing; rebuild with -DZVRAM_ENABLE_GDEFLATE=ON")
 if args.vulkan_selective_restore and (args.hip or args.vulkan_auto_idle_ms is None):
     parser.error("--vulkan-selective-restore requires Vulkan automatic snapshots")
 if args.vulkan_active_eviction and not args.vulkan_selective_restore:
@@ -130,6 +147,7 @@ else:
         env["ZVRAM_VULKAN_MIN_SAVINGS_PERCENT"] = str(args.vulkan_min_savings_percent)
     if args.vulkan_byte_shuffle is not None:
         env["ZVRAM_VULKAN_BYTE_SHUFFLE"] = str(args.vulkan_byte_shuffle)
+    env["ZVRAM_VULKAN_CODEC"] = effective_codec
     if args.vulkan_selective_restore:
         env["ZVRAM_VULKAN_SELECTIVE_RESTORE"] = "1"
     if args.vulkan_active_eviction:

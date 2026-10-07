@@ -1,0 +1,2 @@
+preflight tiles=1 decoded-bytes=65536 payload-bytes=52296
+CPU-only envelope preflight; compressed payload and GPU decoder are unverified

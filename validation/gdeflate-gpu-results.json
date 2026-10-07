@@ -1,0 +1,144 @@
+{
+  "recorded_at_utc": "2026-10-07T17:43:12.648267+00:00",
+  "boot_id": "ee3d796a-b543-44da-bc6f-1c6e83740fbb",
+  "device": "AMD Radeon RX 7900 XTX (RADV NAVI31)",
+  "execution": "native-device-local-non-host-visible GPU wave32",
+  "shader": {
+    "path": "research/gdeflate/GDeflate-bounded-wave32.spv",
+    "bytes": 132992,
+    "sha256": "dfa3a7f31bce2e3e6354e6d43ab8f7adb2cb67e3ad7060b73acbce8a77391996"
+  },
+  "host_source": {
+    "path": "research/gdeflate/vulkan_gdeflate_smoke.cpp",
+    "bytes": 38640,
+    "sha256": "f342e47ca0a853a5312ff91de38d9e535dc5f10699bd68c2acc7677e668203e1"
+  },
+  "host_binary": {
+    "path": "build/gdeflate-host-check/zvram-gdeflate-research",
+    "bytes": 62272,
+    "sha256": "5ce5fd35af6f31f108972e5ddf8b63e6ec22bc79755d785a593c65ee22578f0d"
+  },
+  "limits": {
+    "max_decoded_bytes": 33554432,
+    "max_encoded_bytes": 67108864,
+    "max_tiles": 512,
+    "iterations": 1,
+    "fence_timeout_seconds": 5,
+    "outer_process_timeout_seconds": 30
+  },
+  "cases": [
+    {
+      "name": "fp16-64k",
+      "log": {
+        "path": "validation/gdeflate-gpu-64k-fp16.txt",
+        "bytes": 1093,
+        "sha256": "3e8beb1eda8ac144b1f74879b60c08dc17974646fb49bfb9f0848a1a8889448b"
+      },
+      "encoded": {
+        "path": "build/third-party/gdeflate-research/internlm-f16-first-tile.gdeflate",
+        "bytes": 52308,
+        "sha256": "121dbb822d0cd58d801cc709f55f2dc9a9db485b20be671ac47b83343ea9f380"
+      },
+      "expected": {
+        "path": "build/third-party/gdeflate-research/internlm-f16-first-tile.raw",
+        "bytes": 65536,
+        "sha256": "945dadafdc488e0ec77770f3b942c9840d8b86454dda48517295bb5495876e88"
+      },
+      "mode": "--gpu-smoke",
+      "decoded_bytes": 65536,
+      "tiles": 1,
+      "iterations": 1,
+      "exact": true,
+      "validation_errors": 0,
+      "validation_vuids": 0,
+      "upload_ns": 1400,
+      "decode_ns": 5267160,
+      "diagnostic_readback_copy_ns": 6000
+    },
+    {
+      "name": "fp16-1m",
+      "log": {
+        "path": "validation/gdeflate-gpu-1m-fp16.txt",
+        "bytes": 1114,
+        "sha256": "fa7fc6624506340e4924d7db2cfb62341107208154c0bccc9756fd2ffeb20d7a"
+      },
+      "encoded": {
+        "path": "build/third-party/gdeflate-research/internlm-f16-first-1m.gdeflate",
+        "bytes": 836488,
+        "sha256": "27e72a8b30a51e1812be7cb79b7c4f8a373d037c248ab7b92386450cd1bf3c28"
+      },
+      "expected": {
+        "path": "build/third-party/gdeflate-research/internlm-f16-first-1m.raw",
+        "bytes": 1048576,
+        "sha256": "9447e283d8720fd5d6157b1fb69c68339533e159dfee0cef87be0768e882f70e"
+      },
+      "mode": "--gpu-bounded-smoke",
+      "decoded_bytes": 1048576,
+      "tiles": 16,
+      "iterations": 1,
+      "exact": true,
+      "validation_errors": 0,
+      "validation_vuids": 0,
+      "upload_ns": 36520,
+      "decode_ns": 5361160,
+      "diagnostic_readback_copy_ns": 19360
+    },
+    {
+      "name": "fp16-32m",
+      "log": {
+        "path": "validation/gdeflate-gpu-32m-fp16.txt",
+        "bytes": 1136,
+        "sha256": "8a60032f9e9c512cdf310ee8561f492ea53fd3f906de9f80d9456a42289e7f08"
+      },
+      "encoded": {
+        "path": "build/gdeflate-codec-produced-f16.gdeflate",
+        "bytes": 27219160,
+        "sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602"
+      },
+      "expected": {
+        "path": "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "bytes": 33554432,
+        "sha256": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895"
+      },
+      "mode": "--gpu-bounded-smoke",
+      "decoded_bytes": 33554432,
+      "tiles": 512,
+      "iterations": 1,
+      "exact": true,
+      "validation_errors": 0,
+      "validation_vuids": 0,
+      "upload_ns": 1038200,
+      "decode_ns": 5791800,
+      "diagnostic_readback_copy_ns": 1133400
+    },
+    {
+      "name": "synthetic-multi-tail",
+      "log": {
+        "path": "validation/gdeflate-gpu-multi-tail.txt",
+        "bytes": 1092,
+        "sha256": "acdf001b69fc88f5f9c05b5caebb39f6b3203e4b19418055ef3e0d9fc91d8fa0"
+      },
+      "encoded": {
+        "path": "research/gdeflate/fixtures/synthetic-multi-tail.gdeflate",
+        "bytes": 1288,
+        "sha256": "1dfb813552292b4914530710a872f8bb2a649514dce16e771b27147243ccd7b0"
+      },
+      "expected": {
+        "path": "build/third-party/gdeflate-research/gdeflate-multi-2tiles-tail.raw",
+        "bytes": 131195,
+        "sha256": "124fcb83aab30861edb450cb5cdbee9f897dfe6e0e0d4f4d538b6482a8c8d7bf"
+      },
+      "mode": "--gpu-bounded-smoke",
+      "decoded_bytes": 131195,
+      "tiles": 3,
+      "iterations": 1,
+      "exact": true,
+      "validation_errors": 0,
+      "validation_vuids": 0,
+      "upload_ns": 520,
+      "decode_ns": 782160,
+      "diagnostic_readback_copy_ns": 2400
+    }
+  ],
+  "scope": "Single-run standalone decoder correctness and GPU timestamp components. Not layer restore, model inference, token throughput, or general application compatibility. Model weights and encoded samples remain local ignored build files."
+}

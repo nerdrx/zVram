@@ -1,0 +1,12 @@
+preflight tiles=1 decoded-bytes=65536 payload-bytes=52296
+validation=on debug-utils=on
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=0x1002 type=2 queue-family=0 shaderInt64=enabled execution=GPU-wave32 default-subgroup=64 supported-stages=0x3fff supported-operations=0x6ff subgroup-range=32-64
+buffer bytes=52308 allocation-bytes=52320 memory-type=2 flags=0x6 host-visible=yes device-local=no
+buffer bytes=52308 allocation-bytes=52320 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=12 allocation-bytes=16 memory-type=2 flags=0x6 host-visible=yes device-local=no
+buffer bytes=65536 allocation-bytes=65536 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=4 allocation-bytes=16 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=65540 allocation-bytes=65552 memory-type=2 flags=0x6 host-visible=yes device-local=no
+gpu-timing iterations=1 upload-ns-median=1400 decode-ns-median=5267160 readback-copy-ns-median=6000
+PASS: decoded 65536 exact bytes in 1 tile workgroups across 1 iterations
+validation-errors=0 validation-vuids=0

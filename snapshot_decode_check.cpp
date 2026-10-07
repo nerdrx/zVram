@@ -152,6 +152,16 @@ int main() try {
     rawFiltered[0].byteShuffle = 2;
     expectFailure(rawFiltered.data(), rawFiltered.size(), Total, ChunkLimit,
                   "RAW frame with byte-shuffle metadata accepted");
+    auto unknownCodec = fixture.mixed;
+    unknownCodec[0].codec = static_cast<zvram::snapshot::Codec>(999);
+    expectFailure(unknownCodec.data(), unknownCodec.size(), Total, ChunkLimit,
+                  "unknown snapshot codec accepted");
+#ifndef ZVRAM_HAVE_GDEFLATE
+    auto unavailableCodec = fixture.mixed;
+    unavailableCodec[0].codec = zvram::snapshot::Codec::GDeflate;
+    expectFailure(unavailableCodec.data(), unavailableCodec.size(), Total, ChunkLimit,
+                  "unbuilt GDeflate codec accepted");
+#endif
 
     auto oversized = fixture.mixed;
     oversized[0].rawSize = ChunkLimit + 1;

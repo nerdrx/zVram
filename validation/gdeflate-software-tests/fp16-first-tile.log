@@ -7,6 +7,6 @@ buffer bytes=12 allocation-bytes=12 memory-type=0 flags=0xf host-visible=yes dev
 buffer bytes=65536 allocation-bytes=65536 memory-type=0 flags=0xf host-visible=yes device-local=yes
 buffer bytes=4 allocation-bytes=4 memory-type=0 flags=0xf host-visible=yes device-local=yes
 buffer bytes=65540 allocation-bytes=65540 memory-type=0 flags=0xf host-visible=yes device-local=yes
-cpu-software-timing iterations=1 upload-ns-median=25190 decode-ns-median=24375716 readback-copy-ns-median=10950
+cpu-software-timing iterations=1 upload-ns-median=20460 decode-ns-median=24008064 readback-copy-ns-median=25140
 PASS: decoded 65536 exact bytes in 1 tile workgroups across 1 iterations
 validation-errors=0 validation-vuids=0

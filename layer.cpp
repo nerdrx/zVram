@@ -98,7 +98,7 @@ struct VirtualMemory {
     std::vector<VkDeviceMemory> children;
     std::vector<VkDeviceSize> childSizes;
     std::vector<std::uint32_t> childTypes;
-    struct ColdChunk { std::vector<std::uint8_t> bytes; VkDeviceSize rawSize{}; bool compressed{}; unsigned byteShuffle{}; };
+    struct ColdChunk { std::vector<std::uint8_t> bytes; VkDeviceSize rawSize{}; bool compressed{}; unsigned byteShuffle{}; zvram::snapshot::Codec codec{zvram::snapshot::Codec::Zstd}; };
     struct ColdGroup {
         std::vector<ColdChunk> chunks;
         VkDeviceSize logicalBytes{};
@@ -230,6 +230,7 @@ struct Device {
     bool mruEviction{};
     unsigned minSavingsPercent{};
     unsigned byteShuffle{};
+    zvram::snapshot::Codec snapshotCodec{zvram::snapshot::Codec::Zstd};
     bool narrowDescriptorRanges{};
     VkDeviceSize robustRangeAlignment{1};
     std::uint64_t restoreGeneration{};
@@ -796,6 +797,18 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     else if(std::strcmp(shuffle,"4")==0) d->byteShuffle=4;
                     else { autoResult=VK_ERROR_FEATURE_NOT_PRESENT; logf("invalid Vulkan byte shuffle stride: expected 2 or 4"); }
                 }
+                if(const char* codec=std::getenv("ZVRAM_VULKAN_CODEC")) {
+                    if(std::strcmp(codec,"gdeflate")==0) {
+#ifdef ZVRAM_HAVE_GDEFLATE
+                        d->snapshotCodec=zvram::snapshot::Codec::GDeflate;
+                        if(d->byteShuffle) { autoResult=VK_ERROR_FEATURE_NOT_PRESENT; logf("GDeflate snapshots do not support byte shuffle"); }
+#else
+                        autoResult=VK_ERROR_FEATURE_NOT_PRESENT; logf("GDeflate codec was not built");
+#endif
+                    } else if(std::strcmp(codec,"zstd")!=0) {
+                        autoResult=VK_ERROR_FEATURE_NOT_PRESENT; logf("invalid Vulkan snapshot codec");
+                    }
+                }
                 if(d->activeEviction && d->rangeChunkBytes) {
                     const auto residentMiB=positiveEnv("ZVRAM_VULKAN_RESIDENT_MIB",std::numeric_limits<std::uint64_t>::max()/(1024ull*1024ull));
                     d->residentLimitBytes=residentMiB*1024ull*1024ull;
@@ -835,6 +848,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     if(d->autoEnabled && d->cleanCache) logf("Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget");
                     if(d->autoEnabled) logf("Vulkan snapshot minimum savings percent=%u",d->minSavingsPercent);
                     if(d->autoEnabled && d->byteShuffle) logf("Vulkan snapshot byte shuffle stride=%u",d->byteShuffle);
+                    if(d->autoEnabled && d->snapshotCodec==zvram::snapshot::Codec::GDeflate)
+                        logf("Vulkan snapshot codec=gdeflate decode=CPU experimental=1");
                 }
             }
         }
@@ -1282,7 +1297,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                         r=VK_ERROR_UNKNOWN; break;
                     }
                     if(chunk.rawSize>s.stagingSize-staged) break;
-                    batch[count++]={chunk.bytes.data(),chunk.bytes.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle};
+                    batch[count++]={chunk.bytes.data(),chunk.bytes.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle,chunk.codec};
                     staged+=chunk.rawSize; ++next;
                 }
                 if(r!=VK_SUCCESS || !count) { r=VK_ERROR_UNKNOWN; break; }
@@ -1411,6 +1426,16 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
             std::size_t compressed=0;
             bool keepCompressed=false;
             if(d.minSavingsPercent<100) {
+#ifdef ZVRAM_HAVE_GDEFLATE
+                if(d.snapshotCodec==zvram::snapshot::Codec::GDeflate) {
+                    if(!zvram::gdeflate::encode(source,static_cast<std::size_t>(amount),encoded)) {
+                        okay=false; r=VK_ERROR_UNKNOWN; break;
+                    }
+                    compressed=encoded.size();
+                    keepCompressed=retainCompression(amount,compressed,d.minSavingsPercent);
+                } else
+#endif
+                {
                 const auto* compressionSource=source;
                 if(d.byteShuffle) {
                     shuffled.resize(static_cast<std::size_t>(amount));
@@ -1422,10 +1447,12 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
                 encoded.resize(ZSTD_compressBound(static_cast<std::size_t>(amount)));
                 compressed=ZSTD_compress(encoded.data(),encoded.size(),compressionSource,static_cast<std::size_t>(amount),1);
                 keepCompressed=!ZSTD_isError(compressed) && retainCompression(amount,compressed,d.minSavingsPercent);
+                }
             }
             if(keepCompressed) {
                 chunk.bytes.resize(compressed); std::memcpy(chunk.bytes.data(),encoded.data(),compressed); chunk.compressed=true;
                 chunk.byteShuffle=d.byteShuffle;
+                chunk.codec=d.snapshotCodec;
             } else {
                 chunk.bytes.resize(static_cast<std::size_t>(amount)); std::memcpy(chunk.bytes.data(),source,static_cast<std::size_t>(amount));
             }

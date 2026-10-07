@@ -8,8 +8,13 @@
 #include <memory>
 #include <zstd.h>
 #include "byte_shuffle.hpp"
+#ifdef ZVRAM_HAVE_GDEFLATE
+#include "gdeflate_codec.hpp"
+#endif
 
 namespace zvram::snapshot {
+
+enum class Codec { Zstd, GDeflate };
 
 struct EncodedChunk {
     const std::uint8_t* data{};
@@ -17,9 +22,18 @@ struct EncodedChunk {
     std::size_t rawSize{};
     bool compressed{};
     unsigned byteShuffle{};
+    // RAW chunks retain the default tag; this selects compressed payloads only.
+    Codec codec{Codec::Zstd};
 };
 
 inline bool decodeOne(const EncodedChunk& chunk, std::uint8_t* output) noexcept {
+    if (chunk.codec != Codec::Zstd) {
+#ifdef ZVRAM_HAVE_GDEFLATE
+        if (chunk.codec == Codec::GDeflate && chunk.compressed && !chunk.byteShuffle)
+            return zvram::gdeflate::decode(chunk.data, chunk.storedSize, output, chunk.rawSize);
+#endif
+        return false;
+    }
     if (chunk.byteShuffle) {
         try {
             std::unique_ptr<std::uint8_t[]> shuffled(new std::uint8_t[chunk.rawSize]);
@@ -43,9 +57,14 @@ inline bool decodeBatch(const EncodedChunk* chunks, std::size_t count,
     std::size_t total = 0, compressedCount = 0, firstCompressed = count;
     for (std::size_t i = 0; i < count; ++i) {
         const auto& chunk = chunks[i];
+#ifndef ZVRAM_HAVE_GDEFLATE
+        if (chunk.codec == Codec::GDeflate) return false;
+#endif
         if (!chunk.rawSize || chunk.rawSize > chunkLimit ||
             chunk.rawSize > capacity - total || !chunk.data || !chunk.storedSize ||
             (chunk.byteShuffle && (!chunk.compressed || (chunk.byteShuffle != 2 && chunk.byteShuffle != 4))) ||
+            (chunk.codec != Codec::Zstd &&
+             (chunk.codec != Codec::GDeflate || !chunk.compressed || chunk.byteShuffle)) ||
             (!chunk.compressed && chunk.storedSize != chunk.rawSize)) return false;
         total += chunk.rawSize;
         if (chunk.compressed) {

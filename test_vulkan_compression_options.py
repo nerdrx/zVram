@@ -2,6 +2,7 @@
 """CPU-only CLI checks for Vulkan snapshot compression options."""
 
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -13,9 +14,9 @@ KEY = "ZVRAM_VULKAN_MIN_SAVINGS_PERCENT"
 BASE = ["--vulkan-virtual-gib", "96", "--vulkan-cold-mib", "64"]
 
 
-def run(launcher, *arguments):
+def run(launcher, *arguments, env=None):
     return subprocess.run([sys.executable, str(launcher), *arguments],
-                          text=True, capture_output=True, check=False)
+                          text=True, capture_output=True, check=False, env=env)
 
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -26,6 +27,44 @@ with tempfile.TemporaryDirectory() as temporary:
     build.mkdir()
     (build / "VK_LAYER_NX_zvram.json").touch()
     (build / "libzvram_layer.so").touch()
+
+    codec_child = "import os; print(os.environ.get('ZVRAM_VULKAN_CODEC', ''))"
+    missing_auto_codec = run(launcher, *BASE, "--vulkan-codec", "zstd", "--", sys.executable, "-c", "pass")
+    assert missing_auto_codec.returncode == 2, missing_auto_codec.stderr
+    missing_codec = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--", sys.executable, "-c", "pass")
+    assert missing_codec.returncode == 2 and "GDeflate codec missing" in missing_codec.stderr
+    (build / "zvram-codecs.json").write_text('{"gdeflate": true}')
+    for codec in ("zstd", "gdeflate"):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", codec, "--", sys.executable, "-c", codec_child)
+        assert result.returncode == 0 and result.stdout == codec + "\n", (result.stdout, result.stderr)
+    alternate = root / "alternate-build"
+    alternate.mkdir()
+    (alternate / "VK_LAYER_NX_zvram.json").touch()
+    (alternate / "libzvram_layer.so").touch()
+    result = run(launcher, "--build-dir", str(alternate), *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--", sys.executable, "-c", "pass")
+    assert result.returncode == 2 and "GDeflate codec missing" in result.stderr
+    (alternate / "zvram-codecs.json").write_text('{"gdeflate": true}')
+    clean = os.environ.copy()
+    clean.pop("VK_LAYER_PATH", None)
+    clean.pop("VK_ADD_LAYER_PATH", None)
+    path_child = "import os; print(os.environ['VK_ADD_LAYER_PATH'])"
+    result = run(launcher, "--build-dir", str(alternate), *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--", sys.executable, "-c", path_child, env=clean)
+    assert result.returncode == 0 and result.stdout == str(alternate) + "\n", (result.stdout, result.stderr)
+    conflicting_filter = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--vulkan-byte-shuffle", "2", "--", sys.executable, "-c", "pass")
+    assert conflicting_filter.returncode == 2 and "requires the zstd codec" in conflicting_filter.stderr
+    (build / "zvram-codecs.json").write_text('{"gdeflate": false}')
+    disabled_codec = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--", sys.executable, "-c", "pass")
+    assert disabled_codec.returncode == 2, disabled_codec.stderr
+    inherited = os.environ.copy()
+    inherited["ZVRAM_VULKAN_CODEC"] = "gdeflate"
+    result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--", sys.executable, "-c", "pass", env=inherited)
+    assert result.returncode == 2 and "GDeflate codec missing" in result.stderr
+    result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "zstd", "--", sys.executable, "-c", codec_child, env=inherited)
+    assert result.returncode == 0 and result.stdout == "zstd\n", (result.stdout, result.stderr)
+    (build / "zvram-codecs.json").write_text('{"gdeflate": true}')
+    inherited["ZVRAM_VULKAN_BYTE_SHUFFLE"] = "2"
+    result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--", sys.executable, "-c", "pass", env=inherited)
+    assert result.returncode == 2 and "requires the zstd codec" in result.stderr
 
     for value in ("-1", "101", "not-an-int"):
         result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100",

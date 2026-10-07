@@ -1,0 +1,6 @@
+CPU-only codec comparison; no GPU/Vulkan dispatch
+raw_bytes=33554432
+gdeflate_encoded_bytes=27219160 gdeflate_encode_cpu_ns=355970397 gdeflate_decodeOne_cpu_ns=114457323 exact=1
+zstd1_encoded_bytes=26673213 zstd1_encode_cpu_ns=19193614 zstd1_decodeOne_cpu_ns=13906504 exact=1
+ratio_gdeflate=0.811194 ratio_zstd1=0.794924
+output=build/gdeflate-codec-produced-f16.gdeflate status=PASS
