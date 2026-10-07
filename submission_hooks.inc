@@ -126,31 +126,32 @@ PFN_vkVoidFunction submissionHookLookup(const char* name) {
     return nullptr;
 }
 
+bool commandMemories(Device&,const std::vector<VkCommandBuffer>&,std::vector<ActiveRefs::Use>&);
+
 // Called with the existing device and queue gates held.
 VkResult restoreTrackedCommands(Device& d,const std::vector<VkCommandBuffer>& commands) {
     if(!d.selectiveRestore || unknownCommandProc) return restoreColdLocked(d.handle,d);
     try {
-        std::vector<VkBuffer> buffers;
-        if(!d.submission.collect(static_cast<std::uint32_t>(commands.size()),commands.data(),buffers)) {
+        std::vector<ActiveRefs::Use> selected;
+        if(!commandMemories(d,commands,selected)) {
             logf("selective restore fallback: untracked command, descriptor or address shader");
             return restoreColdLocked(d.handle,d);
         }
-        std::vector<VkDeviceMemory> selected;
-        for(auto buffer:buffers) {
-            const auto p=d.promotedBuffers.find(buffer);
-            if(p!=d.promotedBuffers.end() && p->second.memory &&
-               std::find(selected.begin(),selected.end(),p->second.memory)==selected.end()) selected.push_back(p->second.memory);
-        }
         std::size_t restored=0;
-        for(auto memory:selected) {
+        for(const auto& use:selected) {
+            const auto memory=use.memory;
             const auto p=d.virtualMemory.find(memory);
-            if(p==d.virtualMemory.end() || !p->second.cold) continue;
-            const auto r=restoreColdLocked(d.handle,d,memory); if(r!=VK_SUCCESS) return r;
+            if(p==d.virtualMemory.end() || !p->second.cold ||
+               (use.child!=SIZE_MAX && !p->second.coldGroups[use.child].cold)) continue;
+            const auto r=restoreColdLocked(d.handle,d,memory,use.child); if(r!=VK_SUCCESS) return r;
             ++restored;
         }
         std::size_t remaining=0;
         for(const auto& p:d.virtualMemory) remaining+=p.second.cold;
-        if(restored) logf("selective restore selected-pools=%zu restored-pools=%zu cold-pools-left=%zu",selected.size(),restored,remaining);
+        if(restored) {
+            if(d.rangeChunkBytes) logf("selective range restore selected-chunks=%zu restored-chunks=%zu cold-pools-left=%zu",selected.size(),restored,remaining);
+            else logf("selective restore selected-pools=%zu restored-pools=%zu cold-pools-left=%zu",selected.size(),restored,remaining);
+        }
         return VK_SUCCESS;
     } catch(const std::bad_alloc&) {
         d.selectiveRestore=false;
@@ -193,19 +194,45 @@ VkResult restoreForQueue(Device& d,const char*,std::uint32_t count,const VkSubmi
 // Resolve live descriptor contents before recording an accepted submission.
 // Unknown accesses protect every pool until that queue epoch retires.
 template<class... Args>
-bool queueMemories(Device&,const char*,std::vector<VkDeviceMemory>&,Args...) { return false; }
-bool commandMemories(Device& d,const std::vector<VkCommandBuffer>& commands,std::vector<VkDeviceMemory>& memories) {
+bool queueMemories(Device&,const char*,std::vector<ActiveRefs::Use>&,Args...) { return false; }
+bool commandMemories(Device& d,const std::vector<VkCommandBuffer>& commands,std::vector<ActiveRefs::Use>& memories) {
     if(!d.selectiveRestore || unknownCommandProc) return false;
-    std::vector<VkBuffer> buffers;
-    if(!d.submission.collect(static_cast<std::uint32_t>(commands.size()),commands.data(),buffers)) return false;
-    for(auto buffer:buffers) {
-        const auto p=d.promotedBuffers.find(buffer);
-        if(p!=d.promotedBuffers.end() && p->second.memory &&
-           std::find(memories.begin(),memories.end(),p->second.memory)==memories.end()) memories.push_back(p->second.memory);
+    std::vector<VkSubmissionTracker::BufferRange> ranges;
+    if(d.rangeChunkBytes && d.narrowDescriptorRanges) {
+        if(!d.submission.collectRanges(static_cast<std::uint32_t>(commands.size()),commands.data(),ranges)) return false;
+    } else {
+        std::vector<VkBuffer> buffers;
+        if(!d.submission.collect(static_cast<std::uint32_t>(commands.size()),commands.data(),buffers)) return false;
+        for(auto buffer:buffers) ranges.push_back({buffer,0,VK_WHOLE_SIZE});
+    }
+    for(const auto& range:ranges) {
+        const auto p=d.promotedBuffers.find(range.buffer);
+        if(p==d.promotedBuffers.end() || !p->second.memory) continue;
+        const auto memory=p->second.memory;
+        const auto v=d.virtualMemory.find(memory);
+        if(v==d.virtualMemory.end()) continue;
+        auto add=[&](std::size_t child) {
+            ActiveRefs::Use use{memory,child};
+            if(std::find(memories.begin(),memories.end(),use)==memories.end()) memories.push_back(use);
+        };
+        if(!d.rangeChunkBytes) { add(SIZE_MAX); continue; }
+        const auto binding=std::find_if(v->second.bindings.begin(),v->second.bindings.end(),
+            [&](const auto& entry){return entry.buffer==range.buffer;});
+        if(binding==v->second.bindings.end() || range.offset>=p->second.size) return false;
+        const auto bytes=range.size==VK_WHOLE_SIZE?p->second.size-range.offset:range.size;
+        if(!bytes || bytes>p->second.size-range.offset) return false;
+        const auto start=binding->memoryOffset+range.offset;
+        const auto end=start+bytes;
+        VkDeviceSize base=0;
+        for(std::size_t i=0;i<v->second.childSizes.size();i++) {
+            const auto next=base+v->second.childSizes[i];
+            if(start<next && base<end) add(i);
+            base=next;
+        }
     }
     return true;
 }
-bool queueMemories(Device& d,const char*,std::vector<VkDeviceMemory>& memories,std::uint32_t count,const VkSubmitInfo* infos,VkFence) {
+bool queueMemories(Device& d,const char*,std::vector<ActiveRefs::Use>& memories,std::uint32_t count,const VkSubmitInfo* infos,VkFence) {
     std::vector<VkCommandBuffer> commands;
     for(std::uint32_t i=0;i<count;i++) {
         if(!infos || !trackedSubmitChain(infos[i].pNext)) return false;
@@ -213,7 +240,7 @@ bool queueMemories(Device& d,const char*,std::vector<VkDeviceMemory>& memories,s
     }
     return commandMemories(d,commands,memories);
 }
-bool queueMemories(Device& d,const char*,std::vector<VkDeviceMemory>& memories,std::uint32_t count,const VkSubmitInfo2* infos,VkFence) {
+bool queueMemories(Device& d,const char*,std::vector<ActiveRefs::Use>& memories,std::uint32_t count,const VkSubmitInfo2* infos,VkFence) {
     std::vector<VkCommandBuffer> commands;
     for(std::uint32_t i=0;i<count;i++) {
         if(!infos || infos[i].pNext) return false;

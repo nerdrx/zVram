@@ -26,6 +26,7 @@ int main() {
     const auto a = fakeHandle<VkDeviceMemory>(11);
     const auto b = fakeHandle<VkDeviceMemory>(12);
     const auto c = fakeHandle<VkDeviceMemory>(13);
+    const auto d = fakeHandle<VkDeviceMemory>(14);
 
     refs.record(queue, {a, b, a}, true);
     require(refs.busy(a) && refs.busy(b), "tail resources busy and duplicates harmless");
@@ -52,6 +53,20 @@ int main() {
     refs.retire(queue);
     require(!refs.status(queue).blocksAll && !refs.busy(a) && !refs.busy(c),
             "unknown state clears only when epoch retires");
+
+    const auto child = [](VkDeviceMemory memory, std::size_t index) {
+        return ActiveRefs::Use{memory, index};
+    };
+    refs.recordRanges(queue, {child(d, 0)}, true);
+    require(refs.busy(d, 0) && !refs.busy(d, 1) && refs.busy(d),
+            "child query is selective and whole-memory query sees any child");
+    require(refs.cover(queue), "child tail covered");
+    refs.recordRanges(queue, {child(d, 1)}, true);
+    refs.retire(queue);
+    require(!refs.busy(d, 0) && refs.busy(d, 1), "retire preserves newer child tail");
+    refs.recordRanges(queue, {}, false);
+    require(refs.busy(d, 0) && refs.busy(d, 1), "unknown range submit blocks every child");
+    refs.retire(queue);
 
     std::cout << "active refs checks passed\n";
 }

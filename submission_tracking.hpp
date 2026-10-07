@@ -14,6 +14,11 @@
 class VkSubmissionTracker {
 public:
     enum class ShaderKind { Unknown, Logical, PhysicalStorageBuffer };
+    struct BufferRange {
+        VkBuffer buffer;
+        VkDeviceSize offset{};
+        VkDeviceSize size{VK_WHOLE_SIZE};
+    };
 
     void shader(VkShaderModule module, const VkShaderModuleCreateInfo* info) {
         shaders_[module] = classify(info);
@@ -29,8 +34,15 @@ public:
                                safePipelineChain(info.pNext) &&
                                safeStageChain(info.stage.pNext) &&
                                shaderKind(info.stage.module) == ShaderKind::Logical;
+        bool wide=false;
+        for(auto* p=static_cast<const VkBaseInStructure*>(info.pNext);p;p=p->pNext) {
+#ifdef VK_EXT_pipeline_robustness
+            if(p->sType==VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO_EXT) wide=true;
+#endif
+        }
+        widePipelines_[pipeline]=wide;
     }
-    void erasePipeline(VkPipeline pipeline) { pipelines_.erase(pipeline); }
+    void erasePipeline(VkPipeline pipeline) { pipelines_.erase(pipeline); widePipelines_.erase(pipeline); }
 
     void layout(VkDescriptorSetLayout handle, const VkDescriptorSetLayoutCreateInfo& info) {
         Layout state;
@@ -80,7 +92,7 @@ public:
                 state.safe = layoutIt->second.safe;
                 state.bindings = layoutIt->second.bindings;
                 for (const auto& entry : state.bindings) if (entry.second.storage) {
-                    state.buffers[entry.first].resize(entry.second.count, VK_NULL_HANDLE);
+                    state.buffers[entry.first].resize(entry.second.count);
                     state.written[entry.first].resize(entry.second.count, false);
                 }
             }
@@ -115,7 +127,7 @@ public:
             if (!write.pBufferInfo) { set->second.safe = false; continue; }
             for (std::uint32_t j = 0; j < write.descriptorCount; ++j) {
                 const auto& slot = slots[j];
-                set->second.buffers[slot.binding][slot.element] = write.pBufferInfo[j].buffer;
+                set->second.buffers[slot.binding][slot.element] = write.pBufferInfo[j];
                 set->second.written[slot.binding][slot.element] = write.pBufferInfo[j].buffer != VK_NULL_HANDLE;
             }
         }
@@ -158,10 +170,13 @@ public:
         i->second = Command{pool};
     }
     void buffer(VkCommandBuffer command, VkBuffer handle) {
+        bufferRange(command, handle, 0, VK_WHOLE_SIZE);
+    }
+    void bufferRange(VkCommandBuffer command, VkBuffer handle, VkDeviceSize offset, VkDeviceSize size) {
         auto i = commands_.find(command);
         if (i == commands_.end()) return;
         if (!handle) { i->second.safe = false; return; }
-        i->second.buffers.push_back(handle);
+        i->second.buffers.push_back({handle, offset, size});
     }
     void descriptors(VkCommandBuffer command, std::uint32_t count, const VkDescriptorSet* sets) {
         auto i = commands_.find(command);
@@ -174,6 +189,8 @@ public:
         if (c == commands_.end()) return;
         const auto p = pipelines_.find(pipelineHandle);
         if (p == pipelines_.end() || !p->second) c->second.safe = false;
+        const auto wide=widePipelines_.find(pipelineHandle);
+        if(wide!=widePipelines_.end() && wide->second) c->second.wideBuffers=true;
     }
     void secondary(VkCommandBuffer command, std::uint32_t count, const VkCommandBuffer* secondaryCommands) {
         auto i = commands_.find(command);
@@ -189,12 +206,22 @@ public:
 
     bool collect(std::uint32_t count, const VkCommandBuffer* commands, std::vector<VkBuffer>& out) const {
         out.clear();
-        if (count && !commands) return false;
-        std::vector<VkBuffer> found;
+        std::vector<BufferRange> ranges;
+        if (!collectRanges(count, commands, ranges)) return false;
         std::unordered_set<VkBuffer> uniqueBuffers;
+        for (const auto& range : ranges)
+            if (uniqueBuffers.insert(range.buffer).second) out.push_back(range.buffer);
+        return true;
+    }
+
+    bool collectRanges(std::uint32_t count, const VkCommandBuffer* commands,
+                       std::vector<BufferRange>& out) const {
+        out.clear();
+        if (count && !commands) return false;
+        std::vector<BufferRange> found;
         std::unordered_set<VkCommandBuffer> visited, visiting;
         for (std::uint32_t i = 0; i < count; ++i)
-            if (!collectCommand(commands[i], found, uniqueBuffers, visited, visiting)) return false;
+            if (!collectCommand(commands[i], found, visited, visiting)) return false;
         out = std::move(found);
         return true;
     }
@@ -206,14 +233,15 @@ private:
         VkDescriptorPool pool{};
         bool safe{true};
         std::map<std::uint32_t, Binding> bindings;
-        std::map<std::uint32_t, std::vector<VkBuffer>> buffers;
+        std::map<std::uint32_t, std::vector<VkDescriptorBufferInfo>> buffers;
         std::map<std::uint32_t, std::vector<bool>> written;
     };
     struct Command {
         explicit Command(VkCommandPool owner = VK_NULL_HANDLE) : pool(owner) {}
         VkCommandPool pool{};
         bool safe{true};
-        std::vector<VkBuffer> buffers;
+        std::vector<BufferRange> buffers;
+        bool wideBuffers{};
         std::vector<VkDescriptorSet> sets;
         std::vector<VkCommandBuffer> secondaries;
     };
@@ -351,7 +379,7 @@ private:
             return;
         }
         if (!srcBinding->second.storage) return;
-        std::vector<std::pair<VkBuffer, bool>> values;
+        std::vector<std::pair<VkDescriptorBufferInfo, bool>> values;
         values.reserve(copy.descriptorCount);
         for (const auto& slot : src) {
             const auto& written = source->second.written[slot.binding];
@@ -362,16 +390,14 @@ private:
             destination->second.written[dst[i].binding][dst[i].element] = values[i].second;
         }
     }
-    bool collectCommand(VkCommandBuffer command, std::vector<VkBuffer>& out,
-                        std::unordered_set<VkBuffer>& uniqueBuffers,
+    bool collectCommand(VkCommandBuffer command, std::vector<BufferRange>& out,
                         std::unordered_set<VkCommandBuffer>& visited,
                         std::unordered_set<VkCommandBuffer>& visiting) const {
         if (visited.count(command)) return true;
         if (!visiting.insert(command).second) return false;
         const auto c = commands_.find(command);
         if (c == commands_.end() || !c->second.safe) return false;
-        for (auto buffer : c->second.buffers)
-            if (uniqueBuffers.insert(buffer).second) out.push_back(buffer);
+        out.insert(out.end(), c->second.buffers.begin(), c->second.buffers.end());
         for (auto setHandle : c->second.sets) {
             const auto set = sets_.find(setHandle);
             if (set == sets_.end() || !set->second.safe) return false;
@@ -387,15 +413,19 @@ private:
                 if (!anyWritten) continue;
                 hasInitializedStorage = true;
                 for (std::size_t i = 0; i < written->second.size(); ++i) {
-                    const auto buffer = buffers->second[i];
+                    const auto& descriptor = buffers->second[i];
+                    const auto buffer = descriptor.buffer;
                     if (!written->second[i] || !buffer) return false;
-                    if (uniqueBuffers.insert(buffer).second) out.push_back(buffer);
+                    if (binding.second.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC || c->second.wideBuffers)
+                        out.push_back({buffer, 0, VK_WHOLE_SIZE});
+                    else
+                        out.push_back({buffer, descriptor.offset, descriptor.range});
                 }
             }
             if (!hasInitializedStorage) return false;
         }
         for (auto secondary : c->second.secondaries)
-            if (!collectCommand(secondary, out, uniqueBuffers, visited, visiting)) return false;
+            if (!collectCommand(secondary, out, visited, visiting)) return false;
         visiting.erase(command);
         visited.insert(command);
         return true;
@@ -405,6 +435,7 @@ private:
 
     std::unordered_map<VkShaderModule, ShaderKind> shaders_;
     std::unordered_map<VkPipeline, bool> pipelines_;
+    std::unordered_map<VkPipeline, bool> widePipelines_;
     std::unordered_map<VkDescriptorSetLayout, Layout> layouts_;
     std::unordered_map<VkDescriptorSet, Set> sets_;
     std::unordered_map<VkCommandBuffer, Command> commands_;

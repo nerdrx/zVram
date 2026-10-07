@@ -122,19 +122,19 @@ def declaration(param):
 
 def action(name, params):
     if name == "vkCmdCopyBuffer":
-        return ["buffer(commandBuffer, srcBuffer);", "buffer(commandBuffer, dstBuffer);"]
+        return ["copy-buffer"]
     if name in ("vkCmdCopyBuffer2", "vkCmdCopyBuffer2KHR"):
         return ["copy-buffer-2"]
     if name == "vkCmdFillBuffer":
-        return ["buffer(commandBuffer, dstBuffer);"]
+        return ["bufferRange(commandBuffer, dstBuffer, dstOffset, size);"]
     if name == "vkCmdUpdateBuffer":
-        return ["buffer(commandBuffer, dstBuffer);"]
+        return ["bufferRange(commandBuffer, dstBuffer, dstOffset, dataSize);"]
     if name == "vkCmdBindDescriptorSets":
         return ["descriptors(commandBuffer, descriptorSetCount, pDescriptorSets);"]
     if name == "vkCmdBindPipeline":
         return ["pipeline(commandBuffer, pipeline);"]
     if name == "vkCmdDispatchIndirect":
-        return ["buffer(commandBuffer, buffer);"]
+        return ["bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand));"]
     if name == "vkCmdExecuteCommands":
         return ["secondary(commandBuffer, commandBufferCount, pCommandBuffers);"]
     if name in NO_ACTION:
@@ -199,7 +199,13 @@ def generate(registry):
                 "        try {",
                 "            std::lock_guard<std::mutex> lock(d->mutex);",
                 "            if (d->selectiveRestore) {"]
-        if calls == ["copy-buffer-2"]:
+        if calls == ["copy-buffer"]:
+            out += ["                if (regionCount && !pRegions) d->submission.unknown(commandBuffer);",
+                    "                else for (std::uint32_t i=0; i<regionCount; ++i) {",
+                    "                    d->submission.bufferRange(commandBuffer, srcBuffer, pRegions[i].srcOffset, pRegions[i].size);",
+                    "                    d->submission.bufferRange(commandBuffer, dstBuffer, pRegions[i].dstOffset, pRegions[i].size);",
+                    "                }"]
+        elif calls == ["copy-buffer-2"]:
             out += ["                if (!pCopyBufferInfo || pCopyBufferInfo->pNext ||",
                     "                    (pCopyBufferInfo->regionCount && !pCopyBufferInfo->pRegions)) {",
                     "                    d->submission.unknown(commandBuffer);",
@@ -208,9 +214,10 @@ def generate(registry):
                     "                    for (std::uint32_t i = 0; i < pCopyBufferInfo->regionCount; ++i)",
                     "                        unknownRegion |= pCopyBufferInfo->pRegions[i].pNext != nullptr;",
                     "                    if (unknownRegion) d->submission.unknown(commandBuffer);",
-                    "                    else {",
-                    "                        d->submission.buffer(commandBuffer, pCopyBufferInfo->srcBuffer);",
-                    "                        d->submission.buffer(commandBuffer, pCopyBufferInfo->dstBuffer);",
+                    "                    else for (std::uint32_t i=0; i<pCopyBufferInfo->regionCount; ++i) {",
+                    "                        const auto& region=pCopyBufferInfo->pRegions[i];",
+                    "                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->srcBuffer, region.srcOffset, region.size);",
+                    "                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->dstBuffer, region.dstOffset, region.size);",
                     "                    }",
                     "                }"]
         else:

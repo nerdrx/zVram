@@ -3,12 +3,23 @@
 #include <vulkan/vulkan.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 // Externally serialized queue epochs for resources referenced by submissions.
 class ActiveRefs {
 public:
+    struct Use {
+        VkDeviceMemory memory{};
+        std::size_t child = SIZE_MAX;
+
+        bool operator==(const Use& other) const {
+            return memory == other.memory && child == other.child;
+        }
+    };
+
     struct Status {
         bool hasTail = false;
         bool hasCovered = false;
@@ -16,13 +27,19 @@ public:
     };
 
     void record(VkQueue queue, const std::vector<VkDeviceMemory>& memories, bool known) {
+        std::vector<Use> uses;
+        uses.reserve(memories.size());
+        for (VkDeviceMemory memory : memories) uses.push_back({memory});
+        recordRanges(queue, uses, known);
+    }
+
+    void recordRanges(VkQueue queue, const std::vector<Use>& uses, bool known) {
         auto& state = get(queue);
         state.hasTail = true;
         if (!known) state.tailUnknown = true;
-        for (VkDeviceMemory memory : memories) {
-            if (std::find(state.tail.begin(), state.tail.end(), memory) == state.tail.end())
-                state.tail.push_back(memory);
-        }
+        for (const Use& use : uses)
+            if (std::find(state.tail.begin(), state.tail.end(), use) == state.tail.end())
+                state.tail.push_back(use);
     }
 
     // Promotes the accumulated tail once its previous covered epoch retired.
@@ -46,11 +63,18 @@ public:
     }
 
     bool busy(VkDeviceMemory memory) const {
+        return busy(memory, SIZE_MAX);
+    }
+
+    bool busy(VkDeviceMemory memory, std::size_t child) const {
         for (const auto& state : queues_) {
-            if (state.coveredUnknown || state.tailUnknown ||
-                std::find(state.covered.begin(), state.covered.end(), memory) != state.covered.end() ||
-                std::find(state.tail.begin(), state.tail.end(), memory) != state.tail.end())
-                return true;
+            if (state.coveredUnknown || state.tailUnknown) return true;
+            const auto matches = [memory, child](const Use& use) {
+                return use.memory == memory &&
+                       (use.child == SIZE_MAX || child == SIZE_MAX || use.child == child);
+            };
+            if (std::any_of(state.covered.begin(), state.covered.end(), matches) ||
+                std::any_of(state.tail.begin(), state.tail.end(), matches)) return true;
         }
         return false;
     }
@@ -66,10 +90,10 @@ private:
         VkQueue queue{};
         bool hasTail = false;
         bool tailUnknown = false;
-        std::vector<VkDeviceMemory> tail;
+        std::vector<Use> tail;
         bool hasCovered = false;
         bool coveredUnknown = false;
-        std::vector<VkDeviceMemory> covered;
+        std::vector<Use> covered;
     };
 
     QueueState* find(VkQueue queue) {

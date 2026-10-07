@@ -683,10 +683,11 @@ void upload(Context& context, VkBuffer buffer, Staging& staging,
 
 VkResult computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle,
                       std::uint32_t queueIndex, bool expectFirstFailure = false,
-                      VkDeviceSize byteSize = TotalBytes) {
+                      VkDeviceSize byteSize = TotalBytes, std::uint32_t firstChunk = 0) {
     require(byteSize % ChunkBytes == 0, "compute size must contain whole chunks");
     const std::uint32_t chunkCount = static_cast<std::uint32_t>(byteSize / ChunkBytes);
-    for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
+    for (std::uint32_t localChunk = 0; localChunk < chunkCount; ++localChunk) {
+        const std::uint32_t chunk=firstChunk+localChunk;
         const VkDeviceSize offset = static_cast<VkDeviceSize>(chunk) * ChunkBytes;
         VkDescriptorBufferInfo info{buffer, offset, ChunkBytes};
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -748,11 +749,12 @@ VkResult computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle,
 void readbackAndVerify(Context& context, VkBuffer buffer, Staging& staging,
                        int cycle, bool releaseForCompute = false,
                        VkDeviceSize byteSize = TotalBytes,
-                       std::uint32_t queueIndex = 0) {
+                       std::uint32_t queueIndex = 0, std::uint32_t firstChunk = 0) {
     auto* actual = static_cast<const std::uint32_t*>(staging.mapped);
     require(byteSize % ChunkBytes == 0, "readback size must contain whole chunks");
     const std::uint32_t chunkCount = static_cast<std::uint32_t>(byteSize / ChunkBytes);
-    for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
+    for (std::uint32_t localChunk = 0; localChunk < chunkCount; ++localChunk) {
+        const std::uint32_t chunk=firstChunk+localChunk;
         const VkDeviceSize offset = static_cast<VkDeviceSize>(chunk) * ChunkBytes;
         context.submit([&](VkCommandBuffer command) {
             if (context.exclusiveFamilies && chunk == 0) {
@@ -1095,6 +1097,64 @@ void selectiveBindCheck(Context& context, bool api2) {
               << " independent pools froze cold, woke selectively, and preserved distinct full-byte patterns" << std::endl;
 }
 
+void rangeSubmitCheck(Context& context) {
+    constexpr VkDeviceSize Bytes=2*ChunkBytes;
+    Buffer pool; pool.device=context.device;
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size=Bytes; bufferInfo.usage=VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device,&bufferInfo,nullptr,&pool.handle),"create range pool");
+    VkMemoryRequirements req{}; vkGetBufferMemoryRequirements(context.device,pool.handle,&req);
+    require(req.size==Bytes,"range check requires two exact 32 MiB children");
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize=req.size;
+    allocation.memoryTypeIndex=context.nativeAllocation?gpuOnlyNativeType(context,req.memoryTypeBits):context.virtualType;
+    require(allocation.memoryTypeIndex!=UINT32_MAX,"no compatible range memory type");
+    check(vkAllocateMemory(context.device,&allocation,nullptr,&pool.memory),"allocate range pool");
+    check(vkBindBufferMemory(context.device,pool.handle,pool.memory,0),"bind range pool");
+    Staging staging; staging.device=context.device;
+    bufferInfo.size=ChunkBytes; bufferInfo.usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device,&bufferInfo,nullptr,&staging.buffer),"create range staging");
+    vkGetBufferMemoryRequirements(context.device,staging.buffer,&req);
+    allocation.allocationSize=req.size; allocation.memoryTypeIndex=hostCoherentType(context,req.memoryTypeBits);
+    check(vkAllocateMemory(context.device,&allocation,nullptr,&staging.memory),"allocate range staging");
+    check(vkBindBufferMemory(context.device,staging.buffer,staging.memory,0),"bind range staging");
+    check(vkMapMemory(context.device,staging.memory,0,ChunkBytes,0,&staging.mapped),"map range staging");
+    upload(context,pool.handle,staging,Bytes);
+    check(computeCycle(context,pool.handle,0,0,false,Bytes),"initialize both range chunks");
+    auto waitCold=[&] {
+        const auto deadline=std::chrono::steady_clock::now()+ColdTimeout;
+        while(std::chrono::steady_clock::now()<deadline) {
+            const auto stats=context.stats();
+            if(stats.coldLogicalBytes==Bytes && stats.residentBytes==0 && stats.failures==0) return stats;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        throw std::runtime_error("range pool failed to reach two cold chunks");
+    };
+    const auto cold=waitCold();
+    check(computeCycle(context,pool.handle,1,0,false,ChunkBytes),"restore first descriptor range");
+    auto first=context.stats();
+    require(first.coldLogicalBytes==ChunkBytes && first.residentBytes==ChunkBytes && first.restores==cold.restores+1 && !first.failures,
+            "first descriptor range woke its cold neighbour");
+    readbackAndVerify(context,pool.handle,staging,1,false,ChunkBytes);
+    require(context.stats().coldLogicalBytes==ChunkBytes,"first transfer range woke its cold neighbour");
+    check(computeCycle(context,pool.handle,1,0,false,ChunkBytes,1),"restore second descriptor range");
+    auto both=context.stats();
+    require(both.coldLogicalBytes==0 && both.residentBytes==Bytes && both.restores==cold.restores+2 && !both.failures,
+            "second descriptor range did not restore independently");
+    readbackAndVerify(context,pool.handle,staging,1,false,Bytes);
+    const auto again=waitCold();
+    check(computeCycle(context,pool.handle,2,0,false,ChunkBytes),"restore first range a second time");
+    require(context.stats().coldLogicalBytes==ChunkBytes && context.stats().restores==again.restores+1,
+            "repeated first-range wake restored neighbour");
+    readbackAndVerify(context,pool.handle,staging,2,false,ChunkBytes);
+    readbackAndVerify(context,pool.handle,staging,1,false,ChunkBytes,0,1);
+    std::cout<<"PASS: two 32 MiB chunks in one live buffer restored independently; descriptor and transfer ranges preserved every byte across two cold cycles\n";
+    vkDestroyBuffer(context.device,pool.handle,nullptr);pool.handle=VK_NULL_HANDLE;
+    vkFreeMemory(context.device,pool.memory,nullptr);pool.memory=VK_NULL_HANDLE;
+    const auto empty=context.stats();
+    require(!empty.residentBytes && !empty.coldLogicalBytes && !empty.coldStoredBytes && !empty.failures,"range cleanup retained backing or errors");
+}
+
 void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool activeSubmit) {
     Buffer a, b;
     a.device = b.device = context.device;
@@ -1413,6 +1473,7 @@ int main(int argc, char** argv) try {
     bool twoQueues = false, twoFamilies = false, exclusiveFamilies = false;
     bool pendingWait = false, pendingBind = false;
     bool activeSubmit = false;
+    bool rangeSubmit = false;
     bool concurrentWait = false;
     bool suballocation = false, suballocationAuto = false, suballocationApi2 = false;
     bool selectiveBind = false, selectiveBindApi2 = false;
@@ -1438,6 +1499,7 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--selective-submit") == 0) selectiveSubmit = true;
         else if (std::strcmp(argv[i], "--selective-submit-api2") == 0) { selectiveSubmit = true; selectiveSubmitApi2 = true; }
         else if (std::strcmp(argv[i], "--selective-submit-unknown") == 0) { selectiveSubmit = true; selectiveSubmitUnknown = true; }
+        else if (std::strcmp(argv[i], "--range-submit") == 0) { rangeSubmit=true; selectiveSubmit=true; }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
         else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--active-submit --two-queues]");
     }
@@ -1480,6 +1542,7 @@ int main(int argc, char** argv) try {
             "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind, activeSubmit);
+    if (rangeSubmit) { rangeSubmitCheck(context); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
     if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }

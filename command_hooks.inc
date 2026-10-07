@@ -523,7 +523,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdDispatchIndirect(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.buffer(commandBuffer, buffer);
+                d->submission.bufferRange(commandBuffer, buffer, offset, sizeof(VkDispatchIndirectCommand));
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -634,8 +634,11 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBuffer(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.buffer(commandBuffer, srcBuffer);
-                d->submission.buffer(commandBuffer, dstBuffer);
+                if (regionCount && !pRegions) d->submission.unknown(commandBuffer);
+                else for (std::uint32_t i=0; i<regionCount; ++i) {
+                    d->submission.bufferRange(commandBuffer, srcBuffer, pRegions[i].srcOffset, pRegions[i].size);
+                    d->submission.bufferRange(commandBuffer, dstBuffer, pRegions[i].dstOffset, pRegions[i].size);
+                }
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -853,7 +856,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdUpdateBuffer(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.buffer(commandBuffer, dstBuffer);
+                d->submission.bufferRange(commandBuffer, dstBuffer, dstOffset, dataSize);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -877,7 +880,7 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdFillBuffer(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.buffer(commandBuffer, dstBuffer);
+                d->submission.bufferRange(commandBuffer, dstBuffer, dstOffset, size);
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4523,9 +4526,10 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBuffer2(
                     for (std::uint32_t i = 0; i < pCopyBufferInfo->regionCount; ++i)
                         unknownRegion |= pCopyBufferInfo->pRegions[i].pNext != nullptr;
                     if (unknownRegion) d->submission.unknown(commandBuffer);
-                    else {
-                        d->submission.buffer(commandBuffer, pCopyBufferInfo->srcBuffer);
-                        d->submission.buffer(commandBuffer, pCopyBufferInfo->dstBuffer);
+                    else for (std::uint32_t i=0; i<pCopyBufferInfo->regionCount; ++i) {
+                        const auto& region=pCopyBufferInfo->pRegions[i];
+                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->srcBuffer, region.srcOffset, region.size);
+                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->dstBuffer, region.dstOffset, region.size);
                     }
                 }
             }
@@ -4556,9 +4560,10 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBuffer2KHR(
                     for (std::uint32_t i = 0; i < pCopyBufferInfo->regionCount; ++i)
                         unknownRegion |= pCopyBufferInfo->pRegions[i].pNext != nullptr;
                     if (unknownRegion) d->submission.unknown(commandBuffer);
-                    else {
-                        d->submission.buffer(commandBuffer, pCopyBufferInfo->srcBuffer);
-                        d->submission.buffer(commandBuffer, pCopyBufferInfo->dstBuffer);
+                    else for (std::uint32_t i=0; i<pCopyBufferInfo->regionCount; ++i) {
+                        const auto& region=pCopyBufferInfo->pRegions[i];
+                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->srcBuffer, region.srcOffset, region.size);
+                        d->submission.bufferRange(commandBuffer, pCopyBufferInfo->dstBuffer, region.dstOffset, region.size);
                     }
                 }
             }

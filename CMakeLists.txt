@@ -95,6 +95,19 @@ foreach(submit_mode synthetic-legacy synthetic-api2 native-legacy native-api2 sy
                 $<TARGET_FILE:zvram-vulkan-auto-check> ${submit_flags})
     set_tests_properties(vulkan-selective-submit-${submit_mode} PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
+foreach(range_mode synthetic native)
+    set(range_flags --range-submit)
+    if(range_mode STREQUAL "native")
+        list(APPEND range_flags --native-allocation)
+    endif()
+    add_test(NAME vulkan-range-residency-${range_mode}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${range_flags})
+    set_tests_properties(vulkan-range-residency-${range_mode} PROPERTIES TIMEOUT 60
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
 foreach(active_mode synthetic native synthetic-unknown native-unknown)
     set(active_flags --active-submit --two-queues)
     if(active_mode MATCHES "^native")

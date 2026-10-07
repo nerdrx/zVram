@@ -185,12 +185,17 @@ def main():
                         help="test opt-in per-submission Vulkan restoration")
     parser.add_argument("--active-eviction", action="store_true",
                         help="test tracked eviction while unrelated submissions remain active; enables selective restore")
+    parser.add_argument("--range-mib", type=int,
+                        help="test sparse range residency at this MiB chunk size; enables active eviction")
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument("--output-dir", type=Path, default=Path("build/vulkan-idle-model-check"))
     parser.add_argument("--app-arg", action="append", default=[],
                         help="extra llama-completion option; repeat as --app-arg=VALUE")
     args = parser.parse_args()
+    args.active_eviction = args.active_eviction or args.range_mib is not None
     args.selective_restore = args.selective_restore or args.active_eviction
+    if args.range_mib is not None and not 0 < args.range_mib <= ((1 << 64) - 1) // (1024 * 1024):
+        parser.error("--range-mib must be positive and fit 64-bit bytes")
     binary = args.binary.expanduser().resolve()
     model = args.model.expanduser().resolve()
     launcher = root / "zvram"
@@ -222,6 +227,8 @@ def main():
         command.append("--vulkan-selective-restore")
     if args.active_eviction:
         command.append("--vulkan-active-eviction")
+    if args.range_mib is not None:
+        command += ["--vulkan-range-mib", str(args.range_mib)]
     command += ["--", *app]
     auto = run_interactive("automatic", command, env, output, args.timeout, True)
     auto_text = auto["stderr"]
@@ -246,11 +253,15 @@ def main():
     }
     selective_events = [tuple(map(int, values)) for values in re.findall(
         r"selective restore selected-pools=(\d+) restored-pools=(\d+) cold-pools-left=(\d+)", auto_text)]
+    range_events = [tuple(map(int, values)) for values in re.findall(
+        r"selective range restore selected-chunks=(\d+) restored-chunks=(\d+) cold-pools-left=(\d+)", auto_text)]
     if args.selective_restore:
         checks["selective_enabled"] = "selective Vulkan restore enabled" in auto_text
-        checks["tracked_restore_observed"] = any(restored > 0 for _, restored, _ in selective_events)
+        checks["tracked_restore_observed"] = any(restored > 0 for _, restored, _ in selective_events + range_events)
     if args.active_eviction:
         checks["active_eviction_enabled"] = "active Vulkan eviction enabled" in auto_text
+    if args.range_mib is not None:
+        checks["range_residency_enabled"] = "Vulkan range residency enabled" in auto_text
     result = {"passed": all(checks.values()), "checks": checks, "model": str(model),
               "binary": str(binary), "command": command,
               "native": {k: v for k, v in native.items() if k not in ("stdout", "stderr")},
@@ -260,6 +271,7 @@ def main():
               "automatic_cold_stored_bytes": cold_state[2] if cold_state else None,
               "automatic_snapshot_events": auto_cold,
               "selective_restore_events": selective_events,
+              "selective_range_restore_events": range_events,
               "selective_restore_fallbacks": auto_text.count("selective restore fallback:"),
               "backing_bytes": auto["backing"], "cleanup_log_lines": cleanup_fields,
               "resident_vram_freed_bytes": (auto["backing"].get("hot", {}).get("resident-vram", 0) -

@@ -1,0 +1,106 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+    Start  1: vulkan-submission-tracking
+
+1: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-submission-tracking-check
+1: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+1: Test timeout computed to be: 60
+1: submission tracking checks passed
+1/4 Test  #1: vulkan-submission-tracking .........   Passed    0.00 sec
+test 2
+    Start  2: cpu-active-refs
+
+2: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-active-refs-check
+2: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+2: Test timeout computed to be: 60
+2: active refs checks passed
+2/4 Test  #2: cpu-active-refs ....................   Passed    0.00 sec
+test 25
+    Start 25: vulkan-range-residency-synthetic
+
+25: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--range-submit"
+25: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+25: Environment variables: 
+25:  VK_LOADER_LAYERS_DISABLE=~implicit~
+25: Test timeout computed to be: 60
+25: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+25: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+25: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+25: [zvram] Vulkan range residency enabled chunk-bytes=33554432
+25: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+25: [zvram] virtual allocate bytes=67108864 heap-capacity=134217728
+25: [zvram] snapshot cold bytes=33554432 stored=33554432
+25: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+25: [zvram] snapshot cold bytes=33554432 stored=33554432
+25: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+25: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+25: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+25: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+25: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+25: [zvram] snapshot cold bytes=33554432 stored=33554432
+25: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=3 restores=2 failures=0
+25: [zvram] snapshot cold bytes=33554432 stored=33554432
+25: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=4 restores=2 failures=0
+25: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=4 restores=3 failures=0
+25: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+25: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+25: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+25: [zvram] virtual free bytes=67108864
+25: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+25: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+25: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+25: PASS: two 32 MiB chunks in one live buffer restored independently; descriptor and transfer ranges preserved every byte across two cold cycles
+3/4 Test #25: vulkan-range-residency-synthetic ...   Passed    0.40 sec
+test 26
+    Start 26: vulkan-range-residency-native
+
+26: Test command: /home/nerdrx/Documents/ChatGPT/NX/zvram/zvram "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--range-submit" "--native-allocation"
+26: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+26: Environment variables: 
+26:  VK_LOADER_LAYERS_DISABLE=~implicit~
+26: Test timeout computed to be: 60
+26: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+26: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+26: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+26: [zvram] Vulkan range residency enabled chunk-bytes=33554432
+26: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+26: [zvram] native allocation segmented bytes=67108864 children=2
+26: [zvram] snapshot cold bytes=33554432 stored=33554432
+26: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0
+26: [zvram] snapshot cold bytes=33554432 stored=33554432
+26: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0
+26: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0
+26: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+26: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=2 restores=2 failures=0
+26: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+26: [zvram] snapshot cold bytes=33554432 stored=33554432
+26: [zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=3 restores=2 failures=0
+26: [zvram] snapshot cold bytes=33554432 stored=33554432
+26: [zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=4 restores=2 failures=0
+26: [zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=4 restores=3 failures=0
+26: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+26: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+26: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+26: [zvram] virtual free bytes=67108864
+26: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0
+26: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+26: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+26: PASS: two 32 MiB chunks in one live buffer restored independently; descriptor and transfer ranges preserved every byte across two cold cycles
+4/4 Test #26: vulkan-range-residency-native ......   Passed    0.41 sec
+
+The following tests passed:
+	vulkan-submission-tracking
+	cpu-active-refs
+	vulkan-range-residency-synthetic
+	vulkan-range-residency-native
+
+100% tests passed out of 4
+
+Total Test time (real) =   0.82 sec

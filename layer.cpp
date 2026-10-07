@@ -91,6 +91,7 @@ struct VirtualMemory {
     bool hasPriority{};
     VkDeviceSize residentBytes{};
     std::uint32_t backingMemoryTypeBits{};
+    std::uint32_t nativeTypeBits{};
     std::vector<VkDeviceMemory> children;
     std::vector<VkDeviceSize> childSizes;
     std::vector<std::uint32_t> childTypes;
@@ -104,6 +105,7 @@ struct VirtualMemory {
         bool cold{};
         bool restoreBound{};
         bool budgetBlocked{};
+        std::chrono::steady_clock::time_point lastUse{std::chrono::steady_clock::now()};
     };
     struct Binding { VkBuffer buffer{}; VkDeviceSize memoryOffset{},size{},alignment{}; };
     std::vector<Binding> bindings;
@@ -211,6 +213,8 @@ struct Device {
     VkSubmissionTracker submission;
     ActiveRefs activeRefs;
     bool activeEviction{};
+    VkDeviceSize rangeChunkBytes{};
+    bool narrowDescriptorRanges{};
     std::uint64_t restoreGeneration{};
     std::vector<std::pair<VkQueue,std::uint64_t>> restoreQueueGenerations;
     std::atomic<VkResult> gpuGateError{VK_SUCCESS};
@@ -308,7 +312,7 @@ VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice,VkDeviceMemory,const VkAlloc
 bool initSnapshotResources(Device&,std::uint32_t);
 void releaseSnapshotResources(Device&);
 void snapshotWorkerLoop(const std::shared_ptr<Device>&);
-VkResult restoreColdLocked(VkDevice,Device&,VkDeviceMemory only=VK_NULL_HANDLE);
+VkResult restoreColdLocked(VkDevice,Device&,VkDeviceMemory only=VK_NULL_HANDLE,std::size_t childOnly=SIZE_MAX);
 std::vector<std::uint32_t> backingMemoryTypes(const Device&,const VkMemoryRequirements&);
 VkResult allocateBackingChild(Device&,VkDevice,VkDeviceSize,std::uint32_t,VkMemoryAllocateFlags,bool,float,VkDeviceMemory*);
 void releaseChildren(Device&,VirtualMemory&);
@@ -558,6 +562,13 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     const bool sparseBindingEnabled=hasFeatures2?requestedFeatures2->features.sparseBinding!=VK_FALSE:
         (ci->pEnabledFeatures && ci->pEnabledFeatures->sparseBinding!=VK_FALSE);
     const bool bdaEnabled=enabledBufferDeviceAddress(ci);
+    const auto rangeMiB=positiveEnv("ZVRAM_VULKAN_RANGE_MIB",std::numeric_limits<std::uint64_t>::max()/(1024ull*1024ull));
+    VkPhysicalDeviceFeatures physicalFeatures{};
+    if(rangeMiB && in->features) in->features(physical,&physicalFeatures);
+    const bool residencyEnabled=hasFeatures2?requestedFeatures2->features.sparseResidencyBuffer!=VK_FALSE:
+        (ci->pEnabledFeatures && ci->pEnabledFeatures->sparseResidencyBuffer!=VK_FALSE);
+    const bool rangeEnabled=rangeMiB && snapshotRequested && physicalFeatures.sparseResidencyBuffer &&
+        (!hasFeatures2 || features2AtHead || residencyEnabled);
     if(hasFeatures2 && !features2AtHead && !sparseBindingEnabled) {
         virtualEnabled=false;
         if(privateQueuePlanned) {
@@ -586,14 +597,16 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     }
     if(virtualEnabled) {
         if(hasFeatures2) {
-            if(!sparseBindingEnabled) {
+            if(!sparseBindingEnabled || (rangeEnabled && !residencyEnabled)) {
                 injectedFeatures2=*requestedFeatures2; injectedFeatures2.features.sparseBinding=VK_TRUE;
+                if(rangeEnabled) injectedFeatures2.features.sparseResidencyBuffer=VK_TRUE;
                 if(copy.pNext==ci->pNext) copy.pNext=&injectedFeatures2;
                 else behavior.pNext=&injectedFeatures2;
             }
-        } else if(!sparseBindingEnabled) {
+        } else if(!sparseBindingEnabled || (rangeEnabled && !residencyEnabled)) {
             if(ci->pEnabledFeatures) injectedFeatures=*ci->pEnabledFeatures;
             injectedFeatures.sparseBinding=VK_TRUE;
+            if(rangeEnabled) injectedFeatures.sparseResidencyBuffer=VK_TRUE;
             copy.pEnabledFeatures=&injectedFeatures;
         }
     }
@@ -603,6 +616,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     r=nextCreate(physical,&copy,allocator,out); if(r!=VK_SUCCESS) return r;
     try {
         auto d=std::make_shared<Device>(); d->handle=*out; d->physical=physical; d->gdpa=nextGdpa; d->setDeviceLoaderData=setDeviceLoaderData;
+        d->narrowDescriptorRanges=hasFeatures2?!requestedFeatures2->features.robustBufferAccess:
+            (!ci->pEnabledFeatures || !ci->pEnabledFeatures->robustBufferAccess);
         d->destroy=reinterpret_cast<PFN_vkDestroyDevice>(nextGdpa(*out,"vkDestroyDevice"));
         d->allocate=reinterpret_cast<PFN_vkAllocateMemory>(nextGdpa(*out,"vkAllocateMemory"));
         d->free=reinterpret_cast<PFN_vkFreeMemory>(nextGdpa(*out,"vkFreeMemory"));
@@ -686,6 +701,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 d->selectiveRestore=selective && std::strcmp(selective,"1")==0;
                 const char* active=std::getenv("ZVRAM_VULKAN_ACTIVE_EVICTION");
                 d->activeEviction=d->selectiveRestore && active && std::strcmp(active,"1")==0;
+                if(d->activeEviction && rangeEnabled) d->rangeChunkBytes=rangeMiB*1024ull*1024ull;
                 try {
                     handles=d->appQueues; handles.push_back(d->copyQueue);
                     if(d->activeEviction) for(auto queue:d->appQueues)
@@ -708,6 +724,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     else logf("automatic Vulkan snapshots disabled: worker creation failed");
                     if(d->autoEnabled && d->selectiveRestore) logf("selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all");
                     if(d->autoEnabled && d->activeEviction) logf("active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction");
+                    if(d->autoEnabled && d->rangeChunkBytes) logf("Vulkan range residency enabled chunk-bytes=%llu",static_cast<unsigned long long>(d->rangeChunkBytes));
+                    else if(rangeMiB) logf("Vulkan range residency disabled: feature chain, sparse residency support, or active mode unavailable");
                 }
             }
         }
@@ -828,9 +846,9 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
     if(m.cold) { const auto r=restoreColdLocked(device,d,handle); if(r!=VK_SUCCESS) return r; }
     if(m.everBound && m.backingMemoryTypeBits==0) return VK_ERROR_FEATURE_NOT_PRESENT;
     if(!m.everBound) {
-        m.backingMemoryTypeBits=req.memoryTypeBits;
+        m.backingMemoryTypeBits=req.memoryTypeBits&(m.nativeTypeBits?m.nativeTypeBits:UINT32_MAX);
         const VkDeviceSize alignment=req.alignment;
-        VkDeviceSize chunk=256u*1024u*1024u;
+        VkDeviceSize chunk=d.rangeChunkBytes?d.rangeChunkBytes:256u*1024u*1024u;
         chunk-=chunk%alignment;
         if(!chunk) return VK_ERROR_FEATURE_NOT_PRESENT;
         std::vector<VkDeviceSize> sizes;
@@ -1026,7 +1044,7 @@ VkResult copyChunkLocked(Device& d,VkBuffer source,VkBuffer destination,VkDevice
     const auto queue=d.copyQueue?d.copyQueue:d.sparseQueue;
     return r==VK_SUCCESS?d.queueWaitIdle(queue):r;
 }
-VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only) {
+VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::size_t childOnly) {
     if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
     auto& s=d.snapshot;
     bool restoredAny=false;
@@ -1051,6 +1069,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only) {
         } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
         if(types.empty()) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         for(std::size_t i=0;i<memory.coldGroups.size();i++) {
+            if(childOnly!=SIZE_MAX && i!=childOnly) continue;
             auto& group=memory.coldGroups[i];
             const auto amount=memory.childSizes[i];
             if(!group.cold) continue;
@@ -1171,11 +1190,13 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
         }
         for(auto& pair:d.virtualMemory) {
             auto& memory=pair.second;
-            if(d.activeEviction && (d.activeRefs.busy(pair.first) ||
+            if(d.activeEviction && !d.rangeChunkBytes && (d.activeRefs.busy(pair.first) ||
                std::chrono::steady_clock::now()<memory.lastUse+std::chrono::milliseconds(d.idleMilliseconds))) continue;
             if(memory.children.empty() || memory.children.size()!=memory.coldGroups.size() ||
                memory.poolViews.size()!=memory.children.size()) continue;
             for(std::size_t i=0;i<memory.children.size();i++) {
+                if(d.rangeChunkBytes && (d.activeRefs.busy(pair.first,i) ||
+                    std::chrono::steady_clock::now()<memory.coldGroups[i].lastUse+std::chrono::milliseconds(d.idleMilliseconds))) continue;
                 const auto dataSize=memory.childSizes[i];
                 const auto logicalBytes=dataSize;
                 auto& group=memory.coldGroups[i];
@@ -1359,6 +1380,34 @@ VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer 
         const bool gpuOnlyLocal=ai->second.local &&
             (props&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT|VK_MEMORY_PROPERTY_PROTECTED_BIT))==0;
         const bool adopt=d->autoEnabled && d->nativeWrappingAllowed && gpuOnlyLocal && ai->second.adoptable;
+        if(adopt && d->rangeChunkBytes && ai->second.wrapped) {
+            // No resource has ever bound this GPU-only allocation. Its contents
+            // are undefined, so release its pristine backing before allocating
+            // chunks rather than briefly doubling a large model's footprint.
+            VirtualMemory segmented{};
+            segmented.size=ai->second.size; segmented.token=ai->second.token;
+            segmented.allocationFlags=ai->second.flags;
+            segmented.priority=ai->second.priority; segmented.hasPriority=ai->second.hasPriority;
+            segmented.nativeTypeBits=1u<<ai->second.type;
+            const auto original=ai->second.nativeHandle;
+            const auto bytes=ai->second.size;
+            const auto callbacks=ai->second.callbacks;
+            const bool hasCallbacks=ai->second.hasCallbacks;
+            try {
+                auto inserted=d->virtualMemory.emplace(memory,std::move(segmented));
+                if(!inserted.second) return VK_ERROR_FEATURE_NOT_PRESENT;
+                vi=inserted.first;
+            } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+            d->allocations.erase(ai);
+            d->free(device,original,hasCallbacks?&callbacks:nullptr);
+            d->liveLocal-=std::min<std::uint64_t>(d->liveLocal,bytes);
+            const auto r=bindPoolBuffer(device,*d,buffer,memory,memoryOffset,promoted.requirements);
+            if(r==VK_SUCCESS) {
+                promoted.memory=memory; promoted.synthetic=true;
+                logf("native allocation segmented bytes=%llu children=%zu",static_cast<unsigned long long>(bytes),vi->second.children.size());
+            }
+            return r;
+        }
         if(adopt) {
             VirtualMemory adopted{}; adopted.size=ai->second.size; adopted.allocationFlags=ai->second.flags;
             adopted.priority=ai->second.priority; adopted.hasPriority=ai->second.hasPriority;
@@ -1427,6 +1476,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateBuffer(VkDevice device,const VkBufferC
     auto d=findDevice(device); if(!d || !d->createBuffer) return VK_ERROR_INITIALIZATION_FAILED;
     if(!eligibleBuffer(*d,ci)) return d->createBuffer(device,ci,allocator,out);
     VkBufferCreateInfo copy=*ci; copy.flags|=VK_BUFFER_CREATE_SPARSE_BINDING_BIT;
+    if(d->rangeChunkBytes) copy.flags|=VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT;
     if(d->autoEnabled) copy.usage|=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     std::vector<std::uint32_t> sharingFamilies;
     bool concurrentForced=false;
@@ -1896,12 +1946,17 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     if(submitted && !unsupportedOrdering) {
         if(d->activeEviction && d->autoEnabled) {
             try {
-                std::vector<VkDeviceMemory> memories;
+                std::vector<ActiveRefs::Use> memories;
                 const bool known=queueMemories(*d,name,memories,args...);
-                d->activeRefs.record(queue,memories,known);
-                for(auto& pair:d->virtualMemory)
-                    if(!known || std::find(memories.begin(),memories.end(),pair.first)!=memories.end())
-                        pair.second.lastUse=std::chrono::steady_clock::now();
+                d->activeRefs.recordRanges(queue,memories,known);
+                for(auto& pair:d->virtualMemory) {
+                    auto& memory=pair.second;
+                    const auto now=std::chrono::steady_clock::now();
+                    for(std::size_t i=0;i<memory.coldGroups.size();i++)
+                        if(!known || std::any_of(memories.begin(),memories.end(),[&](const auto& use){
+                            return use.memory==pair.first && (use.child==SIZE_MAX || use.child==i);
+                        })) { memory.coldGroups[i].lastUse=now; memory.lastUse=now; }
+                }
             } catch(const std::bad_alloc&) {
                 d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
                 logf("active Vulkan eviction disabled: tracking allocation failed");

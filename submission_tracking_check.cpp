@@ -19,6 +19,13 @@ static void require(bool condition, const char* message) {
     }
 }
 
+static bool hasRange(const std::vector<VkSubmissionTracker::BufferRange>& ranges,
+                     VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size) {
+    for (const auto& range : ranges)
+        if (range.buffer == buffer && range.offset == offset && range.size == size) return true;
+    return false;
+}
+
 int main() {
     const std::uint32_t logicalWords[] = {
         0x07230203u, 0x00010000u, 0u, 8u, 0u,
@@ -84,7 +91,7 @@ int main() {
     const auto bufferB = fakeHandle<VkBuffer>(22);
     const auto bufferC = fakeHandle<VkBuffer>(23);
     const auto bufferD = fakeHandle<VkBuffer>(24);
-    VkDescriptorBufferInfo bufferInfos[] = {{bufferA, 0, 64}, {bufferB, 0, 64}, {bufferC, 0, 64}};
+    VkDescriptorBufferInfo bufferInfos[] = {{bufferA, 11, 17}, {bufferB, 22, 18}, {bufferC, 33, 19}};
     VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
     write.dstSet = sourceSet;
     write.dstBinding = 0;
@@ -117,20 +124,60 @@ int main() {
     tracker.beginCommand(primary);
     tracker.pipeline(primary, pipeline);
     tracker.descriptors(primary, 1, &copiedSet);
-    tracker.buffer(secondary, bufferD);
+    tracker.bufferRange(secondary, bufferD, 7, 9);
+    tracker.buffer(primary, bufferD);
     tracker.secondary(primary, 1, &secondary);
 
     std::vector<VkBuffer> found;
     require(tracker.collect(1, &primary, found), "tracked descriptors and secondary collect");
     require(found.size() == 4, "collection includes copied buffers and secondary buffer");
+    std::vector<VkSubmissionTracker::BufferRange> ranges;
+    require(tracker.collectRanges(1, &primary, ranges), "tracked descriptor ranges and secondary collect");
+    require(ranges.size() == 5, "ranges preserve descriptor, secondary, and direct references");
+    require(hasRange(ranges, bufferA, 11, 17) && hasRange(ranges, bufferB, 22, 18) &&
+            hasRange(ranges, bufferC, 33, 19), "descriptor offsets and ranges survive descriptor copy");
+    require(hasRange(ranges, bufferD, 7, 9) && hasRange(ranges, bufferD, 0, VK_WHOLE_SIZE),
+            "secondary range and direct whole-buffer reference both survive");
 
     // Updates after recording resolve at submit; copying again preserves source's latest value.
-    bufferInfos[2].buffer = bufferD;
+    bufferInfos[2] = {bufferD, 44, 20};
     tracker.updateSets(1, &write, 0, nullptr);
+    require(tracker.collectRanges(1, &primary, ranges) && hasRange(ranges, bufferC, 33, 19),
+            "descriptor copy retains prior range until recopied");
     tracker.updateSets(0, nullptr, 1, &copy);
     require(tracker.collect(1, &primary, found), "live descriptor update remains trackable");
     require(found.size() == 3 && std::find(found.begin(), found.end(), bufferD) != found.end(),
             "live descriptor copy replaces prior buffer reference");
+    require(tracker.collectRanges(1, &primary, ranges) && hasRange(ranges, bufferD, 44, 20),
+            "latest copied descriptor offset and range are collected");
+    require(ranges.size() == 5, "overlapping duplicate buffer references may remain separate");
+
+    const VkDescriptorSetLayoutBinding dynamicBinding{
+        0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    VkDescriptorSetLayoutCreateInfo dynamicLayoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    dynamicLayoutInfo.bindingCount = 1;
+    dynamicLayoutInfo.pBindings = &dynamicBinding;
+    const auto dynamicLayout = fakeHandle<VkDescriptorSetLayout>(16);
+    tracker.layout(dynamicLayout, dynamicLayoutInfo);
+    const auto dynamicSet = fakeHandle<VkDescriptorSet>(17);
+    VkDescriptorSetAllocateInfo dynamicSetInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    dynamicSetInfo.descriptorPool = pool;
+    dynamicSetInfo.descriptorSetCount = 1;
+    dynamicSetInfo.pSetLayouts = &dynamicLayout;
+    tracker.allocateSets(&dynamicSetInfo, &dynamicSet);
+    VkDescriptorBufferInfo dynamicBufferInfo{bufferA, 13, 23};
+    VkWriteDescriptorSet dynamicWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    dynamicWrite.dstSet = dynamicSet;
+    dynamicWrite.descriptorCount = 1;
+    dynamicWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    dynamicWrite.pBufferInfo = &dynamicBufferInfo;
+    tracker.updateSets(1, &dynamicWrite, 0, nullptr);
+    tracker.beginCommand(primary);
+    tracker.pipeline(primary, pipeline);
+    tracker.descriptors(primary, 1, &dynamicSet);
+    require(tracker.collectRanges(1, &primary, ranges) && ranges.size() == 1 &&
+            hasRange(ranges, bufferA, 0, VK_WHOLE_SIZE),
+            "dynamic storage descriptor conservatively covers its whole buffer");
 
     VkComputePipelineCreateInfo allowedInfo = pipelineInfo;
 #ifdef VK_EXT_subgroup_size_control
@@ -156,6 +203,10 @@ int main() {
     tracker.pipeline(primary, allowedPipeline);
     tracker.descriptors(primary, 1, &copiedSet);
     require(tracker.collect(1, &primary, found), "known execution-only pipeline chains accepted");
+#ifdef VK_EXT_pipeline_robustness
+    require(tracker.collectRanges(1,&primary,ranges) && hasRange(ranges,bufferA,0,VK_WHOLE_SIZE),
+            "explicit pipeline robustness conservatively widens descriptor ranges");
+#endif
 
     VkBaseInStructure unknownPipelineInfo{};
     unknownPipelineInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
