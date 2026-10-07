@@ -1,0 +1,10 @@
+{
+  "check_vulkan_idle_model.py": "294af00a63245d96092d6ff8f62494a45fc8f3685f5462626d5c44b31445b4db",
+  "test_vulkan_model_budget.py": "45fe6fa36498f2dedf66892559eedd6a0e8ab4741e9d009b172a6e72b8e742dd",
+  "test_graphics_presentation.py": "46a085aa804dca79dced05c24c62f1d81acc76abfad16e6938cb763e4ee66c3a",
+  "vulkan_graphics_check.cpp": "e33f28e442e9b4703c8bb9f37fa3af080a22243b96cd9b6912096783b2e9e0ab",
+  "build/libzvram_layer.so": "bca6fd019bcd77a3271932f810b2282465f33ea2ed5aa2ae38e7183b34573a83",
+  "build/gdeflate-codec/libzvram_layer.so": "f166ebc8ce13dd46e9b666e5952402ab9df771906a97a75927e92ff023974fdc",
+  "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d",
+  "build/third-party/models/SmolLM2-135M-Instruct-f16.gguf": "f535f83ec568d040f88ddc04a199fa6da90923bbb41d4dcaed02caa924d6ef57"
+}

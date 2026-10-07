@@ -236,6 +236,7 @@ struct Fixture {
         ici.enabledLayerCount=validation?1u:0u; ici.ppEnabledLayerNames=validation?&layerName:nullptr;
         ici.enabledExtensionCount=static_cast<std::uint32_t>(enabledExts.size()); ici.ppEnabledExtensionNames=enabledExts.data(); ici.pNext=debug?&debugInfo:nullptr;
         check(vkCreateInstance(&ici,nullptr,&instance),"create instance");
+        std::cout<<"graphics-validation="<<(validationOn?"on":"unavailable")<<'\n';
         if(debug) {
             auto create=reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance,"vkCreateDebugUtilsMessengerEXT"));
             destroyMessenger=reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance,"vkDestroyDebugUtilsMessengerEXT"));
@@ -442,7 +443,7 @@ struct Fixture {
 }
 
 int main(int argc,char** argv) {
-    bool native=false, present=false, nativeAllocation=false; unsigned frames=3;
+    bool native=false, present=false, nativeAllocation=false, expectLazy=false; unsigned frames=3;
 #ifdef ZVRAM_GRAPHICS_SDL2
     SDL_Window* window=nullptr; bool sdlReady=false;
 #endif
@@ -450,12 +451,14 @@ int main(int argc,char** argv) {
         for(int i=1;i<argc;++i) {
             if(std::strcmp(argv[i],"--native")==0) native=true;
             else if(std::strcmp(argv[i],"--native-allocation")==0) nativeAllocation=true;
+            else if(std::strcmp(argv[i],"--expect-lazy-backing")==0) expectLazy=true;
             else if(std::strcmp(argv[i],"--frames")==0 && i+1<argc) { frames=static_cast<unsigned>(std::stoul(argv[++i])); require(frames>=2 && frames<=3,"--frames must be 2 or 3"); }
 #ifdef ZVRAM_GRAPHICS_SDL2
             else if(std::strcmp(argv[i],"--present")==0) present=true;
 #endif
-            else throw std::runtime_error("usage: vulkan-graphics-check [--native] [--native-allocation] [--present] [--frames 2|3]");
+            else throw std::runtime_error("usage: vulkan-graphics-check [--native] [--native-allocation] [--expect-lazy-backing] [--present] [--frames 2|3]");
         }
+        require(!expectLazy || !native,"lazy backing check requires zVram");
 #ifdef ZVRAM_GRAPHICS_SDL2
         if(present) { require(SDL_Init(SDL_INIT_VIDEO)==0,"initialize SDL2 video"); sdlReady=true; window=SDL_CreateWindow("zVram Vulkan graphics check",SDL_WINDOWPOS_UNDEFINED,SDL_WINDOWPOS_UNDEFINED,Width,Height,SDL_WINDOW_VULKAN|SDL_WINDOW_SHOWN); require(window,"create SDL Vulkan window"); SDL_PumpEvents(); }
 #else
@@ -470,7 +473,13 @@ int main(int argc,char** argv) {
                    ,present,window
 #endif
                    );
-            auto input=makeInput(); const auto initial=native?Stats{}:f.stats(); f.uploadInput(input);
+            auto input=makeInput(); const auto initial=native?Stats{}:f.stats();
+            if(expectLazy) {
+                require(initial.residentBytes==0 && initial.coldLogicalBytes==BufferBytes && initial.coldStoredBytes==0,
+                        "lazy bootstrap allocated backing or captured undefined contents");
+                std::cout<<"PASS: lazy bootstrap resident=0 cold-logical="<<initial.coldLogicalBytes<<" cold-stored=0\n";
+            }
+            f.uploadInput(input);
             if(!native) f.waitCold(initial.freezes);
             for(unsigned i=0;i<frames;++i) {
                 const auto before=native?Stats{}:f.stats();

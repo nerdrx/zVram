@@ -1,0 +1,91 @@
+{
+  "hardware": "RX7900XTX / RADV",
+  "scope": "Tiny32MiB headless X11 presentation and SmolLM2-135M F16 under192MiB tracked backing cap; no40GiB/game performance proof",
+  "presentation": {
+    "present-lazy-async": {
+      "passed": true,
+      "scope": "three hidden presented frames with pixel/full-buffer checks; no game or speed claim",
+      "seconds": 1.1158331840015308,
+      "binary_sha256": "aeec5c5c40fd78ddd886062422df69ac5454361feef08701f22493b045994453",
+      "layer_binary_sha256": "bca6fd019bcd77a3271932f810b2282465f33ea2ed5aa2ae38e7183b34573a83"
+    },
+    "present-lazy-headroom-gdeflate": {
+      "passed": true,
+      "scope": "three hidden presented frames with pixel/full-buffer checks; no game or speed claim",
+      "seconds": 1.1661903459989844,
+      "binary_sha256": "aeec5c5c40fd78ddd886062422df69ac5454361feef08701f22493b045994453",
+      "layer_binary_sha256": "f166ebc8ce13dd46e9b666e5952402ab9df771906a97a75927e92ff023974fdc"
+    },
+    "present-headroom-refusal-verified": {
+      "passed": true,
+      "scope": "expected zero-budget refusal before GPU buffer use; no presented frames",
+      "seconds": 0.2141765390006185,
+      "binary_sha256": "8fcc64139f17b79ea1774e3115c1f71011fefa2abedb57d031097324f5dd5202",
+      "layer_binary_sha256": "bca6fd019bcd77a3271932f810b2282465f33ea2ed5aa2ae38e7183b34573a83"
+    }
+  },
+  "model": {
+    "smollm-lazy-async-headroom": {
+      "passed": true,
+      "checks_passed": 32,
+      "checks_total": 32,
+      "failed_checks": [],
+      "native_tps": 33.76,
+      "wrapped_tps": 3.02,
+      "matching_stdout": true,
+      "offload": [
+        31,
+        31
+      ],
+      "gpu_restore_profile": {
+        "calls": 124,
+        "bytes": 3603365888,
+        "host_ns": 3963854892,
+        "fallbacks": 0
+      },
+      "async_commits": 11
+    },
+    "smollm-lazy-async-gdeflate-fast": {
+      "passed": false,
+      "checks_passed": 29,
+      "checks_total": 31,
+      "failed_checks": [
+        "clean_cache_invalidated",
+        "async_compression_commit_observed"
+      ],
+      "native_tps": 45.09,
+      "wrapped_tps": 3.16,
+      "matching_stdout": true,
+      "offload": [
+        31,
+        31
+      ],
+      "gpu_restore_profile": {
+        "calls": 118,
+        "bytes": 3532587008,
+        "host_ns": 3954450453,
+        "fallbacks": 0
+      },
+      "async_commits": 0
+    },
+    "smollm-lazy-async-zstd-fast": {
+      "passed": false,
+      "checks_passed": 27,
+      "checks_total": 29,
+      "failed_checks": [
+        "clean_cache_invalidated",
+        "async_compression_commit_observed"
+      ],
+      "native_tps": 115.0,
+      "wrapped_tps": 6.44,
+      "matching_stdout": true,
+      "offload": [
+        31,
+        31
+      ],
+      "gpu_restore_profile": null,
+      "async_commits": 0
+    }
+  },
+  "limits": "Validation-off runs failed full async/cache scenario gate because no async commit or cache invalidation occurred. Rates are diagnostic only; native timings varied, clocks/desktop load uncontrolled. Large model still needs testing."
+}

@@ -70,6 +70,7 @@ def check_launch_forwarding():
             assert "--vulkan-lazy-backing" not in command
             assert "--vulkan-gdeflate-workers" not in command
             assert "--vulkan-headroom-mib" not in command
+            assert "--vulkan-async-compression" not in command
             return {}
         captured.extend(command)
         raise Captured
@@ -80,6 +81,7 @@ def check_launch_forwarding():
         sys.argv = [str(MODULE), "--binary", sys.executable, "--model", str(model),
                     "--output-dir", str(root / "output"), "--pressure-on-first-submit",
                     "--range-mib", "128", "--resident-mib", "20480", "--lazy-backing",
+                    "--async-compression",
                     "--codec", "gdeflate", "--gdeflate-workers", "4", "--headroom-mib", "2048"]
         idle_model.run_interactive = fake_run
         try:
@@ -94,6 +96,9 @@ def check_launch_forwarding():
     assert calls == ["native", "automatic"], calls
     options = captured[:captured.index("--")]
     assert "--vulkan-lazy-backing" in options, captured
+    assert "--vulkan-async-compression" in options, captured
+    assert "--vulkan-active-eviction" in options, captured
+    assert options[options.index("--vulkan-range-mib") + 1] == "128", captured
     assert options[options.index("--vulkan-gdeflate-workers") + 1] == "4", captured
     assert options[options.index("--vulkan-headroom-mib") + 1] == "2048", captured
     assert "--no-warmup" in captured, captured
@@ -153,6 +158,9 @@ def main():
     for stride in ("2", "4"):
         result = subprocess.run(pressure + ["--byte-shuffle", stride], capture_output=True, text=True)
         assert result.returncode == 2 and "existing executable" in result.stderr, result.stderr
+    result = subprocess.run([sys.executable, str(MODULE), "--binary", "/missing", "--model", "/missing",
+                             "--async-compression"], capture_output=True, text=True)
+    assert result.returncode == 2 and "requires --range-mib and active eviction" in result.stderr, result.stderr
     for extra, expected in ((["--gdeflate-workers", "4"], "requires --codec gdeflate"),
                             (["--codec", "gdeflate", "--gdeflate-workers", "0"], "invalid choice"),
                             (["--codec", "gdeflate", "--gdeflate-workers", "33"], "invalid choice"),

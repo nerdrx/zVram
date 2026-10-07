@@ -20,13 +20,20 @@ def main():
     parser.add_argument("--cpu", action="store_true")
     parser.add_argument("--native-allocation", action="store_true")
     parser.add_argument("--async-compression", action="store_true")
+    parser.add_argument("--lazy-backing", action="store_true")
+    parser.add_argument("--headroom-mib", type=int)
+    parser.add_argument("--expect-headroom-refusal", action="store_true")
     parser.add_argument("--gdeflate-gpu", action="store_true")
     parser.add_argument("--video-driver", choices=("x11", "wayland"), default="x11")
     parser.add_argument("--prefer-device")
     parser.add_argument("--output-dir", type=Path, default=Path("build/presentation-check"))
     args = parser.parse_args()
-    if args.native and (args.async_compression or args.gdeflate_gpu):
+    if args.native and (args.async_compression or args.gdeflate_gpu or args.lazy_backing or args.headroom_mib is not None):
         parser.error("paging options require a wrapped run")
+    if args.headroom_mib is not None and (not args.lazy_backing or args.headroom_mib <= 0):
+        parser.error("headroom requires lazy backing and a positive MiB size")
+    if args.expect_headroom_refusal and (args.headroom_mib is None or args.async_compression or args.gdeflate_gpu):
+        parser.error("refusal check requires headroom without encoder/decode options")
     if args.cpu and not args.native:
         parser.error("CPU control requires --native; this does not validate zVram paging")
     binary, icd = args.binary.resolve(strict=True), args.icd.resolve(strict=True)
@@ -52,9 +59,14 @@ def main():
                     "--vulkan-auto-idle-ms", "100", "--vulkan-cold-mib", "64",
                     "--vulkan-selective-restore", "--vulkan-active-eviction",
                     "--vulkan-buffer-presentation"]
+        if args.async_compression or args.lazy_backing:
+            command += ["--vulkan-range-mib", "32", "--vulkan-resident-mib", "32"]
         if args.async_compression:
-            command += ["--vulkan-range-mib", "32", "--vulkan-resident-mib", "32",
-                        "--vulkan-async-compression"]
+            command.append("--vulkan-async-compression")
+        if args.lazy_backing:
+            command.append("--vulkan-lazy-backing")
+        if args.headroom_mib is not None:
+            command += ["--vulkan-headroom-mib", str(args.headroom_mib)]
         if args.gdeflate_gpu:
             command += ["--vulkan-codec", "gdeflate", "--vulkan-gdeflate-workers", "32",
                         "--vulkan-gdeflate-gpu"]
@@ -64,6 +76,8 @@ def main():
         command.append("--native")
     if args.native_allocation:
         command.append("--native-allocation")
+    if args.lazy_backing:
+        command.append("--expect-lazy-backing")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     log_path = args.output_dir / "run.log"
     started, timed_out = time.monotonic(), False
@@ -92,14 +106,27 @@ def main():
               not any(marker in text for marker in ("FAIL:", "VUID-", "Vulkan validation error:", "Validation Error")))
     if args.async_compression:
         passed = passed and text.count("async snapshot committed raw=33554432") >= 4
+    if args.lazy_backing:
+        passed = passed and "PASS: lazy bootstrap resident=0 cold-logical=33554432 cold-stored=0" in text
+    if args.headroom_mib is not None:
+        passed = passed and "resident budget native-heap=" in text
     if args.gdeflate_gpu:
         import re
         profiles = re.findall(r"GPU GDeflate restore calls=(\d+) bytes=(\d+) host-ns=(\d+) fallbacks=(\d+)", text)
         passed = passed and bool(profiles) and int(profiles[-1][0]) >= 3 and int(profiles[-1][3]) == 0
+    if args.expect_headroom_refusal:
+        passed = (not timed_out and process.returncode == 0 and "graphics-validation=on" in text and
+                  "type=2" in text and "PASS: lazy bootstrap resident=0 cold-logical=33554432 cold-stored=0" in text and
+                  "effective-limit=0 hard-limit=33554432" in text and
+                  "resident admission refused: submission working set exceeds limit-bytes=0 known=1" in text and
+                  "FAIL: submit graphics fixture: -2" in text and
+                  "event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0" in text and
+                  not any(marker in text for marker in ("VUID-", "Vulkan validation error:", "Validation Error")))
     report = dict(passed=passed, command=command, environment={key: env[key] for key in
                   ("VK_DRIVER_FILES", "VK_VALIDATION_VALIDATE_SYNC", "DISABLE_GAMESCOPE_WSI", "DISABLE_LSFGVK")},
                   timeout=timed_out, exit=process.returncode, seconds=time.monotonic()-started,
-                  scope="three hidden presented frames with pixel/full-buffer checks; no game or speed claim",
+                  scope=("expected zero-budget refusal before GPU buffer use; no presented frames" if args.expect_headroom_refusal else
+                         "three hidden presented frames with pixel/full-buffer checks; no game or speed claim"),
                   binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
     if not args.native:
         report["layer_binary_sha256"] = hashlib.sha256((args.build_dir.resolve() / "libzvram_layer.so").read_bytes()).hexdigest()

@@ -276,6 +276,8 @@ def main():
                         help="test opt-in per-submission Vulkan restoration")
     parser.add_argument("--active-eviction", action="store_true",
                         help="test tracked eviction while unrelated submissions remain active; enables selective restore")
+    parser.add_argument("--async-compression", action="store_true",
+                        help="encode one eligible idle range outside submission locks; requires --range-mib")
     parser.add_argument("--range-mib", type=int,
                         help="test sparse range residency at this MiB chunk size; enables active eviction")
     parser.add_argument("--validate", action="store_true", help="enable Vulkan core/synchronization validation on both runs")
@@ -308,6 +310,8 @@ def main():
         parser.error("tokens must be 32..128")
     args.active_eviction = args.active_eviction or args.range_mib is not None
     args.selective_restore = args.selective_restore or args.active_eviction
+    if args.async_compression and (args.range_mib is None or not args.active_eviction):
+        parser.error("--async-compression requires --range-mib and active eviction")
     if args.range_mib is not None and not 0 < args.range_mib <= ((1 << 64) - 1) // (1024 * 1024):
         parser.error("--range-mib must be positive and fit 64-bit bytes")
     if args.resident_mib is not None and (args.range_mib is None or not 0 < args.resident_mib <= ((1 << 64) - 1) // (1024 * 1024)):
@@ -387,6 +391,8 @@ def main():
         command.append("--vulkan-selective-restore")
     if args.active_eviction:
         command.append("--vulkan-active-eviction")
+    if args.async_compression:
+        command.append("--vulkan-async-compression")
     if args.range_mib is not None:
         command += ["--vulkan-range-mib", str(args.range_mib)]
     if args.resident_mib is not None:
@@ -502,6 +508,19 @@ def main():
         checks["clean_cache_reused"] = any(reuses > 0 for _, _, reuses, _ in cache_states)
         checks["clean_cache_invalidated"] = any(invalidations > 0 for _, _, _, invalidations in cache_states)
         checks["shared_cold_cache_budget"] = bool(cache_states) and all(cold + cached <= args.cold_mib * MiB for cold, cached, _, _ in cache_states)
+    async_commits = [(int(raw), int(stored)) for raw, stored in re.findall(
+        r"async snapshot committed raw=(\d+) stored=(\d+)", auto_text)]
+    if args.async_compression:
+        checks["async_compression_configured"] = (
+            "background range snapshot compression uses off-lock transactions max-raw-bytes=33554432" in auto_text)
+        checks["async_compression_commit_observed"] = bool(async_commits)
+    if args.lazy_backing:
+        first_bootstrap = next((state for state in auto["state_events"]
+                                if state[0] == "bootstrap-bind"), None)
+        checks["lazy_bootstrap_starts_cold"] = bool(
+            first_bootstrap and first_bootstrap[1] == 0 and first_bootstrap[2] > 0 and first_bootstrap[3] == 0)
+    if args.headroom_mib is not None:
+        checks["headroom_budget_observed"] = "resident budget native-heap=" in auto_text
     if args.resident_mib is not None:
         if args.resident_after_cold:
             checks["resident_admission_armed"] = "resident admission armed after complete cold transition" in auto_text
@@ -524,6 +543,8 @@ def main():
                                       if args.gdeflate_gpu and gpu_profiles else None),
               "snapshot_codec": args.codec or "zstd", "gdeflate_gpu_requested": args.gdeflate_gpu,
               "gdeflate_encoding_workers": args.gdeflate_workers or 1, "lazy_backing_requested": args.lazy_backing, "headroom_mib": args.headroom_mib,
+              "async_compression_requested": args.async_compression,
+              "async_compression_commits": async_commits,
               "validation_enabled": args.validate,
               "binary": str(binary), "command": command,
               "batching": {"max_nodes_per_submit": env.get("GGML_VK_MAX_NODES_PER_SUBMIT"), "serialize_submissions": env.get("GGML_VK_SERIALIZE_SUBMISSIONS")},
