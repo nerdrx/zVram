@@ -343,6 +343,129 @@ void checkPresentGateAndFallback() {
     }
 }
 
+void checkAsyncSnapshotTransactionDecisions() {
+    Fixture f; auto& d=f.device; const auto memoryHandle=f.memory;
+    d.asyncCompression=true; d.autoEnabled=true; d.coldBudget=10;
+    auto& memory=d.virtualMemory.at(memoryHandle);
+    memory.identityGeneration=9; memory.bindingGeneration=4;
+    memory.children={tokenHandle<VkDeviceMemory>(40)}; memory.childSizes={MiB};
+    memory.childTypes={0}; memory.childGenerations={12}; memory.poolViews={tokenHandle<VkBuffer>(41)};
+    memory.coldGroups.resize(1); memory.coldGroups[0].cold=false; memory.coldGroups[0].writeEpoch=17;
+    d.rangeChunkBytes=MiB; d.narrowDescriptorRanges=true; d.selectiveRestore=true;
+    const auto trackedBuffer=tokenHandle<VkBuffer>(42);
+    const auto command=tokenHandle<VkCommandBuffer>(44);
+    PromotedBuffer promoted{}; promoted.size=MiB; promoted.memory=memoryHandle;
+    d.promotedBuffers[trackedBuffer]=promoted;
+    memory.bindings.push_back({trackedBuffer,0,MiB,1});
+    d.submission.beginCommand(command);
+    d.submission.bufferRange(command,trackedBuffer,0,MiB,true);
+    auto token=[&] { return AsyncFreezeToken{memoryHandle,memory.identityGeneration,0,memory.children[0],
+        memory.childGenerations[0],memory.bindingGeneration,memory.coldGroups[0].writeEpoch}; };
+    require(asyncFreezeTokenValid(d,token()),"fresh async snapshot token was rejected");
+
+    VkBaseInStructure unknown{static_cast<VkStructureType>(0x7fffffff),nullptr};
+    VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.pNext=&unknown;
+    auto stale=token();
+    bumpAcceptedWriteEpochs(d,"vkQueueSubmit",1,&submit,VK_NULL_HANDLE);
+    require(!asyncFreezeTokenValid(d,stale),"unknown accepted access did not invalidate the snapshot epoch");
+    memory.coldGroups[0].writeEpoch=17;
+
+    stale=token();
+    d.gpuGateError=VK_SUCCESS;
+    VkSubmitInfo trackedSubmit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    trackedSubmit.commandBufferCount=1; trackedSubmit.pCommandBuffers=&command;
+    bumpAcceptedWriteEpochs(d,"vkQueueSubmit",1,&trackedSubmit,VK_NULL_HANDLE);
+    require(!asyncFreezeTokenValid(d,stale) && memory.coldGroups[0].writeEpoch==18,
+            "known accepted write did not invalidate its target child");
+    memory.coldGroups[0].writeEpoch=17;
+
+    stale=token(); require(assignVirtualIdentity(d,memory),"replacement allocation identity assignment failed");
+    require(!asyncFreezeTokenValid(d,stale),"allocation reuse did not invalidate the token");
+    memory.identityGeneration=9;
+
+    stale=token(); bumpAsyncVersion(d,memory.bindingGeneration);
+    require(!asyncFreezeTokenValid(d,stale),"buffer bind mutation did not invalidate the token");
+    memory.bindingGeneration=4;
+    stale=token(); bumpAsyncVersion(d,memory.childGenerations[0]);
+    require(!asyncFreezeTokenValid(d,stale),"backing replacement did not invalidate the token");
+    memory.childGenerations[0]=12;
+
+    stale=token(); d.activeRefs.recordRanges(tokenHandle<VkQueue>(43),{{memoryHandle,0}},true);
+    require(!asyncFreezeTokenValid(d,stale),"active resource reference did not block commit");
+    d.activeRefs.retire(tokenHandle<VkQueue>(43));
+    stale=token(); d.gpuGateError=VK_ERROR_DEVICE_LOST;
+    require(!asyncFreezeTokenValid(d,stale),"device-loss gate did not block commit");
+    d.gpuGateError=VK_SUCCESS;
+    stale=token(); d.stopWorker.store(true);
+    require(!asyncFreezeTokenValid(d,stale),"worker stop did not block commit");
+    d.stopWorker.store(false);
+
+    require(asyncColdBudgetFits(d,3),"candidate at exact cold-budget headroom was rejected");
+    d.coldBytes=4; d.cacheBytes=3;
+    require(!asyncColdBudgetFits(d,4),"candidate exceeding current cold budget was accepted");
+    d.coldBudget=6;
+    require(!asyncColdBudgetFits(d,0),"candidate ignored a cold-budget shrink below current use");
+
+    // Model free/reallocation of the same Vulkan handle while the worker is
+    // outside both locks. A new map entry must not inherit the old token.
+    stale=token();
+    std::unique_lock<std::mutex> deviceLock(d.mutex),queueLock(d.queueMutex);
+    runAsyncEncoderUnlocked(deviceLock,queueLock,[&] {
+        d.virtualMemory.erase(memoryHandle);
+        VirtualMemory replacement{}; replacement.identityGeneration=10;
+        replacement.bindingGeneration=4; replacement.children={tokenHandle<VkDeviceMemory>(40)};
+        replacement.childSizes={MiB}; replacement.childGenerations={12};
+        replacement.coldGroups.resize(1); replacement.coldGroups[0].writeEpoch=17;
+        d.virtualMemory.emplace(memoryHandle,std::move(replacement));
+    });
+    require(!asyncFreezeTokenValid(d,stale),"free/reallocation during unlocked encode reused a stale token");
+}
+
+void checkAsyncSnapshotEncodingRoundTrip() {
+    std::vector<std::uint8_t> raw(64*1024);
+    for(std::size_t i=0;i<raw.size();++i) raw[i]=static_cast<std::uint8_t>((i%97)<80?0:(i*31u));
+    VirtualMemory::ColdGroup candidate; VkDeviceSize stored=0;
+    require(encodeAsyncSnapshot(raw.data(),raw.size(),16*1024,0,0,zvram::snapshot::Codec::Zstd,1,candidate,stored),
+            "async snapshot candidate encoding failed");
+    require(candidate.cold && candidate.logicalBytes==raw.size() && candidate.storedBytes==stored &&
+            candidate.chunks.size()==4,"async snapshot candidate metadata mismatch");
+    std::vector<std::uint8_t> decoded(raw.size()); std::size_t offset=0;
+    for(const auto& chunk:candidate.chunks) {
+        const zvram::snapshot::EncodedChunk view{chunk.bytes.data(),chunk.bytes.size(),
+            static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle,chunk.codec};
+        require(zvram::snapshot::decodeOne(view,decoded.data()+offset),"async candidate chunk decode failed");
+        offset+=chunk.rawSize;
+    }
+    require(decoded==raw,"async candidate round-trip changed bytes");
+    const std::uint8_t sentinel{};
+    VirtualMemory::ColdGroup oversized; VkDeviceSize oversizedStored=0;
+    require(!encodeAsyncSnapshot(&sentinel,static_cast<std::size_t>(kAsyncSnapshotMaxRaw+1),16*1024,
+            0,0,zvram::snapshot::Codec::Zstd,1,oversized,oversizedStored),
+            "async encoder accepted a child above its hard raw bound");
+}
+
+void checkAsyncEncoderReleasesBothGates() {
+    std::mutex deviceMutex,queueMutex,signalMutex;
+    std::condition_variable signal;
+    bool acquired=false;
+    std::unique_lock<std::mutex> deviceLock(deviceMutex);
+    std::unique_lock<std::mutex> queueLock(queueMutex);
+    runAsyncEncoderUnlocked(deviceLock,queueLock,[&] {
+        std::thread contender([&] {
+            std::unique_lock<std::mutex> deviceGuard(deviceMutex,std::try_to_lock);
+            std::unique_lock<std::mutex> queueGuard(queueMutex,std::try_to_lock);
+            { std::lock_guard<std::mutex> signalGuard(signalMutex);
+              acquired=deviceGuard.owns_lock() && queueGuard.owns_lock(); }
+            signal.notify_one();
+        });
+        std::unique_lock<std::mutex> signalGuard(signalMutex);
+        const bool woke=signal.wait_for(signalGuard,std::chrono::seconds(1),[&]{return acquired;});
+        signalGuard.unlock(); contender.join();
+        require(woke && acquired,"encoder callback blocked while either production gate remained held");
+    });
+    require(deviceLock.owns_lock() && queueLock.owns_lock(),"encoder gates were not reacquired in order");
+}
+
 void checkAllocationFailureRetry() {
     Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); auto& m=f.state();
     failAllocations=1;
@@ -385,6 +508,9 @@ int main() try {
     checkDefaultBudgetDoesNotQuery();
     checkBasePresentPassthrough();
     checkPresentGateAndFallback();
+    checkAsyncSnapshotTransactionDecisions();
+    checkAsyncSnapshotEncodingRoundTrip();
+    checkAsyncEncoderReleasesBothGates();
     checkAllocationFailureRetry();
     checkBindFailureAccounting();
     std::cout<<"PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry\n";

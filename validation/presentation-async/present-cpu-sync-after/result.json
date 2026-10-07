@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "command": [
+    "gamescope",
+    "--backend",
+    "headless",
+    "--expose-wayland",
+    "-W",
+    "16",
+    "-H",
+    "16",
+    "-w",
+    "16",
+    "-h",
+    "16",
+    "-r",
+    "60",
+    "--",
+    "env",
+    "SDL_VIDEODRIVER=wayland",
+    "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-graphics-check",
+    "--present",
+    "--frames",
+    "3",
+    "--native"
+  ],
+  "environment": {
+    "VK_DRIVER_FILES": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/lavapipe/local_lvp_icd.json",
+    "VK_VALIDATION_VALIDATE_SYNC": "1",
+    "DISABLE_GAMESCOPE_WSI": "1",
+    "DISABLE_LSFGVK": "1"
+  },
+  "timeout": false,
+  "exit": 0,
+  "seconds": 0.3142678550011624,
+  "scope": "three hidden presented frames with pixel/full-buffer checks; no game or speed claim",
+  "binary_sha256": "f6ca88958c97358f0ad68ae3caa3bee919a7891285811f90d445d5dceb75b372"
+}

@@ -74,6 +74,12 @@ with tempfile.TemporaryDirectory() as temporary:
     for base in ([*BASE, "--vulkan-auto-idle-ms", "100"], ["--hip"]):
         result = run(launcher, *base, "--vulkan-buffer-presentation", "--", sys.executable, "-c", "pass")
         assert result.returncode == 2 and "requires Vulkan active eviction" in result.stderr, result.stderr
+    result = run(launcher, *lazy_base, "--vulkan-async-compression", "--", sys.executable, "-c",
+                 "import os; print(os.environ['ZVRAM_VULKAN_ASYNC_COMPRESSION'])")
+    assert result.returncode == 0 and result.stdout == "1\n", (result.stdout, result.stderr)
+    for base in ([*BASE, "--vulkan-auto-idle-ms", "100"], ["--hip"]):
+        result = run(launcher, *base, "--vulkan-async-compression", "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2 and "requires Vulkan active range paging" in result.stderr, result.stderr
     gpu_child = "import os; print(os.environ['ZVRAM_VULKAN_GDEFLATE_GPU']); print(os.environ['ZVRAM_GDEFLATE_SHADER_PATH'])"
     result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--vulkan-gdeflate-gpu", "--", sys.executable, "-c", gpu_child)
     assert result.returncode == 0 and result.stdout == "1\n" + str(build / "gdeflate-wave32.spv") + "\n", (result.stdout, result.stderr)

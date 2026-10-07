@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Bounded hidden Gamescope presentation correctness gate, not a game benchmark."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binary", required=True, type=Path)
+    parser.add_argument("--icd", required=True, type=Path)
+    parser.add_argument("--build-dir", type=Path, default=Path("build"))
+    parser.add_argument("--native", action="store_true")
+    parser.add_argument("--cpu", action="store_true")
+    parser.add_argument("--native-allocation", action="store_true")
+    parser.add_argument("--async-compression", action="store_true")
+    parser.add_argument("--gdeflate-gpu", action="store_true")
+    parser.add_argument("--video-driver", choices=("x11", "wayland"), default="x11")
+    parser.add_argument("--prefer-device")
+    parser.add_argument("--output-dir", type=Path, default=Path("build/presentation-check"))
+    args = parser.parse_args()
+    if args.native and (args.async_compression or args.gdeflate_gpu):
+        parser.error("paging options require a wrapped run")
+    if args.cpu and not args.native:
+        parser.error("CPU control requires --native; this does not validate zVram paging")
+    binary, icd = args.binary.resolve(strict=True), args.icd.resolve(strict=True)
+    root = Path(__file__).resolve().parent
+    env = os.environ.copy()
+    for key in ("LD_PRELOAD", "VK_INSTANCE_LAYERS", "VK_ICD_FILENAMES", "VK_ADD_DRIVER_FILES",
+                "VK_LAYER_PATH", "VK_ADD_LAYER_PATH", "VK_LOADER_LAYERS_ENABLE", "DRI_PRIME"):
+        env.pop(key, None)
+    for key in tuple(env):
+        if key.startswith("ZVRAM_"):
+            env.pop(key)
+    env.update(VK_DRIVER_FILES=str(icd), VK_LOADER_LAYERS_DISABLE="~implicit~",
+               VK_VALIDATION_VALIDATE_SYNC="1", DISABLE_GAMESCOPE_WSI="1", DISABLE_LSFGVK="1",
+               LP_NUM_THREADS="2", MALLOC_ARENA_MAX="2")
+    command = ["gamescope", "--backend", "headless", "--expose-wayland",
+               "-W", "16", "-H", "16", "-w", "16", "-h", "16", "-r", "60"]
+    if args.prefer_device:
+        command += ["--prefer-vk-device", args.prefer_device]
+    command += ["--", "env", "SDL_VIDEODRIVER=" + args.video_driver]
+    if not args.native:
+        command += [str(root / "zvram"), "--build-dir", str(args.build_dir.resolve()),
+                    "--validate", "--isolate-layers", "--vulkan-virtual-mib", "128",
+                    "--vulkan-auto-idle-ms", "100", "--vulkan-cold-mib", "64",
+                    "--vulkan-selective-restore", "--vulkan-active-eviction",
+                    "--vulkan-buffer-presentation"]
+        if args.async_compression:
+            command += ["--vulkan-range-mib", "32", "--vulkan-resident-mib", "32",
+                        "--vulkan-async-compression"]
+        if args.gdeflate_gpu:
+            command += ["--vulkan-codec", "gdeflate", "--vulkan-gdeflate-workers", "32",
+                        "--vulkan-gdeflate-gpu"]
+        command.append("--")
+    command += [str(binary), "--present", "--frames", "3"]
+    if args.native:
+        command.append("--native")
+    if args.native_allocation:
+        command.append("--native-allocation")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = args.output_dir / "run.log"
+    started, timed_out = time.monotonic(), False
+    with log_path.open("w") as log:
+        process = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                   start_new_session=True)
+        try:
+            process.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+        finally:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    text = log_path.read_text(errors="replace")
+    expected = "PASS: 3 presented draw/readback frames " + ("(native mode)" if args.native else "with cold restore")
+    passed = (not timed_out and process.returncode == 0 and expected in text and
+              "validation=on" in text and ("type=4" if args.cpu else "type=2") in text and
+              not any(marker in text for marker in ("FAIL:", "VUID-", "Vulkan validation error:", "Validation Error")))
+    if args.async_compression:
+        passed = passed and text.count("async snapshot committed raw=33554432") >= 4
+    if args.gdeflate_gpu:
+        import re
+        profiles = re.findall(r"GPU GDeflate restore calls=(\d+) bytes=(\d+) host-ns=(\d+) fallbacks=(\d+)", text)
+        passed = passed and bool(profiles) and int(profiles[-1][0]) >= 3 and int(profiles[-1][3]) == 0
+    report = dict(passed=passed, command=command, environment={key: env[key] for key in
+                  ("VK_DRIVER_FILES", "VK_VALIDATION_VALIDATE_SYNC", "DISABLE_GAMESCOPE_WSI", "DISABLE_LSFGVK")},
+                  timeout=timed_out, exit=process.returncode, seconds=time.monotonic()-started,
+                  scope="three hidden presented frames with pixel/full-buffer checks; no game or speed claim",
+                  binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
+    if not args.native:
+        report["layer_binary_sha256"] = hashlib.sha256((args.build_dir.resolve() / "libzvram_layer.so").read_bytes()).hexdigest()
+    (args.output_dir / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report))
+    print("See " + str(log_path))
+    return 0 if passed else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

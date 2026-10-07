@@ -324,7 +324,14 @@ struct Fixture {
             attachment.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED; attachment.finalLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             VkAttachmentReference ref{0,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}; VkSubpassDescription sub{}; sub.pipelineBindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS; sub.colorAttachmentCount=1; sub.pColorAttachments=&ref;
             VkSubpassDependency dep{}; dep.srcSubpass=0; dep.dstSubpass=VK_SUBPASS_EXTERNAL; dep.srcStageMask=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; dep.dstStageMask=VK_PIPELINE_STAGE_TRANSFER_BIT; dep.srcAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; dep.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
-            VkRenderPassCreateInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO}; rp.attachmentCount=1; rp.pAttachments=&attachment; rp.subpassCount=1; rp.pSubpasses=&sub; rp.dependencyCount=1; rp.pDependencies=&dep;
+            // Acquire waits at COLOR_ATTACHMENT_OUTPUT; the initial layout
+            // transition must participate in that execution dependency too.
+            std::array<VkSubpassDependency,2> dependencies{};
+            dependencies[0].srcSubpass=VK_SUBPASS_EXTERNAL; dependencies[0].dstSubpass=0;
+            dependencies[0].srcStageMask=dependencies[0].dstStageMask=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependencies[0].dstAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dependencies[1]=dep;
+            VkRenderPassCreateInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO}; rp.attachmentCount=1; rp.pAttachments=&attachment; rp.subpassCount=1; rp.pSubpasses=&sub; rp.dependencyCount=2; rp.pDependencies=dependencies.data();
             check(vkCreateRenderPass(device,&rp,nullptr,&renderPass),"create present render pass");
             for(std::size_t i=0;i<swapViews.size();++i) { VkFramebufferCreateInfo fb{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO}; fb.renderPass=renderPass; fb.attachmentCount=1; fb.pAttachments=&swapViews[i]; fb.width=Width; fb.height=Height; fb.layers=1; check(vkCreateFramebuffer(device,&fb,nullptr,&swapFramebuffers[i]),"create swapchain framebuffer"); }
         } else
@@ -390,6 +397,7 @@ struct Fixture {
         (void)imageIndex; (void)frameIndex;
 #endif
 #ifdef ZVRAM_GRAPHICS_SDL2
+        if(presenting) SDL_PumpEvents();
         if(presenting) { acquired=acquireSemaphores[frameIndex%acquireSemaphores.size()]; const auto a=vkAcquireNextImageKHR(device,swapchain,3'000'000'000ull,acquired,VK_NULL_HANDLE,&imageIndex); if(a==VK_TIMEOUT) throw std::runtime_error("swapchain image acquire timed out"); if(a!=VK_SUCCESS&&a!=VK_SUBOPTIMAL_KHR) check(a,"acquire swapchain image"); rendered=renderSemaphores[imageIndex]; }
 #endif
         auto cmd=begin(); VkClearValue clear{}; VkRenderPassBeginInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO}; rp.renderPass=renderPass;
@@ -449,7 +457,7 @@ int main(int argc,char** argv) {
             else throw std::runtime_error("usage: vulkan-graphics-check [--native] [--native-allocation] [--present] [--frames 2|3]");
         }
 #ifdef ZVRAM_GRAPHICS_SDL2
-        if(present) { require(SDL_Init(SDL_INIT_VIDEO)==0,"initialize SDL2 video"); sdlReady=true; window=SDL_CreateWindow("zVram Vulkan graphics check",SDL_WINDOWPOS_UNDEFINED,SDL_WINDOWPOS_UNDEFINED,Width,Height,SDL_WINDOW_VULKAN|SDL_WINDOW_SHOWN); require(window,"create SDL Vulkan window"); }
+        if(present) { require(SDL_Init(SDL_INIT_VIDEO)==0,"initialize SDL2 video"); sdlReady=true; window=SDL_CreateWindow("zVram Vulkan graphics check",SDL_WINDOWPOS_UNDEFINED,SDL_WINDOWPOS_UNDEFINED,Width,Height,SDL_WINDOW_VULKAN|SDL_WINDOW_SHOWN); require(window,"create SDL Vulkan window"); SDL_PumpEvents(); }
 #else
         (void)present;
 #endif
