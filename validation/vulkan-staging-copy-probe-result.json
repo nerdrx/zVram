@@ -1,0 +1,35 @@
+{
+  "model_bytes": 39725643136,
+  "slice_offset": 9898557440,
+  "slice_bytes": 134217728,
+  "slice_sha256": "407669b872f5ee9826aa1ea0d0592040a06ab2536eee8c99be5066cc52d6406b",
+  "repeats_per_case": 5,
+  "verification": "each upload copied back and compared byte-for-byte outside timings",
+  "queue_family": 1,
+  "memory_types": {
+    "cached": {
+      "index": 5,
+      "flags": 14
+    },
+    "uncached": {
+      "index": 2,
+      "flags": 6
+    },
+    "target": {
+      "index": 0,
+      "flags": 1
+    }
+  },
+  "median_ms": {
+    "decode": 15.7372,
+    "cpu_memcpy_cached_to_uncached": 8.72298,
+    "gpu_copy_cached": 18.445,
+    "gpu_copy_uncached": 18.7011,
+    "end_to_end_cached": 34.3729,
+    "end_to_end_uncached": 43.2624
+  },
+  "validation_errors_or_vuids": 0,
+  "validation_settings_warning": true,
+  "uncached_over_cached_end_to_end_ratio": 1.2586194356600693,
+  "decision": "keep cached direct staging; uncached upload with extra memcpy was slower in this bounded probe"
+}

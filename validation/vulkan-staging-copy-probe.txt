@@ -1,0 +1,12 @@
+Validation Warning: [ VALIDATION-SETTINGS ] | MessageID = 0x7f1922d7
+vkCreateInstance(): Information with the layer settings provided:
+- Application is using deprecated "enables" (VK_LAYER_ENABLES) layer settings.
+  Deprecated settings and new settings cannot be mixed, and deprecated ones take precedence. Consider only using the new settings:
+  Deprecated: VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT | New: "validate_sync" (VK_LAYER_VALIDATE_SYNC=1)
+
+
+cached type=5 flags=0xe
+uncached type=2 flags=0x6
+device-local type=0 flags=0x1
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31) queue-family=1 model-slice-offset=9898557440 bytes=134217728 repeats=5
+median_ms decode=15.7372 cpu_memcpy_cached_to_uncached=8.72298 gpu_copy_cached=18.445 gpu_copy_uncached=18.7011 end_to_end_cached=34.3729 end_to_end_uncached=43.2624
