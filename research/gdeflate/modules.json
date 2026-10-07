@@ -26,7 +26,7 @@
     ]
   },
   "files": {
-    "research/gdeflate/GDeflate-bounded.hlsl": "d2fd6d8cc8036aac8eba0d6a720d9ae7018d8aa7b24aed1f7a96d64f20d13945",
+    "research/gdeflate/GDeflate-bounded.hlsl": "0c364ae04fbbed5c126e21207c650f1c4b5f0c0b04a4f5731a94d731cdbecebb",
     "research/gdeflate/tilestream.hlsl": "acc24fd1140eea8d14a17e15101ce0d0fe6e2e362e701c5d77df7a0d78cd713b",
     "research/gdeflate/GDeflate-bounded-wave32.spv": "dfa3a7f31bce2e3e6354e6d43ab8f7adb2cb67e3ad7060b73acbce8a77391996",
     "research/gdeflate/GDeflate-bounded-subgroup8.spv": "4b33823990e82f8111ec6cedcb6e9b89886a765c5c141a200c6150205b0a91a4",

@@ -740,25 +740,25 @@ void WriteOutput(uint32_t dst, uint32_t offset, uint32_t dist, uint32_t length, 
 uint TranslateSymbol(inout BitReader br, int sym, uint len, uint32_t bits, bool isdist, uint tid, bool p)
 {
     // Tables for distance/length decoding DEFLATE64
-    static const uint32_t baseDist[] = 
+    static const uint32_t baseDist[] =
     {    1,    2,    3,     4,     5,     7,     9,    13,
         17,   25,   33,    49,    65,    97,   129,   193,
        257,  385,  513,   769,  1025,  1537,  2049,  3073,
       4097, 6145, 8193, 12289, 16385, 24577, 32769, 49153 };
 
-    static const uint32_t baseLength[] = 
+    static const uint32_t baseLength[] =
     {  0,   3,   4,   5,   6,  7,  8,  9,
       10,  11,  13,  15,  17, 19, 23, 27,
       31,  35,  43,  51,  59, 67, 83, 99,
      115, 131, 163, 195, 227,  3,  0 };
 
-    static const uint32_t extraDist[] = 
+    static const uint32_t extraDist[] =
     { 0,  0,  0,  0,  1,  1,  2,  2,
       3,  3,  4,  4,  5,  5,  6,  6,
       7,  7,  8,  8,  9,  9, 10, 10,
      11, 11, 12, 12, 13, 13, 14, 14 };
 
-    static const uint32_t extraLength[] = 
+    static const uint32_t extraLength[] =
     {0, 0, 0, 0, 0,  0, 0, 0,
      0, 1, 1, 1, 1,  2, 2, 2,
      2, 3, 3, 3, 3,  4, 4, 4,
