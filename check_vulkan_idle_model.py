@@ -181,6 +181,8 @@ def main():
     parser.add_argument("--tokens", type=int, default=128)
     parser.add_argument("--idle-ms", type=int, default=1000)
     parser.add_argument("--cold-mib", type=int, default=512)
+    parser.add_argument("--selective-restore", action="store_true",
+                        help="test opt-in per-submission Vulkan restoration")
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument("--output-dir", type=Path, default=Path("build/vulkan-idle-model-check"))
     parser.add_argument("--app-arg", action="append", default=[],
@@ -212,7 +214,10 @@ def main():
     env["GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM"] = "1"
     native = run_interactive("native", app, env, output, args.timeout, False)
     command = [str(launcher), "--vulkan-virtual-gib", "96", "--vulkan-auto-idle-ms",
-               str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib), "--", *app]
+               str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib)]
+    if args.selective_restore:
+        command.append("--vulkan-selective-restore")
+    command += ["--", *app]
     auto = run_interactive("automatic", command, env, output, args.timeout, True)
     auto_text = auto["stderr"]
     auto_cold = auto["cold"]
@@ -231,9 +236,14 @@ def main():
         "no_snapshot_errors": not any(s in auto_text.lower() for s in ("snapshot failed", "snapshot error", "snapshot failure")),
         "nonempty_cold_data": bool(cold_state and cold_state[1] > 0),
         "successful_restore": bool(cold_state and auto["cold_state"] and
-            auto["cold_state"][1] == 0 and auto["cold_state"][4] > cold_state[4] and
+            (args.selective_restore or auto["cold_state"][1] == 0) and auto["cold_state"][4] > cold_state[4] and
             auto["cold_state"][5] == 0),
     }
+    selective_events = [tuple(map(int, values)) for values in re.findall(
+        r"selective restore selected-pools=(\d+) restored-pools=(\d+) cold-pools-left=(\d+)", auto_text)]
+    if args.selective_restore:
+        checks["selective_enabled"] = "selective Vulkan restore enabled" in auto_text
+        checks["tracked_restore_observed"] = any(restored > 0 for _, restored, _ in selective_events)
     result = {"passed": all(checks.values()), "checks": checks, "model": str(model),
               "binary": str(binary), "command": command,
               "native": {k: v for k, v in native.items() if k not in ("stdout", "stderr")},
@@ -242,6 +252,8 @@ def main():
               "automatic_cold_logical_bytes": cold_state[1] if cold_state else None,
               "automatic_cold_stored_bytes": cold_state[2] if cold_state else None,
               "automatic_snapshot_events": auto_cold,
+              "selective_restore_events": selective_events,
+              "selective_restore_fallbacks": auto_text.count("selective restore fallback:"),
               "backing_bytes": auto["backing"], "cleanup_log_lines": cleanup_fields,
               "resident_vram_freed_bytes": (auto["backing"].get("hot", {}).get("resident-vram", 0) -
                                              auto["backing"].get("cold", {}).get("resident-vram", 0)),

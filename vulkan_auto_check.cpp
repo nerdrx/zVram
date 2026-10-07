@@ -1053,6 +1053,170 @@ void selectiveBindCheck(Context& context, bool api2) {
               << (api2 ? " API2" : " legacy")
               << " independent pools froze cold, woke selectively, and preserved distinct full-byte patterns" << std::endl;
 }
+
+void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand) {
+    Buffer a, b;
+    a.device = b.device = context.device;
+    auto create = [&](Buffer& buffer) {
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = ChunkBytes;
+        info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                     VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        if (context.bdaMode) info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        check(vkCreateBuffer(context.device, &info, nullptr, &buffer.handle), "create selective-submit buffer");
+        VkMemoryRequirements req{};
+        vkGetBufferMemoryRequirements(context.device, buffer.handle, &req);
+        require(req.size == ChunkBytes && req.alignment && ChunkBytes % req.alignment == 0,
+                "selective-submit buffer requirements are not one aligned chunk");
+        require(req.memoryTypeBits & (1u << context.virtualType),
+                "selective-submit buffer lacks virtual memory type");
+        return req;
+    };
+    const auto reqA = create(a), reqB = create(b);
+    VkMemoryAllocateFlagsInfo flags{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
+    flags.flags = context.bdaMode ? VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT : 0;
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.pNext = context.bdaMode ? &flags : nullptr;
+    allocation.allocationSize = reqA.size;
+    allocation.memoryTypeIndex = context.virtualType;
+    if (context.nativeAllocation) {
+        allocation.memoryTypeIndex = gpuOnlyNativeType(context, reqA.memoryTypeBits & reqB.memoryTypeBits);
+        require(allocation.memoryTypeIndex != UINT32_MAX, "no compatible native selective-submit memory type");
+    }
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &a.memory), "allocate first selective-submit pool");
+    allocation.allocationSize = reqB.size;
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &b.memory), "allocate second selective-submit pool");
+    auto bind = [&](VkBuffer buffer, VkDeviceMemory memory) {
+        if (!api2) return vkBindBufferMemory(context.device, buffer, memory, 0);
+        VkBindBufferMemoryInfo info{VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO};
+        info.buffer = buffer; info.memory = memory;
+        return vkBindBufferMemory2(context.device, 1, &info);
+    };
+    check(bind(a.handle, a.memory), "bind first selective-submit pool");
+    check(bind(b.handle, b.memory), "bind second selective-submit pool");
+    auto setAddress = [&](VkBuffer buffer) {
+        if (!context.bdaMode) return;
+        VkBufferDeviceAddressInfo info{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
+        info.buffer = buffer;
+        context.bufferAddress = vkGetBufferDeviceAddress(context.device, &info);
+        require(context.bufferAddress != 0, "selective-submit buffer has no device address");
+    };
+    setAddress(a.handle);
+    const VkDeviceAddress addressA = context.bufferAddress;
+    setAddress(b.handle);
+    const VkDeviceAddress addressB = context.bufferAddress;
+
+    Staging staging; staging.device = context.device;
+    VkBufferCreateInfo stagingInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    stagingInfo.size = ChunkBytes;
+    stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    check(vkCreateBuffer(context.device, &stagingInfo, nullptr, &staging.buffer), "create selective-submit staging");
+    VkMemoryRequirements stagingReq{};
+    vkGetBufferMemoryRequirements(context.device, staging.buffer, &stagingReq);
+    VkMemoryAllocateInfo stagingAlloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    stagingAlloc.allocationSize = stagingReq.size;
+    stagingAlloc.memoryTypeIndex = hostCoherentType(context, stagingReq.memoryTypeBits);
+    require(stagingAlloc.memoryTypeIndex != UINT32_MAX, "no selective-submit staging type");
+    check(vkAllocateMemory(context.device, &stagingAlloc, nullptr, &staging.memory), "allocate selective-submit staging");
+    check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0), "bind selective-submit staging");
+    check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped), "map selective-submit staging");
+
+    const auto beforeCold = context.stats();
+    upload(context, a.handle, staging, ChunkBytes);
+    upload(context, b.handle, staging, ChunkBytes);
+    setAddress(a.handle);
+    check(computeCycle(context, a.handle, 0, 0, false, ChunkBytes), "initialize first selective-submit pattern");
+    setAddress(b.handle);
+    check(computeCycle(context, b.handle, 0, 0, false, ChunkBytes), "initialize second selective-submit pattern");
+    check(computeCycle(context, b.handle, 1, 0, false, ChunkBytes), "distinguish second selective-submit pattern");
+    setAddress(a.handle);
+    readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
+    setAddress(b.handle);
+    readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+
+    const auto coldBytes = reqA.size + reqB.size;
+    const auto deadline = std::chrono::steady_clock::now() + ColdTimeout;
+    ZvramSnapshotStatsNX cold{};
+    do {
+        cold = context.stats();
+        if (cold.coldLogicalBytes == coldBytes && cold.residentBytes == 0 &&
+            cold.coldStoredBytes > 0 && cold.freezes >= beforeCold.freezes + 2) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    } while (std::chrono::steady_clock::now() < deadline);
+    require(cold.coldLogicalBytes == coldBytes && cold.residentBytes == 0 &&
+            cold.coldStoredBytes > 0 && cold.freezes >= beforeCold.freezes + 2,
+            "both live selective-submit pools did not reach cold snapshots");
+    context.bufferAddress = addressA;
+    metadataWhileCold(context, a.handle, cold, coldBytes, reqA.size);
+    context.bufferAddress = addressB;
+    metadataWhileCold(context, b.handle, cold, coldBytes, reqB.size);
+    const auto afterIdleWaits = context.stats();
+    require(afterIdleWaits.coldLogicalBytes == coldBytes && afterIdleWaits.residentBytes == 0 &&
+            afterIdleWaits.restores == cold.restores,
+            "queue/device idle or metadata query woke selective-submit pools");
+
+    if (unknownCommand) {
+        VkEvent event{};
+        VkEventCreateInfo eventInfo{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
+        check(vkCreateEvent(context.device, &eventInfo, nullptr, &event), "create selective-submit unknown event");
+        check(context.submit([&](VkCommandBuffer command) {
+            vkCmdSetEvent(command, event, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+        }), "submit unknown selective-submit command");
+        const auto restored = context.stats();
+        require(restored.residentBytes == coldBytes && restored.coldLogicalBytes == 0 &&
+                restored.restores >= afterIdleWaits.restores + 2,
+                "unknown command did not conservatively restore every cold pool");
+        vkDestroyEvent(context.device, event, nullptr);
+        setAddress(a.handle);
+        readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
+        setAddress(b.handle);
+        readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+        std::cout << "PASS: unknown command restored both cold selective-submit pools" << std::endl;
+    } else {
+        setAddress(a.handle);
+        check(computeCycle(context, a.handle, 1, 0, false, ChunkBytes), "compute first selective-submit cold pool");
+        auto firstAwake = context.stats();
+        if (context.bdaMode) {
+            require(firstAwake.residentBytes == coldBytes && firstAwake.coldLogicalBytes == 0 &&
+                    firstAwake.restores >= afterIdleWaits.restores + 2,
+                    "BDA compute did not conservatively restore every cold pool");
+        } else {
+            require(firstAwake.residentBytes == reqA.size && firstAwake.coldLogicalBytes == reqB.size &&
+                    firstAwake.restores == afterIdleWaits.restores + 1,
+                    "compute of first pool restored unrelated cold pool");
+            readbackAndVerify(context, a.handle, staging, 1, false, ChunkBytes);
+            const auto afterReadback = context.stats();
+            require(afterReadback.residentBytes == reqA.size && afterReadback.coldLogicalBytes == reqB.size &&
+                    afterReadback.restores == firstAwake.restores,
+                    "readback of first pool restored unrelated cold pool");
+            firstAwake = afterReadback;
+        }
+        setAddress(b.handle);
+        check(computeCycle(context, b.handle, 2, 0, false, ChunkBytes), "compute second selective-submit cold pool");
+        const auto bothAwake = context.stats();
+        require(bothAwake.residentBytes == coldBytes && bothAwake.coldLogicalBytes == 0 &&
+                bothAwake.restores >= firstAwake.restores + (context.bdaMode ? 0 : 1),
+                "compute of second pool did not leave both pools resident");
+        setAddress(a.handle);
+        readbackAndVerify(context, a.handle, staging, 1, false, ChunkBytes);
+        setAddress(b.handle);
+        readbackAndVerify(context, b.handle, staging, 2, false, ChunkBytes);
+        std::cout << "PASS: " << (context.nativeAllocation ? "native" : "synthetic")
+                  << (api2 ? " API2" : " legacy")
+                  << (context.bdaMode ? " BDA" : "")
+                  << " selective-submit pools preserved full-byte patterns" << std::endl;
+    }
+
+    vkDestroyBuffer(context.device, a.handle, nullptr); a.handle = VK_NULL_HANDLE;
+    vkDestroyBuffer(context.device, b.handle, nullptr); b.handle = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, a.memory, nullptr); a.memory = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, b.memory, nullptr); b.memory = VK_NULL_HANDLE;
+    const auto empty = context.stats();
+    require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 && empty.coldStoredBytes == 0,
+            "selective-submit cleanup retained pool bytes");
+}
 } // namespace
 
 int main(int argc, char** argv) try {
@@ -1064,6 +1228,7 @@ int main(int argc, char** argv) try {
     bool concurrentWait = false;
     bool suballocation = false, suballocationAuto = false, suballocationApi2 = false;
     bool selectiveBind = false, selectiveBindApi2 = false;
+    bool selectiveSubmit = false, selectiveSubmitApi2 = false, selectiveSubmitUnknown = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--expect-budget-refusal") == 0) expectBudgetRefusal = true;
         else if (std::strcmp(argv[i], "--expect-budget-release") == 0) expectBudgetRelease = true;
@@ -1082,7 +1247,10 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--suballocation-api2") == 0) { suballocation = true; suballocationApi2 = true; }
         else if (std::strcmp(argv[i], "--selective-bind") == 0) selectiveBind = true;
         else if (std::strcmp(argv[i], "--selective-bind-api2") == 0) { selectiveBind = true; selectiveBindApi2 = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2]");
+        else if (std::strcmp(argv[i], "--selective-submit") == 0) selectiveSubmit = true;
+        else if (std::strcmp(argv[i], "--selective-submit-api2") == 0) { selectiveSubmit = true; selectiveSubmitApi2 = true; }
+        else if (std::strcmp(argv[i], "--selective-submit-unknown") == 0) { selectiveSubmit = true; selectiveSubmitUnknown = true; }
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown]");
     }
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||
@@ -1103,6 +1271,10 @@ int main(int argc, char** argv) try {
                                 expectPartialFreeze || expectPartialRestore || bdaMode || twoQueues ||
                                 twoFamilies || exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
             "selective-bind mode is independent of other Vulkan checks");
+    require(!selectiveSubmit || !(selectiveBind || suballocation || expectBudgetRefusal || expectBudgetRelease ||
+                                  expectPartialFreeze || expectPartialRestore || twoQueues || twoFamilies ||
+                                  exclusiveFamilies || pendingWait || pendingBind || concurrentWait),
+            "selective-submit mode is independent of other Vulkan checks");
     require(!pendingBind || (nativeAllocation && (twoQueues || twoFamilies || exclusiveFamilies)),
             "--pending-bind requires --native-allocation and a multi-queue mode");
     Context context;
@@ -1114,6 +1286,7 @@ int main(int argc, char** argv) try {
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind);
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
+    if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }
     if (pendingWait || pendingBind) {
         VkTimelineSemaphoreSubmitInfo waitValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};

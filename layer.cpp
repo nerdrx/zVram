@@ -21,6 +21,7 @@
 #include <zstd.h>
 #include "auto_queues.hpp"
 #include "buffer_barriers.hpp"
+#include "submission_tracking.hpp"
 
 namespace {
 constexpr char kLayer[] = "VK_LAYER_NX_zvram";
@@ -203,6 +204,8 @@ struct Device {
     std::uint64_t virtualUsage{};
     bool autoEnabled{};
     bool autoInitialized{};
+    std::atomic<bool> selectiveRestore{false};
+    VkSubmissionTracker submission;
     std::atomic<VkResult> gpuGateError{VK_SUCCESS};
     std::uint64_t idleMilliseconds{};
     std::uint64_t coldBudget{};
@@ -236,6 +239,8 @@ void logSnapshotState(const char* event,const Device& d) {
          static_cast<unsigned long long>(d.restoreCount),static_cast<unsigned long long>(d.snapshotFailures));
 }
 std::mutex mapsMutex;
+// Future command entry points absent from our build cannot be tracked safely.
+std::atomic<bool> unknownCommandProc{false};
 PFN_vkGetInstanceProcAddr globalGipa{};
 std::unordered_map<void*,std::shared_ptr<Instance>> instances;
 std::unordered_map<void*,std::shared_ptr<Device>> devices;
@@ -682,10 +687,13 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     logf("automatic Vulkan snapshots disabled: private queue synchronization resources unavailable result=%d",static_cast<int>(autoResult));
                 } else {
                     d->autoEnabled=true;
+                    const char* selective=std::getenv("ZVRAM_VULKAN_SELECTIVE_RESTORE");
+                    d->selectiveRestore=selective && std::strcmp(selective,"1")==0;
                     try { d->snapshotWorker=std::thread(snapshotWorkerLoop,d); }
                     catch(...) { d->autoEnabled=false; d->autoInitialized=false; releaseSnapshotResources(*d); d->autoQueues.destroy(); }
                     if(d->autoEnabled) logf("automatic Vulkan snapshots enabled idle-ms=%llu cold-budget=%llu",static_cast<unsigned long long>(d->idleMilliseconds),static_cast<unsigned long long>(d->coldBudget));
                     else logf("automatic Vulkan snapshots disabled: worker creation failed");
+                    if(d->autoEnabled && d->selectiveRestore) logf("selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all");
                 }
             }
         }
@@ -1623,6 +1631,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerBindDataGraphPipelineSessionMemoryARM(VkDevi
 #ifdef VK_QCOM_tile_memory_heap
 VKAPI_ATTR void VKAPI_CALL layerCmdBindTileMemoryQCOM(VkCommandBuffer commandBuffer,const VkTileMemoryBindInfoQCOM* info) {
     auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d || !info) return;
+    if(d->selectiveRestore) { std::lock_guard<std::mutex> lock(d->mutex); d->submission.unknown(commandBuffer); }
     if(containsVirtualMemory(d,info->memory)) { logf("rejected synthetic memory in vkCmdBindTileMemoryQCOM"); return; }
     auto fn=reinterpret_cast<PFN_vkCmdBindTileMemoryQCOM>(d->gdpa(d->handle,"vkCmdBindTileMemoryQCOM"));
     if(fn) fn(commandBuffer,info);
@@ -1806,6 +1815,8 @@ VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice device,VkDeviceMemory memory
     d->free(device,found?a.nativeHandle:memory,nativeAllocator);
 }
 
+#include "submission_hooks.inc"
+
 template<class Function,class... Args>
 VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     auto d=findDevice(reinterpret_cast<VkDevice>(queue)); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
@@ -1826,7 +1837,7 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     const bool hasCold=std::any_of(d->virtualMemory.begin(),d->virtualMemory.end(),[](const auto& pair){return pair.second.cold;});
     // An idle wait executes no application memory accesses. Keep cold pools asleep.
     if(hasCold && std::strcmp(name,"vkQueueWaitIdle")!=0) {
-        const auto r=restoreColdLocked(d->handle,*d); if(r!=VK_SUCCESS) return r;
+        const auto r=restoreForQueue(*d,name,args...); if(r!=VK_SUCCESS) return r;
     }
     const bool unsupportedOrdering=std::strcmp(name,"vkQueueBindSparse")==0 || std::strcmp(name,"vkQueuePresentKHR")==0;
     if(unsupportedOrdering && d->autoEnabled) {
@@ -1939,6 +1950,7 @@ VKAPI_ATTR void VKAPI_CALL layerCmdPipelineBarrier(VkCommandBuffer commandBuffer
     std::uint32_t imageCount,const VkImageMemoryBarrier* imageBarriers) {
     auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
     auto fn=reinterpret_cast<PFN_vkCmdPipelineBarrier>(d->gdpa(d->handle,"vkCmdPipelineBarrier"));
+    trackSubmission(d,[&](auto& t){for(std::uint32_t i=0;i<bufferCount;i++) t.buffer(commandBuffer,bufferBarriers[i].buffer);});
     if(!d->autoInitialized) { if(fn) fn(commandBuffer,srcStage,dstStage,flags,memoryCount,memoryBarriers,bufferCount,bufferBarriers,imageCount,imageBarriers); return; }
     auto forced=isForcedBuffer(d);
     zvram::cmdPipelineBarrier(fn,forced,commandBuffer,srcStage,dstStage,flags,memoryCount,memoryBarriers,
@@ -1951,6 +1963,7 @@ VKAPI_ATTR void VKAPI_CALL layerCmdWaitEvents(VkCommandBuffer commandBuffer,
     std::uint32_t imageCount,const VkImageMemoryBarrier* imageBarriers) {
     auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
     auto fn=reinterpret_cast<PFN_vkCmdWaitEvents>(d->gdpa(d->handle,"vkCmdWaitEvents"));
+    trackSubmission(d,[&](auto& t){for(std::uint32_t i=0;i<bufferCount;i++) t.buffer(commandBuffer,bufferBarriers[i].buffer);});
     if(!d->autoInitialized) { if(fn) fn(commandBuffer,eventCount,events,srcStage,dstStage,memoryCount,memoryBarriers,bufferCount,bufferBarriers,imageCount,imageBarriers); return; }
     auto forced=isForcedBuffer(d);
     zvram::cmdWaitEvents(fn,forced,commandBuffer,eventCount,events,srcStage,dstStage,memoryCount,memoryBarriers,
@@ -1960,6 +1973,13 @@ VKAPI_ATTR void VKAPI_CALL layerCmdPipelineBarrier2(VkCommandBuffer commandBuffe
     auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
     auto fn=reinterpret_cast<PFN_vkCmdPipelineBarrier2>(d->gdpa(d->handle,"vkCmdPipelineBarrier2"));
     if(!fn) fn=reinterpret_cast<PFN_vkCmdPipelineBarrier2>(d->gdpa(d->handle,"vkCmdPipelineBarrier2KHR"));
+    trackSubmission(d,[&](auto& t){
+        if(!dependency || dependency->pNext) { t.unknown(commandBuffer); return; }
+        for(std::uint32_t i=0;i<dependency->bufferMemoryBarrierCount;i++) {
+            if(dependency->pBufferMemoryBarriers[i].pNext) t.unknown(commandBuffer);
+            t.buffer(commandBuffer,dependency->pBufferMemoryBarriers[i].buffer);
+        }
+    });
     if(!d->autoInitialized) { if(fn) fn(commandBuffer,dependency); return; }
     auto forced=isForcedBuffer(d); zvram::cmdPipelineBarrier2(fn,forced,commandBuffer,dependency);
 }
@@ -1968,6 +1988,16 @@ VKAPI_ATTR void VKAPI_CALL layerCmdWaitEvents2(VkCommandBuffer commandBuffer,std
     auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
     auto fn=reinterpret_cast<PFN_vkCmdWaitEvents2>(d->gdpa(d->handle,"vkCmdWaitEvents2"));
     if(!fn) fn=reinterpret_cast<PFN_vkCmdWaitEvents2>(d->gdpa(d->handle,"vkCmdWaitEvents2KHR"));
+    trackSubmission(d,[&](auto& t){
+        for(std::uint32_t n=0;n<eventCount;n++) {
+            const auto& dep=dependencies[n];
+            if(dep.pNext) t.unknown(commandBuffer);
+            for(std::uint32_t i=0;i<dep.bufferMemoryBarrierCount;i++) {
+                if(dep.pBufferMemoryBarriers[i].pNext) t.unknown(commandBuffer);
+                t.buffer(commandBuffer,dep.pBufferMemoryBarriers[i].buffer);
+            }
+        }
+    });
     if(!d->autoInitialized) { if(fn) fn(commandBuffer,eventCount,events,dependencies); return; }
     auto forced=isForcedBuffer(d); zvram::cmdWaitEvents2(fn,forced,commandBuffer,eventCount,events,dependencies);
 }
@@ -1983,8 +2013,12 @@ VKAPI_ATTR VkResult VKAPI_CALL layerDeviceWaitIdle(VkDevice device) {
     return r;
 }
 
+#include "command_hooks.inc"
+
 PFN_vkVoidFunction lookup(const char* name) {
     if(!name) return nullptr;
+    if(auto f=submissionHookLookup(name)) return f;
+    if(auto f=trackedCommandLookup(name)) return f;
 #define MATCH(n,f) if(std::strcmp(name,n)==0) return reinterpret_cast<PFN_vkVoidFunction>(f)
     MATCH("vkGetInstanceProcAddr",layerGetInstanceProcAddr); MATCH("vkGetDeviceProcAddr",layerGetDeviceProcAddr);
     MATCH("vk_layerGetPhysicalDeviceProcAddr",layerGetPhysicalDeviceProcAddr);
@@ -2035,12 +2069,21 @@ PFN_vkVoidFunction lookup(const char* name) {
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetInstanceProcAddr(VkInstance instance,const char* name) {
     if(name && std::strcmp(name,"vkZVramArmRestoreFailureNX")==0) return nullptr;
     if(auto f=lookup(name)) return f;
-    auto s=findInstance(key(instance)); if(s&&s->gipa) return s->gipa(instance,name);
+    auto s=findInstance(key(instance)); if(s&&s->gipa) {
+        auto f=s->gipa(instance,name);
+        if(f && name && std::strncmp(name,"vkCmd",5)==0) unknownCommandProc=true;
+        return f;
+    }
     if(!instance) { PFN_vkGetInstanceProcAddr next{}; { std::lock_guard<std::mutex> lock(mapsMutex); next=globalGipa; } return next?next(VK_NULL_HANDLE,name):nullptr; }
     return nullptr;
 }
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,const char* name) {
     auto d=findDevice(device);
+    if(isTrackedCommand(name) || submissionHookLookup(name)) {
+        auto next=d&&d->gdpa?d->gdpa(device,name):nullptr;
+        if(!next || !d->selectiveRestore) return next;
+        return lookup(name);
+    }
     if(name && std::strcmp(name,"vkZVramArmRestoreFailureNX")==0 &&
        (!d || !d->autoInitialized || !std::getenv("ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS"))) return nullptr;
     const bool barrierCommand=name && (
@@ -2071,12 +2114,16 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,
                 std::strcmp(name,"vkCmdBindTileMemoryQCOM")==0))
         if(!d || !d->gdpa || !d->gdpa(device,name)) return nullptr;
     if(auto f=lookup(name)) return f;
-    return d&&d->gdpa?d->gdpa(device,name):nullptr;
+    auto f=d&&d->gdpa?d->gdpa(device,name):nullptr;
+    if(f && name && std::strncmp(name,"vkCmd",5)==0) unknownCommandProc=true;
+    return f;
 }
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetPhysicalDeviceProcAddr(VkInstance instance,const char* name) {
     if(auto f=lookup(name)) return f;
     auto s=findInstance(key(instance)); if(!s) return nullptr;
-    return s->physProc?s->physProc(instance,name):s->gipa(instance,name);
+    auto f=s->physProc?s->physProc(instance,name):s->gipa(instance,name);
+    if(f && name && std::strncmp(name,"vkCmd",5)==0) unknownCommandProc=true;
+    return f;
 }
 } // namespace
 
