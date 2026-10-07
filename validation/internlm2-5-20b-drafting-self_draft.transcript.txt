@@ -1,0 +1,6 @@
+User:
+Output this sentence exactly twelve times, with no introduction or explanation: The copper fox jumps over the sleepy dog.
+
+Assistant:
+The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog.
+

@@ -1,0 +1,43 @@
+
+
+Loading model... 
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b1-c479922
+model      : /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/models/internlm2_5-20b-chat-fp16.gguf
+ftype      : F16
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Explain why this rejects a 36798.77 MiB allocation when the local cap is 18 GiB and MemAvailable is 19 GiB. Show the host-backing arithmetic and explain the system reserve. Keep the explanation precise.
+
+bool reserveHostBytes(size_t bytes) {
+  const Limit& configured = hostLimit();
+  std::lock_guard<std::mutex> lock(gMutex);
+  size_t available = 0;
+  const auto refuse = [&](const char* reason) {
+    std::fprintf(stderr,
+                 "[zvram-hip] host backing reservation refused: reason=%s re ... (truncated)
+The function `reserveHostBytes` is designed to manage memory allocation on the host system, ensuring that requests do not exceed predefined limits and reserves. Here's a breakdown of why a request for 36798.77 MiB might be rejected, given the local cap and available memory:
+
+1. **System Reserve**
+
+[ Prompt: 57.5 t/s | Generation: 1.5 t/s ]
+
+
+Exiting...

@@ -1,0 +1,33 @@
+
+
+Loading model... 
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b1-c479922
+model      : /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/models/internlm2_5-20b-chat-fp16.gguf
+ftype      : F16
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Output this sentence exactly twelve times, with no introduction or explanation: The copper fox jumps over the sleepy dog.
+The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog. The copper fox jumps over the sleepy dog.
+
+[ Prompt: 24.3 t/s | Generation: 1.1 t/s ]
+
+
+Exiting...

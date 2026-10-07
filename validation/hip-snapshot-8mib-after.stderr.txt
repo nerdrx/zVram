@@ -1,0 +1,3 @@
+[zvram-hip] hybrid VMM allocation: logical=301989888 mapped=301989888 VRAM=16777216 host_pinned=285212672 handles=3
+[zvram-hip] hybrid VMM allocation: logical=301989888 mapped=301989888 VRAM=16777216 host_pinned=285212672 handles=3
+[zvram-hip] summary: tracked=0 peak_allocations=2 hipMalloc_api_bytes_current=0 peak=16777216 host_pinned_backing_bytes_current=0 pending=0 peak=285212672 native_allocations=0 mapped_host_allocations=0 hybrid_vmm_allocations=2 orphaned_vmm_cleanup=0 mapped_host_async_free_rejections=0 failures=0; mapped host is pinned host RAM, not compressed VRAM

@@ -2,6 +2,7 @@
 #include <dlfcn.h>
 
 #include <cstdint>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -145,7 +146,12 @@ int main(int argc, char** argv) try {
     driverUsage("hot");
     if (cycle == 2)
       require(hipSetDevice(-1) == hipErrorInvalidDevice, "create pending caller error");
+    const auto hibernateStart = std::chrono::steady_clock::now();
     check(hibernate(coldBudget), "hibernate");
+    const auto hibernateMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - hibernateStart).count();
+    std::cout << "timing cycle=" << cycle << " phase=hibernate elapsed_ms="
+              << hibernateMs << std::endl;
     if (cycle == 2)
       require(hipGetLastError() == hipErrorInvalidDevice, "hibernate must preserve caller error");
     driverUsage("cold");
@@ -166,7 +172,12 @@ int main(int argc, char** argv) try {
       expectCold(stats, Bytes, coldBudget);
       require(unsetenv("ZVRAM_TEST_VMM_MAP_FAIL_AFTER") == 0, "clear remap fixture");
     }
+    const auto resumeStart = std::chrono::steady_clock::now();
     check(resume(), "resume");
+    const auto resumeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - resumeStart).count();
+    std::cout << "timing cycle=" << cycle << " phase=resume elapsed_ms="
+              << resumeMs << std::endl;
     driverUsage("restored");
     require(allocation.pointer == original, "GPU pointer identity changed");
     expectCold(stats, 0, 0);

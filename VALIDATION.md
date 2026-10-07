@@ -47,7 +47,7 @@ Process fdinfo measured resident DRM VRAM falling from 345,059,328 bytes hot to 
 
 The updated 37-test suite includes incremental freeze and partial-restore recovery. With an 11 MiB cold budget, the 320 MiB segmented test froze a 256 MiB child (9,809,248 bytes stored) and kept 64 MiB resident, then restored and checked all bytes. A second test injected OOM after restoring the first child; the remaining 64 MiB stayed cold, and a retry restored the full buffer. See [37-test CTest log](validation/vulkan-incremental-ctest.txt), [partial freeze](validation/vulkan-automatic-partial-freeze.txt), and [partial restore retry](validation/vulkan-automatic-partial-restore-retry.txt). These tests cover segmented synthetic allocations; adopted native allocations still freeze atomically, and this is not active fault-driven paging.
 
-The current 38-test GPU CTest suite passed in **22.25 seconds**. Budget refusal now stays suppressed during idle and retries after new queue work; other transient snapshot errors remain retryable, and the 1 MiB test preserved its original data. A second test used a **14 MiB** cold-store budget with two children: it froze a 192 MiB child to 7,360,298 bytes, then freed that cold allocation so the remaining 256 MiB child could freeze to 9,809,248 bytes without another GPU submission. The latter woke and passed full-byte verification. See the [38-test suite](validation/vulkan-fast-38-ctest.txt), [stable refusal log](validation/vulkan-automatic-budget-refusal-stable.txt), [budget release log](validation/vulkan-automatic-budget-release.txt), [combined test detail](validation/vulkan-automatic-budget-details.txt), and [verbose budget tests](validation/vulkan-automatic-budget-tests.txt). The exclusive queue-family test passed three additional targeted runs (1.98, 1.98, and 2.01 seconds); an earlier no-error 0.48-second abort remains unexplained. A separate host-thread resource warning occurred during CLI testing and does not establish the cause. See [repeat log](validation/vulkan-automatic-exclusive-repeat.txt).
+The current **39-test** GPU CTest suite passed in **23.84 seconds**; the prior [38-test run](validation/vulkan-fast-38-ctest.txt) remains archived. Budget refusal stays suppressed during idle and retries after new queue work; other transient snapshot errors remain retryable, and the 1 MiB test preserved its original data. A second test used a **14 MiB** cold-store budget with two children: it froze a 192 MiB child to 7,360,298 bytes, then freed that cold allocation so the remaining 256 MiB child could freeze to 9,809,248 bytes without another GPU submission. The latter woke and passed full-byte verification. See the [39-test suite](validation/vulkan-queue-fastpath-39-ctest.txt), [stable refusal log](validation/vulkan-automatic-budget-refusal-stable.txt), [budget release log](validation/vulkan-automatic-budget-release.txt), [combined test detail](validation/vulkan-automatic-budget-details.txt), and [verbose budget tests](validation/vulkan-automatic-budget-tests.txt). The exclusive queue-family test passed three additional targeted runs (1.98, 1.98, and 2.01 seconds); an earlier no-error 0.48-second abort remains unexplained. A separate host-thread resource warning occurred during CLI testing and does not establish the cause. See [repeat log](validation/vulkan-automatic-exclusive-repeat.txt).
 
 ```sh
 # Bounded capacity probe with a 96 GiB logical heap (2 GiB payload)
@@ -208,6 +208,31 @@ The paired report deliberately records native full-GPU OOM and VMM capacity sepa
 
 The same model also completed through the zVram Vulkan virtual heap: all 49 layers were offloaded, output matched native Vulkan byte-for-byte, and decode measured **1.63 tokens/s** over 31 runs versus **1.41 tokens/s** native. These were short sequential runs, not a controlled or stable speed comparison. An earlier wrapped attempt was stopped with SIGTERM during load after VRChat was started; it produced no inference result and is not a failure. Native Vulkan success alongside native HIP full-GPU OOM shows API/backend-specific capacity behavior; this does not establish zVram expansion for every GPU API. Vulkan output is compared only against Vulkan, not HIP. See the [combined Vulkan run summary](validation/internlm2-5-20b-vulkan-speed-summary.json), [resumed run summary](validation/internlm2-5-20b-vulkan-resumed-summary.json), [native stdout](validation/internlm2-5-20b-vulkan-native.stdout.txt), [native stderr](validation/internlm2-5-20b-vulkan-native.stderr.txt), [resumed zVram stdout](validation/internlm2-5-20b-vulkan-zvram-resumed.stdout.txt), [resumed zVram stderr](validation/internlm2-5-20b-vulkan-zvram-resumed.stderr.txt), and [earlier stopped wrapper stderr](validation/internlm2-5-20b-vulkan-zvram.stderr.txt).
 
+### llama.cpp n-gram self-drafting
+
+An unchanged llama.cpp `llama-cli` used `--spec-type ngram-simple` with the same 39.73 GB F16 target, 19 GiB local cap, and 24 GiB GTT cap. Both runs offloaded 49/49 layers into a 36,798.77 MiB GPU model buffer and finished with zero allocator failures or outstanding allocations. On an intentionally repetitive prompt asking for one sentence twelve times, ordinary decoding measured **1.10 tokens/s** and self-drafting **6.33 tokens/s**; 103 of 121 draft tokens were accepted, and the transcripts matched byte-for-byte. On a 392-token code-explanation prompt, rates were **1.43** and **1.45 tokens/s**, only 4 of 25 drafts were accepted, and the transcripts differed despite greedy sampling. The reason for that output divergence is unknown. These short sequential runs show that llama.cpp self-drafting can help repeated text; they do not demonstrate a generic zVram or gaming speedup, stable throughput, or exact output for arbitrary prompts. Model weights and the lossless allocator were unchanged.
+
+The optional self-drafting flags are existing llama.cpp CLI options; no model loader or zVram source changes are needed:
+
+```sh
+./zvram --hip --hip-vmm --hip-report-capacity \
+  --hip-local-mib 19456 --hip-host-mib 24576 -- \
+  ./build/third-party/llama-build/bin/llama-cli \
+  --model build/third-party/models/internlm2_5-20b-chat-fp16.gguf \
+  --gpu-layers 999 --ctx-size 512 --batch-size 128 --predict 128 \
+  --temp 0 --seed 1 --load-mode none --fit off --flash-attn off \
+  --verbose --simple-io --no-display-prompt --single-turn \
+  --prompt "Output this sentence exactly twelve times, with no introduction or explanation: The copper fox jumps over the sleepy dog." \
+  --spec-type ngram-simple --spec-ngram-simple-size-n 3 \
+  --spec-ngram-simple-size-m 16 --spec-ngram-simple-min-hits 1
+```
+
+The exact model hash, commands, rates, draft acceptance, and captured outputs are in the [repeated-text summary](validation/internlm2-5-20b-drafting-summary.json) and [ordinary-prose summary](validation/internlm2-5-20b-prose-drafting-summary.json); each summary links its stdout, stderr, and transcript artifacts.
+
+### Synthetic HIP local/GTT read diagnostic
+
+A GPU reduction read a checksummed 256 MiB buffer 32 times after warmup. The short local/GTT/local sequence measured **819.39**, **24.36**, and **490.22 GB/s**, with matching checksums and zero GTT cleanup failures. This indicates substantially slower reads from GTT for this access pattern; clocks, caches, and reduction overhead were uncontrolled. It is not model or gaming throughput and cannot predict token rates or establish a bandwidth limit. See the [summary](validation/hip-spill-read-bandwidth-summary.json) and [diagnostic source](validation/hip-spill-read-bandwidth.cpp).
+
 ## Stable sparse Vulkan buffers
 
 The optional `ManagedBufferPool::Config::stableSparseBuffers` path retained three 1 MiB logical buffers under a 2 MiB resident budget. The GPU mutated every word across two cycles; full readback verified the values after compression and restoration while `VkBuffer` handles stayed identical. The run recorded 15 evictions and 12 restores. It also verified that pinned buffers cannot be evicted/erased, an incompressible GPU-mutated buffer remains intact when a 128-byte host-store cap refuses eviction, and a 3-byte logical buffer survives aligned sparse binding with a stable handle. Final pool accounting was zero.
@@ -286,6 +311,8 @@ Internal snapshot copies use a GPU kernel and a 1 MiB mapped staging allocation 
 
 All **21 CTests passed** after this feature, including the existing allocation, lookup, error-state, and Vulkan regressions. Raw logs: [32 MiB integrity](validation/hip-hibernation-integrity.txt), [288 MiB and process residency](validation/hip-hibernation-multisegment.txt), [failed remap recovery](validation/hip-hibernation-remap-recovery.txt).
 
+A separate 1-to-8 MiB snapshot-chunk candidate passed the same 288 MiB mixed-data, two-cycle integrity check before/after/before. The short sequential hibernate/resume timings overlapped, so no reliable gain was established; the candidate was reverted and the default remains 1 MiB. See the [decision summary](validation/hip-snapshot-8mib-summary.json) and its linked logs.
+
 ```sh
 cmake --build build -j2
 ctest --test-dir build -R hip-hibernation --output-on-failure
@@ -344,7 +371,9 @@ The helper now checks working `cgroup.kill` before launching any child and uses 
 
 ## Userspace Vulkan segmented allocations
 
-The opt-in `--vulkan-virtual-mib 40960` mode exposes a separate GPU-only logical heap/type and creates eligible storage buffers with sparse binding. The application retains its ordinary buffer handle. Bind calls materialize native backing in aligned segments of at most 256 MiB; synthetic handles are consumed by the layer and never submitted as native bind allocations. Initial bindings complete synchronously, and the layer shares a host lock with application queue submit, sparse-bind, present, and idle calls. This phase provides segmented backing and native migration, not compression.
+The opt-in `--vulkan-virtual-mib 40960` mode exposes a separate GPU-only logical heap/type and creates eligible storage buffers with sparse binding. The application retains its ordinary buffer handle. Bind calls materialize native backing in aligned segments of at most 256 MiB; synthetic handles are consumed by the layer and never submitted as native bind allocations. Initial bindings complete synchronously. In virtual-only mode, unrelated application queues now forward without taking device-wide snapshot locks or scanning cold buffers; internal sparse-queue operations remain serialized. Automatic snapshot mode is unchanged. This phase provides segmented backing and native migration, not compression.
+
+The virtual-only queue fast path passed **7/7** focused GPU tests, including a concurrent pending-wait case where queue 0 remained blocked until queue 1 signaled a timeline semaphore, plus the explicit fault-arm regression. The earlier failed log is retained for context: its test hook fired during upload setup, before the intended fault point; it is not evidence of data being replaced with zeroes. See the [verified 7-test run](validation/vulkan-virtual-queue-fastpath-verified-tests.txt) and [earlier failed run](validation/vulkan-virtual-queue-fastpath-tests.txt). The full CTest suite is still pending and is not claimed here.
 
 The Vulkan 1.1 transfer check allocated memory before creating its final buffer, used `vkGetBufferMemoryRequirements2` and `vkBindBufferMemory2`, and verified every word of **one 40 GiB allocation and one buffer**, backed by **160 native chunks**. Generation, upload, readback, and verification took **17.454 seconds**. At full upload, global driver counters were 25,161,117,696 bytes VRAM and 24,989,626,368 bytes GTT; these include desktop allocations. No validation error was emitted. [Full log](validation/vulkan-virtual-single-40gib.txt). A smaller 320 MiB check verified the two-chunk boundary through the same API2 calls. [Small log](validation/vulkan-virtual-single-api2-320mib.txt).
 

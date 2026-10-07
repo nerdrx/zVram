@@ -206,6 +206,7 @@ struct Device {
     std::uint64_t freezeCount{}, restoreCount{}, snapshotFailures{};
     std::uint64_t gpuSubmissionGeneration{};
     std::uint64_t coldBudgetGeneration{};
+    std::uint64_t restoreFailureAfterGroups{};
     bool restoreFailureInjected{};
     VkResult lastSnapshotError{VK_SUCCESS};
     std::atomic<bool> stopWorker{false};
@@ -308,6 +309,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerBindImageMemory(VkDevice,VkImage,VkDeviceMem
 VKAPI_ATTR VkResult VKAPI_CALL layerBindImageMemory2(VkDevice,std::uint32_t,const VkBindImageMemoryInfo*);
 VKAPI_ATTR void VKAPI_CALL layerGetDeviceMemoryCommitment(VkDevice,VkDeviceMemory,VkDeviceSize*);
 VKAPI_ATTR VkResult VKAPI_CALL layerGetSnapshotStats(VkDevice,ZvramSnapshotStatsNX*);
+VKAPI_ATTR VkResult VKAPI_CALL layerArmRestoreFailure(VkDevice,std::uint32_t);
 VKAPI_ATTR VkResult VKAPI_CALL layerAllocateMemory(VkDevice,const VkMemoryAllocateInfo*,const VkAllocationCallbacks*,VkDeviceMemory*);
 VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice,VkDeviceMemory,const VkAllocationCallbacks*);
 
@@ -835,11 +837,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d) {
     if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
     auto& s=d.snapshot;
     bool restoredAny=false;
-    std::uint64_t restoredThisCall=0,failAfter=0;
-    if(const char* value=std::getenv("ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS")) {
-        char* end=nullptr; const auto parsed=std::strtoull(value,&end,10);
-        if(end!=value && *end=='\0') failAfter=parsed;
-    }
+    std::uint64_t restoredThisCall=0;
     for(auto& pair:d.virtualMemory) {
         auto& memory=pair.second;
         if(!memory.cold || !memory.buffer) continue;
@@ -896,7 +894,8 @@ VkResult restoreColdLocked(VkDevice device,Device& d) {
             memory.cold=std::any_of(memory.coldGroups.begin(),memory.coldGroups.end(),[](const auto& entry){return entry.cold;});
             const bool coldRemains=std::any_of(d.virtualMemory.begin(),d.virtualMemory.end(),
                 [](const auto& entry){return entry.second.cold;});
-            if(coldRemains && failAfter && !d.restoreFailureInjected && restoredThisCall>=failAfter) {
+            if(coldRemains && d.restoreFailureAfterGroups && !d.restoreFailureInjected &&
+               restoredThisCall>=d.restoreFailureAfterGroups) {
                 d.restoreFailureInjected=true; ++d.snapshotFailures; d.lastSnapshotError=VK_ERROR_OUT_OF_DEVICE_MEMORY;
                 return VK_ERROR_OUT_OF_DEVICE_MEMORY;
             }
@@ -1453,6 +1452,15 @@ VKAPI_ATTR VkResult VKAPI_CALL layerGetSnapshotStats(VkDevice device,ZvramSnapsh
     out->lastError=static_cast<std::int32_t>(d->lastSnapshotError);
     return VK_SUCCESS;
 }
+VKAPI_ATTR VkResult VKAPI_CALL layerArmRestoreFailure(VkDevice device,std::uint32_t groups) {
+    auto d=findDevice(device);
+    if(!d || groups==0 || !d->autoInitialized || !std::getenv("ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS"))
+        return VK_ERROR_FEATURE_NOT_PRESENT;
+    std::lock_guard<std::mutex> lock(d->mutex);
+    if(d->restoreFailureInjected) return VK_ERROR_FEATURE_NOT_PRESENT;
+    d->restoreFailureAfterGroups=groups;
+    return VK_SUCCESS;
+}
 VKAPI_ATTR VkResult VKAPI_CALL layerAllocateMemory(VkDevice device,const VkMemoryAllocateInfo* info,const VkAllocationCallbacks* allocator,VkDeviceMemory* out) {
     auto d=findDevice(device); if(!d || !d->allocate) return VK_ERROR_INITIALIZATION_FAILED;
     if(info && info->memoryTypeIndex==d->virtualType) {
@@ -1624,6 +1632,14 @@ template<class Function,class... Args>
 VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     auto d=findDevice(reinterpret_cast<VkDevice>(queue)); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
     auto next=reinterpret_cast<Function>(d->gdpa(d->handle,name)); if(!next) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    if(!d->autoInitialized) {
+        // Only a queue shared with internal sparse binds needs layer serialization.
+        if(queue==d->sparseQueue) {
+            std::lock_guard<std::mutex> queueLock(d->queueMutex);
+            return next(queue,args...);
+        }
+        return next(queue,args...);
+    }
     std::unique_lock<std::mutex> deviceLock(d->mutex,std::defer_lock);
     std::unique_lock<std::mutex> queueLock(d->queueMutex,std::defer_lock);
     if(d->virtualEnabled) { deviceLock.lock(); queueLock.lock(); }
@@ -1825,6 +1841,7 @@ PFN_vkVoidFunction lookup(const char* name) {
     MATCH("vkCmdBindTileMemoryQCOM",layerCmdBindTileMemoryQCOM);
 #endif
     MATCH("vkZVramGetSnapshotStatsNX",layerGetSnapshotStats);
+    MATCH("vkZVramArmRestoreFailureNX",layerArmRestoreFailure);
     MATCH("vkQueueSubmit",layerQueueSubmit); MATCH("vkQueueSubmit2",layerQueueSubmit2);
     MATCH("vkQueueSubmit2KHR",layerQueueSubmit2KHR); MATCH("vkQueueBindSparse",layerQueueBindSparse);
     MATCH("vkQueueWaitIdle",layerQueueWaitIdle); MATCH("vkQueuePresentKHR",layerQueuePresent);
@@ -1836,6 +1853,7 @@ PFN_vkVoidFunction lookup(const char* name) {
     return nullptr;
 }
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetInstanceProcAddr(VkInstance instance,const char* name) {
+    if(name && std::strcmp(name,"vkZVramArmRestoreFailureNX")==0) return nullptr;
     if(auto f=lookup(name)) return f;
     auto s=findInstance(key(instance)); if(s&&s->gipa) return s->gipa(instance,name);
     if(!instance) { PFN_vkGetInstanceProcAddr next{}; { std::lock_guard<std::mutex> lock(mapsMutex); next=globalGipa; } return next?next(VK_NULL_HANDLE,name):nullptr; }
@@ -1843,6 +1861,8 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetInstanceProcAddr(VkInstance ins
 }
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,const char* name) {
     auto d=findDevice(device);
+    if(name && std::strcmp(name,"vkZVramArmRestoreFailureNX")==0 &&
+       (!d || !d->autoInitialized || !std::getenv("ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS"))) return nullptr;
     const bool barrierCommand=name && (
         std::strcmp(name,"vkCmdPipelineBarrier")==0 || std::strcmp(name,"vkCmdWaitEvents")==0 ||
         std::strcmp(name,"vkCmdPipelineBarrier2")==0 || std::strcmp(name,"vkCmdPipelineBarrier2KHR")==0 ||

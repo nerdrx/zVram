@@ -1,0 +1,126 @@
+{
+  "scope": "Synthetic 288 MiB mixed GPU-mutated data, two full-byte cycles per run. Same executable and16MiBlocal/288MiBhost caps, sequential before/after/before. Snapshot timings exclude fill/readback; before uses saved1MiBchunk library and after8MiB. Lossless zstd level3 unchanged. Short sequence, not model or game throughput.",
+  "runs": [
+    {
+      "label": "before",
+      "command": [
+        "./build/hip_hibernate_check",
+        "--large"
+      ],
+      "returncode": 0,
+      "library_sha256": "d4b7046a433679ea8e4d26128e7ce07dc56118c58fc29bd44f01ac6548dab24b",
+      "environment": {
+        "LD_PRELOAD": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip-snapshot-before/libzvram_hip.so",
+        "ZVRAM_HIP_VMM": "1",
+        "ZVRAM_HIP_LOCAL_LIMIT_MIB": "16",
+        "ZVRAM_HIP_HOST_LIMIT_MIB": "288",
+        "HIP_VISIBLE_DEVICES": "0"
+      },
+      "timings": [
+        {
+          "cycle": 1,
+          "phase": "hibernate",
+          "elapsed_ms": 221
+        },
+        {
+          "cycle": 1,
+          "phase": "resume",
+          "elapsed_ms": 86
+        },
+        {
+          "cycle": 2,
+          "phase": "hibernate",
+          "elapsed_ms": 273
+        },
+        {
+          "cycle": 2,
+          "phase": "resume",
+          "elapsed_ms": 99
+        }
+      ],
+      "stdout_artifact": "validation/hip-snapshot-8mib-before.stdout.txt",
+      "stderr_artifact": "validation/hip-snapshot-8mib-before.stderr.txt"
+    },
+    {
+      "label": "after",
+      "command": [
+        "./build/hip_hibernate_check",
+        "--large"
+      ],
+      "returncode": 0,
+      "library_sha256": "c2362a1258a1a1d28992718ccef3ba2522bcc3ec4d5ed90e0e7a51c61c9b4905",
+      "environment": {
+        "LD_PRELOAD": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/libzvram_hip.so",
+        "ZVRAM_HIP_VMM": "1",
+        "ZVRAM_HIP_LOCAL_LIMIT_MIB": "16",
+        "ZVRAM_HIP_HOST_LIMIT_MIB": "288",
+        "HIP_VISIBLE_DEVICES": "0"
+      },
+      "timings": [
+        {
+          "cycle": 1,
+          "phase": "hibernate",
+          "elapsed_ms": 278
+        },
+        {
+          "cycle": 1,
+          "phase": "resume",
+          "elapsed_ms": 122
+        },
+        {
+          "cycle": 2,
+          "phase": "hibernate",
+          "elapsed_ms": 236
+        },
+        {
+          "cycle": 2,
+          "phase": "resume",
+          "elapsed_ms": 76
+        }
+      ],
+      "stdout_artifact": "validation/hip-snapshot-8mib-after.stdout.txt",
+      "stderr_artifact": "validation/hip-snapshot-8mib-after.stderr.txt"
+    },
+    {
+      "label": "before_repeat",
+      "command": [
+        "./build/hip_hibernate_check",
+        "--large"
+      ],
+      "returncode": 0,
+      "library_sha256": "d4b7046a433679ea8e4d26128e7ce07dc56118c58fc29bd44f01ac6548dab24b",
+      "environment": {
+        "LD_PRELOAD": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/hip-snapshot-before/libzvram_hip.so",
+        "ZVRAM_HIP_VMM": "1",
+        "ZVRAM_HIP_LOCAL_LIMIT_MIB": "16",
+        "ZVRAM_HIP_HOST_LIMIT_MIB": "288",
+        "HIP_VISIBLE_DEVICES": "0"
+      },
+      "timings": [
+        {
+          "cycle": 1,
+          "phase": "hibernate",
+          "elapsed_ms": 268
+        },
+        {
+          "cycle": 1,
+          "phase": "resume",
+          "elapsed_ms": 117
+        },
+        {
+          "cycle": 2,
+          "phase": "hibernate",
+          "elapsed_ms": 215
+        },
+        {
+          "cycle": 2,
+          "phase": "resume",
+          "elapsed_ms": 120
+        }
+      ],
+      "stdout_artifact": "validation/hip-snapshot-8mib-before_repeat.stdout.txt",
+      "stderr_artifact": "validation/hip-snapshot-8mib-before_repeat.stderr.txt"
+    }
+  ],
+  "decision": "No consistent hibernate/resume speed improvement was observed; the 8 MiB candidate was reverted, retaining the 1 MiB production default and new phase timing output."
+}

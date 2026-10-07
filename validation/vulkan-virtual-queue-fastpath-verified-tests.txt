@@ -1,0 +1,20 @@
+Command: ctest --test-dir build --output-on-failure -R ^(vulkan-virtual-.*|vulkan-automatic-native-two-queues|vulkan-automatic-exclusive-families|vulkan-automatic-partial-restore-retry)$
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+    Start  3: vulkan-virtual-single-integrity
+1/7 Test  #3: vulkan-virtual-single-integrity ..........   Passed    0.87 sec
+    Start  4: vulkan-virtual-api2-integrity
+2/7 Test  #4: vulkan-virtual-api2-integrity ............   Passed    0.15 sec
+    Start  9: vulkan-automatic-partial-restore-retry
+3/7 Test  #9: vulkan-automatic-partial-restore-retry ...   Passed    0.65 sec
+    Start 11: vulkan-automatic-native-two-queues
+4/7 Test #11: vulkan-automatic-native-two-queues .......   Passed    2.22 sec
+    Start 13: vulkan-automatic-exclusive-families
+5/7 Test #13: vulkan-automatic-exclusive-families ......   Passed    1.99 sec
+    Start 14: vulkan-virtual-pending-bind
+6/7 Test #14: vulkan-virtual-pending-bind ..............   Passed    0.46 sec
+    Start 15: vulkan-virtual-concurrent-pending-wait
+7/7 Test #15: vulkan-virtual-concurrent-pending-wait ...   Passed    0.36 sec
+
+100% tests passed out of 7
+
+Total Test time (real) =   6.70 sec

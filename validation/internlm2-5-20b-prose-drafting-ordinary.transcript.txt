@@ -1,0 +1,35 @@
+User:
+Explain why this rejects a 36798.77 MiB allocation when the local cap is 18 GiB and MemAvailable is 19 GiB. Show the host-backing arithmetic and explain the system reserve. Keep the explanation precise.
+
+bool reserveHostBytes(size_t bytes) {
+  const Limit& configured = hostLimit();
+  std::lock_guard<std::mutex> lock(gMutex);
+  size_t available = 0;
+  const auto refuse = [&](const char* reason) {
+    std::fprintf(stderr,
+                 "[zvram-hip] host backing reservation refused: reason=%s requested=%zu available=%zu reserve=%zu limit=%zu current=%zu pending=%zu
+",
+                 reason, bytes, available, kHostReserveBytes,
+                 configured.set ? configured.bytes : 0,
+                 gTotals.hostCurrent, gTotals.hostPending);
+    return false;
+  };
+  if (!memAvailableBytes(&available)) return refuse("meminfo-unavailable");
+  if (available <= kHostReserveBytes) return refuse("system-reserve");
+  const size_t availableBudget = available - kHostReserveBytes;
+  if (bytes > availableBudget || gTotals.hostPending > availableBudget - bytes)
+    return refuse("system-ram-budget");
+  if (configured.set &&
+      (bytes > configured.bytes ||
+       gTotals.hostCurrent > configured.bytes - bytes ||
+       gTotals.hostPending > configured.bytes - bytes - gTotals.hostCurrent))
+    return refuse("configured-host-limit");
+  gTotals.hostPending += bytes;
+  const size_t reserved = gTotals.hostCurrent + gTotals.hostPending;
+  if (reserved > gTotals.hostPeak) gTotals.hostPeak = reserved;
+  return true;
+}
+
+Assistant:
+The function `reserveHostBytes` is designed to manage memory allocation on the host system, ensuring that requests do not exceed predefined limits and reserves. Here's a breakdown of why a request for 36798.77 MiB might be rejected, given the local cap of 18 GiB (19430720 Ki
+

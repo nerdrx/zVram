@@ -1,6 +1,7 @@
 #include <vulkan/vulkan.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -55,6 +56,7 @@ struct ZvramSnapshotStatsNX {
     std::int32_t lastError{};
 };
 using GetSnapshotStats = VkResult (VKAPI_PTR *)(VkDevice, ZvramSnapshotStatsNX*);
+using ArmRestoreFailure = VkResult (VKAPI_PTR *)(VkDevice, std::uint32_t);
 
 struct Buffer {
     VkDevice device{};
@@ -80,6 +82,7 @@ struct Context {
     VkPipelineLayout pipelineLayout{};
     VkPipeline pipeline{};
     GetSnapshotStats getStats{};
+    ArmRestoreFailure armRestoreFailure{};
     VkPhysicalDevice physical{};
     std::uint32_t family{};
     std::uint32_t virtualType{UINT32_MAX};
@@ -243,6 +246,8 @@ struct Context {
 
         getStats = reinterpret_cast<GetSnapshotStats>(vkGetDeviceProcAddr(device, "vkZVramGetSnapshotStatsNX"));
         require(getStats != nullptr, "automatic Vulkan snapshot stats interface unavailable");
+        armRestoreFailure = reinterpret_cast<ArmRestoreFailure>(
+            vkGetDeviceProcAddr(device, "vkZVramArmRestoreFailureNX"));
         vkGetPhysicalDeviceMemoryProperties(physical, &memory);
         require(memory.memoryTypeCount != 0 && memory.memoryHeapCount != 0,
                 "no Vulkan memory types or heaps");
@@ -712,6 +717,7 @@ int main(int argc, char** argv) try {
     bool bdaMode = false, nativeAllocation = false;
     bool twoQueues = false, twoFamilies = false, exclusiveFamilies = false;
     bool pendingWait = false, pendingBind = false;
+    bool concurrentWait = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--expect-budget-refusal") == 0) expectBudgetRefusal = true;
         else if (std::strcmp(argv[i], "--expect-budget-release") == 0) expectBudgetRelease = true;
@@ -724,7 +730,8 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--exclusive-families") == 0) exclusiveFamilies = true;
         else if (std::strcmp(argv[i], "--pending-wait") == 0) pendingWait = true;
         else if (std::strcmp(argv[i], "--pending-bind") == 0) pendingBind = true;
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind]");
+        else if (std::strcmp(argv[i], "--concurrent-wait") == 0) concurrentWait = true;
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait]");
     }
     require(!(expectBudgetRelease && (expectBudgetRefusal || expectPartialFreeze || expectPartialRestore ||
                                       bdaMode || nativeAllocation || twoQueues || twoFamilies ||
@@ -739,6 +746,8 @@ int main(int argc, char** argv) try {
     require(!(twoQueues && (twoFamilies || exclusiveFamilies)), "choose only one multi-queue mode");
     require(!(expectBudgetRefusal && exclusiveFamilies), "budget refusal mode does not use exclusive family transfers");
     require(!(pendingWait && pendingBind), "choose only one pending queue test");
+    require(!concurrentWait || (pendingWait && twoQueues),
+            "--concurrent-wait requires --pending-wait and --two-queues");
     require(!pendingBind || (nativeAllocation && (twoQueues || twoFamilies || exclusiveFamilies)),
             "--pending-bind requires --native-allocation and a multi-queue mode");
     Context context;
@@ -755,15 +764,31 @@ int main(int argc, char** argv) try {
         check(vkQueueSubmit(context.queue, 1, &waitInfo, VK_NULL_HANDLE), "queue pending timeline wait");
         std::cout << (pendingBind ? "pending-bind queued; bind before signal" :
                                    "pending-wait queued; resolving from second queue after 300 ms") << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
         if (pendingWait) {
-            VkTimelineSemaphoreSubmitInfo signalValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-            signalValues.signalSemaphoreValueCount = 1; signalValues.pSignalSemaphoreValues = &value;
-            VkSubmitInfo signalInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-            signalInfo.pNext = &signalValues; signalInfo.signalSemaphoreCount = 1;
-            signalInfo.pSignalSemaphores = &context.pendingTimeline;
-            check(vkQueueSubmit(context.secondQueue, 1, &signalInfo, VK_NULL_HANDLE), "resolve pending wait from second queue");
-            check(vkQueueWaitIdle(context.secondQueue), "wait for second queue signal");
+            auto signalSecondQueue = [&]() {
+                VkTimelineSemaphoreSubmitInfo signalValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+                signalValues.signalSemaphoreValueCount = 1; signalValues.pSignalSemaphoreValues = &value;
+                VkSubmitInfo signalInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+                signalInfo.pNext = &signalValues; signalInfo.signalSemaphoreCount = 1;
+                signalInfo.pSignalSemaphores = &context.pendingTimeline;
+                const auto submitted = vkQueueSubmit(context.secondQueue, 1, &signalInfo, VK_NULL_HANDLE);
+                return submitted == VK_SUCCESS ? vkQueueWaitIdle(context.secondQueue) : submitted;
+            };
+            if (concurrentWait) {
+                std::atomic<VkResult> signalResult{VK_NOT_READY};
+                std::thread signalThread([&] {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                    signalResult.store(signalSecondQueue());
+                });
+                const auto firstQueueWait = vkQueueWaitIdle(context.queue);
+                signalThread.join();
+                check(signalResult.load(), "resolve pending wait concurrently from second queue");
+                check(firstQueueWait, "finish first queue pending wait");
+                std::cout << "PASS: second queue resolved a wait while first queue was blocked" << std::endl;
+                return 0;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            check(signalSecondQueue(), "resolve pending wait from second queue");
             check(vkQueueWaitIdle(context.queue), "finish first queue pending wait");
             std::cout << "PASS: second queue resolved pending wait" << std::endl;
         }
@@ -1037,6 +1062,8 @@ int main(int argc, char** argv) try {
         std::cout << "fault-retry cold baseline: logical=" << cold.coldLogicalBytes
                   << " stored=" << cold.coldStoredBytes << " freezes=" << cold.freezes << std::endl;
         const auto beforeFault = context.stats();
+        require(context.armRestoreFailure != nullptr, "restore fault-arm interface unavailable");
+        check(context.armRestoreFailure(context.device, 1), "arm one-shot partial restore failure");
         const VkResult firstAttempt = computeCycle(context, resident.handle, 0, 0, true);
         require(firstAttempt == VK_ERROR_OUT_OF_DEVICE_MEMORY,
                 "injected partial restore did not reject the first queue submission with OOM");

@@ -1,0 +1,78 @@
+{
+  "target": "RX 7900 XTX gfx1100, HIP device0, PCIe16GT/s x16",
+  "scope": "Synthetic GPU reduction reads each uint32 word of a 256 MiB buffer, repeated 32 times after warmup. Includes reduction overhead. One short sequential local/GTT/local pair; clocks and caching are uncontrolled. Not model or gaming throughput. Checksums verify every run; GTT allocator cleanup is empty with zero failures. An earlier GTT trial safely refused because MemAvailable was below the unchanged 8 GiB reserve; confirmed read-only blocked background Git jobs were cleaned before this successful sequence.",
+  "runs": [
+    {
+      "label": "local",
+      "command": [
+        "./build/hip-read-bandwidth"
+      ],
+      "returncode": 0,
+      "metrics": {
+        "bytes_per_kernel": 268435456,
+        "iterations": 32,
+        "gpu_ms": 10.483364,
+        "read_gb_per_s": 819.387222,
+        "checksum": 34326183936,
+        "expected_checksum": 34326183936,
+        "integrity": true
+      },
+      "stderr_artifact": "validation/hip-spill-read-bandwidth-local.stderr.txt",
+      "integrity": true
+    },
+    {
+      "label": "gtt",
+      "command": [
+        "./zvram",
+        "--hip",
+        "--hip-vmm",
+        "--hip-local-mib",
+        "0",
+        "--hip-host-mib",
+        "512",
+        "--",
+        "./build/hip-read-bandwidth"
+      ],
+      "returncode": 0,
+      "metrics": {
+        "bytes_per_kernel": 268435456,
+        "iterations": 32,
+        "gpu_ms": 352.55365,
+        "read_gb_per_s": 24.3649,
+        "checksum": 34326183936,
+        "expected_checksum": 34326183936,
+        "integrity": true
+      },
+      "stderr_artifact": "validation/hip-spill-read-bandwidth-gtt.stderr.txt",
+      "integrity": true
+    },
+    {
+      "label": "local_repeat",
+      "command": [
+        "./build/hip-read-bandwidth"
+      ],
+      "returncode": 0,
+      "metrics": {
+        "bytes_per_kernel": 268435456,
+        "iterations": 32,
+        "gpu_ms": 17.522743,
+        "read_gb_per_s": 490.216314,
+        "checksum": 34326183936,
+        "expected_checksum": 34326183936,
+        "integrity": true
+      },
+      "stderr_artifact": "validation/hip-spill-read-bandwidth-local_repeat.stderr.txt",
+      "integrity": true
+    }
+  ],
+  "source_artifact": "validation/hip-spill-read-bandwidth.cpp",
+  "source_sha256": "426fe78be3ac1c0174af6bc5bbc56ff449642d56841d7ef7bf85898f7b4078a6",
+  "compile_command": [
+    "/opt/rocm/bin/hipcc",
+    "--offload-arch=gfx1100",
+    "-O3",
+    "validation/hip-spill-read-bandwidth.cpp",
+    "-o",
+    "build/hip-read-bandwidth"
+  ]
+}
