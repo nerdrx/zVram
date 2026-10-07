@@ -60,3 +60,32 @@ masks and nonzero bases, and a final payload that ends at the frame boundary.
 
 Shader source SHA-256: `bce95b495b0b3954e852849290f9ca30ac843241300324197bc5600032da6072`.
 SPIR-V SHA-256: `246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854`.
+
+## Transfer and allocation experiments
+
+The smoke host accepts BP16-only `--host-input`, `--fresh-output`, and
+`--robust-access2` switches. The first lets the shader read a coherent host
+buffer directly; its GPU decode timing includes PCIe reads. The second replaces
+the output buffer after each completed fence. The third enables supported
+robust buffer access 2, matching the strict production configuration.
+All switches are opt-in; GDeflate and the default BP16 component path retain
+the existing behavior. Disable unrelated implicit layers when reproducing:
+`VK_LOADER_LAYERS_DISABLE='~implicit~'`.
+
+Sequential 32 MiB component runs passed full-byte comparisons and validation.
+Direct host input measured 1.062 ms GPU decode without an upload copy; device
+input measured 1.130 ms upload plus 0.118 ms decode. This is a small component
+transfer difference, not a measured inference gain. Twelve-iteration median
+host submit/wait times were 3.298 ms with reused output and 3.098 ms with fresh
+output, so these runs did not establish an allocation reuse advantage.
+Robust access 2 measured 0.122 ms decode over three iterations; these results
+do not support disabling robustness to explain the full-model delay.
+[Logs and scope](../../validation/bp16-transfer-experiments/summary.json).
+
+Production restoration profiling is opt-in through
+`ZVRAM_VULKAN_GPU_PROFILE=1`. It records CPU validation, input preparation,
+submit/wait and backing allocation/free/sparse-bind costs. Where native queue
+timestamps are supported, it also records GPU transfer, compute and finish
+intervals. Counters are cumulative, and sparse-bind time includes its existing
+wait. GPU query failure disables GPU timing; restoration safety and its normal
+fallback behavior remain unchanged.

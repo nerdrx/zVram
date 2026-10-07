@@ -26,6 +26,10 @@ public:
         std::uint64_t validationNs{};
         std::uint64_t inputPrepareNs{};
         std::uint64_t submitWaitNs{};
+        std::uint64_t gpuTransferNs{};
+        std::uint64_t gpuDecodeNs{};
+        std::uint64_t gpuFinishNs{};
+        std::uint64_t gpuSamples{};
     };
 
     Decoder() = default;
@@ -47,7 +51,8 @@ public:
                         PFN_vkSetDeviceLoaderData setLoaderData,
                         const char* shaderPath,
                         const VkPhysicalDeviceProperties* properties = nullptr,
-                        Format format = Format::GDeflate) {
+                        Format format = Format::GDeflate,
+                        std::uint32_t timestampValidBits = 0) {
         const char* profileEnv = std::getenv("ZVRAM_VULKAN_GPU_PROFILE");
         profileEnabled_ = profileEnv && std::strcmp(profileEnv, "1") == 0;
         profile_ = {};
@@ -73,8 +78,23 @@ public:
         if (properties) {
             maxStorageBufferRange_ = properties->limits.maxStorageBufferRange;
             maxDispatchGroupsX_ = properties->limits.maxComputeWorkGroupCount[0];
+            timestampPeriod_ = properties->limits.timestampPeriod;
         }
         VkResult result = loadFunctions(nextGdpa);
+        if (result == VK_SUCCESS && profileEnabled_ && timestampValidBits &&
+            timestampValidBits <= 64 && timestampPeriod_ > 0.0 &&
+            loadTimestampFunctions(nextGdpa)) {
+            VkQueryPoolCreateInfo queryInfo{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+            queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            queryInfo.queryCount = 4;
+            result = api_.createQueryPool(device_, &queryInfo, nullptr, &queryPool_);
+            if (result == VK_ERROR_DEVICE_LOST) poisoned_ = true;
+            else if (result != VK_SUCCESS) result = VK_SUCCESS;
+            else {
+                timestampValidBits_ = timestampValidBits;
+                gpuProfileEnabled_ = true;
+            }
+        }
         if (result == VK_SUCCESS) result = createBuffer(4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0, upload_);
         if (result == VK_SUCCESS) result = createBuffer(4,
@@ -172,6 +192,10 @@ public:
         begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         result = checked(api_.beginCommandBuffer(commandBuffer_, &begin));
         if (result != VK_SUCCESS) return result;
+        if (gpuProfileEnabled_) {
+            api_.cmdResetQueryPool(commandBuffer_, queryPool_, 0, 4);
+            api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, queryPool_, 0);
+        }
 
         VkMemoryBarrier reuse{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
         reuse.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT |
@@ -186,6 +210,8 @@ public:
         api_.cmdCopyBuffer(commandBuffer_, upload_.buffer, input_.buffer, 1, &uploadRegion);
         api_.cmdFillBuffer(commandBuffer_, scratch_.buffer, 0, 4, 0);
         api_.cmdFillBuffer(commandBuffer_, output, offset, static_cast<VkDeviceSize>(paddedRaw), 0);
+        if (gpuProfileEnabled_)
+            api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_TRANSFER_BIT, queryPool_, 1);
 
         VkMemoryBarrier computeReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
         computeReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_HOST_WRITE_BIT;
@@ -198,6 +224,8 @@ public:
         api_.cmdBindDescriptorSets(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE,
             pipelineLayout_, 0, 1, &descriptorSet_, 0, nullptr);
         api_.cmdDispatch(commandBuffer_, dispatchGroups, 1, 1);
+        if (gpuProfileEnabled_)
+            api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool_, 2);
 
         VkBufferMemoryBarrier outputReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
         outputReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -232,6 +260,8 @@ public:
         hostReady.size = 4;
         api_.cmdPipelineBarrier(commandBuffer_, VK_PIPELINE_STAGE_TRANSFER_BIT,
             VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &hostReady, 0, nullptr);
+        if (gpuProfileEnabled_)
+            api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queryPool_, 3);
         result = checked(api_.endCommandBuffer(commandBuffer_));
         if (result != VK_SUCCESS) return result;
 
@@ -259,6 +289,21 @@ public:
         if (profileEnabled_)
             profile_.submitWaitNs += static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
+        if (gpuProfileEnabled_) {
+            std::uint64_t timestamps[4]{};
+            result = api_.getQueryPoolResults(device_, queryPool_, 0, 4, sizeof(timestamps),
+                                               timestamps, sizeof(std::uint64_t),
+                                               VK_QUERY_RESULT_64_BIT);
+            if (result == VK_ERROR_DEVICE_LOST) return checked(result);
+            if (result == VK_SUCCESS) {
+                profile_.gpuTransferNs += timestampNs(timestampDelta(timestamps[0], timestamps[1]));
+                profile_.gpuDecodeNs += timestampNs(timestampDelta(timestamps[1], timestamps[2]));
+                profile_.gpuFinishNs += timestampNs(timestampDelta(timestamps[2], timestamps[3]));
+                ++profile_.gpuSamples;
+            } else {
+                disableGpuProfiling();
+            }
+        }
         std::uint32_t errorMask{};
         std::memcpy(&errorMask, errorReadback_.mapped, sizeof(errorMask));
         return errorMask ? VK_ERROR_UNKNOWN : VK_SUCCESS;
@@ -315,6 +360,11 @@ private:
         PFN_vkResetFences resetFences{};
         PFN_vkWaitForFences waitForFences{};
         PFN_vkQueueSubmit queueSubmit{};
+        PFN_vkCreateQueryPool createQueryPool{};
+        PFN_vkDestroyQueryPool destroyQueryPool{};
+        PFN_vkCmdResetQueryPool cmdResetQueryPool{};
+        PFN_vkCmdWriteTimestamp cmdWriteTimestamp{};
+        PFN_vkGetQueryPoolResults getQueryPoolResults{};
     };
 
     struct Buffer {
@@ -381,6 +431,40 @@ private:
         ZVRAM_GDEFLATE_LOAD(queueSubmit, QueueSubmit);
 #undef ZVRAM_GDEFLATE_LOAD
         return VK_SUCCESS;
+    }
+
+    bool loadTimestampFunctions(PFN_vkGetDeviceProcAddr nextGdpa) {
+#define ZVRAM_GDEFLATE_LOAD_TIMESTAMP(member, name) \
+        api_.member = reinterpret_cast<PFN_vk##name>(nextGdpa(device_, "vk" #name)); \
+        if (!api_.member) return false
+        ZVRAM_GDEFLATE_LOAD_TIMESTAMP(createQueryPool, CreateQueryPool);
+        ZVRAM_GDEFLATE_LOAD_TIMESTAMP(destroyQueryPool, DestroyQueryPool);
+        ZVRAM_GDEFLATE_LOAD_TIMESTAMP(cmdResetQueryPool, CmdResetQueryPool);
+        ZVRAM_GDEFLATE_LOAD_TIMESTAMP(cmdWriteTimestamp, CmdWriteTimestamp);
+        ZVRAM_GDEFLATE_LOAD_TIMESTAMP(getQueryPoolResults, GetQueryPoolResults);
+#undef ZVRAM_GDEFLATE_LOAD_TIMESTAMP
+        return true;
+    }
+
+    std::uint64_t timestampDelta(std::uint64_t begin, std::uint64_t end) const noexcept {
+        const auto delta = end - begin;
+        if (timestampValidBits_ >= 64) return delta;
+        const auto mask = (std::uint64_t{1} << timestampValidBits_) - 1;
+        return delta & mask;
+    }
+
+    std::uint64_t timestampNs(std::uint64_t ticks) const noexcept {
+        const long double ns = static_cast<long double>(ticks) * timestampPeriod_;
+        if (ns >= static_cast<long double>(std::numeric_limits<std::uint64_t>::max()))
+            return std::numeric_limits<std::uint64_t>::max();
+        return static_cast<std::uint64_t>(ns);
+    }
+
+    void disableGpuProfiling() noexcept {
+        if (queryPool_) api_.destroyQueryPool(device_, queryPool_, nullptr);
+        queryPool_ = VK_NULL_HANDLE;
+        gpuProfileEnabled_ = false;
+        timestampValidBits_ = 0;
     }
 
     VkResult createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
@@ -593,6 +677,7 @@ private:
 
     void cleanup() noexcept {
         if (!device_) return;
+        if (queryPool_) api_.destroyQueryPool(device_, queryPool_, nullptr);
         if (fence_) api_.destroyFence(device_, fence_, nullptr);
         if (commandPool_) api_.destroyCommandPool(device_, commandPool_, nullptr);
         if (descriptorPool_) api_.destroyDescriptorPool(device_, descriptorPool_, nullptr);
@@ -624,6 +709,10 @@ private:
         format_ = Format::GDeflate;
         maxDispatchGroupsX_ = 0;
         maxStorageBufferRange_ = 0;
+        queryPool_ = VK_NULL_HANDLE;
+        gpuProfileEnabled_ = false;
+        timestampValidBits_ = 0;
+        timestampPeriod_ = 0.0;
     }
 
     Functions api_{};
@@ -646,9 +735,13 @@ private:
     VkCommandPool commandPool_{};
     VkCommandBuffer commandBuffer_{};
     VkFence fence_{};
+    VkQueryPool queryPool_{};
     bool initialized_{};
     bool poisoned_{};
     bool profileEnabled_{};
+    bool gpuProfileEnabled_{};
+    std::uint32_t timestampValidBits_{};
+    double timestampPeriod_{};
     Profile profile_{};
 };
 

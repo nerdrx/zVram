@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -177,7 +178,7 @@ struct Runtime {
         }
     }
 
-    void pickDevice(bool simpleShader = false) {
+    void pickDevice(bool simpleShader = false, bool robustness2 = false) {
         std::uint32_t count = 0;
         check(vkEnumeratePhysicalDevices(instance, &count, nullptr), "enumerate physical device count");
         if (!count) throw std::runtime_error("no Vulkan physical device");
@@ -211,6 +212,8 @@ struct Runtime {
             hasDeviceExtension(physical, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
         if (!simpleShader && !subgroupSizeControl)
             throw std::runtime_error("selected device lacks VK_EXT_subgroup_size_control");
+        if (robustness2 && !hasDeviceExtension(physical, VK_EXT_ROBUSTNESS_2_EXTENSION_NAME))
+            throw std::runtime_error("selected device lacks VK_EXT_robustness2 required by --robust-access2");
         subgroupProperties.pNext = &subgroupSizeProperties;
         if (!subgroupSizeControl) subgroupProperties.pNext = nullptr;
         VkPhysicalDeviceProperties2 props2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
@@ -218,9 +221,18 @@ struct Runtime {
         vkGetPhysicalDeviceProperties2(physical, &props2);
         VkPhysicalDeviceSubgroupSizeControlFeatures subgroupFeatures{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES};
+        VkPhysicalDeviceRobustness2FeaturesEXT robustnessFeatures{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT};
         VkPhysicalDeviceFeatures2 supported{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+        if (robustness2) {
+            if (subgroupSizeControl) subgroupFeatures.pNext = &robustnessFeatures;
+            else supported.pNext = &robustnessFeatures;
+        }
         if (subgroupSizeControl) supported.pNext = &subgroupFeatures;
         vkGetPhysicalDeviceFeatures2(physical, &supported);
+        if (robustness2 && (!supported.features.robustBufferAccess ||
+                            !robustnessFeatures.robustBufferAccess2))
+            throw std::runtime_error("selected device lacks core robustBufferAccess or robustness2 robustBufferAccess2");
         if (!simpleShader && !supported.features.shaderInt64)
             throw std::runtime_error("selected device lacks shaderInt64 required by the pinned SPIR-V OpCapability Int64");
         constexpr VkSubgroupFeatureFlags requiredSubgroupOps =
@@ -239,10 +251,21 @@ struct Runtime {
         if (simpleShader && (properties.limits.maxComputeWorkGroupInvocations < 256 ||
                              properties.limits.maxComputeWorkGroupSize[0] < 256))
             throw std::runtime_error("selected device cannot run the 256-thread BP16 workgroup");
+        if (robustness2) {
+            VkPhysicalDeviceRobustness2PropertiesEXT robustnessProperties{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_PROPERTIES_EXT};
+            VkPhysicalDeviceProperties2 robustnessProps{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+            robustnessProps.pNext = &robustnessProperties;
+            vkGetPhysicalDeviceProperties2(physical, &robustnessProps);
+            const auto alignment = robustnessProperties.robustStorageBufferAccessSizeAlignment;
+            if (!alignment || (alignment & (alignment - 1)))
+                throw std::runtime_error("selected device reports invalid robustStorageBufferAccessSizeAlignment");
+        }
         std::cout << "device=" << properties.deviceName << " vendor=0x" << std::hex
                   << properties.vendorID << std::dec << " type=" << properties.deviceType
                   << " queue-family=" << queueFamily
                   << " shaderInt64=" << (!simpleShader ? "enabled" : "not-required")
+                  << " robustness2=" << (robustness2 ? "enabled" : "disabled")
                   << " execution=" << (software ? "CPU-software" :
                                          (simpleShader ? "GPU-compute" : "GPU-wave32"))
                   << " default-subgroup=" << subgroupProperties.subgroupSize
@@ -258,19 +281,31 @@ struct Runtime {
         queueInfo.pQueuePriorities = &priority;
         VkPhysicalDeviceFeatures enabled{};
         enabled.shaderInt64 = simpleShader ? VK_FALSE : VK_TRUE;
+        enabled.robustBufferAccess = robustness2 ? VK_TRUE : VK_FALSE;
         VkPhysicalDeviceSubgroupSizeControlFeatures enabledSubgroup{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES};
         enabledSubgroup.subgroupSizeControl = simpleShader ? VK_FALSE : VK_TRUE;
         enabledSubgroup.computeFullSubgroups = (software || simpleShader) ? VK_FALSE : VK_TRUE;
+        VkPhysicalDeviceRobustness2FeaturesEXT enabledRobustness{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT};
+        enabledRobustness.robustBufferAccess2 = robustness2 ? VK_TRUE : VK_FALSE;
         VkDeviceCreateInfo deviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         deviceInfo.queueCreateInfoCount = 1;
         deviceInfo.pQueueCreateInfos = &queueInfo;
-        const char* deviceExtensions[]{VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME};
-        deviceInfo.enabledExtensionCount = simpleShader ? 0u : 1u;
-        deviceInfo.ppEnabledExtensionNames = simpleShader ? nullptr : deviceExtensions;
+        const char* deviceExtensions[2]{};
+        std::uint32_t enabledExtensionCount = 0;
+        if (!simpleShader) deviceExtensions[enabledExtensionCount++] = VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME;
+        if (robustness2) deviceExtensions[enabledExtensionCount++] = VK_EXT_ROBUSTNESS_2_EXTENSION_NAME;
+        deviceInfo.enabledExtensionCount = enabledExtensionCount;
+        deviceInfo.ppEnabledExtensionNames = enabledExtensionCount ? deviceExtensions : nullptr;
         VkPhysicalDeviceFeatures2 enabledFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
         enabledFeatures.features = enabled;
-        enabledFeatures.pNext = simpleShader ? nullptr : &enabledSubgroup;
+        if (!simpleShader) {
+            enabledSubgroup.pNext = robustness2 ? &enabledRobustness : nullptr;
+            enabledFeatures.pNext = &enabledSubgroup;
+        } else if (robustness2) {
+            enabledFeatures.pNext = &enabledRobustness;
+        }
         deviceInfo.pNext = &enabledFeatures;
         deviceInfo.pEnabledFeatures = nullptr;
         check(vkCreateDevice(physical, &deviceInfo, nullptr, &device), "create Vulkan device");
@@ -348,12 +383,41 @@ struct Buffer {
     VkMemoryPropertyFlags memoryFlags{};
     void* mapped{};
 
-    ~Buffer() {
+    void destroy() noexcept {
         if (owner && owner->abandonOnExit) return;
         if (device && mapped) vkUnmapMemory(device, memory);
         if (device && buffer) vkDestroyBuffer(device, buffer, nullptr);
         if (device && memory) vkFreeMemory(device, memory, nullptr);
+        owner = nullptr;
+        device = VK_NULL_HANDLE;
+        buffer = VK_NULL_HANDLE;
+        memory = VK_NULL_HANDLE;
+        allocationSize = 0;
+        descriptorSize = 0;
+        memoryFlags = 0;
+        mapped = nullptr;
     }
+
+    void adopt(Buffer& source) noexcept {
+        owner = source.owner;
+        device = source.device;
+        buffer = source.buffer;
+        memory = source.memory;
+        allocationSize = source.allocationSize;
+        descriptorSize = source.descriptorSize;
+        memoryFlags = source.memoryFlags;
+        mapped = source.mapped;
+        source.owner = nullptr;
+        source.device = VK_NULL_HANDLE;
+        source.buffer = VK_NULL_HANDLE;
+        source.memory = VK_NULL_HANDLE;
+        source.allocationSize = 0;
+        source.descriptorSize = 0;
+        source.memoryFlags = 0;
+        source.mapped = nullptr;
+    }
+
+    ~Buffer() { destroy(); }
 
     void init(Runtime& runtime, VkDeviceSize size, VkBufferUsageFlags usage,
               VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred = 0,
@@ -421,7 +485,9 @@ std::uint32_t researchIterations() {
 
 void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
          const std::vector<std::uint8_t>& expected, std::uint32_t iterations,
-         bool bp16 = false) {
+         bool bp16 = false, bool hostInput = false, bool freshOutput = false) {
+    if (hostInput && !bp16)
+        throw std::runtime_error("direct host input is available only for BP16");
     const auto rawSize = expected.size();
     if (!rawSize || rawSize > UINT32_MAX || encoded.size() > UINT32_MAX - 3u)
         throw std::runtime_error("shader input and output must fit nonzero uint32 byte offsets");
@@ -439,9 +505,13 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
     const auto deviceLocal = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     const auto excluded = runtime.software ? VkMemoryPropertyFlags(0) : VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     Buffer upload, input, control, output, scratch, readback;
-    upload.init(runtime, inputSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, hostCoherent);
-    input.init(runtime, inputSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-               deviceLocal, deviceLocal, excluded);
+    const auto uploadUsage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+        (hostInput ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT : VkBufferUsageFlags(0));
+    upload.init(runtime, inputSize, uploadUsage, hostCoherent, 0,
+                hostInput ? deviceLocal : VkMemoryPropertyFlags(0));
+    if (!hostInput)
+        input.init(runtime, inputSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                   deviceLocal, deviceLocal, excluded);
     control.init(runtime, 12, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                  hostCoherent);
     output.init(runtime, outputSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -459,7 +529,8 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
     setInfo.pSetLayouts = &runtime.setLayout;
     VkDescriptorSet set{};
     check(vkAllocateDescriptorSets(runtime.device, &setInfo, &set), "allocate descriptor set");
-    Buffer* buffers[4]{&input, &control, &output, &scratch};
+    Buffer* inputBuffer = hostInput ? &upload : &input;
+    Buffer* buffers[4]{inputBuffer, &control, &output, &scratch};
     VkDescriptorBufferInfo bufferInfos[4]{};
     VkWriteDescriptorSet writes[4]{};
     for (std::uint32_t i = 0; i < 4; ++i) {
@@ -473,15 +544,27 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
     }
     vkUpdateDescriptorSets(runtime.device, 4, writes, 0, nullptr);
 
-    std::vector<VkCommandBuffer> commands(iterations);
+    std::vector<std::uint64_t> hostSubmitWaitNs(iterations);
     VkCommandBufferAllocateInfo commandAllocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     commandAllocation.commandPool = runtime.commandPool;
     commandAllocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandAllocation.commandBufferCount = iterations;
-    check(vkAllocateCommandBuffers(runtime.device, &commandAllocation, commands.data()),
-          "allocate command buffers");
     for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
-        const auto command = commands[iteration];
+        if (freshOutput && iteration) {
+            Buffer replacement;
+            replacement.init(runtime, outputSize,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                deviceLocal, deviceLocal, excluded);
+            bufferInfos[2] = {replacement.buffer, 0, replacement.descriptorSize};
+            writes[2].pBufferInfo = &bufferInfos[2];
+            vkUpdateDescriptorSets(runtime.device, 1, &writes[2], 0, nullptr);
+            output.destroy();
+            output.adopt(replacement);
+        }
+        VkCommandBuffer command{};
+        commandAllocation.commandBufferCount = 1;
+        check(vkAllocateCommandBuffers(runtime.device, &commandAllocation, &command),
+              "allocate iteration command buffer");
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         check(vkBeginCommandBuffer(command, &begin), "begin command buffer");
         const auto queryBase = iteration * 5;
@@ -496,8 +579,10 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
             vkCmdResetQueryPool(command, runtime.timestampPool, queryBase, 5);
         if (runtime.timestampPool)
             vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, runtime.timestampPool, queryBase);
-        const VkBufferCopy uploadRegion{0, 0, inputSize};
-        vkCmdCopyBuffer(command, upload.buffer, input.buffer, 1, &uploadRegion);
+        if (!hostInput) {
+            const VkBufferCopy uploadRegion{0, 0, inputSize};
+            vkCmdCopyBuffer(command, upload.buffer, input.buffer, 1, &uploadRegion);
+        }
         if (runtime.timestampPool)
             vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_TRANSFER_BIT, runtime.timestampPool, queryBase + 1);
         vkCmdFillBuffer(command, control.buffer, 0, 4, 1);
@@ -557,6 +642,7 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         submit.commandBufferCount = 1;
         submit.pCommandBuffers = &command;
+        const auto submitWaitStart = std::chrono::steady_clock::now();
         const auto submitResult = vkQueueSubmit(runtime.queue, 1, &submit, runtime.fence);
         if (submitResult == VK_ERROR_DEVICE_LOST) runtime.abandonOnExit = true;
         check(submitResult, "submit GDeflate compute");
@@ -565,6 +651,9 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         if (waitResult == VK_TIMEOUT || waitResult == VK_ERROR_DEVICE_LOST)
             runtime.abandonOnExit = true;
         check(waitResult, "wait for GDeflate compute fence");
+        hostSubmitWaitNs[iteration] = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - submitWaitStart).count());
 
         const auto* actual = static_cast<const std::uint8_t*>(readback.mapped);
         std::uint32_t shaderError{};
@@ -600,7 +689,13 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
             throw std::runtime_error("decoded bytes differ at offset " +
                                      std::to_string(std::distance(expected.begin(), mismatch.first)));
         }
+        vkFreeCommandBuffers(runtime.device, runtime.commandPool, 1, &command);
     }
+    std::cout << "host-submit-wait-ns mode=" << (freshOutput ? "fresh-output" : "reused-output")
+              << " iterations=" << iterations << " values=";
+    for (std::size_t i = 0; i < hostSubmitWaitNs.size(); ++i)
+        std::cout << (i ? "," : "") << hostSubmitWaitNs[i];
+    std::cout << '\n';
     if (runtime.timestampPool) {
         std::vector<std::uint64_t> values(iterations * 5);
         check(vkGetQueryPoolResults(runtime.device, runtime.timestampPool, 0,
@@ -613,8 +708,8 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         std::vector<std::uint64_t> uploadNs, decodeNs, copyNs;
         for (std::uint32_t i = 0; i < iterations; ++i) {
             const auto base = i * 5;
-            uploadNs.push_back(static_cast<std::uint64_t>((((values[base + 1] - values[base]) & mask) *
-                                                          runtime.properties.limits.timestampPeriod)));
+            uploadNs.push_back(hostInput ? 0 : static_cast<std::uint64_t>((((values[base + 1] - values[base]) & mask) *
+                                                                           runtime.properties.limits.timestampPeriod)));
             decodeNs.push_back(static_cast<std::uint64_t>((((values[base + 3] - values[base + 2]) & mask) *
                                                           runtime.properties.limits.timestampPeriod)));
             copyNs.push_back(static_cast<std::uint64_t>((((values[base + 4] - values[base + 3]) & mask) *
@@ -624,10 +719,17 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
             std::sort(samples.begin(), samples.end());
             return samples[samples.size() / 2];
         };
-        std::cout << (runtime.software ? "cpu-software-timing iterations=" : "gpu-timing iterations=") << iterations
-                  << " upload-ns-median=" << median(uploadNs)
-                  << " decode-ns-median=" << median(decodeNs)
-                  << " readback-copy-ns-median=" << median(copyNs) << '\n';
+        if (hostInput) {
+            std::cout << "gpu-timing input-mode=direct-host-visible upload-gpu-copy-ns=0 decode-includes-host-memory-reads"
+                      << " iterations=" << iterations
+                      << " decode-ns-median=" << median(decodeNs)
+                      << " readback-copy-ns-median=" << median(copyNs) << '\n';
+        } else {
+            std::cout << (runtime.software ? "cpu-software-timing iterations=" : "gpu-timing iterations=") << iterations
+                      << " upload-ns-median=" << median(uploadNs)
+                      << " decode-ns-median=" << median(decodeNs)
+                      << " readback-copy-ns-median=" << median(copyNs) << '\n';
+        }
     } else {
         std::cout << "gpu-timing unavailable: compute queue has no timestamp bits\n";
     }
@@ -640,21 +742,32 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
 
 int main(int argc, char** argv) {
     std::cout.setf(std::ios::unitbuf);
-    const bool bp16 = argc == 7 && std::strcmp(argv[1], "--codec") == 0 &&
-                      std::strcmp(argv[2], "bp16") == 0 &&
-                      (std::strcmp(argv[3], "--preflight-only") == 0 ||
-                       std::strcmp(argv[3], "--gpu-bounded-smoke") == 0);
+    const bool bp16 = argc >= 3 && std::strcmp(argv[1], "--codec") == 0 &&
+                      std::strcmp(argv[2], "bp16") == 0;
+    bool hostInput = false;
+    bool freshOutput = false;
+    bool robustness2 = false;
+    int arg = bp16 ? 3 : 1;
+    while (bp16 && arg < argc) {
+        if (std::strcmp(argv[arg], "--host-input") == 0) hostInput = true;
+        else if (std::strcmp(argv[arg], "--fresh-output") == 0) freshOutput = true;
+        else if (std::strcmp(argv[arg], "--robust-access2") == 0) robustness2 = true;
+        else break;
+        ++arg;
+    }
+    const bool bp16Args = bp16 && argc == arg + 4 &&
+        (std::strcmp(argv[arg], "--preflight-only") == 0 ||
+         std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0);
     const bool regular = argc == 5 &&
                          (std::strcmp(argv[1], "--preflight-only") == 0 ||
                           std::strcmp(argv[1], "--gpu-smoke") == 0 ||
                           std::strcmp(argv[1], "--gpu-bounded-smoke") == 0 ||
                           std::strcmp(argv[1], "--software-smoke") == 0);
-    if (!bp16 && !regular) {
+    if ((!bp16 && !regular) || (bp16 && !bp16Args)) {
         std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n"
-                     "       vulkan_gdeflate_smoke --codec bp16 --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
+                     "       vulkan_gdeflate_smoke --codec bp16 [--host-input] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
         return 2;
     }
-    const int arg = bp16 ? 3 : 1;
     const bool singleTile = !bp16 && std::strcmp(argv[arg], "--gpu-smoke") == 0;
     const bool gpu = singleTile || std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0;
     const bool software = !bp16 && std::strcmp(argv[arg], "--software-smoke") == 0;
@@ -687,6 +800,8 @@ int main(int argc, char** argv) {
                 throw std::runtime_error("--gpu-smoke is restricted to one tile; use --gpu-bounded-smoke for up to 32 MiB");
         }
         if (!gpu && !software) {
+            if (freshOutput) throw std::runtime_error("--fresh-output requires GPU smoke mode");
+            if (robustness2) throw std::runtime_error("--robust-access2 requires GPU smoke mode");
             std::cout << (bp16 ? "CPU-only BP16 frame preflight; shader decode is unverified\n"
                                : "CPU-only envelope preflight; compressed payload and GPU decoder are unverified\n");
             return 0;
@@ -699,9 +814,9 @@ int main(int argc, char** argv) {
         const auto iterations = researchIterations();
         Runtime runtime(validation, software);
         runtime.initInstance();
-        runtime.pickDevice(bp16);
+        runtime.pickDevice(bp16, robustness2);
         runtime.initPipeline(shader, iterations, bp16);
-        run(runtime, encoded, expected, iterations, bp16);
+        run(runtime, encoded, expected, iterations, bp16, hostInput, freshOutput);
         status = 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';

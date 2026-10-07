@@ -1,0 +1,13 @@
+{
+  "scope": "opt-in CPU host, native GPU timestamp and backing operation timing; no algorithm change",
+  "regression_tests": 20,
+  "regression_passed": 20,
+  "profiled_native_pressure_full_byte_check": true,
+  "fallbacks_zero": true,
+  "validation_diagnostics": false,
+  "last_profile_counters": {
+    "host": "calls=3 validation-ns=380704 input-prepare-ns=7664108 submit-wait-ns=15067172",
+    "device": "samples=3 transfer-ns=14060160 decode-ns=362880 finish-ns=24000",
+    "backing": "alloc-calls=15 alloc-ok=15 alloc-fail=0 alloc-ns=616095 free-calls=14 free-ns=423374 sparse-calls=43 sparse-ok=43 sparse-fail=0 sparse-ns=2795167"
+  }
+}

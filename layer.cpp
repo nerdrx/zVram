@@ -251,11 +251,16 @@ struct Device {
     unsigned byteShuffle{};
     zvram::snapshot::Codec snapshotCodec{zvram::snapshot::Codec::Zstd};
     unsigned gdeflateWorkers{1}, bp16Workers{1};
+    bool gpuProfileEnabled{};
+    std::atomic<std::uint64_t> gpuProfileAllocCalls{}, gpuProfileAllocSuccess{}, gpuProfileAllocFailures{}, gpuProfileAllocNs{};
+    std::atomic<std::uint64_t> gpuProfileFreeCalls{}, gpuProfileFreeNs{};
+    std::atomic<std::uint64_t> gpuProfileSparseCalls{}, gpuProfileSparseSuccess{}, gpuProfileSparseFailures{}, gpuProfileSparseNs{};
     bool gpuRestoreEnabled{}, gpuRestoreUnsafe{};
     VkDeviceSize gpuStorageAlignment{1};
     VkDeviceSize gpuStorageRange{};
     std::uint64_t gpuDecodeCalls{}, gpuDecodeBytes{}, gpuDecodeNanoseconds{}, gpuDecodeFallbacks{};
     VkPhysicalDeviceProperties gpuProperties{};
+    std::uint32_t gpuTimestampBits{};
     std::unique_ptr<zvram::gdeflate::gpu::Decoder> gpuDecoder;
     bool narrowDescriptorRanges{};
     VkDeviceSize robustRangeAlignment{1};
@@ -356,7 +361,22 @@ void logSnapshotState(const char* event,const Device& d) {
         logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu",
              static_cast<unsigned long long>(profile.calls),static_cast<unsigned long long>(profile.validationNs),
              static_cast<unsigned long long>(profile.inputPrepareNs),static_cast<unsigned long long>(profile.submitWaitNs));
+        logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu",
+             static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
+             static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs));
     }
+    if(d.gpuProfileEnabled && std::strcmp(event,"restore")==0)
+        logf("GPU restore backing profile alloc-calls=%llu alloc-ok=%llu alloc-fail=%llu alloc-ns=%llu free-calls=%llu free-ns=%llu sparse-calls=%llu sparse-ok=%llu sparse-fail=%llu sparse-ns=%llu",
+             static_cast<unsigned long long>(d.gpuProfileAllocCalls.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileAllocSuccess.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileAllocFailures.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileAllocNs.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileFreeCalls.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileFreeNs.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseCalls.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseSuccess.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseFailures.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseNs.load(std::memory_order_relaxed)));
 }
 std::mutex mapsMutex;
 // Future command entry points absent from our build cannot be tracked safely.
@@ -892,6 +912,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     r=nextCreate(physical,&copy,allocator,out); if(r!=VK_SUCCESS) return r;
     try {
         auto d=std::make_shared<Device>(); d->handle=*out; d->physical=physical; d->gdpa=nextGdpa; d->setDeviceLoaderData=setDeviceLoaderData;
+        const char* gpuProfile=std::getenv("ZVRAM_VULKAN_GPU_PROFILE");
+        d->gpuProfileEnabled=gpuProfile && std::strcmp(gpuProfile,"1")==0;
         const char* bufferPresentation=std::getenv("ZVRAM_VULKAN_BUFFER_PRESENTATION");
         d->bufferPresentation=bufferPresentation && std::strcmp(bufferPresentation,"1")==0;
         const char* asyncCompression=std::getenv("ZVRAM_VULKAN_ASYNC_COMPRESSION");
@@ -903,6 +925,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         }
         if(gpuRestorePlanned) {
             d->gpuProperties=gpuProperties;
+            d->gpuTimestampBits=queueProps[privateFamily].timestampValidBits;
             d->gpuStorageAlignment=std::max<VkDeviceSize>(1,gpuProperties.limits.minStorageBufferOffsetAlignment);
             d->gpuStorageRange=gpuProperties.limits.maxStorageBufferRange;
         }
@@ -1129,7 +1152,15 @@ VkResult bindSparseBatchLocked(VkDevice d,Device& state,
 }
 VkResult bindSparseLocked(VkDevice d,Device& state,VkBuffer buffer,const VkSparseMemoryBind* binds,std::uint32_t count) {
     VkSparseBufferMemoryBindInfo bufferInfo{}; bufferInfo.buffer=buffer; bufferInfo.bindCount=count; bufferInfo.pBinds=binds;
-    return bindSparseBatchLocked(d,state,&bufferInfo,1);
+    const auto started=state.gpuProfileEnabled?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
+    const auto result=bindSparseBatchLocked(d,state,&bufferInfo,1);
+    if(state.gpuProfileEnabled) {
+        state.gpuProfileSparseCalls.fetch_add(1,std::memory_order_relaxed);
+        (result==VK_SUCCESS?state.gpuProfileSparseSuccess:state.gpuProfileSparseFailures).fetch_add(1,std::memory_order_relaxed);
+        state.gpuProfileSparseNs.fetch_add(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now()-started).count()),std::memory_order_relaxed);
+    }
+    return result;
 }
 VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std::size_t childIndex,bool unbind,
                              VkBuffer releaseView=VK_NULL_HANDLE) {
@@ -1357,7 +1388,13 @@ void releaseBackingChild(Device& d,VirtualMemory& memory,std::size_t i) {
         auto& live=local?d.liveLocal:d.liveOther;
         live=live>=memory.childSizes[i]?live-memory.childSizes[i]:0;
     }
+    const auto freeStarted=d.gpuProfileEnabled?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
     d.free(d.handle,child,memory.hasAdoptedCallbacks && i==0?&memory.adoptedCallbacks:nullptr);
+    if(d.gpuProfileEnabled) {
+        d.gpuProfileFreeCalls.fetch_add(1,std::memory_order_relaxed);
+        d.gpuProfileFreeNs.fetch_add(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now()-freeStarted).count()),std::memory_order_relaxed);
+    }
     if(i==0) memory.hasAdoptedCallbacks=false;
     if(i<memory.childGenerations.size()) bumpAsyncVersion(d,memory.childGenerations[i]);
     memory.children[i]=VK_NULL_HANDLE;
@@ -1449,7 +1486,7 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
         const auto* path=std::getenv(bp16?"ZVRAM_BP16_SHADER_PATH":"ZVRAM_GDEFLATE_SHADER_PATH");
         const auto format=bp16?zvram::gdeflate::gpu::Format::BP16:zvram::gdeflate::gpu::Format::GDeflate;
         const auto result=d.gpuDecoder && path?d.gpuDecoder->initialize(d.handle,d.gdpa,d.memory,d.copyQueue,family,
-            d.setDeviceLoaderData,path,&d.gpuProperties,format):VK_ERROR_INITIALIZATION_FAILED;
+            d.setDeviceLoaderData,path,&d.gpuProperties,format,d.gpuTimestampBits):VK_ERROR_INITIALIZATION_FAILED;
         if(result!=VK_SUCCESS) {
             d.gpuRestoreEnabled=false; d.gpuDecoder.reset();
             logf("GPU %s restore unavailable result=%d; retaining CPU codec",codecName,result);
@@ -2208,6 +2245,7 @@ std::vector<std::uint32_t> backingMemoryTypes(const Device& d,const VkMemoryRequ
 }
 VkResult allocateBackingChild(Device& d,VkDevice device,VkDeviceSize size,std::uint32_t type,
                               VkMemoryAllocateFlags flags,bool hasPriority,float priority,VkDeviceMemory* out) {
+    const auto started=d.gpuProfileEnabled?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
     VkMemoryPriorityAllocateInfoEXT priorityInfo{VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT};
     priorityInfo.priority=priority;
     VkMemoryAllocateFlagsInfo flagsInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
@@ -2218,7 +2256,14 @@ VkResult allocateBackingChild(Device& d,VkDevice device,VkDeviceSize size,std::u
     allocation.allocationSize=size; allocation.memoryTypeIndex=type;
     if(flags) allocation.pNext=&flagsInfo;
     else if(hasPriority) allocation.pNext=&priorityInfo;
-    return d.allocate(device,&allocation,nullptr,out);
+    const auto result=d.allocate(device,&allocation,nullptr,out);
+    if(d.gpuProfileEnabled) {
+        d.gpuProfileAllocCalls.fetch_add(1,std::memory_order_relaxed);
+        (result==VK_SUCCESS?d.gpuProfileAllocSuccess:d.gpuProfileAllocFailures).fetch_add(1,std::memory_order_relaxed);
+        d.gpuProfileAllocNs.fetch_add(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now()-started).count()),std::memory_order_relaxed);
+    }
+    return result;
 }
 VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer buffer,
                       VkDeviceMemory memory,VkDeviceSize memoryOffset) {

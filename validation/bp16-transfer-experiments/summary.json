@@ -1,0 +1,83 @@
+{
+  "scope": "component-only sequential experiments; not full-model performance",
+  "records": {
+    "direct-host-paired.log": {
+      "pass": true,
+      "validation_diagnostics": false,
+      "timing_lines": [
+        "buffer bytes=29202816 allocation-bytes=29202816 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=12 allocation-bytes=16 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=4 allocation-bytes=16 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554436 allocation-bytes=33554448 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "gpu-timing input-mode=direct-host-visible upload-gpu-copy-ns=0 decode-includes-host-memory-reads iterations=3 decode-ns-median=1061920 readback-copy-ns-median=1134880"
+      ]
+    },
+    "device-input-repaired.log": {
+      "pass": true,
+      "validation_diagnostics": false,
+      "timing_lines": [
+        "buffer bytes=29202816 allocation-bytes=29202816 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=29202816 allocation-bytes=29202816 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=12 allocation-bytes=16 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=4 allocation-bytes=16 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554436 allocation-bytes=33554448 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "gpu-timing iterations=3 upload-ns-median=1130040 decode-ns-median=118000 readback-copy-ns-median=1139560"
+      ]
+    },
+    "reused-output.log": {
+      "pass": true,
+      "validation_diagnostics": false,
+      "timing_lines": [
+        "buffer bytes=29202816 allocation-bytes=29202816 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=29202816 allocation-bytes=29202816 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=12 allocation-bytes=16 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=4 allocation-bytes=16 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554436 allocation-bytes=33554448 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "host-submit-wait-ns mode=reused-output iterations=12 values=2776938,3426881,3280740,3229350,3302251,3276800,3293670,3382320,3188240,3406990,3410901,3419132",
+        "gpu-timing iterations=12 upload-ns-median=1276520 decode-ns-median=117800 readback-copy-ns-median=1134080"
+      ]
+    },
+    "fresh-output.log": {
+      "pass": true,
+      "validation_diagnostics": false,
+      "timing_lines": [
+        "buffer bytes=29202816 allocation-bytes=29202816 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=29202816 allocation-bytes=29202816 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=12 allocation-bytes=16 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=4 allocation-bytes=16 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554436 allocation-bytes=33554448 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "host-submit-wait-ns mode=fresh-output iterations=12 values=2749879,3052030,3233680,3084429,3208999,3129070,3172770,3202149,3092410,3005099,3103709,3013840",
+        "gpu-timing iterations=12 upload-ns-median=1214960 decode-ns-median=118160 readback-copy-ns-median=1135320"
+      ]
+    },
+    "robust-access2.log": {
+      "pass": true,
+      "validation_diagnostics": false,
+      "timing_lines": [
+        "buffer bytes=29202816 allocation-bytes=29202816 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=29202816 allocation-bytes=29202816 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=12 allocation-bytes=16 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=4 allocation-bytes=16 memory-type=0 flags=0x1 host-visible=no device-local=yes",
+        "buffer bytes=33554436 allocation-bytes=33554448 memory-type=2 flags=0x6 host-visible=yes device-local=no",
+        "host-submit-wait-ns mode=reused-output iterations=3 values=2967449,3226120,3216869",
+        "gpu-timing iterations=3 upload-ns-median=1156440 decode-ns-median=122000 readback-copy-ns-median=1149240"
+      ]
+    }
+  }
+}
