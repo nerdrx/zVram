@@ -815,3 +815,68 @@ on all application allocations or all physical VRAM usage.
 [command](validation/internlm-bp16-18g/command.json),
 [binary and source hashes](validation/internlm-bp16-18g/runtime-binary-sha256.json),
 and [full stderr](validation/internlm-bp16-18g/automatic.stderr.txt.gz).
+
+### Eight-worker sequential repeat
+
+A later run used the same full F16 model and 18 GiB tracked cap, with BP16 GPU
+restore, MRU, lazy backing, a 3 GiB budget reserve, and eight CPU encoding
+workers. All **49/49** layers were offloaded; output matched the native run
+byte for byte (SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`). The
+12 decode runs took **65,471.04 ms**, giving the recorded rate
+`12 * 1000 / 65471.04 = 0.18328 tokens/s`. This remains slow full-model
+inference. It followed the one-worker 0.14 trial sequentially, without
+controlled GPU clocks or desktop activity, so it does not establish a worker
+speedup. The earlier one-worker result above is retained as its own run.
+
+The last snapshot state recorded **10,016 restores**, **9,436 freezes**, and
+zero snapshot failures. The cumulative GPU restore profile recorded **8,848
+calls / 293,193,777,152 bytes**, **62.968 s** host elapsed inside GPU
+restoration calls, and zero GPU fallbacks. Host profiling recorded 8,848 calls, **1.308 s** validation,
+**13.949 s** input preparation, and **47.590 s** submit/wait. The run sampled a
+minimum of **22,847 MiB** available RAM and **2,229 MiB** swap growth. The
+Decoder-only component timings do not measure model throughput or establish a
+full-model speedup.
+
+[Summary](validation/internlm-bp16-workers8-18g/summary.json),
+[command](validation/internlm-bp16-workers8-18g/command.json),
+[runtime binary hashes](validation/internlm-bp16-workers8-18g/runtime-binary-sha256.json),
+[source commit](validation/internlm-bp16-workers8-18g/source-commit.txt),
+[full result](validation/internlm-bp16-workers8-18g/result.json.gz), and
+[full stderr](validation/internlm-bp16-workers8-18g/automatic.stderr.txt.gz).
+
+### Nineteen-gibibyte sequential profile run
+
+A subsequent run used the same 39,725,643,136-byte InternLM2.5-20B F16 model,
+BP16 GPU restore, MRU, lazy backing, async compression, and eight CPU encoding
+workers, with a **19 GiB** tracked cap and **2.5 GiB** headroom reserve. All
+**49/49** layers were offloaded, output matched the earlier BP16 runs
+byte-for-byte (SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`), and the
+run had zero diagnostics or GPU fallback. Twelve decode runs took **61,489.52
+ms**: `12 * 1000 / 61489.52 = 0.195155 tokens/s` (reported as **0.20**).
+This is a sequential result at a different cap, not a controlled codec or
+worker-count comparison; clocks and desktop activity were uncontrolled.
+
+The final device profile had **8,341 samples**: **42.281 s transfer**,
+**1.092 s compute**, and **0.061 s finish**. Host profiling recorded **1.499 s
+validation**, **13.494 s input preparation**, and **45.005 s submit/wait**.
+Backing profiling recorded **0.164 s allocation**, **0.103 s free**, and
+**0.198 s sparse binding** cumulatively. These counters point to the transfer
+stage as the largest profiled device component; they do not establish an
+isolated cause or model speedup. The final snapshot had **9,509 restores**,
+**8,896 freezes**, and zero failures. Minimum available RAM was **21,751 MiB**;
+swap grew by **2,514 MiB**.
+
+The run used source commit `a02c7e635cf07f854586998fcc2ceb3510dbbad8` with
+working-tree profiling additions. The compiled profiling source revision was
+`09fcc57`, verified against the recorded source hashes.
+
+[Summary](validation/internlm-bp16-workers8-19g/summary.json),
+[command](validation/internlm-bp16-workers8-19g/command.json),
+[run harness](validation/internlm-bp16-workers8-19g/run.py),
+[controller result](validation/internlm-bp16-workers8-19g/controller.log),
+[runtime binary hashes](validation/internlm-bp16-workers8-19g/runtime-binary-sha256.json),
+[source commit](validation/internlm-bp16-workers8-19g/source-commit.txt),
+[full result](validation/internlm-bp16-workers8-19g/result.json.gz), and
+[full stderr](validation/internlm-bp16-workers8-19g/automatic.stderr.txt.gz).

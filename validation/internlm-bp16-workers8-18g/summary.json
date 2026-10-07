@@ -1,0 +1,66 @@
+{
+  "scope": "full wrapped large-model trial; GPU BP16 MRU18GiB,3GiB reserve,8 encoding workers,hostphaseprofiling; hashes retained",
+  "source_commit": "a02c7e635cf07f854586998fcc2ceb3510dbbad8",
+  "performance": {
+    "decode_ms": 65471.04,
+    "decode_runs": 12,
+    "tokens_per_second": 0.18,
+    "prompt_ms": 12774.76,
+    "restore_ms": []
+  },
+  "rate_calculation": "12 * 1000 / 65471.04 = 0.18328 tokens/s (reported truncated)",
+  "exact_tokens_per_second": 0.1832871449728002,
+  "reported_tokens_per_second": 0.18328,
+  "returncode": 0,
+  "offload": [
+    49,
+    49
+  ],
+  "native_output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "minimum_available_mib": 22847,
+  "swap_used_baseline_mib": 11988,
+  "swap_used_peak_mib": 14217,
+  "swap_growth_mib": 2229,
+  "final_state": {
+    "resident": 19315490816,
+    "cold-logical": 19434307584,
+    "cold-stored": 15560558816,
+    "freezes": 9436,
+    "restores": 10016,
+    "failures": 0,
+    "cache-stored": 5889152592,
+    "clean-reuses": 7127,
+    "cache-invalidations": 1500,
+    "copy-calls": 2309,
+    "copy-bytes": 76556271616,
+    "copy-ns": 7454876472,
+    "decode-bytes": 0,
+    "decode-ns": 0,
+    "pipeline-prefetches": 0,
+    "pipeline-restores": 0,
+    "pipeline-wait-ns": 0,
+    "gpu-decode-calls": 8848,
+    "gpu-decode-bytes": 293193777152,
+    "gpu-decode-fallbacks": 0,
+    "gpu_restore_host_elapsed_ns": 62968474633
+  },
+  "gpu_host_profile": {
+    "calls": 8848,
+    "validation_ns": 1307898985,
+    "input_prepare_ns": 13949020008,
+    "submit_wait_ns": 47590361243
+  },
+  "diagnostics": [],
+  "source_sha256": {
+    "layer.cpp": "b17d34a13a9736de5840bc71298d3531fd4b70fcf0be8e74feec9b1d2fbdaaf4",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "ab685aa6fefac2174bfb9f0bcaf4e58ff1a2bde90f1162c5cd2f789c0fcd64bd"
+  },
+  "limits": [
+    "Sequential with the earlier one-worker BP16 and GDeflate runs; GPU clocks and desktop activity were uncontrolled.",
+    "Twelve actual decode runs; not a long-duration throughput result.",
+    "The prior 0.14 BP16 result is retained as a separate earlier trial; this is not a controlled worker-count comparison.",
+    "Decoder-only component timing does not establish full-model throughput or a 49x model speedup."
+  ]
+}

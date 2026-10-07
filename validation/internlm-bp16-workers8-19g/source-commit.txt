@@ -1,0 +1,3 @@
+a02c7e635cf07f854586998fcc2ceb3510dbbad8
+Working tree profiling additions; source hashes retained in result and runtime manifest.
+Profiling compiled-source revision: 09fcc57; recorded run source hashes were verified against the compiled profiling sources.
