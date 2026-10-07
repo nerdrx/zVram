@@ -96,7 +96,7 @@ void checkOutputReuse() {
     }
     require(!zvram::gdeflate::encode(nullptr, Tile, reused) && reused.empty() &&
             reused.capacity() == capacity, "failed encode retained bytes or discarded capacity");
-    for (const unsigned workers : {0u, 5u}) {
+    for (const unsigned workers : {0u, 33u}) {
         reused.assign(16, 0x5a);
         require(!zvram::gdeflate::encode(reinterpret_cast<const std::uint8_t*>("input"), 5,
                                          reused, workers) && reused.empty() &&
@@ -109,7 +109,7 @@ void checkParallelEquivalent(const std::vector<std::uint8_t>& input) {
     std::vector<std::uint8_t> serial;
     require(zvram::gdeflate::encode(input.data(), input.size(), serial),
             "serial reference encode failed");
-    for (const unsigned workers : {2u, 4u}) {
+    for (const unsigned workers : {2u, 4u, 8u, 16u, 32u}) {
         std::vector<std::uint8_t> parallel, decoded(input.size());
         require(zvram::gdeflate::encode(input.data(), input.size(), parallel, workers),
                 "parallel encode failed");

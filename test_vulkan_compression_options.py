@@ -40,12 +40,12 @@ with tempfile.TemporaryDirectory() as temporary:
     assert missing_gpu.returncode == 2 and "GPU GDeflate decoder missing" in missing_gpu.stderr
     (build / "zvram-codecs.json").write_text('{"gdeflate": true, "gdeflate_gpu": true}')
     (build / "gdeflate-wave32.spv").touch()
-    for workers in (1, 2, 4):
+    for workers in (1, 2, 4, 8, 16, 32):
         result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate",
                      "--vulkan-gdeflate-workers", str(workers), "--", sys.executable, "-c",
                      "import os; print(os.environ['ZVRAM_VULKAN_GDEFLATE_WORKERS'])")
         assert result.returncode == 0 and result.stdout == str(workers) + "\n", (result.stdout, result.stderr)
-    for extra in (("--vulkan-gdeflate-workers", "0"), ("--vulkan-gdeflate-workers", "5"),
+    for extra in (("--vulkan-gdeflate-workers", "0"), ("--vulkan-gdeflate-workers", "33"),
                   ("--vulkan-gdeflate-workers", "2", "--vulkan-codec", "zstd")):
         result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", *extra, "--", sys.executable, "-c", "pass")
         assert result.returncode == 2, result.stderr
@@ -68,6 +68,12 @@ with tempfile.TemporaryDirectory() as temporary:
                   ("--vulkan-lazy-backing", "--vulkan-headroom-mib", "17592186044416")):
         result = run(launcher, *lazy_base, *extra, "--", sys.executable, "-c", "pass")
         assert result.returncode == 2 and "requires lazy backing" in result.stderr, result.stderr
+    result = run(launcher, *lazy_base, "--vulkan-buffer-presentation", "--", sys.executable, "-c",
+                 "import os; print(os.environ['ZVRAM_VULKAN_BUFFER_PRESENTATION'])")
+    assert result.returncode == 0 and result.stdout == "1\n", (result.stdout, result.stderr)
+    for base in ([*BASE, "--vulkan-auto-idle-ms", "100"], ["--hip"]):
+        result = run(launcher, *base, "--vulkan-buffer-presentation", "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2 and "requires Vulkan active eviction" in result.stderr, result.stderr
     gpu_child = "import os; print(os.environ['ZVRAM_VULKAN_GDEFLATE_GPU']); print(os.environ['ZVRAM_GDEFLATE_SHADER_PATH'])"
     result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--vulkan-gdeflate-gpu", "--", sys.executable, "-c", gpu_child)
     assert result.returncode == 0 and result.stdout == "1\n" + str(build / "gdeflate-wave32.spv") + "\n", (result.stdout, result.stderr)

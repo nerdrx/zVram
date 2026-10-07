@@ -17,6 +17,9 @@ unsigned budgetQueries{};
 VkDeviceSize mockHeapBudget{};
 VkDeviceSize mockHeapUsage{};
 VkDeviceSize mockNativeHeapSize{};
+unsigned presentCalls{};
+VkResult presentResult{VK_SUCCESS};
+const VkPresentInfoKHR* forwardedPresent{};
 std::uintptr_t nextHandle{0x1000};
 std::unordered_map<VkBuffer,VkDeviceSize> bufferSizes;
 std::unordered_set<VkDeviceMemory> liveAllocations;
@@ -61,15 +64,44 @@ VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDevic
     budget->heapBudget[0]=mockHeapBudget; budget->heapUsage[0]=mockHeapUsage;
     budget->heapBudget[1]=64*MiB; budget->heapUsage[1]=0;
 }
+VKAPI_ATTR VkResult VKAPI_CALL mockPresent(VkQueue,const VkPresentInfoKHR* info) {
+    ++presentCalls; forwardedPresent=info; return presentResult;
+}
+VKAPI_ATTR VkResult VKAPI_CALL mockCreateFence(VkDevice,const VkFenceCreateInfo*,const VkAllocationCallbacks*,VkFence* out) {
+    *out=tokenHandle<VkFence>(nextHandle++); return VK_SUCCESS;
+}
+VKAPI_ATTR void VKAPI_CALL mockDestroyFence(VkDevice,VkFence,const VkAllocationCallbacks*) {}
+VKAPI_ATTR VkResult VKAPI_CALL mockFenceStatus(VkDevice,VkFence) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockResetFences(VkDevice,std::uint32_t,const VkFence*) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockCreateSemaphore(VkDevice,const VkSemaphoreCreateInfo*,const VkAllocationCallbacks*,VkSemaphore* out) {
+    *out=tokenHandle<VkSemaphore>(nextHandle++); return VK_SUCCESS;
+}
+VKAPI_ATTR void VKAPI_CALL mockDestroySemaphore(VkDevice,VkSemaphore,const VkAllocationCallbacks*) {}
+VKAPI_ATTR VkResult VKAPI_CALL mockSubmit(VkQueue,std::uint32_t,const VkSubmitInfo*,VkFence) { return VK_SUCCESS; }
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const char* name) {
+    if(std::strcmp(name,"vkQueuePresentKHR")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockPresent);
+    if(std::strcmp(name,"vkCreateFence")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCreateFence);
+    if(std::strcmp(name,"vkDestroyFence")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockDestroyFence);
+    if(std::strcmp(name,"vkGetFenceStatus")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockFenceStatus);
+    if(std::strcmp(name,"vkResetFences")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockResetFences);
+    if(std::strcmp(name,"vkCreateSemaphore")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCreateSemaphore);
+    if(std::strcmp(name,"vkDestroySemaphore")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockDestroySemaphore);
+    if(std::strcmp(name,"vkQueueSubmit")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSubmit);
+    if(std::strcmp(name,"vkQueueBindSparse")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSparse);
+    if(std::strcmp(name,"vkQueueWaitIdle")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockQueueWait);
+    return nullptr;
+}
 
 struct Fixture {
     Device device{};
     VkDevice handle{tokenHandle<VkDevice>(1)};
+    std::uintptr_t dispatchWord{0xdeadbeef};
     VkDeviceMemory memory{tokenHandle<VkDeviceMemory>(2)};
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=frees=budgetQueries=0; failAllocations=failSparseBinds=0; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear();
+        allocations=sparseBinds=frees=budgetQueries=presentCalls=0; failAllocations=failSparseBinds=0; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear();
+        presentResult=VK_SUCCESS; forwardedPresent=nullptr;
         mockHeapBudget=mockHeapUsage=mockNativeHeapSize=0;
         device.handle=handle; device.autoEnabled=true; device.lazyBacking=true;
         device.rangeChunkBytes=MiB; device.residentLimitBytes=limit; device.residentAdmissionArmed=true;
@@ -228,6 +260,89 @@ void checkDefaultBudgetDoesNotQuery() {
             "default resident admission queried hardware budget or changed the hard cap");
 }
 
+void registerPresentFixture(Fixture& f,bool enabled=true) {
+    // Dispatchable Vulkan handles point at objects whose first word is a
+    // dispatch pointer; key() intentionally follows that same representation.
+    f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+    auto& d=f.device;
+    d.handle=f.handle; d.gdpa=mockGetDeviceProcAddr; d.autoInitialized=true; d.autoEnabled=true;
+    d.bufferPresentation=enabled; d.virtualEnabled=true; d.activeEviction=true;
+    const auto queue=reinterpret_cast<VkQueue>(f.handle);
+    d.copyQueue=tokenHandle<VkQueue>(0x5555);
+    d.restoreQueueGenerations.emplace_back(queue,0);
+    require(d.autoQueues.init(f.handle,mockGetDeviceProcAddr,d.copyQueue,{queue,d.copyQueue},true)==VK_SUCCESS,
+            "mock auto-queue initialization failed");
+    std::lock_guard<std::mutex> lock(mapsMutex);
+    devices[key(f.handle)]=std::shared_ptr<Device>(&d,[](Device*){});
+}
+void unregisterPresentFixture(Fixture& f) {
+    std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(f.handle));
+}
+VkPresentInfoKHR makePresentInfo(VkSemaphore& semaphore,VkSwapchainKHR& swapchain,std::uint32_t& index) {
+    VkPresentInfoKHR info{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+    info.waitSemaphoreCount=1; info.pWaitSemaphores=&semaphore;
+    info.swapchainCount=1; info.pSwapchains=&swapchain; info.pImageIndices=&index;
+    return info;
+}
+
+void checkBasePresentPassthrough() {
+    Fixture f(2*MiB,MiB); f.bind(0,2*MiB); registerPresentFixture(f);
+    auto& d=f.device; const auto q=reinterpret_cast<VkQueue>(f.handle);
+    VkSemaphore semaphore=tokenHandle<VkSemaphore>(31); VkSwapchainKHR swapchain=tokenHandle<VkSwapchainKHR>(32);
+    std::uint32_t index=1; auto info=makePresentInfo(semaphore,swapchain,index);
+    presentResult=VK_SUBOPTIMAL_KHR;
+    require(layerQueuePresent(q,&info)==VK_SUBOPTIMAL_KHR && presentCalls==1 && forwardedPresent==&info,
+            "base present did not forward the original info/status");
+    require(info.pWaitSemaphores==&semaphore && info.pSwapchains==&swapchain && info.pImageIndices==&index &&
+            semaphore==tokenHandle<VkSemaphore>(31) && swapchain==tokenHandle<VkSwapchainKHR>(32) && index==1,
+            "base present modified caller semaphore or swapchain data");
+    presentResult=VK_ERROR_OUT_OF_DATE_KHR;
+    require(layerQueuePresent(q,&info)==VK_ERROR_OUT_OF_DATE_KHR && presentCalls==2 && forwardedPresent==&info,
+            "base present changed OUT_OF_DATE status");
+    require(allocations==0 && sparseBinds==0 && d.residentBytes==0 && d.coldLogicalBytes==2*MiB &&
+            f.state().cold && d.autoEnabled,
+            "base present restored cold buffers or disabled paging");
+    unregisterPresentFixture(f);
+}
+
+void checkPresentGateAndFallback() {
+    {
+        Fixture f(2*MiB,MiB); f.bind(0,2*MiB); registerPresentFixture(f);
+        auto& d=f.device; d.gpuGateError=VK_ERROR_DEVICE_LOST;
+        VkSemaphore semaphore{}; VkSwapchainKHR swapchain{}; std::uint32_t index{};
+        auto info=makePresentInfo(semaphore,swapchain,index);
+        require(layerQueuePresent(reinterpret_cast<VkQueue>(f.handle),&info)==VK_ERROR_DEVICE_LOST && presentCalls==0,
+                "present ignored a poisoned device gate");
+        unregisterPresentFixture(f);
+    }
+    {
+        Fixture f(2*MiB,MiB); f.bind(0,2*MiB); registerPresentFixture(f);
+        auto& d=f.device; VkSemaphore semaphore{}; VkSwapchainKHR swapchain{}; std::uint32_t index{};
+        auto info=makePresentInfo(semaphore,swapchain,index); presentResult=VK_ERROR_DEVICE_LOST;
+        const auto q=reinterpret_cast<VkQueue>(f.handle);
+        require(layerQueuePresent(q,&info)==VK_ERROR_DEVICE_LOST && presentCalls==1 &&
+                d.gpuGateError==VK_ERROR_DEVICE_LOST && !d.autoEnabled,
+                "downstream device loss did not poison the present path");
+        require(layerQueuePresent(q,&info)==VK_ERROR_DEVICE_LOST && presentCalls==1,
+                "poisoned present path called downstream again");
+        unregisterPresentFixture(f);
+    }
+    for(bool unknownChain:{false,true}) {
+        Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB);
+        auto& d=f.device; registerPresentFixture(f,unknownChain);
+        const auto q=reinterpret_cast<VkQueue>(f.handle);
+        VkSemaphore semaphore{}; VkSwapchainKHR swapchain{}; std::uint32_t index{};
+        auto info=makePresentInfo(semaphore,swapchain,index);
+        VkBaseInStructure extension{static_cast<VkStructureType>(0x7fffffff),nullptr};
+        if(unknownChain) info.pNext=&extension;
+        require(layerQueuePresent(q,&info)==VK_SUCCESS && presentCalls==1 && forwardedPresent==&info,
+                "default/unknown present fallback did not forward downstream");
+        require(allocations==2 && !d.coldLogicalBytes && d.residentBytes==2*MiB && !d.autoEnabled,
+                "default/unknown present fallback did not restore and disable paging");
+        unregisterPresentFixture(f);
+    }
+}
+
 void checkAllocationFailureRetry() {
     Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); auto& m=f.state();
     failAllocations=1;
@@ -268,6 +383,8 @@ int main() try {
     checkResidentBudgetAccounting();
     checkBudgetRefusalBeforeAllocation();
     checkDefaultBudgetDoesNotQuery();
+    checkBasePresentPassthrough();
+    checkPresentGateAndFallback();
     checkAllocationFailureRetry();
     checkBindFailureAccounting();
     std::cout<<"PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry\n";

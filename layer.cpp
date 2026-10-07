@@ -225,6 +225,7 @@ struct Device {
     std::uint64_t virtualUsage{};
     bool autoEnabled{};
     bool autoInitialized{};
+    bool bufferPresentation{};
     std::atomic<bool> selectiveRestore{false};
     VkSubmissionTracker submission;
     ActiveRefs activeRefs;
@@ -818,6 +819,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     r=nextCreate(physical,&copy,allocator,out); if(r!=VK_SUCCESS) return r;
     try {
         auto d=std::make_shared<Device>(); d->handle=*out; d->physical=physical; d->gdpa=nextGdpa; d->setDeviceLoaderData=setDeviceLoaderData;
+        const char* bufferPresentation=std::getenv("ZVRAM_VULKAN_BUFFER_PRESENTATION");
+        d->bufferPresentation=bufferPresentation && std::strcmp(bufferPresentation,"1")==0;
         d->gpuRestoreEnabled=gpuRestorePlanned;
         if(budgetRequested) {
             d->budgetProperties=in->memoryProperties2; d->budgetHeap=budgetHeap;
@@ -936,10 +939,10 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     }
                 }
                 if(const char* workers=std::getenv("ZVRAM_VULKAN_GDEFLATE_WORKERS")) {
-                    const auto count=positiveEnv("ZVRAM_VULKAN_GDEFLATE_WORKERS",4);
+                    const auto count=positiveEnv("ZVRAM_VULKAN_GDEFLATE_WORKERS",32);
                     if(!count || d->snapshotCodec!=zvram::snapshot::Codec::GDeflate) {
                         autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
-                        logf("GDeflate workers require the GDeflate codec and a count from 1 to 4");
+                        logf("GDeflate workers require the GDeflate codec and a count from 1 to 32");
                     } else d->gdeflateWorkers=static_cast<unsigned>(count);
                 }
                 if(d->activeEviction && d->rangeChunkBytes) {
@@ -978,6 +981,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     else logf("automatic Vulkan snapshots disabled: worker creation failed");
                     if(d->autoEnabled && d->selectiveRestore) logf("selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all");
                     if(d->autoEnabled && d->activeEviction) logf("active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction");
+                    if(d->autoEnabled && d->bufferPresentation) logf("base Vulkan buffer presentation passthrough enabled");
                     if(d->autoEnabled && d->rangeChunkBytes) logf("Vulkan range residency enabled chunk-bytes=%llu",static_cast<unsigned long long>(d->rangeChunkBytes));
                     else if(rangeMiB) logf("Vulkan range residency disabled: feature chain, sparse residency support, or active mode unavailable");
                     if(d->autoEnabled && strictRobustnessEnabled) logf("bounded Vulkan robustness enabled alignment-bytes=%llu",static_cast<unsigned long long>(robustAlignment));
@@ -995,6 +999,11 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         if(budgetRequested && (!d->autoEnabled || !d->lazyBacking || !d->rangeChunkBytes ||
                                !d->residentLimitBytes || !d->residentAdmissionArmed)) {
             logf("VRAM headroom refused: lazy immediate paging initialization unavailable");
+            layerDestroyDevice(*out,allocator); *out=VK_NULL_HANDLE;
+            return VK_ERROR_FEATURE_NOT_PRESENT;
+        }
+        if(d->bufferPresentation && (!d->autoEnabled || !d->autoInitialized || !d->activeEviction)) {
+            logf("buffer presentation refused: automatic snapshots and active eviction are required");
             layerDestroyDevice(*out,allocator); *out=VK_NULL_HANDLE;
             return VK_ERROR_FEATURE_NOT_PRESENT;
         }
@@ -2630,6 +2639,22 @@ VKAPI_ATTR VkResult VKAPI_CALL layerQueueWaitIdle(VkQueue q) {
     return queueCall<PFN_vkQueueWaitIdle>(q,"vkQueueWaitIdle");
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerQueuePresent(VkQueue q,const VkPresentInfoKHR* info) {
+    auto d=findDevice(reinterpret_cast<VkDevice>(q)); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
+    if(d->bufferPresentation && d->autoInitialized && info && !info->pNext) {
+        auto next=reinterpret_cast<PFN_vkQueuePresentKHR>(d->gdpa(d->handle,"vkQueuePresentKHR"));
+        if(!next) return VK_ERROR_EXTENSION_NOT_PRESENT;
+        std::unique_lock<std::mutex> deviceLock(d->mutex,std::defer_lock);
+        std::unique_lock<std::mutex> queueLock(d->queueMutex,std::defer_lock);
+        if(d->virtualEnabled) { deviceLock.lock(); queueLock.lock(); }
+        if(d->gpuGateError!=VK_SUCCESS) return d->gpuGateError;
+        // Base present reads only native swapchain images after its wait semaphores;
+        // it does not access zVram's application buffer-backed sparse allocations.
+        const auto result=next(q,info);
+        if(result==VK_ERROR_DEVICE_LOST) {
+            d->gpuGateError=result; d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
+        }
+        return result;
+    }
     return queueCall<PFN_vkQueuePresentKHR>(q,"vkQueuePresentKHR",info);
 }
 auto isForcedBuffer(const std::shared_ptr<Device>& d) {

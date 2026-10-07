@@ -1,0 +1,15 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+    Start 3: vulkan-graphics-cold-restore
+1/3 Test #3: vulkan-graphics-cold-restore .....................   Passed    0.99 sec
+    Start 4: vulkan-graphics-active-cold-restore
+2/3 Test #4: vulkan-graphics-active-cold-restore ..............   Passed    0.93 sec
+    Start 5: vulkan-graphics-native-allocation-cold-restore
+3/3 Test #5: vulkan-graphics-native-allocation-cold-restore ...   Passed    0.84 sec
+
+100% tests passed out of 3
+
+Label Time Summary:
+graphics    =   2.77 sec*proc (3 tests)
+hardware    =   2.77 sec*proc (3 tests)
+
+Total Test time (real) =   2.77 sec

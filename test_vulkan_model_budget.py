@@ -155,7 +155,7 @@ def main():
         assert result.returncode == 2 and "existing executable" in result.stderr, result.stderr
     for extra, expected in ((["--gdeflate-workers", "4"], "requires --codec gdeflate"),
                             (["--codec", "gdeflate", "--gdeflate-workers", "0"], "invalid choice"),
-                            (["--codec", "gdeflate", "--gdeflate-workers", "5"], "invalid choice"),
+                            (["--codec", "gdeflate", "--gdeflate-workers", "33"], "invalid choice"),
                             (["--lazy-backing", "--resident-after-cold"], "requires immediate"),
                             (["--gdeflate-gpu"], "requires --codec gdeflate"),
                             (["--codec", "gdeflate", "--byte-shuffle", "2"], "requires the zstd codec")):

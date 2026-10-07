@@ -1,0 +1,297 @@
+{
+  "scope": "CPU encoder worker scaling on one saved32MiB F16 slice; exact production CPU decode; no GPU or inference",
+  "physical_cores": 16,
+  "logical_cpus": 32,
+  "memory_limit_bytes": 1073741824,
+  "environment": {
+    "MALLOC_ARENA_MAX": "2"
+  },
+  "priority": "nice19",
+  "runs": [
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 342683109,
+      "gdeflate_decodeOne_cpu_ns": 112273816,
+      "workers": 1,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-1.gdeflate",
+        "1"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 26318985,
+      "gdeflate_decodeOne_cpu_ns": 112697127,
+      "workers": 32,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-32.gdeflate",
+        "32"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 54908968,
+      "gdeflate_decodeOne_cpu_ns": 114909005,
+      "workers": 8,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-8.gdeflate",
+        "8"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 37710280,
+      "gdeflate_decodeOne_cpu_ns": 117455396,
+      "workers": 16,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-16.gdeflate",
+        "16"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 103546121,
+      "gdeflate_decodeOne_cpu_ns": 114371884,
+      "workers": 4,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-4.gdeflate",
+        "4"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 33635423,
+      "gdeflate_decodeOne_cpu_ns": 114037663,
+      "workers": 16,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-16.gdeflate",
+        "16"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 91849234,
+      "gdeflate_decodeOne_cpu_ns": 114738465,
+      "workers": 4,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-4.gdeflate",
+        "4"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 345989932,
+      "gdeflate_decodeOne_cpu_ns": 113853981,
+      "workers": 1,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-1.gdeflate",
+        "1"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 30783053,
+      "gdeflate_decodeOne_cpu_ns": 116539852,
+      "workers": 32,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-32.gdeflate",
+        "32"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 55161008,
+      "gdeflate_decodeOne_cpu_ns": 115438747,
+      "workers": 8,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-8.gdeflate",
+        "8"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 50283039,
+      "gdeflate_decodeOne_cpu_ns": 120188627,
+      "workers": 8,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-8.gdeflate",
+        "8"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 348098410,
+      "gdeflate_decodeOne_cpu_ns": 113521490,
+      "workers": 1,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-1.gdeflate",
+        "1"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 90250568,
+      "gdeflate_decodeOne_cpu_ns": 116672022,
+      "workers": 4,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-4.gdeflate",
+        "4"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 33442923,
+      "gdeflate_decodeOne_cpu_ns": 116537772,
+      "workers": 16,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-16.gdeflate",
+        "16"
+      ]
+    },
+    {
+      "raw_bytes": 33554432,
+      "gdeflate_encoded_bytes": 27219160,
+      "gdeflate_encode_cpu_ns": 29777388,
+      "gdeflate_decodeOne_cpu_ns": 114967896,
+      "workers": 32,
+      "stream_sha256": "a6bb608fbc0099811e5d3e35717b590f6e66e149c0834262d990a9a3e4c3e602",
+      "command": [
+        "nice",
+        "-n",
+        "19",
+        "build/gdeflate-codec/zvram-gdeflate-codec-model",
+        "build/third-party/gdeflate-research/internlm-f16-32m-offset64m.raw",
+        "build/gdeflate-workers-model/workers-32.gdeflate",
+        "32"
+      ]
+    }
+  ],
+  "median_encode_elapsed_ns": {
+    "1": 345989932,
+    "4": 91849234,
+    "8": 54908968,
+    "16": 33635423,
+    "32": 29777388
+  },
+  "speedup_vs_serial": {
+    "4": 3.7669332332156413,
+    "8": 6.301155250268043,
+    "16": 10.286474827446053,
+    "32": 11.61921697094453
+  },
+  "input_sha256": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895",
+  "source_sha256": {
+    "gdeflate_codec.hpp": "0cd520bfe55393f778f3249e9d8d220e60c4d504217459c2acb83de1572d01ea",
+    "research/gdeflate/check_codec_model.cpp": "50ca13a4a36ce9249b0c6b71af581e1fc27b4d5c7cee9545a8696cecd0806278"
+  },
+  "peak_child_rss_kib": 138704,
+  "invalid_worker_inputs_rejected": [
+    "0",
+    "33",
+    "-1",
+    "2x"
+  ],
+  "limitations": [
+    "Three interleaved elapsed-time samples; clocks and competing desktop work uncontrolled.",
+    "Initial32worker attempt under1GiB address-space cap failed cleanly; runs use process-local MALLOC_ARENA_MAX=2 to bound allocator virtual arenas. No system setting changed.",
+    "Optional cap raised to32, default remains1; no token-rate or frame-time gain proven."
+  ]
+}

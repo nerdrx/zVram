@@ -134,7 +134,7 @@ inline bool encodeParallel(const std::uint8_t* raw, std::size_t rawSize,
 inline bool encode(const std::uint8_t* raw, std::size_t rawSize,
                    std::vector<std::uint8_t>& encoded, unsigned workers = 1) noexcept {
     encoded.clear();
-    if (!raw || !rawSize || rawSize > MaxRawBytes || workers < 1 || workers > 4) return false;
+    if (!raw || !rawSize || rawSize > MaxRawBytes || workers < 1 || workers > 32) return false;
     try {
         const auto count = (rawSize + TileBytes - 1) / TileBytes;
         if (!count || count > MaxTiles) return false;

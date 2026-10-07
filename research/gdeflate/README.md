@@ -15,6 +15,14 @@ ctest --test-dir build/gdeflate-codec -R '^cpu-' --output-on-failure
 
 The launcher selects the snapshot codec with `--vulkan-codec zstd|gdeflate`; omitting it keeps Zstd. Codec selection requires Vulkan automatic snapshots. GDeflate selection is rejected before launching the application if the optional codec was not built, and it cannot be combined with `--vulkan-byte-shuffle`. A chunk's codec tag is retained through direct restore and decode-ahead dispatch. Without `--vulkan-gdeflate-gpu`, GDeflate encoding and decoding run on CPU.
 
+The model component tool can also compare bounded encoder parallelism on a previously extracted input of at most 32 MiB:
+
+```sh
+nice -n 19 build/gdeflate-codec/zvram-gdeflate-codec-model slice.raw slice.gdeflate 4
+```
+
+The optional last argument is `1..32` CPU workers (default `1`). Three interleaved samples measured 345.990/91.849/54.909/33.635/29.777 ms median encoding with one/four/eight/sixteen/thirty-two workers, with identical streams and exact CPU decode. Thirty-two workers improved this component by 11.62× versus one, but only 1.13× versus sixteen. GPU, inference, and frame-time gains remain unmeasured. [Bounded run evidence and allocator settings](../../validation/gdeflate-workers-32-model.json).
+
 One CPU-only 32 MiB F16 slice encoded and round-tripped exactly with the optional codec. In a single CPU component run, GDeflate produced **27,219,160 bytes** versus Zstd's **26,673,213 bytes**; GDeflate encode/`decodeOne` took **355.970/114.457 ms** versus **19.194/13.907 ms** for Zstd. This was slightly larger and much slower, so it is format/correctness groundwork, not a speedup. It does not measure model throughput or token speed. The [codec model result](../../validation/gdeflate-codec-model.json), [text summary](../../validation/gdeflate-codec-model.txt), and [codec-enabled CPU CTest log](../../validation/gdeflate-codec-cpu-ctest.txt) record the checks.
 
 A separate synthetic Vulkan-layer test exercised this CPU codec with actual GPU-backed cold snapshots: **320 MiB** was frozen and restored over two wake/compute cycles, with all bytes verified. One cold pass stored **10 compressed chunks** in **17,352,796 bytes**, and another stored **10 RAW chunks** in **335,544,320 bytes**; failures and cleanup counts were zero. This is a narrow synthetic layer check, not a model run or general app-compatibility claim; restore decompression remains on the CPU and this test does not use the shader below. Use `--build-dir` to select the optional build:

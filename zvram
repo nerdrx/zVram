@@ -23,10 +23,11 @@ parser.add_argument("--vulkan-cold-mib", type=int, help="limit retained Vulkan s
 parser.add_argument("--vulkan-min-savings-percent", type=int, help="minimum snapshot savings 0..100; 0 keeps any saving, 100 uses raw snapshots; requires automatic snapshots")
 parser.add_argument("--vulkan-byte-shuffle", type=int, choices=(2,4), help="losslessly reorder byte planes before Zstd; requires automatic snapshots (experimental)")
 parser.add_argument("--vulkan-codec", choices=("zstd", "gdeflate"), help="snapshot codec (default zstd); experimental gdeflate requires an optional build and decodes on CPU unless GPU restore is selected")
-parser.add_argument("--vulkan-gdeflate-workers", type=int, choices=range(1,5), help="bounded CPU GDeflate encoding workers (default 1); requires the GDeflate codec and automatic snapshots")
+parser.add_argument("--vulkan-gdeflate-workers", type=int, choices=range(1,33), help="bounded CPU GDeflate encoding workers (default 1); requires the GDeflate codec and automatic snapshots")
 parser.add_argument("--vulkan-gdeflate-gpu", action="store_true", help="restore GDeflate snapshots directly on a supported wave32 GPU (experimental, CPU fallback)")
 parser.add_argument("--vulkan-selective-restore", action="store_true", help="restore only allocations referenced by tracked Vulkan submissions; unknown access restores all (experimental)")
 parser.add_argument("--vulkan-active-eviction", action="store_true", help="compress unused whole Vulkan allocations while other tracked submissions remain active; requires selective restore (experimental)")
+parser.add_argument("--vulkan-buffer-presentation", action="store_true", help="retain buffer paging across base Vulkan presents with no pNext; requires active eviction (experimental, native images remain unpaged)")
 parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residency and chunk native pools at this positive MiB granularity; requires active eviction (experimental)")
 parser.add_argument("--vulkan-resident-mib", type=int, help="limit eligible resident backing at tracked submission admission; requires range mode (experimental, not a global VRAM cap)")
 parser.add_argument("--vulkan-headroom-mib", type=int, help="tighten the backing cap using native memory_budget and this positive MiB reserve; requires lazy backing (experimental)")
@@ -102,6 +103,8 @@ if args.vulkan_resident_mib is not None and (args.vulkan_range_mib is None or
     parser.error("--vulkan-resident-mib requires range mode and a positive size fitting 64-bit bytes")
 if args.vulkan_lazy_backing and (args.hip or args.vulkan_resident_mib is None or args.vulkan_resident_after_cold):
     parser.error("--vulkan-lazy-backing requires immediate --vulkan-resident-mib admission")
+if args.vulkan_buffer_presentation and (args.hip or not args.vulkan_active_eviction):
+    parser.error("--vulkan-buffer-presentation requires Vulkan active eviction")
 if args.vulkan_headroom_mib is not None and (args.hip or not args.vulkan_lazy_backing or
         not 0 < args.vulkan_headroom_mib <= ((1 << 64) - 1) // (1024 * 1024)):
     parser.error("--vulkan-headroom-mib requires lazy backing and a positive size fitting 64-bit bytes")
@@ -179,6 +182,8 @@ else:
         env["ZVRAM_VULKAN_RANGE_MIB"] = str(args.vulkan_range_mib)
     if args.vulkan_resident_mib is not None:
         env["ZVRAM_VULKAN_RESIDENT_MIB"] = str(args.vulkan_resident_mib)
+    if args.vulkan_buffer_presentation:
+        env["ZVRAM_VULKAN_BUFFER_PRESENTATION"] = "1"
     if args.vulkan_lazy_backing:
         env["ZVRAM_VULKAN_LAZY_BACKING"] = "1"
     if args.vulkan_headroom_mib is not None:

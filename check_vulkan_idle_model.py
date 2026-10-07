@@ -263,7 +263,7 @@ def main():
     parser.add_argument("--model", required=True, type=Path)
     parser.add_argument("--build-dir", type=Path, help="select a zVram backend CMake build directory")
     parser.add_argument("--codec", choices=("zstd", "gdeflate"), help="select the snapshot codec explicitly")
-    parser.add_argument("--gdeflate-workers", type=int, choices=range(1,5), help="bounded CPU GDeflate encoding workers; requires --codec gdeflate")
+    parser.add_argument("--gdeflate-workers", type=int, choices=range(1,33), help="bounded CPU GDeflate encoding workers; requires --codec gdeflate")
     parser.add_argument("--gdeflate-gpu", action="store_true", help="require observable direct GPU GDeflate restoration")
     parser.add_argument("--tokens", type=int, default=128)
     parser.add_argument("--idle-ms", type=int, default=1000)

@@ -1,6 +1,7 @@
 #include "../../snapshot_decode.hpp"
 
 #include <chrono>
+#include <charconv>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -34,9 +35,16 @@ std::uint64_t elapsedNs(Clock::time_point start) {
 } // namespace
 
 int main(int argc, char** argv) try {
-    if (argc != 3) {
-        std::cerr << "usage: check_codec_model RAW_INPUT OUTPUT.gdeflate\n";
+    if (argc != 3 && argc != 4) {
+        std::cerr << "usage: check_codec_model RAW_INPUT OUTPUT.gdeflate [WORKERS:1..32]\n";
         return 2;
+    }
+    unsigned workers = 1;
+    if (argc == 4) {
+        const std::string requested(argv[3]);
+        const auto parsed = std::from_chars(requested.data(), requested.data() + requested.size(), workers);
+        if (parsed.ec != std::errc{} || parsed.ptr != requested.data() + requested.size() ||
+            workers < 1 || workers > 32) throw std::runtime_error("workers must be 1..32");
     }
     if (std::filesystem::absolute(argv[1]).lexically_normal() ==
         std::filesystem::absolute(argv[2]).lexically_normal() ||
@@ -45,7 +53,7 @@ int main(int argc, char** argv) try {
     const auto raw = readBounded(argv[1]);
     std::vector<std::uint8_t> gdeflateBytes;
     auto started = Clock::now();
-    const bool encoded = zvram::gdeflate::encode(raw.data(), raw.size(), gdeflateBytes);
+    const bool encoded = zvram::gdeflate::encode(raw.data(), raw.size(), gdeflateBytes, workers);
     const auto gdeflateEncodeNs = elapsedNs(started);
     if (!encoded) throw std::runtime_error("GDeflate encode failed");
 
@@ -84,7 +92,7 @@ int main(int argc, char** argv) try {
     if (!output) throw std::runtime_error("failed closing verified GDeflate output");
 
     std::cout << "CPU-only codec comparison; no GPU/Vulkan dispatch\n"
-              << "raw_bytes=" << raw.size() << "\n"
+              << "raw_bytes=" << raw.size() << " workers=" << workers << "\n"
               << "gdeflate_encoded_bytes=" << gdeflateBytes.size()
               << " gdeflate_encode_cpu_ns=" << gdeflateEncodeNs
               << " gdeflate_decodeOne_cpu_ns=" << gdeflateDecodeNs << " exact=1\n"
