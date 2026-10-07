@@ -133,7 +133,8 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
     proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, env=env, start_new_session=True,
                             bufsize=0)
-    deadline = time.monotonic() + timeout
+    started = time.monotonic()
+    deadline = started + timeout
     ready = False
     last_cold_time = None
     pre_prompt_cold_state = None
@@ -255,6 +256,20 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
                 stream.close()
         out_path.write_bytes(stdout)
         err_path.write_bytes(stderr)
+        # Retain observed resource evidence even when loading or a guard aborts.
+        # Used swap is logical system-wide usage, not physical zram consumption.
+        (output_dir / f"{label}.resources.json").write_text(json.dumps({
+            "scope": "sampled system-wide resources; not a hard allocation cap",
+            "command": command, "pid": proc.pid,
+            "elapsed_seconds": time.monotonic() - started,
+            "process_returncode": proc.returncode, "prompt_sent": prompt_sent,
+            "minimum_available_mib": minimum_available_mib,
+            "min_available_mib": min_available_mib,
+            "swap_used_baseline_mib": swap_baseline_mib,
+            "swap_used_peak_mib": swap_peak_mib,
+            "swap_growth_mib": swap_peak_mib - swap_baseline_mib,
+            "max_swap_growth_mib": max_swap_growth_mib,
+        }, indent=2) + "\n")
     text = stderr.decode("utf-8", errors="replace")
     states = [tuple(map(int, x)) for x in StatePattern.findall(text)]
     if states:

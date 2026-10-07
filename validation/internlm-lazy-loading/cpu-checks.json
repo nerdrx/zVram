@@ -1,5 +1,5 @@
 {
-  "scope": "CPU checks only; real-model event and debug-label retest pending",
+  "scope": "CPU checks including production command hooks and abort resource logs; real-model retest pending",
   "command": [
     "ctest",
     "--test-dir",
@@ -9,16 +9,17 @@
     "^(cpu-|vulkan-submission-tracking)"
   ],
   "exit_code": 0,
-  "stdout": "Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build\n      Start  1: cpu-resident-budget\n 1/11 Test  #1: cpu-resident-budget ..............   Passed    0.00 sec\n      Start  2: cpu-resident-bootstrap\n 2/11 Test  #2: cpu-resident-bootstrap ...........   Passed    0.00 sec\n      Start  6: cpu-vulkan-ram-guard\n 3/11 Test  #6: cpu-vulkan-ram-guard .............   Passed    0.24 sec\n      Start  7: cpu-vulkan-compression-options\n 4/11 Test  #7: cpu-vulkan-compression-options ...   Passed    1.93 sec\n      Start  8: cpu-vulkan-model-budget\n 5/11 Test  #8: cpu-vulkan-model-budget ..........   Passed    1.82 sec\n      Start  9: cpu-compression-policy\n 6/11 Test  #9: cpu-compression-policy ...........   Passed    0.01 sec\n      Start 10: cpu-snapshot-decode\n 7/11 Test #10: cpu-snapshot-decode ..............   Passed    0.03 sec\n      Start 11: cpu-gdeflate-envelope\n 8/11 Test #11: cpu-gdeflate-envelope ............   Passed    0.00 sec\n      Start 12: cpu-snapshot-pipeline\n 9/11 Test #12: cpu-snapshot-pipeline ............   Passed    0.01 sec\n      Start 13: vulkan-submission-tracking\n10/11 Test #13: vulkan-submission-tracking .......   Passed    0.00 sec\n      Start 14: cpu-active-refs\n11/11 Test #14: cpu-active-refs ..................   Passed    0.00 sec\n\n100% tests passed out of 11\n\nTotal Test time (real) =   4.05 sec\n",
+  "stdout": "Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build\n      Start  1: cpu-resident-budget\n 1/11 Test  #1: cpu-resident-budget ..............   Passed    0.00 sec\n      Start  2: cpu-resident-bootstrap\n 2/11 Test  #2: cpu-resident-bootstrap ...........   Passed    0.00 sec\n      Start  6: cpu-vulkan-ram-guard\n 3/11 Test  #6: cpu-vulkan-ram-guard .............   Passed    0.23 sec\n      Start  7: cpu-vulkan-compression-options\n 4/11 Test  #7: cpu-vulkan-compression-options ...   Passed    1.69 sec\n      Start  8: cpu-vulkan-model-budget\n 5/11 Test  #8: cpu-vulkan-model-budget ..........   Passed    1.74 sec\n      Start  9: cpu-compression-policy\n 6/11 Test  #9: cpu-compression-policy ...........   Passed    0.01 sec\n      Start 10: cpu-snapshot-decode\n 7/11 Test #10: cpu-snapshot-decode ..............   Passed    0.03 sec\n      Start 11: cpu-gdeflate-envelope\n 8/11 Test #11: cpu-gdeflate-envelope ............   Passed    0.00 sec\n      Start 12: cpu-snapshot-pipeline\n 9/11 Test #12: cpu-snapshot-pipeline ............   Passed    0.01 sec\n      Start 13: vulkan-submission-tracking\n10/11 Test #13: vulkan-submission-tracking .......   Passed    0.00 sec\n      Start 14: cpu-active-refs\n11/11 Test #14: cpu-active-refs ..................   Passed    0.00 sec\n\n100% tests passed out of 11\n\nTotal Test time (real) =   3.73 sec\n",
   "stderr": "",
   "source_sha256": {
     "layer.cpp": "91c3f4f5f0aab8315b0e2cc5bfb3712c7a2d7ff30e9dafe023911cdc77c7f541",
     "submission_hooks.inc": "fd95e072e00fa2b845ee3911e92c67e121789bf5984ac04bae73b4f39b3bae02",
     "submission_tracking.hpp": "e68bb8fecd8bda5181a9f5b166072647c05d201e67fe97671992bfd024e1c5f4",
     "submission_tracking_check.cpp": "d6ba705a737f8164a519f2ce4579401ed1c1db380ece690056517b9373caf531",
+    "resident_bootstrap_check.cpp": "e61a8f8bc343c8d7fb4539c7b653723c194335c84f2d3196f28b9eee51051c13",
     "generate_command_hooks.py": "b5e8b2a79b3095d5ba02e51242c2ea6a039faa1aa671d87480e39dea1cb2a063",
     "command_hooks.inc": "9be25e5a8e86b4b1f5c443d460a3b6fccbe56507d590d12424535387c43fcffe",
-    "check_vulkan_idle_model.py": "8bd24d70175d0933ef5896918313647af5cc077c52d318940c0546859189a2fd",
-    "test_vulkan_ram_guard.py": "2ceb9f15d6e22799491cf3a91c9dfc1573efc2b478238b3ad40dad67100b24ed"
+    "check_vulkan_idle_model.py": "a1c62d3c7cd58610b24a0ed21367ca9a70ca9247256f753579040f321254bb86",
+    "test_vulkan_ram_guard.py": "99ddc3c2bb984adf55631bc98005038925a321746e83743135a2eef060920589"
   }
 }

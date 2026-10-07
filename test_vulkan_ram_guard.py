@@ -2,6 +2,7 @@
 """CPU-only check for low-memory abort cleanup."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -64,6 +65,11 @@ def check_phase(phase):
             assert "child-start" in (output / "guard.stdout.txt").read_text()
             assert "child-error" in (output / "guard.stderr.txt").read_text()
             assert prompt_marker.exists() == (phase == "generate")
+            evidence = json.loads((output / "guard.resources.json").read_text())
+            assert evidence["minimum_available_mib"] == 2
+            assert evidence["min_available_mib"] == 3
+            assert evidence["process_returncode"] != 0
+            assert evidence["prompt_sent"] == (phase == "generate")
         finally:
             unrelated.terminate()
             unrelated.wait()
@@ -122,6 +128,13 @@ def check_swap_phase(phase):
             assert "child-error" in (output / "swap.stderr.txt").read_text()
             assert prompt_marker.exists() == (phase == "generate")
             assert idle_model.available_memory_mib() == 128, "fixture did not keep MemAvailable healthy"
+            evidence = json.loads((output / "swap.resources.json").read_text())
+            assert evidence["swap_used_baseline_mib"] == 100
+            assert evidence["swap_used_peak_mib"] == 105
+            assert evidence["swap_growth_mib"] == 5
+            assert evidence["max_swap_growth_mib"] == 2
+            assert evidence["process_returncode"] != 0
+            assert evidence["prompt_sent"] == (phase == "generate")
         finally:
             unrelated.terminate()
             unrelated.wait()

@@ -23,6 +23,9 @@ const VkPresentInfoKHR* forwardedPresent{};
 std::uintptr_t nextHandle{0x1000};
 std::unordered_map<VkBuffer,VkDeviceSize> bufferSizes;
 std::unordered_set<VkDeviceMemory> liveAllocations;
+unsigned trackedSyncForwards{};
+unsigned trackedLabelForwards{};
+unsigned unsupportedCommandForwards{};
 
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
 
@@ -67,6 +70,12 @@ VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDevic
 VKAPI_ATTR VkResult VKAPI_CALL mockPresent(VkQueue,const VkPresentInfoKHR* info) {
     ++presentCalls; forwardedPresent=info; return presentResult;
 }
+VKAPI_ATTR void VKAPI_CALL mockSetEvent(VkCommandBuffer,VkEvent,VkPipelineStageFlags) { ++trackedSyncForwards; }
+VKAPI_ATTR void VKAPI_CALL mockResetEvent(VkCommandBuffer,VkEvent,VkPipelineStageFlags) { ++trackedSyncForwards; }
+VKAPI_ATTR void VKAPI_CALL mockBeginLabel(VkCommandBuffer,const VkDebugUtilsLabelEXT*) { ++trackedLabelForwards; }
+VKAPI_ATTR void VKAPI_CALL mockEndLabel(VkCommandBuffer) { ++trackedLabelForwards; }
+VKAPI_ATTR void VKAPI_CALL mockInsertLabel(VkCommandBuffer,const VkDebugUtilsLabelEXT*) { ++trackedLabelForwards; }
+VKAPI_ATTR void VKAPI_CALL mockSetLineWidth(VkCommandBuffer,float) { ++unsupportedCommandForwards; }
 VKAPI_ATTR VkResult VKAPI_CALL mockCreateFence(VkDevice,const VkFenceCreateInfo*,const VkAllocationCallbacks*,VkFence* out) {
     *out=tokenHandle<VkFence>(nextHandle++); return VK_SUCCESS;
 }
@@ -80,6 +89,14 @@ VKAPI_ATTR void VKAPI_CALL mockDestroySemaphore(VkDevice,VkSemaphore,const VkAll
 VKAPI_ATTR VkResult VKAPI_CALL mockSubmit(VkQueue,std::uint32_t,const VkSubmitInfo*,VkFence) { return VK_SUCCESS; }
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const char* name) {
     if(std::strcmp(name,"vkQueuePresentKHR")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockPresent);
+    if(std::strcmp(name,"vkCmdSetEvent")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSetEvent);
+    if(std::strcmp(name,"vkCmdResetEvent")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockResetEvent);
+#ifdef VK_EXT_debug_utils
+    if(std::strcmp(name,"vkCmdBeginDebugUtilsLabelEXT")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockBeginLabel);
+    if(std::strcmp(name,"vkCmdEndDebugUtilsLabelEXT")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockEndLabel);
+    if(std::strcmp(name,"vkCmdInsertDebugUtilsLabelEXT")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockInsertLabel);
+#endif
+    if(std::strcmp(name,"vkCmdSetLineWidth")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSetLineWidth);
     if(std::strcmp(name,"vkCreateFence")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCreateFence);
     if(std::strcmp(name,"vkDestroyFence")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockDestroyFence);
     if(std::strcmp(name,"vkGetFenceStatus")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockFenceStatus);
@@ -466,6 +483,65 @@ void checkAsyncEncoderReleasesBothGates() {
     require(deviceLock.owns_lock() && queueLock.owns_lock(),"encoder gates were not reacquired in order");
 }
 
+void checkNoActionCommandHooksStaySelective() {
+    Fixture f(4*MiB,4*MiB); f.bind(0,4*MiB);
+    f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+    auto& d=f.device; d.handle=f.handle; d.gdpa=mockGetDeviceProcAddr;
+    d.virtualEnabled=true; d.selectiveRestore=true; d.rangeChunkBytes=MiB;
+    d.narrowDescriptorRanges=true;
+    const auto command=reinterpret_cast<VkCommandBuffer>(&f.dispatchWord);
+    const auto pool=tokenHandle<VkCommandPool>(81);
+    VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    allocate.commandPool=pool; allocate.commandBufferCount=1;
+    d.submission.allocateCommands(&allocate,&command);
+    d.submission.beginCommand(command);
+    const auto buffer=tokenHandle<VkBuffer>(82);
+    d.promotedBuffers[buffer]=PromotedBuffer{};
+    d.promotedBuffers[buffer].size=4*MiB; d.promotedBuffers[buffer].memory=f.memory;
+    d.virtualMemory.at(f.memory).bindings.push_back({buffer,0,4*MiB,1});
+    d.submission.bufferRange(command,buffer,MiB+16,64);
+    {
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices[key(f.handle)]=std::shared_ptr<Device>(&d,[](Device*){});
+    }
+
+    trackedSyncForwards=trackedLabelForwards=unsupportedCommandForwards=0;
+    const auto event=tokenHandle<VkEvent>(83);
+    trackedvkCmdSetEvent(command,event,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    trackedvkCmdResetEvent(command,event,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+#ifdef VK_EXT_debug_utils
+    VkDebugUtilsLabelEXT label{VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT};
+    trackedvkCmdBeginDebugUtilsLabelEXT(command,&label);
+    trackedvkCmdEndDebugUtilsLabelEXT(command);
+    trackedvkCmdInsertDebugUtilsLabelEXT(command,&label);
+#endif
+    require(trackedSyncForwards==2,"event no-action hooks did not forward downstream");
+#ifdef VK_EXT_debug_utils
+    require(trackedLabelForwards==3,"debug-label no-action hooks did not forward downstream");
+#endif
+
+    std::vector<ActiveRefs::Use> uses;
+    std::vector<VkSubmissionTracker::BufferRange> ranges;
+    const char* reason=nullptr;
+    require(d.submission.collectRanges(1,&command,ranges,&reason) && !reason && ranges.size()==1,
+            "no-action hooks changed command-buffer tracking");
+    require(commandMemories(d,{command},uses,false) &&
+            uses.size()==1 && uses[0].memory==f.memory && uses[0].child==1,
+            "event/debug-label hooks widened a known sparse range to whole-pool fallback");
+    require(d.submission.collectRanges(1,&command,ranges,&reason) && !reason && ranges.size()==1 &&
+            ranges[0].offset==MiB+16 && ranges[0].size==64,
+            "event/debug-label hooks changed tracked command ranges");
+
+    trackedvkCmdSetLineWidth(command,1.0f);
+    require(unsupportedCommandForwards==1 &&
+            !commandMemories(d,{command},uses,false),
+            "unsupported state command did not preserve unknown-access fallback");
+    require(!d.submission.collectRanges(1,&command,ranges,&reason) && reason &&
+            std::strcmp(reason,"vkCmdSetLineWidth")==0,
+            "unsupported command lost its specific diagnostic");
+    { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(f.handle)); }
+}
+
 void checkAllocationFailureRetry() {
     Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); auto& m=f.state();
     failAllocations=1;
@@ -511,6 +587,7 @@ int main() try {
     checkAsyncSnapshotTransactionDecisions();
     checkAsyncSnapshotEncodingRoundTrip();
     checkAsyncEncoderReleasesBothGates();
+    checkNoActionCommandHooksStaySelective();
     checkAllocationFailureRetry();
     checkBindFailureAccounting();
     std::cout<<"PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry\n";
