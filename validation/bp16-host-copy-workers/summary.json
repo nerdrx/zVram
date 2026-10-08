@@ -1,0 +1,258 @@
+{
+  "source_sha256": "8a33744f0af18821aea21a8bae908100d8f13595bc88434db406b64e4fb3f0e0",
+  "binary_sha256": "e2a49d8318fc00cb931e0f6d068eabe827bf84af7971603b4304c048629f3cc8",
+  "records": [
+    {
+      "name": "00-host-input-1",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "1",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 1,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 22.901557062584086
+    },
+    {
+      "name": "01-host-input-2",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "2",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 2,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 28.958197957360998
+    },
+    {
+      "name": "02-host-input-4",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "4",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 4,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 33.32007630716943
+    },
+    {
+      "name": "03-host-input-8",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "8",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 8,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 37.90322156658937
+    },
+    {
+      "name": "04-host-input-1",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "1",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 1,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 24.27100377947291
+    },
+    {
+      "name": "05-host-input-2",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "2",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 2,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 37.56047846647444
+    },
+    {
+      "name": "06-allocated-host-input-1",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--allocated-host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "1",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 1,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 60.15028151691668
+    },
+    {
+      "name": "07-allocated-host-input-2",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--allocated-host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "2",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 2,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 91.87471950631539
+    },
+    {
+      "name": "08-allocated-host-input-4",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--allocated-host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "4",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 4,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 108.58636280290338
+    },
+    {
+      "name": "09-allocated-host-input-8",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--allocated-host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "8",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 8,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 92.71133032245679
+    },
+    {
+      "name": "10-allocated-host-input-1",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--allocated-host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "1",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 1,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 24.524772381722556
+    },
+    {
+      "name": "11-allocated-host-input-2",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--allocated-host-input",
+        "--host-copy-iterations",
+        "64",
+        "--host-copy-workers",
+        "2",
+        "--gpu-bounded-smoke",
+        "research/bp16/decode.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "workers": 2,
+      "returncode": 0,
+      "pass": true,
+      "GB_per_second": 100.02790128270951
+    }
+  ]
+}

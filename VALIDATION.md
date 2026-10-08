@@ -1220,6 +1220,28 @@ the larger cache is not a demonstrated speed improvement.
 
 [Run archive and limits](validation/internlm-bp16-host-cache10g/README.md).
 
+### BP16 larger cold/cache quota
+
+A separate run changed only the cold/clean-cache quota from 20 GiB to 22 GiB;
+the 8 GiB host-input cache and 19 GiB tracked-residency cap were retained. It
+completed 12 decode runs at **0.4384097 tokens/s**, with exact output, 49/49
+layers and zero GPU fallback. Final counters recorded 1,269 invalidations,
+6,884 clean reuses and 70,919,913,472 copied bytes. Minimum available RAM was
+19,104 MiB and swap grew by 2,104 MiB. This sequential run does not establish a
+speed gain and remains below the best **0.4626948 tokens/s** result.
+
+[Run archive](validation/internlm-bp16-cold-cache22g/README.md).
+
+### BP16 host-copy worker component matrix
+
+Twelve exact-byte 64-iteration runs measured a 29,202,816-byte frame at 1, 2,
+4, and 8 copy workers for direct coherent host input and allocated-host input.
+Rates varied widely, especially across repeats (for example, allocated-host
+input at one worker measured both 24.52 and 60.15 GB/s). The component is
+noisy/hot-repeat evidence and does not demonstrate an end-to-end speed gain.
+
+[Matrix archive, source, binary, and logs](validation/bp16-host-copy-workers/README.md).
+
 ### Same-prompt 92-token native/allocated-host comparison
 
 A separate longer generation used the same prompt, temperature 0, seed 1,

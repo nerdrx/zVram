@@ -277,3 +277,9 @@ A full run with a 10 GiB allocated-host cache peaked at 10,736,501,008 bytes
 under its 10 GiB bound and measured **0.4063374 tokens/s**. This was slower
 than the best 8 GiB result and does not support increasing the cache for speed.
 [Run archive](../../validation/internlm-bp16-host-cache10g/README.md).
+
+A 22 GiB cold/cache quota run kept the 8 GiB host-input cache unchanged and
+measured **0.4384097 tokens/s** with exact output and no fallback; it remains
+below the best 8 GiB result and is not a controlled speed improvement. The
+12-case host-copy matrix passed exact bytes but showed noisy, non-monotonic
+rates and is not model-performance evidence. [Cold-quota run](../../validation/internlm-bp16-cold-cache22g/README.md) · [copy matrix](../../validation/bp16-host-copy-workers/README.md).
