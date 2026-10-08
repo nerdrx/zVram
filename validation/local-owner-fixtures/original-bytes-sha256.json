@@ -29,5 +29,13 @@
   "local-owner-cpu12-gpu2.log": {
     "bytes": 1763,
     "sha256": "87bc9e034d5c99676b919c5749c30cb0ce24cd57792e9aab748b89a61335708a"
+  },
+  "local-owner-full-123.log": {
+    "bytes": 18242,
+    "sha256": "6a748240e462e644df6cd74781ba4fca006e7a0499a7bf6a5e389042113a08ba"
+  },
+  "local-owner-full-123-source-commit.txt": {
+    "bytes": 8,
+    "sha256": "c909b76f75c0cc2f0017577dd6692425d8a3f1857681c71a947dbbc8488ee387"
   }
 }

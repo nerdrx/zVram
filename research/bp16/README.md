@@ -332,3 +332,26 @@ but the runs were sequential with uncontrolled clocks and background activity,
 so they do not establish that worker count caused the pattern. [Comparison and
 per-run provenance](../../validation/internlm-bp16-cold24-upload-worker-comparison/README.md) ·
 [regression logs](../../validation/bp16-upload-workers/README.md).
+
+## Experimental local-owner tier
+
+BP16 can optionally retain GPU-encoded owner frames in a BAR-mappable local
+Vulkan heap. These owners stay in the local GPU-memory tier; they are not a
+system-RAM mirror. The tier is **off by default** and separate from the shared
+cold/owner quota. Opt in with both `ZVRAM_VULKAN_BP16_LOCAL_OWNER_MIB` and
+`ZVRAM_VULKAN_BP16_LOCAL_TOTAL_MIB`, while GPU BP16 encoding,
+allocated-host input, an explicit resident cap, and native driver headroom are
+enabled. `LOCAL_TOTAL_MIB` bounds the combined local-owner and shared/raw
+allowance; resident admission and the native-headroom reserve still constrain
+live allocation. Invalid combinations fail initialization. CPU metadata
+validation was fixed in `427d93a` / `e394ea8`.
+
+A 7 GiB local-owner + 12 GiB shared/raw trial completed exact output and 49/49
+layers with zero GPU restore fallback, but measured **1.076476 tokens/s**, below
+the separate 1.1725 timing baseline; this is not a recommended speed profile.
+A 13 GiB local-owner + 6 GiB shared/raw attempt exercised the local tier but
+exited on Vulkan out-of-device-memory after prompting, with no accepted rate.
+These are sequential experimental runs, not a controlled comparison. [7+12 GiB
+run](../../validation/internlm-bp16-local-owner7-raw12-total19/README.md) ·
+[13+6 GiB failed attempt](../../validation/internlm-bp16-local-owner13-raw6-total19/README.md) ·
+[fixture and CTest evidence](../../validation/local-owner-fixtures/README.md).

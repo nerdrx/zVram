@@ -15,6 +15,10 @@ with a 32 MiB local-owner limit and an 8 MiB shared allocation limit.
 - `local-owner-cpu12-gpu2.log` records the focused 14/14 CPU/GPU CTest suite
   after metadata fix `427d93a` / `e394ea8` (12 CPU checks and two owner GPU
   fixtures; 5.41 s).
+- `local-owner-full-123.log` records the full 123/123 CTest suite (87.90 s)
+  compiled from source commit `52fb80f`; the recorded source commit is included.
+  A later `d796` telemetry-only edit was made after this test run and was not
+  part of the compiled test binary.
 
 The fused-four BP16 shader design from `c3f8850` remains research-only. A later
 GPU component run decoded four distinct canonical 32 MiB BP16 frames in one
