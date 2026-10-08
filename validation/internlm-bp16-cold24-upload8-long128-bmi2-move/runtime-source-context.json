@@ -1,0 +1,10 @@
+{
+  "runtime_code_commit": "6b35007",
+  "note": "Exact-capacity BP16 ownership transfer; GPU encoder research not integrated; production decoder shader unchanged.",
+  "sources": {
+    "layer.cpp": "469a1651e5b0a39a09423ca1a9e1198929f569ea9c8cbb0f3456586a83b8f4be",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "0dff4f5293a6fd1d67c1e62b3d00babb62d4afd8cf7cb7d89afb9bf1d4b5ac7b",
+    "gdeflate_gpu.hpp": "7c643f6af6f2630858ae277fcfaedd4d9b7889d0567a8962c6f46b149b070294"
+  }
+}

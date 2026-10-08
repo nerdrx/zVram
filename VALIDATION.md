@@ -1426,6 +1426,12 @@ effect. [Run archive](validation/internlm-bp16-cold24-upload8-long128-bmi2-worke
 [92-token BMI2 run](validation/internlm-bp16-cold24-upload8-long128-bmi2-mmap/README.md),
 [paired archive and provenance](validation/bp16-bmi2-model-runs/README.md).
 
+The exact-storage ownership-transfer change was also exercised in a 92-token
+run: **0.459110 tokens/s**, exact output, **49/49** layers, and zero GPU
+fallback. The preceding same-binary FIRST run measured **0.460472 tokens/s**;
+there was no observed gain. These sequential, uncontrolled runs do not isolate
+the change's performance effect. [Run archive and counters](validation/internlm-bp16-cold24-upload8-long128-bmi2-move/README.md).
+
 ### Bounded imported BP16 host input and current regression checks
 
 The standalone research decoder now has an opt-in `--import-host-input` path using
