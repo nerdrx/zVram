@@ -48,4 +48,8 @@ if os.environ.get("ZVRAM_VULKAN_BP16_GPU_ENCODE") == "1":
     if (expected != "bp16" or "GPU BP16 encoder enabled:" not in result.stdout or
             not encodes or int(encodes[-1][0]) <= 0 or int(encodes[-1][1]) <= 0 or int(encodes[-1][3]) != 0):
         raise SystemExit("FAIL: requested GPU BP16 encoding was not observed without fallback")
+if os.environ.get("ZVRAM_TEST_REQUIRE_BP16_BATCH") == "1":
+    batches = re.findall(r"GPU BP16 restore batch submissions=(\d+) items=(\d+)", result.stdout)
+    if not batches or int(batches[-1][0]) <= 0 or int(batches[-1][1]) < 2 * int(batches[-1][0]):
+        raise SystemExit("FAIL: application did not observe multi-frame BP16 restore submissions")
 print("PASS: application byte checks, observed GPU decoding, zero fallback and validation diagnostics")

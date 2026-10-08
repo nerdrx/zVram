@@ -667,6 +667,19 @@ if(ZVRAM_ENABLE_BP16_GPU_TESTS)
     add_test(NAME vulkan-bp16-gpu-zero-pattern COMMAND ${bp16_gpu_launch}
         --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
         -- $<TARGET_FILE:zvram-vulkan-auto-check> --range-compressed --zero-pattern)
+    foreach(bp16_batch_mode synthetic native)
+        set(bp16_batch_flags --selective-submit-batch)
+        if(bp16_batch_mode STREQUAL "native")
+            list(APPEND bp16_batch_flags --native-allocation)
+        endif()
+        set(bp16_batch_test vulkan-bp16-batch-${bp16_batch_mode})
+        add_test(NAME ${bp16_batch_test} COMMAND ${bp16_gpu_launch}
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 128 --vulkan-clean-cache
+            -- $<TARGET_FILE:zvram-vulkan-auto-check> ${bp16_batch_flags})
+        set_tests_properties(${bp16_batch_test} PROPERTIES TIMEOUT 60
+            ENVIRONMENT "ZVRAM_VULKAN_BP16_GPU_ENCODE=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=1024;ZVRAM_VULKAN_BP16_RESTORE_BATCH=1;ZVRAM_VULKAN_GPU_PROFILE=1;ZVRAM_TEST_REQUIRE_BP16_BATCH=1;VK_LOADER_LAYERS_DISABLE=~implicit~")
+    endforeach()
     set_tests_properties(vulkan-bp16-gpu-zero-pattern PROPERTIES TIMEOUT 60
         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
     foreach(bp16_pressure_mode synthetic native)

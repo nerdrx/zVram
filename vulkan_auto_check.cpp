@@ -1672,12 +1672,13 @@ void rangeCacheUnknownCheck(Context& context) {
             "clean-cache unknown cleanup retained backing or errors");
 }
 
-void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool activeSubmit) {
+void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool activeSubmit, bool batchSubmit) {
+    const VkDeviceSize poolBytes = batchSubmit ? 2 * ChunkBytes : ChunkBytes;
     Buffer a, b;
     a.device = b.device = context.device;
     auto create = [&](Buffer& buffer) {
         VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        info.size = ChunkBytes;
+        info.size = poolBytes;
         info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                      VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         if (context.bdaMode) info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
@@ -1685,7 +1686,7 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
         check(vkCreateBuffer(context.device, &info, nullptr, &buffer.handle), "create selective-submit buffer");
         VkMemoryRequirements req{};
         vkGetBufferMemoryRequirements(context.device, buffer.handle, &req);
-        require(req.size == ChunkBytes && req.alignment && ChunkBytes % req.alignment == 0,
+        require(req.size == poolBytes && req.alignment && poolBytes % req.alignment == 0,
                 "selective-submit buffer requirements are not one aligned chunk");
         require(req.memoryTypeBits & (1u << context.virtualType),
                 "selective-submit buffer lacks virtual memory type");
@@ -1727,7 +1728,7 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
 
     Staging staging; staging.device = context.device;
     VkBufferCreateInfo stagingInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    stagingInfo.size = ChunkBytes;
+    stagingInfo.size = poolBytes;
     stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     check(vkCreateBuffer(context.device, &stagingInfo, nullptr, &staging.buffer), "create selective-submit staging");
@@ -1739,20 +1740,26 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
     require(stagingAlloc.memoryTypeIndex != UINT32_MAX, "no selective-submit staging type");
     check(vkAllocateMemory(context.device, &stagingAlloc, nullptr, &staging.memory), "allocate selective-submit staging");
     check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0), "bind selective-submit staging");
-    check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped), "map selective-submit staging");
+    check(vkMapMemory(context.device, staging.memory, 0, poolBytes, 0, &staging.mapped), "map selective-submit staging");
 
     const auto beforeCold = context.stats();
-    upload(context, a.handle, staging, ChunkBytes);
-    upload(context, b.handle, staging, ChunkBytes);
-    setAddress(a.handle);
-    check(computeCycle(context, a.handle, 0, 0, false, ChunkBytes), "initialize first selective-submit pattern");
-    setAddress(b.handle);
-    check(computeCycle(context, b.handle, 0, 0, false, ChunkBytes), "initialize second selective-submit pattern");
-    check(computeCycle(context, b.handle, 1, 0, false, ChunkBytes), "distinguish second selective-submit pattern");
-    setAddress(a.handle);
-    readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
-    setAddress(b.handle);
-    readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+    upload(context, a.handle, staging, poolBytes);
+    upload(context, b.handle, staging, poolBytes);
+    if (!batchSubmit) {
+        setAddress(a.handle);
+        check(computeCycle(context, a.handle, 0, 0, false, poolBytes), "initialize first selective-submit pattern");
+        setAddress(b.handle);
+        check(computeCycle(context, b.handle, 0, 0, false, poolBytes), "initialize second selective-submit pattern");
+        check(computeCycle(context, b.handle, 1, 0, false, poolBytes), "distinguish second selective-submit pattern");
+        setAddress(a.handle);
+        readbackAndVerify(context, a.handle, staging, 0, false, poolBytes);
+        setAddress(b.handle);
+        readbackAndVerify(context, b.handle, staging, 1, false, poolBytes);
+    } else {
+        // Keep the partially constant upload pattern compressible for BP16.
+        readbackAndVerify(context, a.handle, staging, -1, false, poolBytes);
+        readbackAndVerify(context, b.handle, staging, -1, false, poolBytes);
+    }
 
     if (activeSubmit) {
         require(context.twoQueues && context.secondQueue && context.secondQueue != context.queue,
@@ -1779,7 +1786,7 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         vkCmdPipelineBarrier(pending.command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
-        VkBufferCopy copy{0, 0, ChunkBytes};
+        VkBufferCopy copy{0, 0, poolBytes};
         vkCmdCopyBuffer(pending.command, a.handle, staging.buffer, 1, &copy);
         if (unknownCommand) recordUnknownResourceClear(pending.command, unknownImage.handle);
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -1818,9 +1825,9 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
             require(protectedAll && freezeDelta == 0,
                     "unknown pending submission did not protect every pool from active eviction");
             setAddress(a.handle);
-            readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
+            readbackAndVerify(context, a.handle, staging, 0, false, poolBytes);
             setAddress(b.handle);
-            readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+            readbackAndVerify(context, b.handle, staging, 1, false, poolBytes);
             const auto restored = context.stats();
             require(restored.coldLogicalBytes == 0 && restored.failures == pendingStart.failures,
                     "unknown-submit A/B readback changed snapshot failure accounting");
@@ -1859,7 +1866,7 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
         {
             TimelineWatchdog watchdog(context.device, context.pendingTimeline, signalValue);
             setAddress(b.handle);
-            readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+            readbackAndVerify(context, b.handle, staging, 1, false, poolBytes);
             afterB = context.stats();
             watchdogFired = watchdog.fired.load();
             watchdog.cancelAndJoin();
@@ -1870,9 +1877,9 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
         require(afterB.coldLogicalBytes == 0 && afterB.residentBytes == reqA.size + reqB.size,
                 "B readback did not restore B while A remained host-blocked");
         setAddress(b.handle);
-        readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes, 1);
+        readbackAndVerify(context, b.handle, staging, 1, false, poolBytes, 1);
         setAddress(a.handle);
-        readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
+        readbackAndVerify(context, a.handle, staging, 0, false, poolBytes);
         const auto restored = context.stats();
         require(restored.coldLogicalBytes == 0 && restored.failures == beforeActive.failures,
                 "A/B readback did not restore cold B cleanly");
@@ -1909,7 +1916,29 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
             afterIdleWaits.restores == cold.restores,
             "queue/device idle or metadata query woke selective-submit pools");
 
-    if (unknownCommand) {
+    if (batchSubmit) {
+        check(context.submit([&](VkCommandBuffer command) {
+            VkMemoryBarrier before{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+            before.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+            before.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &before, 0, nullptr, 0, nullptr);
+            const VkBufferCopy copy{0, 0, poolBytes};
+            vkCmdCopyBuffer(command, a.handle, b.handle, 1, &copy);
+            VkMemoryBarrier after{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+            after.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            after.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &after, 0, nullptr, 0, nullptr);
+        }), "copy across four cold chunks");
+        const auto restored = context.stats();
+        require(restored.residentBytes == coldBytes && restored.coldLogicalBytes == 0 &&
+                restored.restores == afterIdleWaits.restores + 4,
+                "four selected cold chunks did not restore together");
+        readbackAndVerify(context, a.handle, staging, -1, false, poolBytes);
+        readbackAndVerify(context, b.handle, staging, -1, false, poolBytes);
+        std::cout << "PASS: one submission restored four cold chunks and preserved every byte" << std::endl;
+    } else if (unknownCommand) {
         {
             NativeImage unknownImage;
             createUnknownResourceImage(context, unknownImage);
@@ -1929,13 +1958,13 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
                 restored.restores >= afterIdleWaits.restores + 2,
                 "unknown command did not conservatively restore every cold pool");
         setAddress(a.handle);
-        readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
+        readbackAndVerify(context, a.handle, staging, 0, false, poolBytes);
         setAddress(b.handle);
-        readbackAndVerify(context, b.handle, staging, 1, false, ChunkBytes);
+        readbackAndVerify(context, b.handle, staging, 1, false, poolBytes);
         std::cout << "PASS: unknown command restored both cold selective-submit pools" << std::endl;
     } else {
         setAddress(a.handle);
-        check(computeCycle(context, a.handle, 1, 0, false, ChunkBytes), "compute first selective-submit cold pool");
+        check(computeCycle(context, a.handle, 1, 0, false, poolBytes), "compute first selective-submit cold pool");
         auto firstAwake = context.stats();
         if (context.bdaMode) {
             require(firstAwake.residentBytes == coldBytes && firstAwake.coldLogicalBytes == 0 &&
@@ -1945,7 +1974,7 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
             require(firstAwake.residentBytes == reqA.size && firstAwake.coldLogicalBytes == reqB.size &&
                     firstAwake.restores == afterIdleWaits.restores + 1,
                     "compute of first pool restored unrelated cold pool");
-            readbackAndVerify(context, a.handle, staging, 1, false, ChunkBytes);
+            readbackAndVerify(context, a.handle, staging, 1, false, poolBytes);
             const auto afterReadback = context.stats();
             require(afterReadback.residentBytes == reqA.size && afterReadback.coldLogicalBytes == reqB.size &&
                     afterReadback.restores == firstAwake.restores,
@@ -1953,15 +1982,15 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
             firstAwake = afterReadback;
         }
         setAddress(b.handle);
-        check(computeCycle(context, b.handle, 2, 0, false, ChunkBytes), "compute second selective-submit cold pool");
+        check(computeCycle(context, b.handle, 2, 0, false, poolBytes), "compute second selective-submit cold pool");
         const auto bothAwake = context.stats();
         require(bothAwake.residentBytes == coldBytes && bothAwake.coldLogicalBytes == 0 &&
                 bothAwake.restores >= firstAwake.restores + (context.bdaMode ? 0 : 1),
                 "compute of second pool did not leave both pools resident");
         setAddress(a.handle);
-        readbackAndVerify(context, a.handle, staging, 1, false, ChunkBytes);
+        readbackAndVerify(context, a.handle, staging, 1, false, poolBytes);
         setAddress(b.handle);
-        readbackAndVerify(context, b.handle, staging, 2, false, ChunkBytes);
+        readbackAndVerify(context, b.handle, staging, 2, false, poolBytes);
         std::cout << "PASS: " << (context.nativeAllocation ? "native" : "synthetic")
                   << (api2 ? " API2" : " legacy")
                   << (context.bdaMode ? " BDA" : "")
@@ -1998,6 +2027,7 @@ int main(int argc, char** argv) try {
     bool suballocation = false, suballocationAuto = false, suballocationApi2 = false;
     bool selectiveBind = false, selectiveBindApi2 = false;
     bool selectiveSubmit = false, selectiveSubmitApi2 = false, selectiveSubmitUnknown = false;
+    bool selectiveSubmitBatch = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--expect-budget-refusal") == 0) expectBudgetRefusal = true;
         else if (std::strcmp(argv[i], "--expect-budget-release") == 0) expectBudgetRelease = true;
@@ -2019,6 +2049,7 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--selective-bind") == 0) selectiveBind = true;
         else if (std::strcmp(argv[i], "--selective-bind-api2") == 0) { selectiveBind = true; selectiveBindApi2 = true; }
         else if (std::strcmp(argv[i], "--selective-submit") == 0) selectiveSubmit = true;
+        else if (std::strcmp(argv[i], "--selective-submit-batch") == 0) { selectiveSubmit = true; selectiveSubmitBatch = true; }
         else if (std::strcmp(argv[i], "--selective-submit-api2") == 0) { selectiveSubmit = true; selectiveSubmitApi2 = true; }
         else if (std::strcmp(argv[i], "--selective-submit-unknown") == 0) { selectiveSubmit = true; selectiveSubmitUnknown = true; }
         else if (std::strcmp(argv[i], "--range-submit") == 0) { rangeSubmit=true; selectiveSubmit=true; }
@@ -2039,7 +2070,7 @@ int main(int argc, char** argv) try {
             rangeSubmit=true; rangeCache=true; rangeCacheUnknown=true;
         }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown|--selective-submit-batch] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
     }
     require(!useZeroPattern || rangeCompressed,
             "--zero-pattern requires --range-compressed");
@@ -2108,7 +2139,7 @@ int main(int argc, char** argv) try {
     if (rangeCacheUnknown) { rangeCacheUnknownCheck(context); return 0; }
     if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap, rangeCompressed); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
-    if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
+    if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit, selectiveSubmitBatch); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }
     if (pendingWait || pendingBind) {
         VkTimelineSemaphoreSubmitInfo waitValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
