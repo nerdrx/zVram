@@ -373,3 +373,11 @@ retry launch was correctly stopped by the Ollama GPU preflight guard. [Completed
 run](../../validation/internlm-bp16-local-owner3-raw16-total19-budget-snapshot-retry/README.md) ·
 [load failure](../../validation/internlm-bp16-local-owner3-raw16-total19-headroom2/README.md) ·
 [preflight abort](../../validation/internlm-bp16-local-owner3-raw16-total19-budget-snapshot-preflight-abort/README.md).
+
+A later 26 GiB cold/owner, 19 GiB resident run with the same optional budget
+snapshot completed exact output at **0.743201 tokens/s**, but a nearby attempt
+using the untouched installed binary and the same headroom settings also failed
+during load with Vulkan out-of-device-memory after machine-budget conditions
+changed. This makes the slower rate uninterpretable as a code effect; no speed
+claim follows. [Budget-snapshot run](../../validation/internlm-bp16-cold26-raw19-budget-snapshot/README.md) ·
+[untouched-binary control](../../validation/internlm-untouched-installed-cold26-raw19-control/README.md).
