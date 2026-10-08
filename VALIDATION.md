@@ -1755,6 +1755,25 @@ preserved with a byte hash in [the fixture archive](validation/bp16-remap-batch/
 run](validation/internlm-bp16-gpu-batch-cold26-owner26-resident19-lfu/README.md)
 · [Ollama preflight abort](validation/internlm-bp16-gpu-batch-cold26-owner26-resident19-lfu-preflight-abort/README.md).
 
+### Single BP16 clean-first model follow-up (repeat pending)
+
+A single 92-token run with clean-first resident-victim preference completed in
+**78,652.76 ms** (`92,000 / 78,652.76 = 1.16969830 tokens/s`), with exact
+stdout SHA-256 `b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`,
+49/49 layers, and zero GPU restore fallback. Minimum available RAM was
+**29,113 MiB (28.43 GiB)**; swap growth was **0 MiB**. The run used 26 GiB
+cold/owner ceilings, 19 GiB tracked residency, a 2.5 GiB reserve, LFU, 32
+encoder/eight upload workers, and immutable-owner validation caching.
+
+Telemetry recorded **891 GPU encodes / 29,639,376,896 raw bytes / 2.7809621 s
+encoder host time**, zero encoder fallback, and zero RAW snapshots. Host restore
+time was **74.63998 s**; device decode was **52.67389 s**. The prior repeated
+GPU-encoder run measured **1.10252711 tokens/s**, making this single result
+numerically about **6.09% higher**. Sequential clocks and background activity
+were uncontrolled, so this does not establish a causal improvement. A same-profile
+repeat is pending. The captured runtime/source metadata is from compiled commit
+`3c76d7d`. [Run archive and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [clean-first correctness evidence](validation/clean-first-eviction/README.md).
+
 ### Latest BP16 GPU-encoder full-model repeat: 26 GiB cold/owner ceilings
 
 The opt-in synchronous GPU BP16 encoder completed two 92-token

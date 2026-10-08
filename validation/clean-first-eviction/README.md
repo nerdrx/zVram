@@ -1,0 +1,5 @@
+# Experimental clean-first resident victim preference
+
+Default-off `ZVRAM_VULKAN_CLEAN_FIRST_EVICTION=1` prioritizes eligible resident chunks with valid retained snapshots before the existing MRU/LRU ordering. Requires clean cache. No changes to safety eligibility, write invalidation, actual freezing, or shared quota.
+
+Full regression with the flag enabled:123/123 passed85.65s. Focused CPU12 plus MRU/quota checks:18/18 passed9.65s. Both BP16 GPU pressure fixtures with clean cache and GPU encoder passed every application byte, actual GPU encode/decode, zero restore fallback and validation; they logged the new policy effective. A subsequent single clean-first full-model run measured 1.16969830 tokens/s with exact output, 49/49 layers, zero restore fallback, minimum available RAM 28.43 GiB, and zero swap growth. This is about 6.09% above the previous 1.10252711 run numerically, but clocks/background activity were uncontrolled and a same-profile repeat is pending. [Run archive](../internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md).
