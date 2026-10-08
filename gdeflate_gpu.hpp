@@ -25,6 +25,21 @@ class Decoder {
 public:
     static constexpr std::uint64_t DefaultAllocatedHostBudgetBytes = 8ull * 1024u * 1024u * 1024u;
 
+    static std::uint32_t selectMemoryTypeIndex(
+        const VkPhysicalDeviceMemoryProperties& memory, std::uint32_t typeBits,
+        VkMemoryPropertyFlags required, VkMemoryPropertyFlags forbidden,
+        VkMemoryPropertyFlags preferred = 0) noexcept {
+        std::uint32_t fallback = UINT32_MAX;
+        for (std::uint32_t i = 0; i < memory.memoryTypeCount; ++i) {
+            if (!(typeBits & (1u << i))) continue;
+            const auto flags = memory.memoryTypes[i].propertyFlags;
+            if ((flags & required) != required || (flags & forbidden)) continue;
+            if (fallback == UINT32_MAX) fallback = i;
+            if ((flags & preferred) == preferred) return i;
+        }
+        return fallback;
+    }
+
     static bool importedHostAllocationSize(std::size_t encodedBytes, VkDeviceSize alignment,
                                           std::size_t& allocationBytes) noexcept {
         if (!encodedBytes || encodedBytes > MaxBP16InputBytes || alignment < sizeof(void*) ||
@@ -138,6 +153,7 @@ public:
     bool unsafe() const noexcept { return poisoned_; }
     bool profilingEnabled() const noexcept { return profileEnabled_; }
     bool hostInputEnabled() const noexcept { return bp16HostInput_; }
+    bool cachedHostUploadPreferenceEnabled() const noexcept { return bp16CachedUploadPreference_; }
     bool importedHostInputEnabled() const noexcept { return bp16ImportHostInput_; }
     bool allocatedHostInputEnabled() const noexcept { return bp16AllocatedHostInput_; }
     std::uint64_t allocatedHostInputUsedBytes() const noexcept {
@@ -178,6 +194,9 @@ public:
         bp16HostInput_ = format == Format::BP16 && !bp16ImportHostInput_ &&
                          (bp16AllocatedHostInput_ || (hostInputEnv &&
                           std::strcmp(hostInputEnv, "1") == 0));
+        const char* cachedUploadEnv = std::getenv("ZVRAM_VULKAN_BP16_CACHED_UPLOAD");
+        bp16CachedUploadPreference_ = format == Format::BP16 && bp16HostInput_ &&
+            cachedUploadEnv && std::strcmp(cachedUploadEnv, "1") == 0;
         if (bp16ImportHostInput_ && (!importHostAlignment || importHostAlignment > 65536 ||
             (importHostAlignment & (importHostAlignment - 1))))
             return VK_ERROR_FEATURE_NOT_PRESENT;
@@ -233,7 +252,8 @@ public:
             : VkMemoryPropertyFlags(0);
         if (result == VK_SUCCESS) result = createBuffer(4, uploadUsage,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            uploadForbidden, upload_);
+            uploadForbidden, upload_, bp16CachedUploadPreference_
+                ? VK_MEMORY_PROPERTY_HOST_CACHED_BIT : 0);
         if (result == VK_SUCCESS && !bp16HostInput_) result = createBuffer(4,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, input_);
@@ -789,7 +809,7 @@ private:
 
     VkResult createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                          VkMemoryPropertyFlags required, VkMemoryPropertyFlags forbidden,
-                         Buffer& out) {
+                         Buffer& out, VkMemoryPropertyFlags preferred = 0) {
         VkBufferCreateInfo create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         create.size = size;
         create.usage = usage;
@@ -798,12 +818,8 @@ private:
         if (result != VK_SUCCESS) return result;
         VkMemoryRequirements requirements{};
         api_.getBufferMemoryRequirements(device_, out.buffer, &requirements);
-        std::uint32_t type = UINT32_MAX;
-        for (std::uint32_t i = 0; i < memory_.memoryTypeCount; ++i) {
-            if (!(requirements.memoryTypeBits & (1u << i))) continue;
-            const auto flags = memory_.memoryTypes[i].propertyFlags;
-            if ((flags & required) == required && !(flags & forbidden)) { type = i; break; }
-        }
+        const auto type = selectMemoryTypeIndex(memory_, requirements.memoryTypeBits,
+                                                required, forbidden, preferred);
         if (type == UINT32_MAX) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
         allocation.allocationSize = requirements.size;
@@ -846,7 +862,8 @@ private:
             : VkMemoryPropertyFlags(0);
         VkResult result = createBuffer(static_cast<VkDeviceSize>(capacity), uploadUsage,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            uploadForbidden, newUpload);
+            uploadForbidden, newUpload,
+            bp16CachedUploadPreference_ ? VK_MEMORY_PROPERTY_HOST_CACHED_BIT : 0);
         if (result == VK_SUCCESS && !bp16HostInput_) result = createBuffer(static_cast<VkDeviceSize>(capacity),
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, newInput);
@@ -1043,6 +1060,7 @@ private:
         maxDispatchGroupsX_ = 0;
         maxStorageBufferRange_ = 0;
         bp16HostInput_ = false;
+        bp16CachedUploadPreference_ = false;
         bp16ImportHostInput_ = false;
         bp16AllocatedHostInput_ = false;
         importHostAlignment_ = 0;
@@ -1082,6 +1100,7 @@ private:
     bool profileEnabled_{};
     bool gpuProfileEnabled_{};
     bool bp16HostInput_{};
+    bool bp16CachedUploadPreference_{};
     bool bp16ImportHostInput_{};
     bool bp16AllocatedHostInput_{};
     VkDeviceSize importHostAlignment_{};

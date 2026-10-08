@@ -45,6 +45,29 @@ template<class T> T fakeHandle(std::uintptr_t value) {
 void testImportedHostOwnerAccounting() {
     using Decoder = zvram::gdeflate::gpu::Decoder;
     using Budget = Decoder::AllocatedHostBudget;
+    VkPhysicalDeviceMemoryProperties memory{};
+    memory.memoryTypeCount = 3;
+    memory.memoryTypes[0].propertyFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    memory.memoryTypes[1].propertyFlags = memory.memoryTypes[0].propertyFlags |
+        VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+    memory.memoryTypes[2].propertyFlags = memory.memoryTypes[1].propertyFlags |
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    const auto hostFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    require(Decoder::selectMemoryTypeIndex(memory, 0x7, hostFlags,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_CACHED_BIT) == 1,
+            "cached upload preference did not select cached non-device-local memory");
+    require(Decoder::selectMemoryTypeIndex(memory, 0x1, hostFlags,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_CACHED_BIT) == 0,
+            "cached upload preference did not fall back to compatible coherent memory");
+    require(Decoder::selectMemoryTypeIndex(memory, 0x7, hostFlags,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0,
+            "default memory selection changed without a preference");
+    require(Decoder::selectMemoryTypeIndex(memory, 0x4, hostFlags,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_CACHED_BIT) == UINT32_MAX,
+            "memory selector accepted a forbidden device-local type");
+
     std::uint64_t budgetBytes{};
     require(Decoder::parseAllocatedHostBudgetMiB("0", budgetBytes) && budgetBytes == 0,
             "zero allocated-host budget parse failed");
