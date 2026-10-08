@@ -3,10 +3,17 @@ import sys
 from zvram_ui import profile_from_fields, command_text, system_status, profile_details
 
 
+EXTERNAL = dict(name="@12345-678", display_name="vrchat.exe", external=True, source="zVram",
+                mode="wrapped", priority="—", running=True, pid=12345, state="external",
+                command=[], resident_mib=None, rss_mib=256, vram_mib=512, gtt_mib=64)
+
+
 class FakeManager:
-    def __init__(self):
+    def __init__(self, external=False):
         self.profiles = {"test": dict(name="test", priority="low", resident_mib=1024,
                                      command=["/bin/echo", "hello world"], mode="vulkan", env={"TEST": "1"}, min_available_mib=16384, max_swap_growth_mib=8192)}
+        if external:
+            self.profiles[EXTERNAL["name"]] = dict(EXTERNAL)
         self.calls = []
 
     def list_profiles(self):
@@ -56,13 +63,18 @@ def check_fields():
             raise AssertionError("Accepted invalid profile: %r" % (fields,))
     assert "VRAM 100/24000 MiB" in system_status(FakeManager().status())
     assert "not physical residency" in profile_details({})
+    details = profile_details(EXTERNAL)
+    assert "read-only" in details and "Configured cap: unknown" in details
+    assert "Next launch" not in details and "not running" not in details
+    assert "Configured cap: 1024 MiB" in profile_details(dict(EXTERNAL, active_resident_mib=1024))
+    check_external_tui()
 
 
 def check_gui():
     import tkinter as tk
     from zvram_ui import ManagerWindow
     root = tk.Tk()
-    manager = FakeManager()
+    manager = FakeManager(external=True)
     window = ManagerWindow(root, manager)
     root.geometry("1200x920")
     root.update()
@@ -100,6 +112,25 @@ def check_gui():
     window.update_cards(dict(gpu=[dict(card="card0", vram_used_mib=20, vram_total_mib=2048), dict(card="card1", vram_used_mib=1024, vram_total_mib=24576)]))
     assert window.cards["gpu"][0].get() == "1.0 GiB / 24.0 GiB"
     assert "card0" in window.gpu_caption.get() and "card1" in window.gpu_caption.get()
+    from unittest.mock import patch
+    window.table.selection_set(EXTERNAL["name"])
+    root.update()
+    assert window.fields["name"].get() == "vrchat.exe"
+    assert window.read_only and "read-only" in window.details.get()
+    assert all(widget.instate(["disabled"]) for widget in window.controls + list(window.field_widgets.values()))
+    from unittest.mock import DEFAULT
+    with patch.multiple(manager, **{name: DEFAULT for name in ("save_profile", "start", "stop", "delete", "log_tail")}) as actions:
+        window.save()
+        window.act("start")
+        window.act("stop")
+        window.delete()
+        window.logs()
+        for action in actions.values():
+            action.assert_not_called()
+    assert manager.profiles[EXTERNAL["name"]] == EXTERNAL
+    window.new()
+    assert not window.read_only
+    assert all(not widget.instate(["disabled"]) for widget in window.controls + list(window.field_widgets.values()))
     if "--screenshot" in sys.argv:
         import subprocess
         from pathlib import Path
@@ -107,6 +138,34 @@ def check_gui():
         path.parent.mkdir(exist_ok=True)
         subprocess.run(["import", "-window", str(root.winfo_id()), str(path)], check=True, timeout=5)
     root.destroy()
+
+
+def check_external_tui():
+    from unittest.mock import DEFAULT, patch
+    from zvram_ui import _tui
+    class Screen:
+        def __init__(self):
+            self.keys = iter(map(ord, "epsxldq"))
+            self.lines = []
+        def getmaxyx(self): return (30, 180)
+        def timeout(self, value): pass
+        def erase(self): pass
+        def refresh(self): pass
+        def getch(self): return next(self.keys)
+        def addnstr(self, row, col, text, width, flags): self.lines.append(text)
+    manager = FakeManager(external=True)
+    manager.profiles.pop("test")
+    screen = Screen()
+    with patch("curses.curs_set"), patch("zvram_ui._edit", side_effect=AssertionError("external edit")), \
+         patch("zvram_ui._prompt", side_effect=AssertionError("external prompt")), \
+         patch.multiple(manager, **{name: DEFAULT for name in ("save_profile", "set_priority", "start", "stop", "delete", "log_tail")}) as actions:
+        _tui(screen, manager)
+        for action in actions.values():
+            action.assert_not_called()
+    assert manager.profiles == {EXTERNAL["name"]: EXTERNAL}
+    assert manager.calls == []
+    assert any("vrchat.exe" in line and "read-only" in line for line in screen.lines)
+    assert any("Configured cap: unknown" in line for line in screen.lines)
 
 
 def check_tui():

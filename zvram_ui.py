@@ -5,7 +5,7 @@ Profiles affect wrapped launches only. Changed residency takes effect on restart
 import shlex
 
 PRIORITIES = ("high", "normal", "low")
-NOTICE = "Foreground managed launches only. Priority presets apply on next launch; an explicit MiB cap overrides them. Native mode has no cap."
+NOTICE = "zVram launches only. External launches are read-only. Priority presets apply on next launch; an explicit MiB cap overrides them. Native mode has no cap."
 
 
 def profile_from_fields(name, priority, resident_mib, command, mode="vulkan"):
@@ -33,7 +33,7 @@ def command_text(profile):
 
 def status_text(profile):
     if profile.get("running"):
-        return "Running (PID %s)" % profile.get("pid", "?")
+        return ("External · read-only (PID %s)" if profile.get("external") else "Running (PID %s)") % profile.get("pid", "?")
     return str(profile.get("state", "stopped")).capitalize()
 
 
@@ -46,7 +46,10 @@ def system_status(status):
 def profile_details(profile):
     value = lambda key: "—" if profile.get(key) is None else str(profile[key])
     text = "RSS %s MiB · DRM VRAM %s MiB · GTT %s MiB (logical; not physical residency)" % (value("rss_mib"), value("vram_mib"), value("gtt_mib"))
-    if profile.get("mode") == "native":
+    if profile.get("external"):
+        cap = "%s MiB" % profile["active_resident_mib"] if profile.get("active_resident_mib") is not None else "unknown"
+        text += " | External zVram launch · read-only | " + profile.get("state", "Launch configured") + " | Configured cap: " + cap
+    elif profile.get("mode") == "native":
         text += " | Native: no zVram residency cap"
     else:
         active = "%s MiB" % profile["active_resident_mib"] if profile.get("running") and profile.get("active_resident_mib") else "not running"
@@ -76,6 +79,8 @@ class ManagerWindow:
         from tkinter import ttk
         self.root, self.manager = root, manager
         self.profiles, self.editing = {}, None
+        self.read_only = False
+        self.controls, self.field_widgets = [], {}
         root.title("zVram Manager")
         root.minsize(1080, 900)
         root.geometry("1200x920")
@@ -156,11 +161,11 @@ class ManagerWindow:
         titlebar = ttk.Frame(left, style="Panel.TFrame")
         titlebar.grid(row=0, column=0, sticky="ew")
         titlebar.columnconfigure(0, weight=1)
-        ttk.Label(titlebar, text="Launch profiles", style="Section.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(titlebar, text="Profiles & zVram apps", style="Section.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Button(titlebar, text="+ New", command=self.new).grid(row=0, column=1, sticky="e")
-        ttk.Label(left, text="Choose an app. Set its VRAM preference.", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 12))
+        ttk.Label(left, text="External zVram launches appear read-only.", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 12))
         self.table = ttk.Treeview(left, columns=("priority", "state"), height=7)
-        self.table.heading("#0", text="PROFILE", anchor="w")
+        self.table.heading("#0", text="APP / PROFILE", anchor="w")
         self.table.column("#0", width=175, minwidth=120, stretch=True)
         for key, label, width in (("priority", "PRIORITY", 76), ("state", "STATUS", 120)):
             self.table.heading(key, text=label, anchor="w")
@@ -170,7 +175,10 @@ class ManagerWindow:
         leftactions = ttk.Frame(left, style="Panel.TFrame")
         leftactions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         for label, callback in (("Refresh", self.refresh), ("View logs", self.logs), ("Delete", self.delete)):
-            ttk.Button(leftactions, text=label, command=callback).pack(side="left", padx=(0, 7))
+            button = ttk.Button(leftactions, text=label, command=callback)
+            button.pack(side="left", padx=(0, 7))
+            if label != "Refresh":
+                self.controls.append(button)
         right = ttk.Frame(workspace, style="Card.TFrame", padding=20)
         right.grid(row=0, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
@@ -186,12 +194,15 @@ class ManagerWindow:
             variable = tk.StringVar(value="normal" if key == "priority" else "vulkan" if key == "mode" else "")
             self.fields[key] = variable
             widget = ttk.Combobox(right, textvariable=variable, values=PRIORITIES if key == "priority" else ("native", "vulkan", "wrapped"), state="readonly") if key in ("priority", "mode") else ttk.Entry(right, textvariable=variable)
+            self.field_widgets[key] = widget
             widget.grid(row=row + 1, column=column, columnspan=span, sticky="ew", pady=(0, 12), padx=(0, 10 if column == 0 and span == 1 else 0))
         actions = ttk.Frame(right, style="Panel.TFrame")
         actions.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(2, 16))
         for label, callback, kind in (("Save settings", self.save, "TButton"), ("Start app", lambda: self.act("start"), "Accent.TButton"),
                                      ("Stop app", lambda: self.act("stop"), "TButton")):
-            ttk.Button(actions, text=label, command=callback, style=kind).pack(side="left", padx=(0, 10))
+            button = ttk.Button(actions, text=label, command=callback, style=kind)
+            button.pack(side="left", padx=(0, 10))
+            self.controls.append(button)
         ttk.Label(right, text="PROCESS ACCOUNTING", style="CardMuted.TLabel", font=("DejaVu Sans", 9, "bold")).grid(row=11, column=0, columnspan=2, sticky="w")
         self.details = tk.StringVar(value="Select a profile to inspect its process.")
         ttk.Label(right, textvariable=self.details, style="CardMuted.TLabel", wraplength=545, justify="left").grid(row=12, column=0, columnspan=2, sticky="nw", pady=(8, 0))
@@ -222,16 +233,31 @@ class ManagerWindow:
         selection = self.table.selection()
         return selection[0] if selection else None
 
+    def set_read_only(self, read_only):
+        self.read_only = read_only
+        for widget in self.controls:
+            widget.configure(state="disabled" if read_only else "normal")
+        for key, widget in self.field_widgets.items():
+            widget.configure(state="disabled" if read_only else "readonly" if key in ("priority", "mode") else "normal")
+
+    def blocked(self):
+        if self.read_only or self.profiles.get(self.selected(), {}).get("external"):
+            self.message.set("External zVram launch is read-only; manage it from its original launcher.")
+            return True
+        return False
+
     def select(self, event=None):
         profile = self.profiles.get(self.selected())
+        self.set_read_only(bool(profile and profile.get("external")))
         if profile:
             self.details.set(profile_details(profile))
         if profile and self.editing != profile["name"]:
             self.editing = profile["name"]
             for key in self.fields:
-                self.fields[key].set(command_text(profile) if key == "command" else str(profile.get(key) if profile.get(key) is not None else ""))
+                self.fields[key].set(command_text(profile) if key == "command" else profile.get("display_name", profile["name"]) if key == "name" else str(profile.get(key) if profile.get(key) is not None else ""))
 
     def new(self):
+        self.set_read_only(False)
         self.editing = None
         self.table.selection_remove(*self.table.selection())
         for key, variable in self.fields.items():
@@ -245,11 +271,11 @@ class ManagerWindow:
             self.profiles = {profile["name"]: profile for profile in profiles}
             self.table.delete(*self.table.get_children())
             for profile in profiles:
-                self.table.insert("", "end", iid=profile["name"], text=profile["name"], values=(
-                    profile["priority"].upper(), "Running" if profile.get("running") else status_text(profile)))
+                self.table.insert("", "end", iid=profile["name"], text=profile.get("display_name", profile["name"]), values=(
+                    profile["priority"].upper(), "External · read-only" if profile.get("external") else "Running" if profile.get("running") else status_text(profile)))
             if selected in self.profiles:
                 self.table.selection_set(selected)
-                self.details.set(profile_details(self.profiles[selected]))
+                self.select()
             else:
                 self.details.set("Select a profile to inspect its process.")
             status = self.manager.status()
@@ -259,6 +285,8 @@ class ManagerWindow:
             self.message.set("Error: %s" % error)
 
     def save(self):
+        if self.blocked():
+            return
         try:
             profile = profile_from_fields(**{key: value.get() for key, value in self.fields.items()})
             if self.editing in self.profiles:
@@ -271,6 +299,8 @@ class ManagerWindow:
             self.message.set("Error: %s" % error)
 
     def act(self, action):
+        if self.blocked():
+            return
         name = self.selected()
         if not name:
             self.message.set("Select a profile first")
@@ -283,6 +313,8 @@ class ManagerWindow:
             self.message.set("Error: %s" % error)
 
     def logs(self):
+        if self.blocked():
+            return
         import tkinter as tk
         from tkinter import ttk
         name = self.selected()
@@ -303,6 +335,8 @@ class ManagerWindow:
             self.message.set("Error: %s" % error)
 
     def delete(self):
+        if self.blocked():
+            return
         from tkinter import messagebox
         name = self.selected()
         if name and messagebox.askyesno("Delete profile", "Delete profile %s? Running jobs must be stopped first." % name, parent=self.root):
@@ -401,10 +435,10 @@ def _tui(screen, manager):
         if index >= offset + visible:
             offset = index - visible + 1
         screen.erase()
-        _draw(screen, 0, "zVram Manager | Managed launches only")
+        _draw(screen, 0, "zVram Manager | zVram launches only; external apps are read-only")
         _draw(screen, 1, "Profile                   Priority  Resident MiB  Status")
         for row, profile in enumerate(profiles[offset:offset + visible], 2):
-            text = "%-25.25s %-9s %-13s %s" % (profile["name"], profile["priority"], profile.get("resident_mib") if profile.get("resident_mib") is not None else "Default", status_text(profile))
+            text = "%-25.25s %-9s %-13s %s" % (profile.get("display_name", profile["name"]), profile["priority"], (profile.get("active_resident_mib") if profile.get("active_resident_mib") is not None else "Unknown") if profile.get("external") else profile.get("resident_mib") if profile.get("resident_mib") is not None else "Default", status_text(profile))
             _draw(screen, row, text, row - 2 + offset == index)
         try:
             _draw(screen, height - 6, system_status(manager.status()))
@@ -426,6 +460,9 @@ def _tui(screen, manager):
         else:
             profile = profiles[index] if profiles else None
             try:
+                if profile and profile.get("external") and key in map(ord, "epsxld"):
+                    message = "External zVram launch is read-only; manage it from its original launcher."
+                    continue
                 if key == ord("n") or key == ord("e") and profile:
                     edited = _edit(screen, profile if key == ord("e") else None)
                     if edited:

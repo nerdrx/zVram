@@ -2,9 +2,12 @@
 
 ![Standalone NX-themed zVram Manager](../validation/manager-bridge-smoke/manager.png)
 
-The GUI and TUI manage only their own foreground launches. Other programs keep
-their normal driver behavior. No root daemon, system GPU settings, or Ollama
-service changes are required.
+The GUI and TUI show managed profiles and detect other same-user zVram launches,
+including Steam launch options and terminal commands. Detected external apps
+show PID, RSS and available DRM memory accounting, but remain read-only: use
+their original launcher to stop them or change the next launch. Ordinary apps
+without zVram stay hidden and keep normal driver behavior. No root daemon,
+system GPU settings, or Ollama service changes are required.
 
 ```sh
 zvram gui
@@ -28,7 +31,11 @@ zvram run --name vrchat --priority high -- %command%
 This selects experimental range paging with a launch cap and native-budget
 headroom. Test per game; tracked buffers only, with images and unknown access
 outside the narrow paging guarantee. The original `zvram --vulkan-virtual-gib
-96 -- %command%` remains available and does not join management automatically.
+96 -- %command%` remains available and appears as a detected read-only app.
+Discovery refreshes about every two seconds. A configured launch environment
+does not prove that the app has loaded the Vulkan layer; process details
+distinguish configured launches from a mapped zVram backend. Process inspection
+restrictions may prevent discovery or hide memory counters.
 Programs must remain in the foreground; launchers that detach their game or
 server are not supported for reliable stop/accounting.
 

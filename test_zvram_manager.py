@@ -10,10 +10,64 @@ import time
 import unittest
 from unittest.mock import patch
 
-from zvram_manager import Manager, identity, owned_worker, write_json
+from zvram_manager import Manager, identity, owned_worker, write_json, discovered_processes
 
 
 class ManagerChecks(unittest.TestCase):
+    def test_external_discovery_filters_and_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def process(pid, env=b'', maps='', parent=1):
+                p = root / str(pid)
+                p.mkdir()
+                p.joinpath('stat').write_text(str(pid) + ' (test) ' + ' '.join(['S', str(parent)] + ['0'] * 17 + ['123']))
+                p.joinpath('environ').write_bytes(env)
+                p.joinpath('maps').write_text(maps)
+                p.joinpath('comm').write_text('test-app\n')
+            process(10, b'VK_INSTANCE_LAYERS=VK_LAYER_NX_zvram\0ZVRAM_VULKAN_RESIDENT_MIB=512\0SECRET=hidden\0')
+            process(11, b'VK_INSTANCE_LAYERS=VK_LAYER_NX_zvram_fake\0')
+            process(12, maps='0 0 0 0 0 /old/version/libzvram_layer.so (deleted)\n')
+            process(13, b'LD_PRELOAD=/path/libzvram_hip.so\0')
+            process(14, b'VK_INSTANCE_LAYERS=VK_LAYER_NX_zvram\0', parent=10)
+            process(15, b'ZVRAM_VERBOSE=1\0')
+            with patch('zvram_manager.process_usage', return_value={}):
+                rows = discovered_processes(proc_root=root)
+                self.assertEqual([r['pid'] for r in rows], [10, 12, 13, 14])
+                self.assertEqual(rows[0]['active_resident_mib'], 512)
+                self.assertEqual(rows[1]['state'], 'Layer loaded')
+                self.assertNotIn('hidden', json.dumps(rows))
+                self.assertEqual([r['pid'] for r in discovered_processes([10], root)], [12, 13])
+                with patch('zvram_manager.os.getuid', return_value=os.getuid() + 1):
+                    self.assertEqual(discovered_processes(proc_root=root), [])
+
+    def test_external_launcher_visible_without_ownership(self):
+        with tempfile.TemporaryDirectory() as temp:
+            manager = Manager(temp)
+            wrapped = subprocess.Popen([str(Path(__file__).parent / 'zvram'), '--', sys.executable,
+                                        '-c', 'import time; time.sleep(60)'])
+            unrelated = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+            try:
+                for _ in range(50):
+                    rows = discovered_processes()
+                    if any(r['pid'] == wrapped.pid for r in rows):
+                        break
+                    time.sleep(.05)
+                row = next(r for r in rows if r['pid'] == wrapped.pid)
+                self.assertTrue(row['external'])
+                self.assertNotIn(unrelated.pid, [r['pid'] for r in rows])
+                self.assertIn(wrapped.pid, [r['pid'] for r in manager.list_profiles()])
+                for action in (manager.start, manager.stop, manager.delete):
+                    with self.assertRaises(ValueError):
+                        action(row['name'])
+                self.assertIsNone(wrapped.poll())
+                self.assertIsNone(unrelated.poll())
+                self.assertFalse(manager.profiles_path.exists())
+            finally:
+                wrapped.terminate()
+                unrelated.terminate()
+                wrapped.wait()
+                unrelated.wait()
+
     def test_lifecycle_and_isolation(self):
         with tempfile.TemporaryDirectory() as temp:
             manager = Manager(Path(temp) / "state")

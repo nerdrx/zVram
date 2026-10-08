@@ -122,12 +122,74 @@ def process_usage(pid):
     return result
 
 
+def discovered_processes(exclude=(), proc_root=Path('/proc')):
+    """Observe same-user zVram launches without granting process ownership."""
+    processes = {}
+    for proc in proc_root.iterdir():
+        if not proc.name.isdecimal():
+            continue
+        try:
+            if proc.stat().st_uid != os.getuid():
+                continue
+            stat = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+            processes[int(proc.name)] = (proc, int(stat[1]), stat[19])
+        except (OSError, ValueError, IndexError):
+            continue
+    excluded = set(exclude)
+    # Exclude all descendants of supervised jobs, not just their immediate child.
+    while True:
+        children = {pid for pid, (_, parent, _) in processes.items() if parent in excluded}
+        if children <= excluded:
+            break
+        excluded.update(children)
+    rows = []
+    for pid, (proc, _, start) in sorted(processes.items()):
+        if pid in excluded:
+            continue
+        env, loaded = {}, False
+        try:
+            with (proc / 'environ').open('rb') as stream:
+                for entry in stream.read(131072).split(b'\0'):
+                    key, sep, value = entry.partition(b'=')
+                    if sep and key in (b'VK_INSTANCE_LAYERS', b'LD_PRELOAD', b'ZVRAM_VULKAN_RESIDENT_MIB'):
+                        env[key.decode()] = os.fsdecode(value)
+        except OSError:
+            pass
+        configured = ('VK_LAYER_NX_zvram' in env.get('VK_INSTANCE_LAYERS', '').split(':') or
+                      any(Path(p).name == 'libzvram_hip.so' for p in re.split(r'[:\s]+', env.get('LD_PRELOAD', ''))))
+        try:
+            with (proc / 'maps').open() as stream:
+                loaded = any(line.rstrip().removesuffix(' (deleted)').rsplit('/', 1)[-1] in
+                             ('libzvram_layer.so', 'libzvram_hip.so') for line in stream)
+        except OSError:
+            pass
+        if not (configured or loaded):
+            continue
+        try:
+            name = (proc / 'comm').read_text().strip()
+            # Ignore a vanished/reused PID rather than attributing stale observations.
+            if (proc / 'stat').read_text().rsplit(')', 1)[1].split()[19] != start:
+                continue
+        except (OSError, IndexError):
+            continue
+        cap = env.get('ZVRAM_VULKAN_RESIDENT_MIB', '')
+        row = dict(name=f'@{pid}-{start}', display_name=name, external=True, source='zVram',
+                   mode='wrapped', priority='—', running=True, pid=pid, process_start=start,
+                   state='Layer loaded' if loaded else 'Launch configured', command=[],
+                   resident_mib=None, active_resident_mib=int(cap) if cap.isdecimal() else None)
+        row.update(process_usage(pid))
+        rows.append(row)
+    return rows
+
+
 class Manager:
     def __init__(self, home=None):
         self.home = private_directory(home or os.environ.get("ZVRAM_MANAGER_HOME") or
                                       Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "zvram")
         self.profiles_path = self.home / "profiles.json"
         self._workers = {}
+        self._discovered = []
+        self._discovered_at = 0
 
     @contextlib.contextmanager
     def lock(self):
@@ -142,6 +204,8 @@ class Manager:
 
     @staticmethod
     def validate_name(name):
+        if isinstance(name, str) and name.startswith('@'):
+            raise ValueError('Detected external processes are read-only')
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", name):
             raise ValueError("Name: 1–64 letters, numbers, dots, underscores or hyphens")
 
@@ -182,15 +246,22 @@ class Manager:
                 del self._workers[name]
         profiles = read_json(self.profiles_path, {})
         rows = []
+        excluded = set()
         for name, profile in sorted(profiles.items()):
             job = read_json(self.job_path(name), {})
             running = owned_worker(job)
+            if running:
+                excluded.update(pid for pid in (job['identity']['pid'], job.get('child_pid')) if pid)
             row = dict(profile, running=running, pid=job.get("child_pid") if running else None,
                        state="running" if running else job.get("state", "stopped"),
                        active_resident_mib=job.get("resident_mib"), lastlog=job.get("reason", ""))
             row.update(process_usage(row["pid"]))
             rows.append(row)
-        return rows
+        if time.monotonic() - self._discovered_at >= 2:
+            self._discovered = discovered_processes(excluded)
+            self._discovered_at = time.monotonic()
+        return rows + [row for row in self._discovered if row['pid'] not in excluded and
+                       (identity(row['pid']) or {}).get('start') == row['process_start']]
 
     def status(self):
         return dict(memory_status(), gpu=gpu_status(), jobs=self.list_profiles())
@@ -207,6 +278,7 @@ class Manager:
             return "No log yet."
 
     def set_priority(self, name, priority):
+        self.validate_name(name)
         profiles = read_json(self.profiles_path, {})
         return self.save_profile(dict(profiles[name], priority=priority, resident_mib=None))
 
@@ -238,6 +310,7 @@ class Manager:
         return command, resident
 
     def start(self, name):
+        self.validate_name(name)
         if not Path(__file__).is_file():
             raise ValueError("Manager was updated; reopen it before starting a process")
         with self.lock():
