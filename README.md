@@ -333,6 +333,11 @@ and zero swap growth; minimum available RAM was 28.43 and 27.77 GiB. These
 sequential runs had uncontrolled clocks/background activity, so they do not
 establish clean-first as the cause. The policy remains experimental. [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md).
 
+A bounded fence-polling prototype was also tested and discarded: its 92-token run
+measured 1.16783681 tokens/s versus 1.17068766 for the clean-first repeat, with
+exact output and 49/49 layers. It showed no observed gain; its flag is not a
+current runtime option. [Archived experiment](VALIDATION.md#discarded-bp16-fence-polling-prototype).
+
 A same-prompt 92-token comparison produced identical stdout across 49/49 layers:
 **1.69935 tokens/s** native and **0.43978 tokens/s** allocated-host under the
 8 GiB cache. A later child-only glibc threshold run completed the same 92-token

@@ -1,0 +1,45 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+      Start   1: cpu-bp16-codec
+ 1/20 Test   #1: cpu-bp16-codec .......................   Passed    0.01 sec
+      Start   2: cpu-resident-budget
+ 2/20 Test   #2: cpu-resident-budget ..................   Passed    0.00 sec
+      Start   3: cpu-resident-bootstrap
+ 3/20 Test   #3: cpu-resident-bootstrap ...............   Passed    0.00 sec
+      Start   7: cpu-vulkan-ram-guard
+ 4/20 Test   #7: cpu-vulkan-ram-guard .................   Passed    0.26 sec
+      Start   8: cpu-vulkan-compression-options
+ 5/20 Test   #8: cpu-vulkan-compression-options .......   Passed    2.14 sec
+      Start   9: cpu-vulkan-model-budget
+ 6/20 Test   #9: cpu-vulkan-model-budget ..............   Passed    2.04 sec
+      Start  10: cpu-compression-policy
+ 7/20 Test  #10: cpu-compression-policy ...............   Passed    0.01 sec
+      Start  11: cpu-clean-cache-policy
+ 8/20 Test  #11: cpu-clean-cache-policy ...............   Passed    0.00 sec
+      Start  12: cpu-snapshot-decode
+ 9/20 Test  #12: cpu-snapshot-decode ..................   Passed    0.03 sec
+      Start  13: cpu-gdeflate-envelope
+10/20 Test  #13: cpu-gdeflate-envelope ................   Passed    0.00 sec
+      Start  14: cpu-snapshot-pipeline
+11/20 Test  #14: cpu-snapshot-pipeline ................   Passed    0.01 sec
+      Start  16: cpu-active-refs
+12/20 Test  #16: cpu-active-refs ......................   Passed    0.00 sec
+      Start 114: vulkan-bp16-gpu-idle-integrity
+13/20 Test #114: vulkan-bp16-gpu-idle-integrity .......   Passed    1.78 sec
+      Start 115: vulkan-bp16-gpu-native-two-queues
+14/20 Test #115: vulkan-bp16-gpu-native-two-queues ....   Passed    2.08 sec
+      Start 116: vulkan-bp16-gpu-partial-restore
+15/20 Test #116: vulkan-bp16-gpu-partial-restore ......   Passed    0.47 sec
+      Start 117: vulkan-bp16-gpu-range-synthetic
+16/20 Test #117: vulkan-bp16-gpu-range-synthetic ......   Passed    0.36 sec
+      Start 118: vulkan-bp16-gpu-range-native
+17/20 Test #118: vulkan-bp16-gpu-range-native .........   Passed    0.35 sec
+      Start 119: vulkan-bp16-gpu-zero-pattern
+18/20 Test #119: vulkan-bp16-gpu-zero-pattern .........   Passed    0.35 sec
+      Start 120: vulkan-bp16-gpu-pressure-synthetic
+19/20 Test #120: vulkan-bp16-gpu-pressure-synthetic ...   Passed    0.45 sec
+      Start 121: vulkan-bp16-gpu-pressure-native
+20/20 Test #121: vulkan-bp16-gpu-pressure-native ......   Passed    0.46 sec
+
+100% tests passed out of 20
+
+Total Test time (real) =  10.82 sec

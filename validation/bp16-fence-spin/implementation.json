@@ -1,0 +1,11 @@
+{
+  "parent_commit": "6001356",
+  "implementation_commit": "0237548",
+  "files": [
+    "gdeflate_gpu.hpp",
+    "layer.cpp",
+    "test_gdeflate_gpu_layer.py"
+  ],
+  "patch_bytes": 7101,
+  "patch_sha256": "5f9518194106e40f85a9c514bf337f7ceb29b82499bc5e792faab376faaedf67"
+}

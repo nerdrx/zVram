@@ -1778,6 +1778,22 @@ Clocks/background activity were uncontrolled, so the pair does not establish a
 causal improvement. Runtime/source metadata is from compiled commits `3c76d7d`
 and `a19bd5d`, respectively. [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [clean-first correctness evidence](validation/clean-first-eviction/README.md).
 
+### Discarded BP16 fence-polling prototype
+
+The bounded fence-spin prototype completed one 92-token run in **78,778.13 ms**
+(`92,000 / 78,778.13 = 1.16783681 tokens/s`) with exact output, 49/49 layers,
+and zero GPU restore fallback. Minimum available RAM was **28,344 MiB
+(27.68 GiB)** and swap growth was **349 MiB**. Telemetry recorded **1,752
+completed zero-timeout polls / 54,602 blocking waits**.
+
+The clean-first repeat measured **1.17068766 tokens/s**; the spin run was
+slightly slower and showed no observed gain. This sequential comparison is not
+controlled. The prototype was removed from the current runtime and its
+environment flag is unsupported. Implementation commit `0237548` is preserved
+as a hash-verified patch in [the fixture archive](validation/bp16-fence-spin/README.md);
+[the model archive](validation/internlm-bp16-gpu-spin-cold26-owner26-resident19-lfu/README.md)
+contains run provenance.
+
 ### Latest BP16 GPU-encoder full-model repeat: 26 GiB cold/owner ceilings
 
 The opt-in synchronous GPU BP16 encoder completed two 92-token
