@@ -286,11 +286,14 @@ The latest full InternLM2.5-20B F16 BP16 run completed 12 decode runs at
 **0.61020197 tokens/s** (reported as 0.61), with exact output, 49/49 layers,
 and zero GPU fallback. It used 32 BP16 encoding workers, eight opt-in upload
 workers, an 8 GiB allocated-host cache, a 19 GiB tracked-residency cap, and a
-24 GiB cold/cache quota. This is one sequential result with uncontrolled
-clocks and background activity; it does not establish that eight upload
-workers caused the rate difference. The prior 24 GiB run measured
-0.5275435 tokens/s. The upload-worker setting remains default-one.
+24 GiB cold/cache quota. A repeat with eight upload workers measured
+**0.6070807 tokens/s**; the one- and four-worker runs measured **0.5331433**
+and **0.5966213 tokens/s**. They used the same runtime library, but were
+sequential with uncontrolled clocks and background activity, so they do not
+establish that worker count caused the rate pattern. The prior 24 GiB run
+measured 0.5275435 tokens/s. The upload-worker setting remains default-one.
 [Current run and limits](VALIDATION.md#latest-observed-bp16-run-24-gib-cold-quota-with-eight-upload-workers);
+[same-runtime comparison](validation/internlm-bp16-cold24-upload-worker-comparison/README.md);
 [prior 24 GiB run](VALIDATION.md#earlier-best-bp16-run-24-gib-coldcache-quota);
 [worker checks](VALIDATION.md#opt-in-bp16-upload-copy-workers);
 [previous 8 GiB-cache run](VALIDATION.md#earlier-best-bp16-run-bounded-allocated-host-cache-32-workers);

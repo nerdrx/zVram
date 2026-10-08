@@ -1,0 +1,5 @@
+{
+  "loaded_runtime_code_commit": "736ef60",
+  "loaded_runtime_sha256": "d745d704135f7af4e3a57c3df1180c5bee9af3ff42d2343dedc9b191981829f8",
+  "note": "Runtime binary was not rebuilt after source-only profiling commit4d1b704; source-commit/hash fields record launch-time checkout, not exact source provenance of compiled library."
+}

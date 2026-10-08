@@ -26,4 +26,8 @@ hashes plus the full-suite environment are in [provenance metadata](provenance.j
 A later 20B F16 run enabled eight upload-copy workers and measured
 **0.61020197 tokens/s**, with exact output and zero fallback. It was a single
 sequential run with uncontrolled clocks/background activity, so it does not
-isolate a worker-count speed effect. [Run archive and limits](../internlm-bp16-cold24-upload8/README.md).
+isolate a worker-count speed effect. An eight-worker repeat measured
+**0.6070807 tokens/s**. The one- and four-worker runs measured **0.5331433**
+and **0.5966213 tokens/s**. See the [comparison table and limits](../internlm-bp16-cold24-upload-worker-comparison/README.md),
+[first eight-worker run](../internlm-bp16-cold24-upload8/README.md), and
+[repeat provenance](../internlm-bp16-cold24-upload8-repeat/README.md).

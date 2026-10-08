@@ -1265,17 +1265,23 @@ output SHA-256
 layers, and zero GPU fallback or diagnostics. Minimum available RAM was
 **18,212 MiB** and swap grew by **1,062 MiB**.
 
-This is one sequential result with uncontrolled clocks/background activity; it
-does not establish that upload workers caused the rate change. The production
-shader was unchanged. The recorded source commit is
-`9f2fa795685356bd9eafbe817842338bc97dcd18`; per-file source hashes are retained
-in the result. The runtime library hash is recorded separately and matches the
-previous worker-regression library; this is not a claim that the worker setting
-alone explains the rate.
+An eight-worker repeat completed in **19,766.73 ms** (**0.6070807 tokens/s**),
+also with exact output, **49/49** layers and zero fallback. For comparison,
+one worker measured **0.5331433** tokens/s and four workers measured
+**0.5966213**. The production shader was unchanged. These runs were sequential
+with uncontrolled clocks/background activity; they document the observed
+pattern but do not establish that worker count caused it. The first eight-worker
+run's source commit is `9f2fa795685356bd9eafbe817842338bc97dcd18`; per-file
+source hashes are retained in its result. The runtime library hash is recorded
+separately and matches the prior worker-regression library. The repeat launched
+from source checkout `4d1b704`, but did not rebuild the library after that
+profiling-only commit; its loaded runtime code commit and hash are in
+`runtime-source-context.json`.
 
 [Run archive](validation/internlm-bp16-cold24-upload8/README.md),
 [full result](validation/internlm-bp16-cold24-upload8/result.json.gz), and
-[eight-worker presentation fixture](validation/bp16-upload-workers/hidden-graphics-workers8/README.md).
+[eight-worker presentation fixture](validation/bp16-upload-workers/hidden-graphics-workers8/README.md), and
+[same-runtime comparison and per-run archives](validation/internlm-bp16-cold24-upload-worker-comparison/README.md).
 
 ### BP16 host-copy worker component matrix
 

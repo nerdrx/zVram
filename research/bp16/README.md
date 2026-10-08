@@ -295,7 +295,10 @@ encoded BP16 input into the upload buffer. The CLI flag requires BP16 GPU
 restore and automatic snapshots; it defaults to one worker. GDeflate ignores
 it, and allocation/thread-launch failures return to serial copy after joining
 any started threads. The full suite and all four focused BP16 input-mode suites
-passed at eight workers. A later full-model run with the setting enabled
-completed at **0.61020197 tokens/s**, but this single uncontrolled result does
-not isolate an upload-worker speed effect. [Run and worker evidence](../../validation/internlm-bp16-cold24-upload8/README.md) ·
+passed at eight workers. Two full-model runs with the setting measured
+**0.61020197** and **0.6070807 tokens/s**; one and four workers measured
+**0.5331433** and **0.5966213 tokens/s**. They used the same runtime library,
+but the runs were sequential with uncontrolled clocks and background activity,
+so they do not establish that worker count caused the pattern. [Comparison and
+per-run provenance](../../validation/internlm-bp16-cold24-upload-worker-comparison/README.md) ·
 [regression logs](../../validation/bp16-upload-workers/README.md).
