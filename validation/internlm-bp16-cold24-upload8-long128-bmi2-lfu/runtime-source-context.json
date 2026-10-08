@@ -1,0 +1,10 @@
+{
+  "runtime_code_commit": "5fcd4f3",
+  "note": "LFU policy plus exact-capacity BP16 ownership transfer. GPU encoder research not integrated. Decoder shader unchanged.",
+  "sources": {
+    "layer.cpp": "3adb7ba9c379f372aefdac74f7d0af147807efb2ad3bc849d2e1663b5e3cdd5f",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "gdeflate_gpu.hpp": "7c643f6af6f2630858ae277fcfaedd4d9b7889d0567a8962c6f46b149b070294"
+  }
+}

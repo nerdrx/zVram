@@ -307,7 +307,7 @@ python3 check_vulkan_idle_model.py --binary build/third-party/llama-vulkan-build
 The reuse rule follows SPIR-V's `NonWritable` decoration; see the [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#_decoration). This current model result is a narrow validation of cache retention and reuse, not proof of general active-working-set caching, unbounded memory savings, or faster large-pool compression.
 
 Clean-snapshot replacement policy selection is also available through the
-opt-in `ZVRAM_VULKAN_CLEAN_CACHE_POLICY=first|lru|mru` environment variable;
+opt-in `ZVRAM_VULKAN_CLEAN_CACHE_POLICY=first|lru|mru|lfu` environment variable;
 the default remains `first`. The focused CPU tests passed **12/12** in **4.54
 seconds**, and the BP16 GPU tests passed **8/8** in **6.85 seconds**. The test
 logs show the requested LRU policy was accepted, exact application bytes were
@@ -329,6 +329,13 @@ seconds**. In a 64 MiB resident/cold-quota fixture, three readback passes
 verified exact bytes and the complete log recorded 14 cache trims of 32 MiB
 each, with zero GPU fallback. This is correctness evidence only; the default
 remains `first`, and no LFU speed claim is made. [Logs and hashes](validation/bp16-clean-cache-lfu/README.md).
+
+An LFU 92-token full-model run completed with exact output, **49/49** layers,
+and zero GPU fallback at **0.574915 tokens/s**. It roughly matches the earlier
+**0.572725** observation; however, the LFU run used a newer layer binary that
+also contained exact-storage ownership transfer. Runs were sequential and
+uncontrolled, so this does not isolate either change or justify changing the
+default. [Run archive and counters](validation/internlm-bp16-cold24-upload8-long128-bmi2-lfu/README.md).
 
 ## Vulkan range eviction policy
 

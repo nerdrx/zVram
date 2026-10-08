@@ -21,6 +21,17 @@
       "tokens_per_second_exact": 0.4604719607361565,
       "minimum_available_mib": 20270,
       "swap_growth_mib": 2052
+    },
+    "lfu": {
+      "decode_ms": 160023.76,
+      "tokens_per_second_exact": 0.574914625178161,
+      "minimum_available_mib": 20077,
+      "swap_growth_mib": 2335
     }
-  }
+  },
+  "layer_sha256": {
+    "first_lru_mru": "fb3763e4db039c768441ed5cf9b40f8a4f869a59cf5eccc0155e33dacf9163a7",
+    "lfu": "3b5915ddc1b36560ff765f6efb5917b20ffa64c3a632ee81a586586060859b5e"
+  },
+  "shader_sha256": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854"
 }
