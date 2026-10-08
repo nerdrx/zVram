@@ -393,6 +393,10 @@ void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
             logf("GPU restore host split queue-submit-ns=%llu fence-wait-ns=%llu%s",
                  static_cast<unsigned long long>(profile.queueSubmitNs),
                  static_cast<unsigned long long>(profile.fenceWaitNs),suffix);
+            if(d.gpuDecoder->spinWaitEnabled())
+                logf("GPU BP16 restore fence spin completed=%llu blocking=%llu%s",
+                     static_cast<unsigned long long>(profile.fenceSpinCompleted),
+                     static_cast<unsigned long long>(profile.fenceSpinFallbacks),suffix);
             if(d.snapshotCodec==zvram::snapshot::Codec::BP16)
                 logf("GPU BP16 upload profile buffer-prepare-ns=%llu direct-copy-ns=%llu%s",
                      static_cast<unsigned long long>(profile.bp16BufferPrepareNs),
@@ -1691,6 +1695,8 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
                 d.gpuDecoder->allocatedHostInputEnabled()?"cached allocated host input":
                 d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
             if(bp16) logf("GPU BP16 upload workers=%u",d.gpuDecoder->uploadWorkers());
+            if(d.gpuDecoder->spinWaitEnabled())
+                logf("GPU BP16 restore fence spin enabled budget-us=3000");
             if(d.gpuDecoder->bp16EncoderEnabled()) {
                 // The first GPU encoder uses the existing synchronous freeze transaction.
                 d.asyncCompression=false;
