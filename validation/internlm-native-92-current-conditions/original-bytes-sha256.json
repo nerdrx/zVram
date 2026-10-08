@@ -1,0 +1,50 @@
+{
+  "run.py": {
+    "bytes": 1850,
+    "sha256": "d4196642c7ce093b0566569e067e4990fc0e75ef006f51b06e20ad1b97948db4"
+  },
+  "native-command.json": {
+    "bytes": 599,
+    "sha256": "c7dd3e8f34996caddd51098227ec6dd13045b9225b7e442a8d737c45545fb132"
+  },
+  "monitor.py": {
+    "bytes": 7887,
+    "sha256": "6fb17d0ed07aca6aa7406faef9f52aba2c21ff154678eab1e79e27e9cf050a9d"
+  },
+  "binary-sha256.txt": {
+    "bytes": 65,
+    "sha256": "6f62f2a95c833ca8e07cb2d25cd1c8a3c6bf63f032d9eb629e7eedce44623065"
+  },
+  "controller.log": {
+    "bytes": 288,
+    "sha256": "f6b75fb8138fd69120c786f834feaa46809ed15a10bc214e86fbea94e5bb0afc"
+  },
+  "memory-monitor.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "memory.jsonl": {
+    "bytes": 312156,
+    "sha256": "17eff9fcb476156db2382b473ccb229bfa93a523108e75152fa89733620695d8"
+  },
+  "native-hot.fdinfo.txt": {
+    "bytes": 1065,
+    "sha256": "b4d97312753f5f5169d617675ee475267e80577257cfa3b5b09c61a10fdcc7f3"
+  },
+  "native.stdout.txt": {
+    "bytes": 405,
+    "sha256": "b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b"
+  },
+  "native.stderr.txt": {
+    "bytes": 379488,
+    "sha256": "a84a52d7c4e721eed45b2855e49a6d819af0552b59eb407198ce5a67b3f959cf"
+  },
+  "native.resources.json": {
+    "bytes": 1105,
+    "sha256": "b214d860c5260205420b29ae2e6ad0600ca9fcc332177467bc0421485a842771"
+  },
+  "result.json": {
+    "bytes": 1377,
+    "sha256": "41b70fe545d7a5bda8d403fb739351bd46299996f3ab2d75c332579eba5f9a43"
+  }
+}

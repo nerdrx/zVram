@@ -1,0 +1,44 @@
+{
+  "scope": "Native current-machine-condition reference after optionalbudget trials;92-token story, sequential unlocked clocks; no compression/paging snapshots/resident cap",
+  "prompt_utf8": "Write a 300-word story about a fox exploring a forest. Continue the story until you have written at least 300 words.\n",
+  "runs": {
+    "native": {
+      "model_buffers_mib": [
+        36798.77
+      ],
+      "cold": [],
+      "cold_state": null,
+      "pre_prompt_cold_state": null,
+      "pre_prompt_state": null,
+      "state_events": [],
+      "backing": {
+        "hot": {
+          "resident-vram": 22234112000,
+          "memory-vram": 22234112000,
+          "resident-gtt": 18028322816,
+          "memory-gtt": 18028322816,
+          "unique_drm_clients": 1,
+          "resident_vram_present": true
+        }
+      },
+      "offload": [
+        49,
+        49
+      ],
+      "performance": {
+        "decode_ms": 60018.45,
+        "decode_runs": 92,
+        "tokens_per_second": 1.53,
+        "prompt_ms": 1595.27,
+        "restore_ms": []
+      },
+      "first_stdout_after_input_ms": 1596.1128149938304,
+      "minimum_available_mib": 19926,
+      "swap_used_baseline_mib": 15007,
+      "swap_used_peak_mib": 17183,
+      "swap_growth_mib": 2176,
+      "returncode": 0,
+      "stdout_sha256": "b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b"
+    }
+  }
+}
