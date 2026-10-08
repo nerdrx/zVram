@@ -23,6 +23,8 @@ enum class Format { GDeflate, BP16 };
 
 class Decoder {
 public:
+    static constexpr std::uint64_t DefaultAllocatedHostBudgetBytes = 8ull * 1024u * 1024u * 1024u;
+
     static bool importedHostAllocationSize(std::size_t encodedBytes, VkDeviceSize alignment,
                                           std::size_t& allocationBytes) noexcept {
         if (!encodedBytes || encodedBytes > MaxBP16InputBytes || alignment < sizeof(void*) ||
@@ -40,6 +42,49 @@ public:
         return paddingBytes <= budgetBytes - coldBytes - cacheBytes;
     }
 
+    static bool parseAllocatedHostBudgetMiB(const char* text, std::uint64_t& bytes) noexcept {
+        constexpr std::uint64_t MiB = 1024ull * 1024ull;
+        constexpr std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max() / MiB;
+        if (!text || !*text) return false;
+        std::uint64_t value = 0;
+        for (; *text; ++text) {
+            if (*text < '0' || *text > '9') return false;
+            const auto digit = static_cast<std::uint64_t>(*text - '0');
+            if (value > (maximum - digit) / 10u) return false;
+            value = value * 10u + digit;
+        }
+        bytes = value * MiB;
+        return true;
+    }
+
+    class AllocatedHostBudget {
+    public:
+        explicit AllocatedHostBudget(std::uint64_t limitBytes) noexcept : limitBytes_(limitBytes) {}
+        bool reserve(std::uint64_t bytes) noexcept {
+            auto used = usedBytes_.load(std::memory_order_relaxed);
+            while (used <= limitBytes_ && bytes <= limitBytes_ - used) {
+                if (usedBytes_.compare_exchange_weak(used, used + bytes,
+                        std::memory_order_acq_rel, std::memory_order_relaxed)) return true;
+            }
+            return false;
+        }
+        bool release(std::uint64_t bytes) noexcept {
+            auto used = usedBytes_.load(std::memory_order_relaxed);
+            while (used >= bytes) {
+                if (usedBytes_.compare_exchange_weak(used, used - bytes,
+                        std::memory_order_acq_rel, std::memory_order_relaxed)) return true;
+            }
+            return false;
+        }
+        std::uint64_t usedBytes() const noexcept {
+            return usedBytes_.load(std::memory_order_acquire);
+        }
+        std::uint64_t limitBytes() const noexcept { return limitBytes_; }
+    private:
+        const std::uint64_t limitBytes_;
+        std::atomic<std::uint64_t> usedBytes_{};
+    };
+
     struct ImportedHostInput {
         ImportedHostInput() = default;
         ImportedHostInput(const ImportedHostInput&) = delete;
@@ -54,6 +99,8 @@ public:
         PFN_vkFreeMemory freeMemory{};
         PFN_vkUnmapMemory unmapMemory{};
         bool driverAllocatedHostMemory{};
+        std::shared_ptr<AllocatedHostBudget> budget;
+        std::uint64_t reservedBudgetBytes{};
         std::shared_ptr<std::atomic<bool>> poisoned;
 
         ~ImportedHostInput() {
@@ -63,6 +110,7 @@ public:
             if (device && buffer && destroyBuffer) destroyBuffer(device, buffer, nullptr);
             if (device && memory && freeMemory) freeMemory(device, memory, nullptr);
             if (!driverAllocatedHostMemory) std::free(allocation);
+            if (budget && reservedBudgetBytes) budget->release(reservedBudgetBytes);
         }
         const std::uint8_t* data() const noexcept {
             return static_cast<const std::uint8_t*>(allocation);
@@ -92,6 +140,12 @@ public:
     bool hostInputEnabled() const noexcept { return bp16HostInput_; }
     bool importedHostInputEnabled() const noexcept { return bp16ImportHostInput_; }
     bool allocatedHostInputEnabled() const noexcept { return bp16AllocatedHostInput_; }
+    std::uint64_t allocatedHostInputUsedBytes() const noexcept {
+        return allocatedHostBudget_ ? allocatedHostBudget_->usedBytes() : 0;
+    }
+    std::uint64_t allocatedHostInputLimitBytes() const noexcept {
+        return allocatedHostBudget_ ? allocatedHostBudget_->limitBytes() : 0;
+    }
     Profile profile() const noexcept { return profile_; }
 
     // GDeflate requires shaderInt64, subgroup-size-control, computeFullSubgroups,
@@ -107,7 +161,8 @@ public:
                         std::uint32_t timestampValidBits = 0,
                         bool importHostInput = false,
                         VkDeviceSize importHostAlignment = 0,
-                        bool allocatedHostInput = false) {
+                        bool allocatedHostInput = false,
+                        std::uint64_t allocatedHostBudgetBytes = DefaultAllocatedHostBudgetBytes) {
         const char* profileEnv = std::getenv("ZVRAM_VULKAN_GPU_PROFILE");
         profileEnabled_ = profileEnv && std::strcmp(profileEnv, "1") == 0;
         profile_ = {};
@@ -121,14 +176,18 @@ public:
             return VK_ERROR_VALIDATION_FAILED_EXT;
         const char* hostInputEnv = std::getenv("ZVRAM_VULKAN_BP16_HOST_INPUT");
         bp16HostInput_ = format == Format::BP16 && !bp16ImportHostInput_ &&
-                         !bp16AllocatedHostInput_ && hostInputEnv &&
-                         std::strcmp(hostInputEnv, "1") == 0;
+                         (bp16AllocatedHostInput_ || (hostInputEnv &&
+                          std::strcmp(hostInputEnv, "1") == 0));
         if (bp16ImportHostInput_ && (!importHostAlignment || importHostAlignment > 65536 ||
             (importHostAlignment & (importHostAlignment - 1))))
             return VK_ERROR_FEATURE_NOT_PRESENT;
         importHostAlignment_ = importHostAlignment;
         if (bp16ImportHostInput_ || bp16AllocatedHostInput_) {
             try { poisonState_ = std::make_shared<std::atomic<bool>>(false); }
+            catch (const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+        }
+        if (bp16AllocatedHostInput_) {
+            try { allocatedHostBudget_ = std::make_shared<AllocatedHostBudget>(allocatedHostBudgetBytes); }
             catch (const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
         }
         if (format == Format::BP16 && (!properties ||
@@ -269,6 +328,8 @@ public:
         if (!initialized_ || poisoned_ || !bp16AllocatedHostInput_ || !encoded || !encodedSize ||
             encodedSize > MaxBP16InputBytes) return VK_ERROR_FEATURE_NOT_PRESENT;
         if (!bp16::inspect(encoded, encodedSize)) return VK_ERROR_VALIDATION_FAILED_EXT;
+        if (!allocatedHostBudget_ || !allocatedHostBudget_->limitBytes())
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         if (!api_.getBufferMemoryRequirements2) return VK_ERROR_FEATURE_NOT_PRESENT;
         const auto bufferBytes = (encodedSize + 3u) & ~std::size_t(3u);
         if (bufferBytes > maxStorageBufferRange_ || bufferBytes < encodedSize)
@@ -282,6 +343,7 @@ public:
         owner->freeMemory = api_.freeMemory;
         owner->unmapMemory = api_.unmapMemory;
         owner->driverAllocatedHostMemory = true;
+        owner->budget = allocatedHostBudget_;
         owner->poisoned = poisonState_;
 
         VkBufferCreateInfo create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -314,6 +376,9 @@ public:
             }
         }
         if (memoryType == UINT32_MAX) return VK_ERROR_FEATURE_NOT_PRESENT;
+        if (!allocatedHostBudget_ || !allocatedHostBudget_->reserve(memoryRequirements.size))
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        owner->reservedBudgetBytes = memoryRequirements.size;
 
         VkMemoryDedicatedAllocateInfo dedicatedAllocate{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO};
         dedicatedAllocate.buffer = owner->buffer;
@@ -981,7 +1046,10 @@ private:
         bp16ImportHostInput_ = false;
         bp16AllocatedHostInput_ = false;
         importHostAlignment_ = 0;
-        if (!poisoned_) poisonState_.reset();
+        if (!poisoned_) {
+            poisonState_.reset();
+            allocatedHostBudget_.reset();
+        }
         queryPool_ = VK_NULL_HANDLE;
         gpuProfileEnabled_ = false;
         timestampValidBits_ = 0;
@@ -1018,6 +1086,7 @@ private:
     bool bp16AllocatedHostInput_{};
     VkDeviceSize importHostAlignment_{};
     std::shared_ptr<std::atomic<bool>> poisonState_;
+    std::shared_ptr<AllocatedHostBudget> allocatedHostBudget_;
     std::uint32_t timestampValidBits_{};
     double timestampPeriod_{};
     Profile profile_{};

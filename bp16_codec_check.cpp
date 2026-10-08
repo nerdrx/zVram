@@ -44,6 +44,33 @@ template<class T> T fakeHandle(std::uintptr_t value) {
 
 void testImportedHostOwnerAccounting() {
     using Decoder = zvram::gdeflate::gpu::Decoder;
+    using Budget = Decoder::AllocatedHostBudget;
+    std::uint64_t budgetBytes{};
+    require(Decoder::parseAllocatedHostBudgetMiB("0", budgetBytes) && budgetBytes == 0,
+            "zero allocated-host budget parse failed");
+    require(Decoder::parseAllocatedHostBudgetMiB("8192", budgetBytes) &&
+            budgetBytes == Decoder::DefaultAllocatedHostBudgetBytes,
+            "default allocated-host budget parse failed");
+    require(!Decoder::parseAllocatedHostBudgetMiB("", budgetBytes) &&
+            !Decoder::parseAllocatedHostBudgetMiB("-1", budgetBytes) &&
+            !Decoder::parseAllocatedHostBudgetMiB("1.5", budgetBytes) &&
+            !Decoder::parseAllocatedHostBudgetMiB("17592186044416", budgetBytes),
+            "invalid or overflowing allocated-host budget accepted");
+    Budget disabledBudget(0);
+    require(disabledBudget.limitBytes() == 0 && !disabledBudget.reserve(1),
+            "zero allocated-host budget did not disable owner caching");
+    Budget exactBudget(16);
+    require(exactBudget.reserve(10) && exactBudget.reserve(6) && exactBudget.usedBytes() == 16,
+            "allocated-host budget exact fit failed");
+    require(!exactBudget.reserve(1) && exactBudget.release(6) && exactBudget.usedBytes() == 10,
+            "allocated-host budget overrun/release failed");
+    require(exactBudget.release(10) && exactBudget.usedBytes() == 0 && !exactBudget.release(1),
+            "allocated-host budget release accounting failed");
+    Budget overflowBudget(UINT64_MAX);
+    require(overflowBudget.reserve(UINT64_MAX) && !overflowBudget.reserve(1) &&
+            overflowBudget.usedBytes() == UINT64_MAX,
+            "allocated-host budget overflow accepted");
+
     std::size_t padded{};
     require(Decoder::importedHostAllocationSize(12345, 4096, padded) && padded == 16384,
             "host frame padding calculation failed");
@@ -81,9 +108,14 @@ void testImportedHostOwnerAccounting() {
     allocated->freeMemory = fakeFreeImportMemory;
     allocated->unmapMemory = fakeUnmapAllocatedMemory;
     allocated->driverAllocatedHostMemory = true;
+    allocated->budget = std::make_shared<Budget>(4096);
+    require(allocated->budget->reserve(4096), "allocated-host owner budget reserve failed");
+    allocated->reservedBudgetBytes = 4096;
+    auto allocatedBudget = allocated->budget;
     allocated.reset();
     require(unmappedAllocatedMemory == 1 && destroyedImportBuffers == 2 && freedImportMemory == 2,
             "allocated cached host memory was not unmapped and released exactly once");
+    require(allocatedBudget->usedBytes() == 0, "normal allocated-host cleanup did not release budget");
 
     void* poisonedHost{};
     require(posix_memalign(&poisonedHost, 4096, 4096) == 0, "poison owner allocation failed");
@@ -94,10 +126,16 @@ void testImportedHostOwnerAccounting() {
     retained->destroyBuffer = fakeDestroyImportBuffer; retained->freeMemory = fakeFreeImportMemory;
     retained->unmapMemory = fakeUnmapAllocatedMemory;
     retained->driverAllocatedHostMemory = true;
+    retained->budget = std::make_shared<Budget>(4096);
+    require(retained->budget->reserve(4096), "poisoned allocated-host budget reserve failed");
+    retained->reservedBudgetBytes = 4096;
+    auto poisonedBudget = retained->budget;
     retained->poisoned = poison;
     retained.reset();
     require(destroyedImportBuffers == 2 && freedImportMemory == 2 && unmappedAllocatedMemory == 1,
             "poisoned import owner freed potentially in-flight handles");
+    require(poisonedBudget->usedBytes() == 4096,
+            "poisoned allocated-host owner released its budget reservation");
     std::free(poisonedHost); // The poisoned owner intentionally leaked this in production.
 }
 
