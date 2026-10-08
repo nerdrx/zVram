@@ -337,14 +337,17 @@ per-run provenance](../../validation/internlm-bp16-cold24-upload-worker-comparis
 
 BP16 can optionally retain GPU-encoded owner frames in a BAR-mappable local
 Vulkan heap. These owners stay in the local GPU-memory tier; they are not a
-system-RAM mirror. The tier is **off by default** and separate from the shared
-cold/owner quota. Opt in with both `ZVRAM_VULKAN_BP16_LOCAL_OWNER_MIB` and
+system-RAM mirror. The tier is **off by default** and has an additional local-memory
+cap; its frames also consume the existing shared cold/owner quota. Opt in with both `ZVRAM_VULKAN_BP16_LOCAL_OWNER_MIB` and
 `ZVRAM_VULKAN_BP16_LOCAL_TOTAL_MIB`, while GPU BP16 encoding,
 allocated-host input, an explicit resident cap, and native driver headroom are
-enabled. `LOCAL_TOTAL_MIB` bounds the combined local-owner and shared/raw
-allowance; resident admission and the native-headroom reserve still constrain
+enabled. These variables require a layer built from current sources; select its
+build directory with `--build-dir`. `LOCAL_TOTAL_MIB` bounds raw resident backing
+plus compressed local owners; resident admission and the native-headroom reserve still constrain
 live allocation. Invalid combinations fail initialization. CPU metadata
-validation was fixed in `427d93a` / `e394ea8`.
+validation was fixed in `427d93a` and covered by the fixtures in `e394ea8`.
+The CPU codec and ownership checks also passed [AddressSanitizer,
+UndefinedBehaviorSanitizer, and leak detection](../../validation/bp16-sanitizer-local-owner/README.md).
 
 A 7 GiB local-owner + 12 GiB shared/raw trial completed exact output and 49/49
 layers with zero GPU restore fallback, but measured **1.076476 tokens/s**, below
