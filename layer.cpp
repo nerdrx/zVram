@@ -26,6 +26,7 @@
 #include "submission_tracking.hpp"
 #include "active_refs.hpp"
 #include "compression_policy.hpp"
+#include "clean_cache_policy.hpp"
 #include "snapshot_decode.hpp"
 #include "resident_budget.hpp"
 #include "snapshot_pipeline.hpp"
@@ -261,6 +262,7 @@ struct Device {
     bool residentAdmissionArmed{true};
     bool restoreBudgetRefused{};
     bool cleanCache{};
+                    zvram::clean_cache::Policy cleanCachePolicy{zvram::clean_cache::Policy::First};
     bool mruEviction{};
     unsigned minSavingsPercent{};
     unsigned byteShuffle{};
@@ -1170,6 +1172,14 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 if(d->activeEviction && rangeEnabled) d->rangeChunkBytes=rangeMiB*1024ull*1024ull;
                 const char* clean=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE");
                 d->cleanCache=d->rangeChunkBytes && clean && std::strcmp(clean,"1")==0;
+                if(const char* policy=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE_POLICY")) {
+                    bool valid=false;
+                    d->cleanCachePolicy=zvram::clean_cache::parsePolicy(policy,valid);
+                    logf("Vulkan clean snapshot cache policy requested=%s effective=%s status=%s",
+                         policy,d->cleanCachePolicy==zvram::clean_cache::Policy::Lru?"lru":
+                               d->cleanCachePolicy==zvram::clean_cache::Policy::Mru?"mru":"first",
+                         valid?"accepted":"rejected");
+                }
                 d->minSavingsPercent=static_cast<unsigned>(positiveEnv("ZVRAM_VULKAN_MIN_SAVINGS_PERCENT",100));
                 if(const char* shuffle=std::getenv("ZVRAM_VULKAN_BYTE_SHUFFLE")) {
                     if(std::strcmp(shuffle,"2")==0) d->byteShuffle=2;
@@ -1249,7 +1259,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     else if(strictRequested) logf("bounded Vulkan robustness unavailable: feature chain or device support");
                     if(d->autoEnabled && d->residentLimitBytes) logf("Vulkan resident admission enabled limit-bytes=%llu",static_cast<unsigned long long>(d->residentLimitBytes));
                     if(d->autoEnabled && d->residentLimitBytes) logf("Vulkan eviction policy=%s",d->mruEviction?"mru":"lru");
-                    if(d->autoEnabled && d->cleanCache) logf("Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget");
+                    if(d->autoEnabled && d->cleanCache)
+                        logf("Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget");
                     if(d->autoEnabled) logf("Vulkan snapshot minimum savings percent=%u",d->minSavingsPercent);
                     if(d->autoEnabled && d->byteShuffle) logf("Vulkan snapshot byte shuffle stride=%u",d->byteShuffle);
                     if(d->autoEnabled && d->snapshotCodec==zvram::snapshot::Codec::GDeflate)
@@ -1734,9 +1745,40 @@ void discardCleanCacheLocked(Device& d,VirtualMemory& memory,std::size_t i) {
 // beyond that quota. Drop clean copies only when a new snapshot needs room.
 void trimCleanCacheLocked(Device& d,VkDeviceSize required) {
     if(required>d.coldBudget) return;
+    if(d.cleanCachePolicy!=zvram::clean_cache::Policy::First) {
+        while(zvram::clean_cache::needsTrim(d.coldBytes,d.cacheBytes,d.coldBudget,required)) {
+            VirtualMemory* victimMemory=nullptr;
+            std::size_t victimIndex=0;
+            zvram::clean_cache::Candidate victim{};
+            bool found=false;
+            for(auto& pair:d.virtualMemory) {
+                auto& memory=pair.second;
+                for(std::size_t i=0;i<memory.coldGroups.size();++i) {
+                    const auto& group=memory.coldGroups[i];
+                    if(group.cold || !group.storedBytes) continue;
+                    const zvram::clean_cache::Candidate candidate{
+                        group.lastUse,memory.identityGeneration,i};
+                    const bool preferred=d.cleanCachePolicy==zvram::clean_cache::Policy::Lru
+                        ? zvram::clean_cache::older(candidate,victim)
+                        : zvram::clean_cache::newer(candidate,victim);
+                    if(!found || preferred) {
+                        victimMemory=&memory;
+                        victimIndex=i;
+                        victim=candidate;
+                        found=true;
+                    }
+                }
+            }
+            if(!found) return;
+            auto& group=victimMemory->coldGroups[victimIndex];
+            logf("clean snapshot cache trimmed bytes=%llu",static_cast<unsigned long long>(group.storedBytes));
+            discardCleanCacheLocked(d,*victimMemory,victimIndex);
+        }
+        return;
+    }
     for(auto& pair:d.virtualMemory) {
         for(std::size_t i=0;i<pair.second.coldGroups.size();++i) {
-            if(d.coldBytes+d.cacheBytes<=d.coldBudget-required) return;
+            if(!zvram::clean_cache::needsTrim(d.coldBytes,d.cacheBytes,d.coldBudget,required)) return;
             const auto& group=pair.second.coldGroups[i];
             if(!group.cold && group.storedBytes)
                 logf("clean snapshot cache trimmed bytes=%llu",static_cast<unsigned long long>(group.storedBytes));
