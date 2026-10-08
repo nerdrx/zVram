@@ -18,6 +18,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -670,13 +671,65 @@ std::uint32_t parseHostCopyIterations(const char* text) {
     return value;
 }
 
+std::uint32_t parseHostCopyWorkers(const char* text) {
+    constexpr std::uint32_t maximum = 8;
+    if (!text || !*text)
+        throw std::runtime_error("--host-copy-workers expects an integer from 1 to 8");
+    std::uint32_t value = 0;
+    for (; *text; ++text) {
+        if (*text < '0' || *text > '9')
+            throw std::runtime_error("--host-copy-workers expects an integer from 1 to 8");
+        const auto digit = static_cast<std::uint32_t>(*text - '0');
+        if (value > (maximum - digit) / 10u)
+            throw std::runtime_error("--host-copy-workers must be from 1 to 8");
+        value = value * 10u + digit;
+    }
+    if (!value || value > maximum)
+        throw std::runtime_error("--host-copy-workers must be from 1 to 8");
+    return value;
+}
+
+class JoinThreads {
+public:
+    explicit JoinThreads(std::vector<std::thread>& threads) : threads_(threads) {}
+    ~JoinThreads() {
+        for (auto& thread : threads_)
+            if (thread.joinable()) thread.join();
+    }
+private:
+    std::vector<std::thread>& threads_;
+};
+
+void copyHostInput(void* destination, const std::uint8_t* source,
+                   std::size_t bytes, std::uint32_t workers) {
+    if (workers == 1) {
+        std::memcpy(destination, source, bytes);
+        return;
+    }
+    auto* output = static_cast<std::uint8_t*>(destination);
+    const std::size_t alignedBytes = bytes & ~std::size_t(63u);
+    const std::size_t units = alignedBytes / 64u;
+    const std::uint32_t activeWorkers = std::min<std::uint32_t>(
+        workers, static_cast<std::uint32_t>(std::max<std::size_t>(1, units)));
+    std::vector<std::thread> threads;
+    threads.reserve(activeWorkers);
+    JoinThreads join(threads);
+    for (std::uint32_t i = 0; i < activeWorkers; ++i) {
+        const std::size_t begin = (units * i / activeWorkers) * 64u;
+        std::size_t end = (units * (i + 1u) / activeWorkers) * 64u;
+        if (i + 1u == activeWorkers) end = bytes;
+        threads.emplace_back([=] { std::memcpy(output + begin, source + begin, end - begin); });
+    }
+}
+
 void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
          const std::vector<std::uint8_t>& expected, std::uint32_t iterations,
          bool bp16 = false, bool hostInput = false, bool freshOutput = false,
          bool importHostInput = false, std::uint32_t residentImports = 0,
          std::uint32_t residentImportBytes = 4096,
          bool residentImportBytesSpecified = false,
-         bool allocatedHostInput = false, std::uint32_t hostCopyIterations = 0) {
+         bool allocatedHostInput = false, std::uint32_t hostCopyIterations = 0,
+         std::uint32_t hostCopyWorkers = 1) {
     if ((hostInput || importHostInput || allocatedHostInput) && !bp16)
         throw std::runtime_error("direct host input is available only for BP16");
     if (static_cast<unsigned>(hostInput) + static_cast<unsigned>(importHostInput) +
@@ -688,6 +741,8 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         throw std::runtime_error("--resident-import-bytes requires --import-host-input or --allocated-host-input");
     if (hostCopyIterations && (!bp16 || importHostInput || !(hostInput || allocatedHostInput)))
         throw std::runtime_error("--host-copy-iterations requires direct --host-input or --allocated-host-input");
+    if (hostCopyIterations && (hostCopyWorkers < 1 || hostCopyWorkers > 8))
+        throw std::runtime_error("--host-copy-workers must be from 1 to 8");
     const auto allocationLimit = runtime.properties.limits.maxMemoryAllocationCount > 16
         ? runtime.properties.limits.maxMemoryAllocationCount - 16 : 0;
     if (residentImports > std::min(1024u, allocationLimit))
@@ -773,12 +828,13 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         const auto copyStarted = std::chrono::steady_clock::now();
         for (std::uint32_t i = 0; i < hostCopyIterations; ++i) {
             std::atomic_signal_fence(std::memory_order_seq_cst);
-            std::memcpy(upload.mapped, encoded.data(), encoded.size());
+            copyHostInput(upload.mapped, encoded.data(), encoded.size(), hostCopyWorkers);
             std::atomic_signal_fence(std::memory_order_seq_cst);
         }
         const auto copyNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - copyStarted).count();
         std::cout << "host-copy iterations=" << hostCopyIterations
+                  << " workers=" << hostCopyWorkers
                   << " bytes-per-copy=" << encoded.size()
                   << " total-bytes=" << static_cast<std::uint64_t>(encoded.size()) * hostCopyIterations
                   << " elapsed-ns=" << copyNs
@@ -1042,9 +1098,11 @@ int main(int argc, char** argv) {
     bool residentImportsSpecified = false;
     bool residentImportBytesSpecified = false;
     bool hostCopyIterationsSpecified = false;
+    bool hostCopyWorkersSpecified = false;
     std::uint32_t residentImports = 0;
     std::uint32_t residentImportBytes = 4096;
     std::uint32_t hostCopyIterations = 0;
+    std::uint32_t hostCopyWorkers = 1;
     int arg = bp16 ? 3 : 1;
     while (bp16 && arg < argc) {
         if (std::strcmp(argv[arg], "--host-input") == 0) hostInput = true;
@@ -1092,6 +1150,19 @@ int main(int argc, char** argv) {
             hostCopyIterationsSpecified = true;
             ++arg;
         }
+        else if (std::strcmp(argv[arg], "--host-copy-workers") == 0) {
+            if (arg + 1 >= argc) {
+                std::cerr << "FAIL: --host-copy-workers expects an integer from 1 to 8\n";
+                return 2;
+            }
+            try { hostCopyWorkers = parseHostCopyWorkers(argv[arg + 1]); }
+            catch (const std::exception& error) {
+                std::cerr << "FAIL: " << error.what() << '\n';
+                return 2;
+            }
+            hostCopyWorkersSpecified = true;
+            ++arg;
+        }
         else break;
         ++arg;
     }
@@ -1105,7 +1176,7 @@ int main(int argc, char** argv) {
                           std::strcmp(argv[1], "--software-smoke") == 0);
     if ((!bp16 && !regular) || (bp16 && !bp16Args)) {
         std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n"
-                     "       vulkan_gdeflate_smoke --codec bp16 [--host-input|--import-host-input|--allocated-host-input] [--resident-imports 0..1024] [--resident-import-bytes 4096..33554432] [--host-copy-iterations 1..256] [--device-address] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
+                     "       vulkan_gdeflate_smoke --codec bp16 [--host-input|--import-host-input|--allocated-host-input] [--resident-imports 0..1024] [--resident-import-bytes 4096..33554432] [--host-copy-iterations 1..256] [--host-copy-workers 1..8] [--device-address] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
         return 2;
     }
     const bool singleTile = !bp16 && std::strcmp(argv[arg], "--gpu-smoke") == 0;
@@ -1123,6 +1194,9 @@ int main(int argc, char** argv) {
         if (hostCopyIterationsSpecified && (!gpu || importHostInput ||
             !(hostInput || allocatedHostInput)))
             throw std::runtime_error("--host-copy-iterations requires --gpu-bounded-smoke with --host-input or --allocated-host-input");
+        if (hostCopyWorkersSpecified && (!hostCopyIterationsSpecified || !gpu || importHostInput ||
+            !(hostInput || allocatedHostInput)))
+            throw std::runtime_error("--host-copy-workers requires --host-copy-iterations and --gpu-bounded-smoke with --host-input or --allocated-host-input");
         if (shader.size() < 20 || shader.size() % 4 ||
             zvram::gdeflate::loadLe32(shader.data()) != 0x07230203u)
             throw std::runtime_error("invalid SPIR-V envelope");
@@ -1154,6 +1228,7 @@ int main(int argc, char** argv) {
             if (residentImportsSpecified) throw std::runtime_error("--resident-imports requires --gpu-bounded-smoke");
             if (residentImportBytesSpecified) throw std::runtime_error("--resident-import-bytes requires --gpu-bounded-smoke");
             if (hostCopyIterationsSpecified) throw std::runtime_error("--host-copy-iterations requires --gpu-bounded-smoke");
+            if (hostCopyWorkersSpecified) throw std::runtime_error("--host-copy-workers requires --gpu-bounded-smoke");
             if (deviceAddress) throw std::runtime_error("--device-address requires --gpu-bounded-smoke");
             std::cout << (bp16 ? "CPU-only BP16 frame preflight; shader decode is unverified\n"
                                : "CPU-only envelope preflight; compressed payload and GPU decoder are unverified\n");
@@ -1176,7 +1251,8 @@ int main(int argc, char** argv) {
         runtime.initPipeline(shader, iterations, bp16);
         run(runtime, encoded, expected, iterations, bp16, hostInput, freshOutput,
             importHostInput, residentImports, residentImportBytes,
-            residentImportBytesSpecified, allocatedHostInput, hostCopyIterations);
+            residentImportBytesSpecified, allocatedHostInput, hostCopyIterations,
+            hostCopyWorkers);
         status = 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
