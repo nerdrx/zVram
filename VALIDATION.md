@@ -306,6 +306,15 @@ python3 check_vulkan_idle_model.py --binary build/third-party/llama-vulkan-build
 
 The reuse rule follows SPIR-V's `NonWritable` decoration; see the [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#_decoration). This current model result is a narrow validation of cache retention and reuse, not proof of general active-working-set caching, unbounded memory savings, or faster large-pool compression.
 
+Clean-snapshot replacement policy selection is also available through the
+opt-in `ZVRAM_VULKAN_CLEAN_CACHE_POLICY=first|lru|mru` environment variable;
+the default remains `first`. The focused CPU tests passed **12/12** in **4.54
+seconds**, and the BP16 GPU tests passed **8/8** in **6.85 seconds**. The test
+logs show the requested LRU policy was accepted, exact application bytes were
+verified, GPU decoding was observed, and there were no fallbacks or Vulkan
+validation diagnostics. These checks establish correctness only; no policy
+performance comparison is claimed. [Logs and binary hashes](validation/bp16-clean-cache-policy/README.md).
+
 ## Vulkan range eviction policy
 
 `--vulkan-eviction-policy lru|mru` requires `--vulkan-resident-mib`; the default is `lru`. LRU evicts the least-recently-used eligible completed chunk first. MRU evicts the newest eligible completed, unselected chunk first. Both policies retain the existing protection for selected or in-flight chunks and the same unknown-access fallback.
@@ -1398,6 +1407,12 @@ with **51,280** versus **48,246** clean reuses and **3,790** versus **6,816**
 invalidations. These histories prevent assigning the rate difference to the
 packer change alone. This run is also distinct from the 12-token short-run best
 and the same-output native 92-token reference at **1.6993468 tokens/s**.
+
+A separate 92-token run with **16** BP16 encoding workers measured **0.4826837
+tokens/s**, with exact output, **49/49** layers, and zero GPU fallback. It was
+slower than the 32-worker observation above; clocks and background activity
+were uncontrolled, so the pair does not establish a general worker-count
+effect. [Run archive](validation/internlm-bp16-cold24-upload8-long128-bmi2-workers16/README.md).
 
 [Short BMI2 run](validation/internlm-bp16-cold24-upload8-bmi2/README.md),
 [92-token BMI2 run](validation/internlm-bp16-cold24-upload8-long128-bmi2-mmap/README.md),

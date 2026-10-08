@@ -1,0 +1,2 @@
+fb3763e4db039c768441ed5cf9b40f8a4f869a59cf5eccc0155e33dacf9163a7  build/bp16-codec/libzvram_layer.so
+246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854  build/bp16-codec/bp16.spv

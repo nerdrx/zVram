@@ -1,0 +1,4 @@
+{
+  "runtime_code_commit": "d453be4",
+  "note": "Same child allocator128KiB as4d profiling long baseline; runtime nowincludes BMI2 block-packer inlining; production BP16 shader unchanged."
+}

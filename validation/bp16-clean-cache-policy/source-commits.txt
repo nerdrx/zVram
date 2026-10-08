@@ -1,0 +1,7 @@
+Clean-cache policy implementation: eaec9e8 (Add opt-in clean snapshot cache policies)
+Member alignment follow-up: 589bf45 (Align clean cache policy member)
+Later checkout HEAD: 0c0f066 (Add research BP16 GPU encoder prototype)
+
+The recorded layer binary was built from the policy implementation plus the
+member-alignment fix. The checkout was at 0c0f066 when archived; no claim that
+the later BP16 encoder prototype was included in this binary.
