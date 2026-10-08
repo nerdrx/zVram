@@ -1,0 +1,10 @@
+{
+  "native.stderr.txt": {
+    "bytes": 379489,
+    "sha256": "a279fe59129bfe5379dd04657925a63f0ec4ecac5c24cc2f788131f6eddcb885"
+  },
+  "memory.jsonl": {
+    "bytes": 369665,
+    "sha256": "9b21a2dac939075d054cd3bf7d1d307936f71898512995936812248ca61791de"
+  }
+}

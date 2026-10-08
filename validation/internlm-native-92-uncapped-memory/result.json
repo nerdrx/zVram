@@ -1,0 +1,44 @@
+{
+  "scope": "Native reference afteruserremovedVRAMclockcap;measuredhwmonclocktelemetry;92-token story, sequential unlocked clocks; no compression/paging snapshots/resident cap",
+  "prompt_utf8": "Write a 300-word story about a fox exploring a forest. Continue the story until you have written at least 300 words.\n",
+  "runs": {
+    "native": {
+      "model_buffers_mib": [
+        36798.77
+      ],
+      "cold": [],
+      "cold_state": null,
+      "pre_prompt_cold_state": null,
+      "pre_prompt_state": null,
+      "state_events": [],
+      "backing": {
+        "hot": {
+          "resident-vram": 22277754880,
+          "memory-vram": 22277754880,
+          "resident-gtt": 17948868608,
+          "memory-gtt": 17948868608,
+          "unique_drm_clients": 1,
+          "resident_vram_present": true
+        }
+      },
+      "offload": [
+        49,
+        49
+      ],
+      "performance": {
+        "decode_ms": 62902.69,
+        "decode_runs": 92,
+        "tokens_per_second": 1.46,
+        "prompt_ms": 1643.8,
+        "restore_ms": []
+      },
+      "first_stdout_after_input_ms": 0.03466999623924494,
+      "minimum_available_mib": 17926,
+      "swap_used_baseline_mib": 16833,
+      "swap_used_peak_mib": 18014,
+      "swap_growth_mib": 1181,
+      "returncode": 0,
+      "stdout_sha256": "b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b"
+    }
+  }
+}
