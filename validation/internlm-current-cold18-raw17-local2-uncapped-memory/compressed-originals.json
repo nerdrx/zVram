@@ -1,0 +1,10 @@
+{
+  "automatic.stderr.txt": {
+    "bytes": 1104974,
+    "sha256": "b0ccd5537d6e803ede9ac6e2b2a182b84b8b2911a2424adfe140bc94f6e084be"
+  },
+  "memory.jsonl": {
+    "bytes": 209686,
+    "sha256": "71acbbcb1d9fafad5f42bb5105a8861ec6698fc241789cd623a0e1f63aefc5e3"
+  }
+}
