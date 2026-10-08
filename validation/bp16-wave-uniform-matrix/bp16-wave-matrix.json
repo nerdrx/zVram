@@ -1,0 +1,34 @@
+[
+  {
+    "case": "device-base",
+    "exit": 0,
+    "summary": [
+      "gpu-timing iterations=16 upload-ns-median=1102640 decode-ns-median=119000 readback-copy-ns-median=1130160",
+      "PASS: decoded 33554432 exact bytes in 32768 BP16 workgroups across 16 iterations",
+      "validation-errors=0 validation-vuids=0"
+    ]
+  },
+  {
+    "case": "device-uniform",
+    "exit": 1,
+    "summary": [
+      "validation-errors=0 validation-vuids=0"
+    ]
+  },
+  {
+    "case": "gtt-base",
+    "exit": 0,
+    "summary": [
+      "gpu-timing input-mode=direct-host-visible upload-gpu-copy-ns=0 decode-includes-host-memory-reads iterations=16 decode-ns-median=1059280 readback-copy-ns-median=1136160",
+      "PASS: decoded 33554432 exact bytes in 32768 BP16 workgroups across 16 iterations",
+      "validation-errors=0 validation-vuids=0"
+    ]
+  },
+  {
+    "case": "gtt-uniform",
+    "exit": 1,
+    "summary": [
+      "validation-errors=0 validation-vuids=0"
+    ]
+  }
+]

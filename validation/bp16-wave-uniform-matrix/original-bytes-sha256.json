@@ -1,0 +1,46 @@
+{
+  "bp16-wave-matrix.json": {
+    "bytes": 959,
+    "sha256": "059ebd96fcf28735bc994479e2f8ef8b483d56fc9bdf6254c3e2eba90ea3348b"
+  },
+  "wave-device-base.log": {
+    "bytes": 1694,
+    "sha256": "9ac0a6fcc0c1818bf6118c82ef2c472f48f3b6a50c44f54a30458dcd534c8f57"
+  },
+  "wave-gtt-base.log": {
+    "bytes": 1737,
+    "sha256": "ea567df71c4e17957c9d5795d86272a82048126a747e79ba1549806894908e48"
+  },
+  "wave-device-uniform-fixed.log": {
+    "bytes": 1694,
+    "sha256": "f3d1cd4bd2eb94598f7dc5751e41c57ae9943e92f56ed8135605b5963dc53805"
+  },
+  "wave-gtt-uniform-fixed.log": {
+    "bytes": 1737,
+    "sha256": "97224fe8c900165cd4f6a41c38b933655309ed5a01493860924c4f40b463da1e"
+  },
+  "wave-device-uniform-invalid-binding.log": {
+    "bytes": 1250,
+    "sha256": "9c88aad095a7944137249be6c13807097e921a9181130a1180383e021ed4f339",
+    "note": "invalid compiler binding mapping; not candidate evaluation"
+  },
+  "wave-gtt-uniform-invalid-binding.log": {
+    "bytes": 1231,
+    "sha256": "812a98a936395bc8ebd1bee26dfb18cf55bdd79445e81a81541b858dffa78c43",
+    "note": "invalid compiler binding mapping; not candidate evaluation"
+  },
+  "decode_wave_uniform.hlsl": {
+    "bytes": 4359,
+    "sha256": "d13b03622f3bbf49767755fd26f06ab1965138bad4f7960b68d56172e9c356d6",
+    "source_commit": "76c2e8c"
+  },
+  "bp16-wave-uniform.spv": {
+    "bytes": 14196,
+    "sha256": "d06bd8e50035728d99c8cffbea8267cfe40784933fa4b0a1adad90b85c525b9e",
+    "source_commit": "76c2e8c"
+  },
+  "shader-source-commit.txt": {
+    "bytes": 8,
+    "sha256": "f88dbe9c3f27ef1c0ed1999248220905f6457fc6dc81a019dd93c4e4d934decd"
+  }
+}
