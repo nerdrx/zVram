@@ -10,6 +10,12 @@
 [[vk::binding(7, 0)]] RWByteAddressBuffer output3;
 [[vk::binding(8, 0)]] RWByteAddressBuffer scratch;
 
+struct DispatchConstants
+{
+    uint firstFrame;
+};
+[[vk::push_constant]] ConstantBuffer<DispatchConstants> dispatchConstants;
+
 static const uint HeaderBytes = 16;
 static const uint DescriptorBytes = 8;
 static const uint MaxRawBytes = 32u * 1024u * 1024u;
@@ -101,7 +107,7 @@ uint DepositValue(uint gathered, uint varyingMask)
 void CSMain(uint3 dispatchThreadId : SV_DispatchThreadID,
             uint3 groupId : SV_GroupID)
 {
-    const uint frame = groupId.y;
+    const uint frame = dispatchConstants.firstFrame + groupId.y;
     const uint outputWord = dispatchThreadId.x;
     if (frame >= 4) return;
 

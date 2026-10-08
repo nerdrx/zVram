@@ -458,6 +458,12 @@ struct Runtime {
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
         pipelineLayoutInfo.setLayoutCount = 1;
         pipelineLayoutInfo.pSetLayouts = &setLayout;
+        VkPushConstantRange pushRange{};
+        pushRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        pushRange.offset = 0;
+        pushRange.size = sizeof(std::uint32_t);
+        pipelineLayoutInfo.pushConstantRangeCount = 1;
+        pipelineLayoutInfo.pPushConstantRanges = &pushRange;
         check(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout),
               "create fused BP16 pipeline layout");
         VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
@@ -1202,12 +1208,13 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
 }
 
 void runFused4(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
-               const std::vector<std::uint8_t>& expected, std::uint32_t iterations) {
+               const std::vector<std::uint8_t>& expected, std::uint32_t iterations,
+               bool localInput, bool separateDispatches) {
     zvram::bp16::FrameInfo frame{};
     if (!zvram::bp16::validate(encoded.data(), encoded.size(),
                                static_cast<std::uint32_t>(expected.size()), &frame))
         throw std::runtime_error("fused BP16 input failed canonical frame validation");
-    if (runtime.properties.limits.maxComputeWorkGroupCount[1] < 4)
+    if (runtime.properties.limits.maxComputeWorkGroupCount[1] < (separateDispatches ? 1u : 4u))
         throw std::runtime_error("fused BP16 dispatch requires four y workgroups");
     const auto rawSize = expected.size();
     const auto inputSize = (encoded.size() + 3u) & ~std::size_t(3u);
@@ -1239,14 +1246,22 @@ void runFused4(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     const auto cachedCoherent = hostCoherent | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
     const auto deviceLocal = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    const auto inputRequired = localInput ? (hostCoherent | deviceLocal) : cachedCoherent;
+    const auto inputPreferred = localInput ? deviceLocal : VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
     std::array<Buffer, 4> inputs, outputs;
+    std::array<VkMemoryPropertyFlags, 4> inputFlags{};
     VkDeviceSize ownerBytes = 0;
     for (std::size_t i = 0; i < 4; ++i) {
         inputs[i].init(runtime, inputSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                       cachedCoherent, VK_MEMORY_PROPERTY_HOST_CACHED_BIT, deviceLocal);
+                       inputRequired, inputPreferred,
+                       localInput ? 0 : deviceLocal);
         const auto flags = inputs[i].memoryFlags;
-        if ((flags & cachedCoherent) != cachedCoherent || (flags & deviceLocal))
-            throw std::runtime_error("fused BP16 requires four cached coherent nonlocal input owners");
+        inputFlags[i] = flags;
+        if ((flags & inputRequired) != inputRequired ||
+            (!localInput && (flags & deviceLocal)))
+            throw std::runtime_error(localInput
+                ? "fused BP16 local input requires DEVICE_LOCAL|HOST_VISIBLE|HOST_COHERENT memory"
+                : "fused BP16 requires four cached coherent nonlocal input owners");
         for (std::size_t prior = 0; prior < i; ++prior)
             if (inputs[prior].memory == inputs[i].memory)
                 throw std::runtime_error("fused BP16 inputs did not receive distinct VkDeviceMemory owners");
@@ -1353,7 +1368,26 @@ void runFused4(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.pipeline);
         vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.pipelineLayout,
                                 0, 1, &set, 0, nullptr);
-        vkCmdDispatch(command, groups, 4, 1);
+        if (separateDispatches) {
+            for (std::uint32_t firstFrame = 0; firstFrame < 4; ++firstFrame) {
+                vkCmdPushConstants(command, runtime.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
+                                   0, sizeof(firstFrame), &firstFrame);
+                vkCmdDispatch(command, groups, 1, 1);
+                if (firstFrame != 3) {
+                    VkMemoryBarrier scratchReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                    scratchReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                    scratchReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+                                         1, &scratchReady, 0, nullptr, 0, nullptr);
+                }
+            }
+        } else {
+            const std::uint32_t firstFrame = 0;
+            vkCmdPushConstants(command, runtime.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, sizeof(firstFrame), &firstFrame);
+            vkCmdDispatch(command, groups, 4, 1);
+        }
         if (runtime.timestampPool)
             vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                 runtime.timestampPool, queryBase + 3);
@@ -1435,7 +1469,11 @@ void runFused4(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         vkFreeCommandBuffers(runtime.device, runtime.commandPool, 1, &command);
     }
     std::cout << "fused4-input-owners=4 distinct-vkdevice-memory=4 total-allocation-bytes="
-              << ownerBytes << " groups-per-frame=" << groups << '\n';
+              << ownerBytes << " groups-per-frame=" << groups
+              << " input-memory-domain=" << (localInput ? "device-local-host-visible" : "cached-host-visible-nonlocal")
+              << " dispatch-mode=" << (separateDispatches ? "four-dispatches-one-submit" : "one-fused-dispatch")
+              << " input-flags=0x" << std::hex << inputFlags[0] << ",0x" << inputFlags[1]
+              << ",0x" << inputFlags[2] << ",0x" << inputFlags[3] << std::dec << '\n';
     auto printValues = [](const char* label, const std::vector<std::uint64_t>& values) {
         std::cout << label << " iterations=" << values.size() << " values=";
         for (std::size_t i = 0; i < values.size(); ++i) std::cout << (i ? "," : "") << values[i];
@@ -1463,11 +1501,12 @@ void runFused4(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         }
         std::sort(decodeNs.begin(), decodeNs.end());
         std::cout << "fused4-gpu-decode-ns-median=" << decodeNs[decodeNs.size() / 2]
-                  << " four-frames-per-dispatch=1\n";
+                  << " four-frames-per-dispatch=" << (separateDispatches ? 4 : 1) << '\n';
     } else {
         std::cout << "fused4-gpu-timing unavailable: queue has no timestamp bits\n";
     }
-    std::cout << "PASS: one dispatch decoded four independent canonical BP16 frames exactly\n";
+    std::cout << "PASS: " << (separateDispatches ? "four dispatches" : "one dispatch")
+              << " decoded four independent canonical BP16 frames exactly\n";
 }
 
 std::uint64_t submitAndWait(Runtime& runtime, VkCommandBuffer command, const char* label) {
@@ -1826,6 +1865,8 @@ int main(int argc, char** argv) {
     bool residentImportBytesSpecified = false;
     bool hostCopyIterationsSpecified = false;
     bool hostCopyWorkersSpecified = false;
+    bool fused4LocalInput = false;
+    bool fused4SeparateDispatches = false;
     std::uint32_t residentImports = 0;
     std::uint32_t residentImportBytes = 4096;
     std::uint32_t hostCopyIterations = 0;
@@ -1890,6 +1931,10 @@ int main(int argc, char** argv) {
             hostCopyWorkersSpecified = true;
             ++arg;
         }
+        else if (std::strcmp(argv[arg], "--fused4-local-input") == 0)
+            fused4LocalInput = true;
+        else if (std::strcmp(argv[arg], "--fused4-separate-dispatches") == 0)
+            fused4SeparateDispatches = true;
         else break;
         ++arg;
     }
@@ -1909,14 +1954,19 @@ int main(int argc, char** argv) {
     if ((!bp16 && !regular) || (bp16 && !bp16Args)) {
         std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n"
                      "       vulkan_gdeflate_smoke --codec bp16 [--host-input|--import-host-input|--allocated-host-input] [--resident-imports 0..1024] [--resident-import-bytes 4096..33554432] [--host-copy-iterations 1..256] [--host-copy-workers 1..8] [--device-address] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n"
-                     "       vulkan_gdeflate_smoke --codec bp16 --gpu-fused4-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n"
+                     "       vulkan_gdeflate_smoke --codec bp16 [--fused4-local-input] [--fused4-separate-dispatches] --gpu-fused4-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n"
                      "       vulkan_gdeflate_smoke --codec bp16 --encode-preflight-only|--gpu-encode-bounded-smoke ANALYZE.spv PACK.spv RAW.bin EXPECTED.bp16\n";
+        return 2;
+    }
+    if ((fused4LocalInput || fused4SeparateDispatches) && !fused4) {
+        std::cerr << "FAIL: fused4 input/dispatch options require --gpu-fused4-smoke\n";
         return 2;
     }
     if (bp16Encode) {
         if (hostInput || importHostInput || allocatedHostInput || freshOutput || robustness2 ||
             deviceAddress || residentImportsSpecified || residentImportBytesSpecified ||
-            hostCopyIterationsSpecified || hostCopyWorkersSpecified) {
+            hostCopyIterationsSpecified || hostCopyWorkersSpecified || fused4LocalInput ||
+            fused4SeparateDispatches) {
             std::cerr << "FAIL: decoder input and allocation options do not apply to BP16 encoder mode\n";
             return 2;
         }
@@ -1995,10 +2045,11 @@ int main(int argc, char** argv) {
             if (hostInput || importHostInput || allocatedHostInput || freshOutput || robustness2 ||
                 deviceAddress || residentImportsSpecified || residentImportBytesSpecified ||
                 hostCopyIterationsSpecified || hostCopyWorkersSpecified)
-                throw std::runtime_error("fused4 mode owns four distinct cached host inputs; other input options do not apply");
+                throw std::runtime_error("fused4 mode owns four inputs; decoder input options do not apply");
             runtime.pickDevice(true);
             runtime.initFused4Pipeline(shader, iterations);
-            runFused4(runtime, encoded, expected, iterations);
+            runFused4(runtime, encoded, expected, iterations,
+                      fused4LocalInput, fused4SeparateDispatches);
         } else {
             runtime.pickDevice(bp16, robustness2, importHostInput, deviceAddress);
             runtime.initPipeline(shader, iterations, bp16);
