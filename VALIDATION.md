@@ -1724,8 +1724,15 @@ GPU-encoder repeat without restore batching measured **1.10252711 tokens/s**;
 reported device restore time and host restore time were both unchanged at 52.10 s
 and 70.20 s, respectively. This is no observed speed gain from batching. These
 sequential runs had uncontrolled clocks/background activity, so the comparison
-is not causal; batching remains opt-in and defaults off. [Run archive and
-provenance](validation/internlm-bp16-gpu-batch-cold26-owner26-resident19-lfu/README.md)
+is not causal; batching remains opt-in and defaults off. A later run combined the
+four-frame restore batches with one sparse remap transaction and measured
+**1.10334585 tokens/s**, essentially matching the **1.10252711** encoder repeat;
+host submit/wait was **70.54 s** versus **70.20 s**. It completed exact output,
+49/49 layers, zero GPU restore fallback, with **14,957 submissions / 50,894
+frames**. This likewise shows no observed gain. [Combined-remap run and
+provenance](validation/internlm-bp16-gpu-remap-batch-cold26-owner26-resident19-lfu/README.md)
+· [Remap fixture gates](validation/bp16-remap-batch/README.md) · [Earlier batch
+run](validation/internlm-bp16-gpu-batch-cold26-owner26-resident19-lfu/README.md)
 · [Ollama preflight abort](validation/internlm-bp16-gpu-batch-cold26-owner26-resident19-lfu-preflight-abort/README.md).
 
 ### Latest BP16 GPU-encoder full-model repeat: 26 GiB cold/owner ceilings

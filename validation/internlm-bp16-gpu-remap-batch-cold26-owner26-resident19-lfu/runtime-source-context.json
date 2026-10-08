@@ -1,0 +1,13 @@
+{
+  "runtime_code_commit": "40b3a0d0e20e877aca27a90ddb5c232f89b5c5b2",
+  "note": "Four-frame GPU restore plus combined post-decode sparse remap transaction; same fixed quotas as previous batch and encoder runs. Sequential unlocked clocks.",
+  "sources": {
+    "layer.cpp": "bfa9c09d1be3c064d1d322656ff9b8248d204d31ac96fa6f69902fa1d332e869",
+    "gdeflate_gpu.hpp": "0251614b9b0a4e2e4f24fd586ba30a6199efe43429c1e51e49171716c6a1c0b6",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "submission_hooks.inc": "c918a73d9c310ef23741b5faa3091f1b848b067b2bdfa6ee95ba65cc08ad67db",
+    "zvram": "7e2b177eb6cecdcbbcd48cccc419e78d460f6fec28b6e2c98e43394053958a49",
+    "CMakeLists.txt": "cec87aa6b840fd23c1e7abacd8ebd7640040d49ff8af19189b9752db157aa793"
+  }
+}

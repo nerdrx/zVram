@@ -1,0 +1,363 @@
+Start testing: Oct 08 07:06 CEST
+----------------------------------------------------------
+1/123 Testing: cpu-bp16-codec
+1/123 Test: cpu-bp16-codec
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-bp16-codec-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-bp16-codec" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+PASS: BP16 codec, upload worker partitions, and imported/allocated-host ownership, alignment, quota, and poison checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-bp16-codec" end time: Oct 08 07:06 CEST
+"cpu-bp16-codec" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/123 Testing: cpu-resident-budget
+2/123 Test: cpu-resident-budget
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-resident-budget-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-resident-budget" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+PASS: resident budget cap arithmetic and saturation
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-resident-budget" end time: Oct 08 07:06 CEST
+"cpu-resident-budget" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/123 Testing: cpu-resident-bootstrap
+3/123 Test: cpu-resident-bootstrap
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-resident-bootstrap-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-resident-bootstrap" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+[zvram] resident admission refused: submission working set exceeds limit-bytes=2097152 known=0
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=1048576 usage=0 tracked-local=0 reserve=1 effective-limit=1048575 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] snapshot state event=restore resident=1048576 cold-logical=0 cold-stored=0 freezes=0 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=4194304 usage=1048576 tracked-local=1048576 reserve=1 effective-limit=3145728 hard-limit=3145728
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=2097152 cold-logical=1048576 cold-stored=1048576 freezes=0 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=1048576 copy-ns=130 decode-bytes=1048576 decode-ns=23120 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=2621441 usage=1048576 tracked-local=2097152 reserve=1 effective-limit=2621440 hard-limit=3145728
+[zvram] snapshot cold bytes=1048576 stored=51 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=1048576 cold-logical=2097152 cold-stored=1048627 freezes=1 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=2097152 copy-ns=320 decode-bytes=1048576 decode-ns=23120 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=2 evicted-chunks=1 resident-before-restore=1048576 incoming-bytes=1048576 limit-bytes=2621440
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=2097152 cold-logical=1048576 cold-stored=51 freezes=1 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=3145728 copy-ns=760 decode-bytes=2097152 decode-ns=39910 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=2 restored-chunks=1 cold-pools-left=1
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=1048576 usage=0 tracked-local=0 reserve=1 effective-limit=1048575 hard-limit=1048576
+[zvram] resident admission refused: submission working set exceeds limit-bytes=1048575 known=0
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=10485760 usage=7340032 tracked-local=3145728 reserve=1048576 effective-limit=5242880 hard-limit=12582912
+[zvram] resident budget native-heap=0 budget=8388608 usage=7340032 tracked-local=0 reserve=1048576 effective-limit=0 hard-limit=2097152
+[zvram] snapshot state event=restore resident=2097152 cold-logical=0 cold-stored=0 freezes=0 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot state event=restore resident=2097152 cold-logical=0 cold-stored=0 freezes=0 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] access tracking fallback reason=vkCmdSetLineWidth command-count=1
+[zvram] snapshot app sparse bind batch count=2 unbind=0 view-release=1
+PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-resident-bootstrap" end time: Oct 08 07:06 CEST
+"cpu-resident-bootstrap" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/123 Testing: cpu-vulkan-ram-guard
+7/123 Test: cpu-vulkan-ram-guard
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_ram_guard.py"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-vulkan-ram-guard" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.26 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-vulkan-ram-guard" end time: Oct 08 07:06 CEST
+"cpu-vulkan-ram-guard" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/123 Testing: cpu-vulkan-compression-options
+8/123 Test: cpu-vulkan-compression-options
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_compression_options.py"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-vulkan-compression-options" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.13 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-vulkan-compression-options" end time: Oct 08 07:06 CEST
+"cpu-vulkan-compression-options" time elapsed: 00:00:02
+----------------------------------------------------------
+
+9/123 Testing: cpu-vulkan-model-budget
+9/123 Test: cpu-vulkan-model-budget
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_model_budget.py"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-vulkan-model-budget" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.06 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-vulkan-model-budget" end time: Oct 08 07:06 CEST
+"cpu-vulkan-model-budget" time elapsed: 00:00:02
+----------------------------------------------------------
+
+10/123 Testing: cpu-compression-policy
+10/123 Test: cpu-compression-policy
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-compression-policy-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-compression-policy" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+COMPRESSION_POLICY_OK including uint64 boundary checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-compression-policy" end time: Oct 08 07:06 CEST
+"cpu-compression-policy" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/123 Testing: cpu-clean-cache-policy
+11/123 Test: cpu-clean-cache-policy
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-clean-cache-policy-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-clean-cache-policy" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-clean-cache-policy" end time: Oct 08 07:06 CEST
+"cpu-clean-cache-policy" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/123 Testing: cpu-snapshot-decode
+12/123 Test: cpu-snapshot-decode
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-snapshot-decode-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-snapshot-decode" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+PASS: serial/parallel mixed Zstd+BP16+RAW+stride2/4, odd tails, canaries, corruption, truncation, metadata, and bounds
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-snapshot-decode" end time: Oct 08 07:06 CEST
+"cpu-snapshot-decode" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/123 Testing: cpu-gdeflate-envelope
+13/123 Test: cpu-gdeflate-envelope
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-envelope-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-gdeflate-envelope" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+PASS: synthetic GDeflate envelope headers, metadata, bounds, alignment, and tile tables
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-gdeflate-envelope" end time: Oct 08 07:06 CEST
+"cpu-gdeflate-envelope" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/123 Testing: cpu-snapshot-pipeline
+14/123 Test: cpu-snapshot-pipeline
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-snapshot-pipeline-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-snapshot-pipeline" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+PASS: bounded decode-ahead (async), replacement, join, corruption and capacity checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-snapshot-pipeline" end time: Oct 08 07:06 CEST
+"cpu-snapshot-pipeline" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/123 Testing: cpu-active-refs
+16/123 Test: cpu-active-refs
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-active-refs-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"cpu-active-refs" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+active refs checks passed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-active-refs" end time: Oct 08 07:06 CEST
+"cpu-active-refs" time elapsed: 00:00:00
+----------------------------------------------------------
+
+120/123 Testing: vulkan-bp16-batch-synthetic
+120/123 Test: vulkan-bp16-batch-synthetic
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_gdeflate_gpu_layer.py" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--build-dir" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec" "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--vulkan-codec" "bp16" "--vulkan-bp16-gpu" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--vulkan-resident-mib" "128" "--vulkan-clean-cache" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-vulkan-auto-check" "--selective-submit-batch"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"vulkan-bp16-batch-synthetic" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+[zvram] Vulkan snapshot transfer staging bytes=33554432
+[zvram] Vulkan snapshot decode max-workers=1
+[zvram] Vulkan snapshot lookahead staging bytes=33554432
+[zvram] GPU BP16 restore enabled: 256-thread, cached allocated host input, direct backing output
+[zvram] BP16 GPU restore batch requested=1 effective=1 max-items=4
+[zvram] GPU BP16 upload workers=1
+[zvram] GPU BP16 encoder enabled: synchronous allocated-host snapshots
+[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+[zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+[zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+[zvram] Vulkan range residency enabled chunk-bytes=33554432
+[zvram] Vulkan resident admission enabled limit-bytes=134217728
+[zvram] Vulkan eviction policy=lru
+[zvram] Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget
+[zvram] Vulkan snapshot minimum savings percent=0
+[zvram] Vulkan snapshot codec=bp16 decode=GPU workers=1 experimental=1
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] virtual allocate bytes=67108864 heap-capacity=103079215104
+[zvram] virtual allocate bytes=67108864 heap-capacity=103079215104
+[zvram] snapshot state event=bootstrap-bind resident=67108864 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot state event=bootstrap-bind resident=134217728 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=33554432 stored=32604352 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=100663296 cold-logical=33554432 cold-stored=32604352 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=33554432 stored=32608128 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=67108864 cold-logical=67108864 cold-stored=65212480 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=33554432 stored=32604352 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=33554432 cold-logical=100663296 cold-stored=97816832 freezes=3 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=33554432 stored=32608128 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=134217728 cold-stored=130424960 freezes=4 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] GPU BP16 batch remap calls=1 children=4 buffers=6
+[zvram] snapshot state event=restore resident=134217728 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0 cache-stored=130424960 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=4 gpu-decode-bytes=134217728 gpu-decode-ns=5132286 gpu-decode-fallbacks=0
+[zvram] GPU BP16 encode calls=4 raw-bytes=134217728 host-ns=13227361 fallbacks=0 raw-snapshots=0
+[zvram] GPU restore host profile calls=4 validation-ns=640 input-prepare-ns=0 submit-wait-ns=4919484 batch-submissions=1 batch-items=4
+[zvram] GPU BP16 upload profile buffer-prepare-ns=0 direct-copy-ns=0
+[zvram] GPU BP16 restore batch submissions=1 items=4
+[zvram] GPU restore device profile samples=1 transfer-ns=6960 decode-ns=4700440 finish-ns=10920
+[zvram] GPU restore backing profile alloc-calls=8 alloc-ok=8 alloc-fail=0 alloc-ns=119662 free-calls=4 free-ns=67830 sparse-calls=14 sparse-ok=14 sparse-fail=0 sparse-ns=1004044
+[zvram] GPU BP16 batch remap calls=1 children=4 buffers=6
+[zvram] GPU BP16 allocated input allocations=4 reuses=0 bytes=130424960 live-bytes=130424960 limit-bytes=1073741824
+[zvram] selective range restore selected-chunks=4 restored-chunks=4 cold-pools-left=0
+[zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+PASS: one submission restored four cold chunks and preserved every byte
+[zvram] virtual free bytes=67108864
+[zvram] virtual free bytes=67108864
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=2 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=4 gpu-decode-bytes=134217728 gpu-decode-ns=5132286 gpu-decode-fallbacks=0
+[zvram] GPU BP16 encode calls=4 raw-bytes=134217728 host-ns=13227361 fallbacks=0 raw-snapshots=0 final=1
+[zvram] GPU restore host profile calls=4 validation-ns=640 input-prepare-ns=0 submit-wait-ns=4919484 batch-submissions=1 batch-items=4 final=1
+[zvram] GPU BP16 upload profile buffer-prepare-ns=0 direct-copy-ns=0 final=1
+[zvram] GPU BP16 restore batch submissions=1 items=4 final=1
+[zvram] GPU restore device profile samples=1 transfer-ns=6960 decode-ns=4700440 finish-ns=10920 final=1
+[zvram] GPU restore backing profile alloc-calls=8 alloc-ok=8 alloc-fail=0 alloc-ns=119662 free-calls=4 free-ns=67830 sparse-calls=16 sparse-ok=16 sparse-fail=0 sparse-ns=1150756 final=1
+[zvram] GPU BP16 batch remap calls=1 children=4 buffers=6 final=1
+[zvram] GPU BP16 allocated input allocations=4 reuses=0 bytes=130424960 live-bytes=0 limit-bytes=1073741824
+[zvram] GPU BP16 restore calls=4 bytes=134217728 host-ns=5132286 fallbacks=0
+[zvram] snapshot transfer profile copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=134217728 live-nonlocal=0 peak-nonlocal=67108864 allocation-failures=0
+PASS: application byte checks, observed GPU decoding, zero fallback and validation diagnostics
+<end of output>
+Test time =   0.25 sec
+----------------------------------------------------------
+Test Passed.
+"vulkan-bp16-batch-synthetic" end time: Oct 08 07:06 CEST
+"vulkan-bp16-batch-synthetic" time elapsed: 00:00:00
+----------------------------------------------------------
+
+121/123 Testing: vulkan-bp16-batch-native
+121/123 Test: vulkan-bp16-batch-native
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_gdeflate_gpu_layer.py" "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram" "--build-dir" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec" "--validate" "--isolate-layers" "--vulkan-virtual-gib" "96" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "512" "--vulkan-codec" "bp16" "--vulkan-bp16-gpu" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--vulkan-resident-mib" "128" "--vulkan-clean-cache" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-vulkan-auto-check" "--selective-submit-batch" "--native-allocation"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+"vulkan-bp16-batch-native" start time: Oct 08 07:06 CEST
+Output:
+----------------------------------------------------------
+[zvram] Vulkan snapshot transfer staging bytes=33554432
+[zvram] Vulkan snapshot decode max-workers=1
+[zvram] Vulkan snapshot lookahead staging bytes=33554432
+[zvram] GPU BP16 restore enabled: 256-thread, cached allocated host input, direct backing output
+[zvram] BP16 GPU restore batch requested=1 effective=1 max-items=4
+[zvram] GPU BP16 upload workers=1
+[zvram] GPU BP16 encoder enabled: synchronous allocated-host snapshots
+[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=536870912
+[zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+[zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+[zvram] Vulkan range residency enabled chunk-bytes=33554432
+[zvram] Vulkan resident admission enabled limit-bytes=134217728
+[zvram] Vulkan eviction policy=lru
+[zvram] Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget
+[zvram] Vulkan snapshot minimum savings percent=0
+[zvram] Vulkan snapshot codec=bp16 decode=GPU workers=1 experimental=1
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] snapshot state event=bootstrap-bind resident=67108864 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] native allocation segmented bytes=67108864 children=2
+[zvram] snapshot state event=bootstrap-bind resident=134217728 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] native allocation segmented bytes=67108864 children=2
+[zvram] snapshot cold bytes=33554432 stored=32604352 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=100663296 cold-logical=33554432 cold-stored=32604352 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=33554432 stored=32608128 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=67108864 cold-logical=67108864 cold-stored=65212480 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=33554432 stored=32604352 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=33554432 cold-logical=100663296 cold-stored=97816832 freezes=3 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=33554432 stored=32608128 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=134217728 cold-stored=130424960 freezes=4 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] GPU BP16 batch remap calls=1 children=4 buffers=6
+[zvram] snapshot state event=restore resident=134217728 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0 cache-stored=130424960 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=4 gpu-decode-bytes=134217728 gpu-decode-ns=5108135 gpu-decode-fallbacks=0
+[zvram] GPU BP16 encode calls=4 raw-bytes=134217728 host-ns=13752447 fallbacks=0 raw-snapshots=0
+[zvram] GPU restore host profile calls=4 validation-ns=570 input-prepare-ns=0 submit-wait-ns=4954894 batch-submissions=1 batch-items=4
+[zvram] GPU BP16 upload profile buffer-prepare-ns=0 direct-copy-ns=0
+[zvram] GPU BP16 restore batch submissions=1 items=4
+[zvram] GPU restore device profile samples=1 transfer-ns=6880 decode-ns=4693880 finish-ns=10880
+[zvram] GPU restore backing profile alloc-calls=8 alloc-ok=8 alloc-fail=0 alloc-ns=78011 free-calls=4 free-ns=80431 sparse-calls=14 sparse-ok=14 sparse-fail=0 sparse-ns=769562
+[zvram] GPU BP16 batch remap calls=1 children=4 buffers=6
+[zvram] GPU BP16 allocated input allocations=4 reuses=0 bytes=130424960 live-bytes=130424960 limit-bytes=1073741824
+[zvram] selective range restore selected-chunks=4 restored-chunks=4 cold-pools-left=0
+[zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+PASS: one submission restored four cold chunks and preserved every byte
+[zvram] virtual free bytes=67108864
+[zvram] virtual free bytes=67108864
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=2 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=4 gpu-decode-bytes=134217728 gpu-decode-ns=5108135 gpu-decode-fallbacks=0
+[zvram] GPU BP16 encode calls=4 raw-bytes=134217728 host-ns=13752447 fallbacks=0 raw-snapshots=0 final=1
+[zvram] GPU restore host profile calls=4 validation-ns=570 input-prepare-ns=0 submit-wait-ns=4954894 batch-submissions=1 batch-items=4 final=1
+[zvram] GPU BP16 upload profile buffer-prepare-ns=0 direct-copy-ns=0 final=1
+[zvram] GPU BP16 restore batch submissions=1 items=4 final=1
+[zvram] GPU restore device profile samples=1 transfer-ns=6880 decode-ns=4693880 finish-ns=10880 final=1
+[zvram] GPU restore backing profile alloc-calls=8 alloc-ok=8 alloc-fail=0 alloc-ns=78011 free-calls=4 free-ns=80431 sparse-calls=16 sparse-ok=16 sparse-fail=0 sparse-ns=911835 final=1
+[zvram] GPU BP16 batch remap calls=1 children=4 buffers=6 final=1
+[zvram] GPU BP16 allocated input allocations=4 reuses=0 bytes=130424960 live-bytes=0 limit-bytes=1073741824
+[zvram] GPU BP16 restore calls=4 bytes=134217728 host-ns=5108135 fallbacks=0
+[zvram] snapshot transfer profile copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=134217728 live-nonlocal=0 peak-nonlocal=67108864 allocation-failures=0
+PASS: application byte checks, observed GPU decoding, zero fallback and validation diagnostics
+<end of output>
+Test time =   0.26 sec
+----------------------------------------------------------
+Test Passed.
+"vulkan-bp16-batch-native" end time: Oct 08 07:06 CEST
+"vulkan-bp16-batch-native" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 08 07:06 CEST
