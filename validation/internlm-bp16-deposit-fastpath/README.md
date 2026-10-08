@@ -12,6 +12,10 @@ sampling/software-pipeline state and RAM conditions; GPU decode durations were
 similar (about **7.75 s** versus **7.74 s**). The candidate remains unadopted;
 the best measured rate remains **0.4626948 tokens/s**.
 
+The isolated shader also had a **33.6% slower** device-input result on the exact
+16 MiB all-mask component fixture; the bounded component evidence is in the
+[deposit-fastpath validation archive](../bp16-deposit-fastpath/README.md).
+
 The run used source commit `a8d113bac4dc2bce8867286f10199d56c09ca2f5`. The
 runtime manifest records the layer, BP16 shader (`43e49ac7…e1445ab4`) and llama
 binary hashes. The final profile recorded **8,409** calls, matching the final

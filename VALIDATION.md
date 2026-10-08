@@ -1200,7 +1200,9 @@ conditions differed, while measured GPU decode duration was similar at about
 **7.75 s** versus **7.74 s**. The candidate remains unadopted, and the best
 measured rate remains **0.4626948 tokens/s**. The final profile call count
 matched the final snapshot at **8,409**; this is profile consistency evidence,
-not an end-to-end speed claim.
+not an end-to-end speed claim. The isolated shader had a **33.6% slower**
+device-input result on an exact 16 MiB all-mask component fixture; see the
+[component archive](validation/bp16-deposit-fastpath/README.md).
 
 [Candidate archive](validation/internlm-bp16-deposit-fastpath/README.md),
 [result](validation/internlm-bp16-deposit-fastpath/result.json.gz), and

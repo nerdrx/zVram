@@ -270,3 +270,5 @@ tokens/s**, but this was not a controlled improvement over the prior sampled
 run; GPU decode durations were similar and profile state differed. It remains
 unadopted, and the measured best remains **0.4626948 tokens/s**. [Candidate
 run and limits](../../validation/internlm-bp16-deposit-fastpath/README.md).
+An exact 16 MiB all-mask device-input component fixture was 33.6% slower with
+the candidate shader. [Component archive](../../validation/bp16-deposit-fastpath/README.md).
