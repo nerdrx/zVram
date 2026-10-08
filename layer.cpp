@@ -3317,7 +3317,7 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     struct AdmissionBudgetSnapshotScope {
         Device& device;
         bool enabled;
-        explicit AdmissionBudgetSnapshotScope(Device& value):device(value),enabled(value.admissionBudgetSnapshotEnabled) {
+        explicit AdmissionBudgetSnapshotScope(Device& value):device(value),enabled(value.virtualEnabled && value.admissionBudgetSnapshotEnabled) {
             if(enabled) {
                 device.admissionBudgetSnapshotActive=true;
                 device.admissionBudgetSnapshotValid=false;
