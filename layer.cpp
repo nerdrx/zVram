@@ -376,6 +376,10 @@ void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
             logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu%s",
                  static_cast<unsigned long long>(profile.calls),static_cast<unsigned long long>(profile.validationNs),
                  static_cast<unsigned long long>(profile.inputPrepareNs),static_cast<unsigned long long>(profile.submitWaitNs),suffix);
+            if(d.snapshotCodec==zvram::snapshot::Codec::BP16)
+                logf("GPU BP16 upload profile buffer-prepare-ns=%llu direct-copy-ns=%llu%s",
+                     static_cast<unsigned long long>(profile.bp16BufferPrepareNs),
+                     static_cast<unsigned long long>(profile.bp16DirectCopyNs),suffix);
             logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu%s",
                  static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
                  static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs),suffix);

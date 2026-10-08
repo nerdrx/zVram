@@ -188,6 +188,8 @@ public:
         std::uint64_t calls{};
         std::uint64_t validationNs{};
         std::uint64_t inputPrepareNs{};
+        std::uint64_t bp16BufferPrepareNs{};
+        std::uint64_t bp16DirectCopyNs{};
         std::uint64_t submitWaitNs{};
         std::uint64_t gpuTransferNs{};
         std::uint64_t gpuDecodeNs{};
@@ -541,12 +543,17 @@ public:
             return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
         (void)finishValidation(VK_SUCCESS);
 
+        const bool profileBP16Input = profileEnabled_ && format_ == Format::BP16;
         const auto inputPrepareStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
+        const auto bufferPrepareStarted = profileBP16Input ? Clock::now() : Clock::time_point{};
         VkResult result = imported
             ? updateDescriptors(output, offset, static_cast<VkDeviceSize>(inputBytes),
                                 static_cast<VkDeviceSize>(paddedRaw), imported->buffer)
             : checked(ensureInputBuffers(inputBytes, output, offset,
                                          static_cast<VkDeviceSize>(paddedRaw)));
+        if (profileBP16Input)
+            profile_.bp16BufferPrepareNs += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - bufferPrepareStarted).count());
         if (result != VK_SUCCESS) {
             if (profileEnabled_)
                 profile_.inputPrepareNs += static_cast<std::uint64_t>(
@@ -555,12 +562,16 @@ public:
         }
 
         if (!imported) {
+            const auto directCopyStarted = profileBP16Input ? Clock::now() : Clock::time_point{};
             auto* upload = static_cast<std::uint8_t*>(upload_.mapped);
             if (format_ == Format::BP16)
                 copyBP16UploadBytes(upload, encoded, encodedSize, bp16UploadWorkers_);
             else
                 std::memcpy(upload, encoded, encodedSize);
             std::memset(upload + encodedSize, 0, inputBytes - encodedSize);
+            if (profileBP16Input)
+                profile_.bp16DirectCopyNs += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - directCopyStarted).count());
         }
         const std::uint32_t controlWords[3]{1u, 0u, 0u};
         std::memcpy(control_.mapped, controlWords, sizeof(controlWords));
