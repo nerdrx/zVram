@@ -197,13 +197,6 @@ public:
     };
     using ImportedHostInputPtr = std::shared_ptr<ImportedHostInput>;
 
-    struct RestoreItem {
-        const ImportedHostInput* input{};
-        VkBuffer output{};
-        VkDeviceSize offset{};
-        std::size_t rawSize{};
-    };
-
     struct Profile {
         std::uint64_t calls{};
         std::uint64_t validationNs{};
@@ -215,8 +208,7 @@ public:
         std::uint64_t gpuDecodeNs{};
         std::uint64_t gpuFinishNs{};
         std::uint64_t gpuSamples{};
-        std::uint64_t batchSubmissions{};
-        std::uint64_t batchItems{};
+        std::uint64_t bp16InputBytes{};
     };
 
     Decoder() = default;
@@ -826,6 +818,8 @@ public:
         if (profileEnabled_)
             profile_.submitWaitNs += static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
+        if (profileEnabled_ && format_ == Format::BP16)
+            profile_.bp16InputBytes += inputBytes;
         if (gpuProfileEnabled_) {
             std::uint64_t timestamps[4]{};
             result = api_.getQueryPoolResults(device_, queryPool_, 0, 4, sizeof(timestamps),
@@ -840,207 +834,6 @@ public:
             } else {
                 disableGpuProfiling();
             }
-        }
-        std::uint32_t errorMask{};
-        std::memcpy(&errorMask, errorReadback_.mapped, sizeof(errorMask));
-        return errorMask ? VK_ERROR_UNKNOWN : VK_SUCCESS;
-    }
-
-    // Batch only immutable prevalidated BP16 owners. Batch descriptors live in
-    // a separate lazy pool, so ordinary restores keep the original resources.
-    VkResult restoreBatch(const RestoreItem* items, std::size_t count) {
-        using Clock = std::chrono::steady_clock;
-        const auto validationStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
-        auto finishValidation = [&](VkResult result) {
-            if (profileEnabled_) {
-                profile_.calls += std::min<std::size_t>(count, 4);
-                profile_.validationNs += static_cast<std::uint64_t>(
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - validationStarted).count());
-            }
-            return result;
-        };
-        if (!initialized_ || poisoned_) return finishValidation(VK_ERROR_DEVICE_LOST);
-        if (format_ != Format::BP16 || (!bp16ImportHostInput_ && !bp16AllocatedHostInput_) ||
-            !items || count < 2 || count > 4)
-            return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
-
-        std::uint32_t dispatchGroups[4]{};
-        VkDeviceSize inputRanges[4]{};
-        VkDeviceSize outputRanges[4]{};
-        for (std::size_t i = 0; i < count; ++i) {
-            const auto& item = items[i];
-            const auto* input = item.input;
-            if (!input || !item.output || !item.rawSize || item.rawSize > MaxRawBytes ||
-                item.output == upload_.buffer || item.output == input_.buffer ||
-                item.output == control_.buffer || item.output == scratch_.buffer ||
-                item.output == errorReadback_.buffer || item.output == encodeMetadata_.buffer ||
-                item.rawSize % bp16::RawBytesPerBlock || item.rawSize > maxStorageBufferRange_ ||
-                item.offset > std::numeric_limits<VkDeviceSize>::max() - item.rawSize ||
-                (item.offset & 3u) ||
-                (minStorageBufferOffsetAlignment_ && item.offset % minStorageBufferOffsetAlignment_) ||
-                input->driverAllocatedHostMemory_ != bp16AllocatedHostInput_ ||
-                input->device_ != device_ || !input->buffer_ || !input->memory_ ||
-                !input->allocation_ || input->poisoned_ != poisonState_ ||
-                input->encodedBytes_ > MaxBP16InputBytes ||
-                !input->matchesBP16Frame(input->data(), input->encodedBytes_, item.rawSize))
-                return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
-            const auto paddedRaw = (item.rawSize + 3u) & ~std::size_t(3u);
-            const auto inputBytes = (input->encodedBytes_ + 3u) & ~std::size_t(3u);
-            if (paddedRaw > maxStorageBufferRange_ || inputBytes > maxStorageBufferRange_ ||
-                inputBytes > input->allocationBytes_ ||
-                item.offset > std::numeric_limits<VkDeviceSize>::max() - paddedRaw)
-                return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
-            const auto groups = (item.rawSize + 1023u) / 1024u;
-            if (!groups || groups > maxDispatchGroupsX_)
-                return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
-            dispatchGroups[i] = static_cast<std::uint32_t>(groups);
-            inputRanges[i] = static_cast<VkDeviceSize>(inputBytes);
-            outputRanges[i] = static_cast<VkDeviceSize>(paddedRaw);
-            for (std::size_t j = 0; j < i; ++j) {
-                if (items[j].output == item.output || items[j].input->buffer_ == item.output ||
-                    input->buffer_ == items[j].output)
-                    return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
-            }
-            if (input->buffer_ == item.output)
-                return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
-        }
-        (void)finishValidation(VK_SUCCESS);
-
-        VkResult result = ensureBatchDescriptorSets();
-        if (result != VK_SUCCESS) return result;
-        for (std::size_t i = 0; i < count; ++i) {
-            VkDescriptorBufferInfo infos[4]{};
-            infos[0] = {items[i].input->buffer_, 0, inputRanges[i]};
-            infos[1] = {control_.buffer, 0, 12};
-            infos[2] = {items[i].output, items[i].offset, outputRanges[i]};
-            infos[3] = {scratch_.buffer, 0, 4};
-            VkWriteDescriptorSet writes[4]{};
-            for (std::uint32_t binding = 0; binding < 4; ++binding) {
-                writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                writes[binding].dstSet = batchDescriptorSets_[i];
-                writes[binding].dstBinding = binding;
-                writes[binding].descriptorCount = 1;
-                writes[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                writes[binding].pBufferInfo = &infos[binding];
-            }
-            api_.updateDescriptorSets(device_, 4, writes, 0, nullptr);
-        }
-
-        result = checked(api_.resetCommandPool(device_, commandPool_, 0));
-        if (result != VK_SUCCESS) return result;
-        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        result = checked(api_.beginCommandBuffer(commandBuffer_, &begin));
-        if (result != VK_SUCCESS) return result;
-        if (gpuProfileEnabled_) {
-            api_.cmdResetQueryPool(commandBuffer_, queryPool_, 0, 4);
-            api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, queryPool_, 0);
-        }
-
-        VkMemoryBarrier reuse{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
-        reuse.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT |
-                              VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT |
-                              VK_ACCESS_TRANSFER_WRITE_BIT;
-        reuse.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
-        api_.cmdPipelineBarrier(commandBuffer_, VK_PIPELINE_STAGE_HOST_BIT |
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &reuse, 0, nullptr, 0, nullptr);
-        api_.cmdFillBuffer(commandBuffer_, scratch_.buffer, 0, 4, 0);
-        VkMemoryBarrier computeReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
-        computeReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_HOST_WRITE_BIT;
-        computeReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-        api_.cmdPipelineBarrier(commandBuffer_, VK_PIPELINE_STAGE_TRANSFER_BIT |
-            VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 1, &computeReady, 0, nullptr, 0, nullptr);
-        if (gpuProfileEnabled_)
-            api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_TRANSFER_BIT, queryPool_, 1);
-
-        api_.cmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
-        for (std::size_t i = 0; i < count; ++i) {
-            api_.cmdBindDescriptorSets(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE,
-                pipelineLayout_, 0, 1, &batchDescriptorSets_[i], 0, nullptr);
-            api_.cmdDispatch(commandBuffer_, dispatchGroups[i], 1, 1);
-            VkBufferMemoryBarrier barriers[2]{};
-            barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            barriers[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-            barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barriers[0].buffer = items[i].output;
-            barriers[0].offset = items[i].offset;
-            barriers[0].size = outputRanges[i];
-            barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            barriers[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
-                                         VK_ACCESS_TRANSFER_READ_BIT;
-            barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barriers[1].buffer = scratch_.buffer;
-            barriers[1].offset = 0;
-            barriers[1].size = 4;
-            api_.cmdPipelineBarrier(commandBuffer_, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-                    VK_PIPELINE_STAGE_TRANSFER_BIT,
-                0, 0, nullptr, 2, barriers, 0, nullptr);
-        }
-        if (gpuProfileEnabled_)
-            api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool_, 2);
-        const VkBufferCopy errorCopy{0, 0, 4};
-        api_.cmdCopyBuffer(commandBuffer_, scratch_.buffer, errorReadback_.buffer, 1, &errorCopy);
-        VkBufferMemoryBarrier hostReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        hostReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        hostReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-        hostReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        hostReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        hostReady.buffer = errorReadback_.buffer;
-        hostReady.offset = 0;
-        hostReady.size = 4;
-        api_.cmdPipelineBarrier(commandBuffer_, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &hostReady, 0, nullptr);
-        if (gpuProfileEnabled_)
-            api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queryPool_, 3);
-        result = checked(api_.endCommandBuffer(commandBuffer_));
-        if (result != VK_SUCCESS) return result;
-        result = checked(api_.resetFences(device_, 1, &fence_));
-        if (result != VK_SUCCESS) return result;
-        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &commandBuffer_;
-        const auto submitWaitStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
-        result = api_.queueSubmit(queue_, 1, &submit, fence_);
-        if (result != VK_SUCCESS) {
-            markPoisoned();
-            if (profileEnabled_)
-                profile_.submitWaitNs += static_cast<std::uint64_t>(
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
-            return result;
-        }
-        if (profileEnabled_) {
-            ++profile_.batchSubmissions;
-            profile_.batchItems += count;
-        }
-        result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
-        if (result != VK_SUCCESS) {
-            markPoisoned();
-            if (profileEnabled_)
-                profile_.submitWaitNs += static_cast<std::uint64_t>(
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
-            return result;
-        }
-        if (profileEnabled_)
-            profile_.submitWaitNs += static_cast<std::uint64_t>(
-                std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
-        if (gpuProfileEnabled_) {
-            std::uint64_t timestamps[4]{};
-            result = api_.getQueryPoolResults(device_, queryPool_, 0, 4, sizeof(timestamps),
-                timestamps, sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
-            if (result == VK_ERROR_DEVICE_LOST) return checked(result);
-            if (result == VK_SUCCESS) {
-                profile_.gpuTransferNs += timestampNs(timestampDelta(timestamps[0], timestamps[1]));
-                profile_.gpuDecodeNs += timestampNs(timestampDelta(timestamps[1], timestamps[2]));
-                profile_.gpuFinishNs += timestampNs(timestampDelta(timestamps[2], timestamps[3]));
-                ++profile_.gpuSamples;
-            } else disableGpuProfiling();
         }
         std::uint32_t errorMask{};
         std::memcpy(&errorMask, errorReadback_.mapped, sizeof(errorMask));
@@ -1568,32 +1361,6 @@ private:
         return result;
     }
 
-    VkResult ensureBatchDescriptorSets() {
-        if (batchDescriptorPool_) return VK_SUCCESS;
-        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16};
-        VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        poolInfo.maxSets = 4;
-        poolInfo.poolSizeCount = 1;
-        poolInfo.pPoolSizes = &size;
-        VkResult result = checked(api_.createDescriptorPool(device_, &poolInfo, nullptr,
-                                                             &batchDescriptorPool_));
-        if (result != VK_SUCCESS) return result;
-        VkDescriptorSetLayout layouts[4]{setLayout_, setLayout_, setLayout_, setLayout_};
-        VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-        allocate.descriptorPool = batchDescriptorPool_;
-        allocate.descriptorSetCount = 4;
-        allocate.pSetLayouts = layouts;
-        result = api_.allocateDescriptorSets(device_, &allocate, batchDescriptorSets_);
-        if (result != VK_SUCCESS) {
-            if (result == VK_ERROR_DEVICE_LOST) return checked(result);
-            api_.destroyDescriptorPool(device_, batchDescriptorPool_, nullptr);
-            batchDescriptorPool_ = VK_NULL_HANDLE;
-            std::fill(batchDescriptorSets_, batchDescriptorSets_ + 4, VK_NULL_HANDLE);
-            return result;
-        }
-        return VK_SUCCESS;
-    }
-
     VkResult updateDescriptors(VkBuffer output, VkDeviceSize outputOffset,
                                VkDeviceSize inputRange, VkDeviceSize outputRange,
                                VkBuffer suppliedInput = VK_NULL_HANDLE) {
@@ -1676,7 +1443,6 @@ private:
         if (fence_) api_.destroyFence(device_, fence_, nullptr);
         if (commandPool_) api_.destroyCommandPool(device_, commandPool_, nullptr);
         cleanupBP16Encoder();
-        if (batchDescriptorPool_) api_.destroyDescriptorPool(device_, batchDescriptorPool_, nullptr);
         if (descriptorPool_) api_.destroyDescriptorPool(device_, descriptorPool_, nullptr);
         if (pipeline_) api_.destroyPipeline(device_, pipeline_, nullptr);
         if (shader_) api_.destroyShaderModule(device_, shader_, nullptr);
@@ -1699,8 +1465,6 @@ private:
         commandBuffer_ = VK_NULL_HANDLE;
         descriptorPool_ = VK_NULL_HANDLE;
         descriptorSet_ = VK_NULL_HANDLE;
-        batchDescriptorPool_ = VK_NULL_HANDLE;
-        std::fill(batchDescriptorSets_, batchDescriptorSets_ + 4, VK_NULL_HANDLE);
         pipeline_ = VK_NULL_HANDLE;
         shader_ = VK_NULL_HANDLE;
         pipelineLayout_ = VK_NULL_HANDLE;
@@ -1745,8 +1509,6 @@ private:
     VkPipeline pipeline_{};
     VkDescriptorPool descriptorPool_{};
     VkDescriptorSet descriptorSet_{};
-    VkDescriptorPool batchDescriptorPool_{};
-    VkDescriptorSet batchDescriptorSets_[4]{};
     VkDescriptorSet encodeDescriptorSet_{};
     VkShaderModule encodeAnalyzeShader_{};
     VkShaderModule encodePackShader_{};

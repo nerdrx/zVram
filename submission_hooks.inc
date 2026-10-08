@@ -189,33 +189,6 @@ VkResult restoreTrackedCommands(Device& d,const std::vector<VkCommandBuffer>& co
             const auto p=d.virtualMemory.find(use.memory);
             if(p==d.virtualMemory.end() || !p->second.cold ||
                (use.child!=SIZE_MAX && !p->second.coldGroups[use.child].cold)) continue;
-            // The bounded GPU batch is independent of CPU decode lookahead.
-            // Only try it when no prefetched range is awaiting consumption.
-            if(d.bp16RestoreBatchEnabled && preparedFor==SIZE_MAX && !d.restoreFailureAfterGroups &&
-               use.child!=SIZE_MAX) {
-                std::array<VkDeviceMemory,4> batchMemories{};
-                std::array<std::size_t,4> batchChildren{};
-                std::size_t batchCount=0;
-                for(std::size_t j=n;j<cold.size() && batchCount<batchMemories.size();++j) {
-                    if(cold[j].child==SIZE_MAX) break;
-                    batchMemories[batchCount]=cold[j].memory;
-                    batchChildren[batchCount]=cold[j].child;
-                    ++batchCount;
-                }
-                if(batchCount>=2) {
-                    std::size_t batchRestored=0;
-                    const auto batchResult=restoreColdBP16BatchLocked(d,batchMemories.data(),
-                        batchChildren.data(),batchCount,batchRestored);
-                    if(batchResult!=VK_NOT_READY) {
-                        if(batchResult!=VK_SUCCESS) return batchResult;
-                        if(batchRestored!=batchCount) return VK_ERROR_UNKNOWN;
-                        restored+=batchRestored;
-                        n+=batchRestored-1;
-                        slot=0;
-                        continue;
-                    }
-                }
-            }
             bool prepared=preparedFor==n;
             preparedFor=SIZE_MAX;
             if(!prepared && pipeline) prepared=prepareRangeDecode(d,use,slot,ahead,false);
