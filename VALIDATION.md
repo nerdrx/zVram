@@ -315,6 +315,14 @@ verified, GPU decoding was observed, and there were no fallbacks or Vulkan
 validation diagnostics. These checks establish correctness only; no policy
 performance comparison is claimed. [Logs and binary hashes](validation/bp16-clean-cache-policy/README.md).
 
+Three sequential 92-token InternLM2.5-20B F16 runs also exercised these cache
+policies with the same BP16 binary: default `first` measured **0.460472
+tokens/s**, LRU **0.508884**, and MRU **0.306843**. All three produced identical
+output, offloaded **49/49** layers, and had zero GPU fallback. The runs had
+unlocked clocks and uncontrolled background activity; they do not isolate a
+policy performance effect. The default remains `first`. [Run comparison and
+archives](validation/bp16-clean-cache-policy-long/README.md).
+
 ## Vulkan range eviction policy
 
 `--vulkan-eviction-policy lru|mru` requires `--vulkan-resident-mib`; the default is `lru`. LRU evicts the least-recently-used eligible completed chunk first. MRU evicts the newest eligible completed, unselected chunk first. Both policies retain the existing protection for selected or in-flight chunks and the same unknown-access fallback.

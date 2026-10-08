@@ -1,0 +1,4 @@
+{
+  "runtime_code_commit": "589bf45",
+  "note": "Rebuilt layer uses eaec opt-in clean-cache LRU plus d453 BMI2 packer and4dprofiling. Production decoder shader unchanged; GPU encoding research is not integrated."
+}

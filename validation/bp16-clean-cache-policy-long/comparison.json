@@ -1,0 +1,26 @@
+{
+  "scope": "Sequential 92-token InternLM2.5-20B F16 BP16 runs; cache policies explicit; clocks/background uncontrolled; no performance causality claim",
+  "stdout_sha256": "b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b",
+  "offload": [49, 49],
+  "gpu_fallbacks": 0,
+  "policies": {
+    "lru": {
+      "decode_ms": 180787.78,
+      "tokens_per_second_exact": 0.508883952222877,
+      "minimum_available_mib": 19976,
+      "swap_growth_mib": 4122
+    },
+    "mru": {
+      "decode_ms": 299827.77,
+      "tokens_per_second_exact": 0.30684282513257527,
+      "minimum_available_mib": 19860,
+      "swap_growth_mib": 5174
+    },
+    "first": {
+      "decode_ms": 199795.01,
+      "tokens_per_second_exact": 0.4604719607361565,
+      "minimum_available_mib": 20270,
+      "swap_growth_mib": 2052
+    }
+  }
+}
