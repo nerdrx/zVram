@@ -245,3 +245,11 @@ The smoke-only host-copy matrix also passed six 64-iteration copies of the same
 host input measured 22.31–24.11 GB/s; allocated cached host input measured
 23.51–49.41 GB/s. This noisy component result does not establish a full-model
 speedup. [Logs, source, and hashes](../../validation/bp16-host-copy-matrix/summary.json).
+
+The opt-in `ZVRAM_VULKAN_BP16_CACHED_UPLOAD=1` prefers coherent, host-visible
+`HOST_CACHED` memory for the BP16 direct-host input buffer, falling back to a
+compatible non-device-local type. It is off by default and has no effect unless
+BP16 host input is enabled. The full-model trial preserved exact output with no
+GPU fallback, but measured **0.3941293 tokens/s**, below the separate best
+**0.4626948 tokens/s** result. These sequential, uncontrolled runs do not show
+a speed improvement. [Run and correctness evidence](../../VALIDATION.md#bp16-cached-direct-host-upload-preference).

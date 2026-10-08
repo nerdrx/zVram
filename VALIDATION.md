@@ -1116,6 +1116,43 @@ the cache alone caused the difference. [Run summary](validation/internlm-bp16-al
 [full result](validation/internlm-bp16-allocated-host-cache8g/result.json.gz), and
 [full stderr](validation/internlm-bp16-allocated-host-cache8g/automatic.stderr.txt.gz).
 
+### BP16 cached direct-host upload preference
+
+The opt-in `ZVRAM_VULKAN_BP16_CACHED_UPLOAD=1` asks the BP16 direct-host input
+buffer selector to prefer `HOST_CACHED` memory while retaining the required
+host-visible/coherent properties and non-device-local constraint. If no
+compatible cached type exists, it falls back to the first compatible type.
+The preference applies only when BP16 host input is enabled; it is off by
+default.
+
+A full 39.73 GB InternLM2.5-20B F16 run enabled this preference with direct
+host input, 32 BP16 workers, MRU, async compression, a 19 GiB tracked cap and
+2.5 GiB reserve. It completed 12 decode runs in **30,446.86 ms**, or
+**0.3941293 tokens/s**, with exact output (SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`),
+**49/49** layers, no diagnostics and zero GPU fallback. Minimum available RAM
+was **21,700 MiB** and swap grew by **711 MiB**. The run used cached direct-host
+input, not the allocated-host cache.
+
+This result does not improve the best measured **0.4626948 tokens/s** BP16
+result above; runs were sequential and clocks/background load were not
+controlled. It shows correctness for the opt-in preference, not a speed win.
+The captured source hashes match commit `1161e7dfb7cf516cf04382f99e993cabae35ea16`;
+the runtime layer and llama binaries are recorded in the archive. Separate
+validation recorded **8/8** GPU tests twice. The first pass enabled
+`ZVRAM_VULKAN_BP16_HOST_INPUT=1` and `ZVRAM_VULKAN_BP16_CACHED_UPLOAD=1` at
+source `1161e7d`; the sampled-profile pass also enabled
+`ZVRAM_VULKAN_GPU_PROFILE=1` at source `870a7dd`. A three-frame hidden
+presentation check used `ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1` instead, so
+it did not test cached-upload preference; it passed exact pixel/buffer checks
+with zero validation errors. These are correctness checks, not game or
+inference performance proof.
+
+[Full-run archive](validation/internlm-bp16-cached-upload/README.md),
+[GPU test logs](validation/bp16-cached-upload-check/README.md),
+[run result](validation/internlm-bp16-cached-upload/result.json.gz), and
+[full stderr](validation/internlm-bp16-cached-upload/automatic.stderr.txt.gz).
+
 ### Same-prompt 92-token native/allocated-host comparison
 
 A separate longer generation used the same prompt, temperature 0, seed 1,
