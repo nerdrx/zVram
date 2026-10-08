@@ -422,8 +422,9 @@ void benchmarkWorkers(const std::string& rawPath, const std::string& outputPath)
             "32 MiB serial round trip failed");
 
     struct Result { unsigned workers; std::array<std::uint64_t, 3> ns; };
-    std::array<Result, 4> results{{{1,{}},{2,{}},{4,{}},{8,{}}}};
+    std::array<Result, 6> results{{{1,{}},{2,{}},{4,{}},{8,{}},{16,{}},{32,{}}}};
     Bytes encoded;
+    encoded.reserve(serial.size());
     for (auto& result : results) {
         for (auto& elapsed : result.ns) {
             const auto start = std::chrono::steady_clock::now();
@@ -431,6 +432,8 @@ void benchmarkWorkers(const std::string& rawPath, const std::string& outputPath)
             elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - start).count());
             require(encoded == serial, "32 MiB parallel frame differs from serial bytes");
+            require(decode(encoded.data(), encoded.size(), decoded.data(), raw.size()) && decoded == raw,
+                    "32 MiB worker frame round trip failed");
         }
         std::sort(result.ns.begin(), result.ns.end());
     }
