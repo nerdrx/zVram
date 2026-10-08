@@ -181,6 +181,8 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
     cold = []
     cold_state = None
     model_mib = []
+    stderr_line_tail = bytearray()
+    pressure_marker_tail = b""
     prompt_time = first_output_time = None
     prompt_sent = False
     swap_baseline_mib = used_swap_mib()
@@ -197,6 +199,48 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
     minimum_available_mib = None
     last_ollama_check = None
     ollama_gpu_detected = []
+    pressure_restore_marker = b"snapshot state event=restore"
+
+    def read_stderr(chunk, parse_lines=False, find_pressure_restore=False):
+        nonlocal cold_state, last_cold_time, ready, pre_prompt_state, pressure_marker_tail
+        stderr.extend(chunk)
+        if find_pressure_restore and automatic and pressure_on_first_submit and prompt_sent:
+            if (pressure_marker_tail + chunk).find(pressure_restore_marker) >= 0:
+                if "pressure" not in backing:
+                    backing["pressure"] = capture_backing(
+                        proc.pid, output_dir / f"{label}-pressure.fdinfo.txt")
+            pressure_marker_tail = (pressure_marker_tail + chunk)[-(len(pressure_restore_marker) - 1):]
+        if not parse_lines:
+            return
+        stderr_line_tail.extend(chunk)
+        lines = stderr_line_tail.split(b"\n")
+        stderr_line_tail[:] = lines.pop()
+        for raw_line in lines:
+            text = raw_line.decode("utf-8", errors="replace")
+            model_mib.extend(float(x.replace(",", ""))
+                             for x in VulkanBufferPattern.findall(text))
+            new_cold = [(int(a), int(b)) for a, b in ColdPattern.findall(text)]
+            if new_cold:
+                cold.extend(new_cold)
+                last_cold_time = time.monotonic()
+            states = [tuple(map(int, x)) for x in StatePattern.findall(text)]
+            if states:
+                cold_state = states[-1]
+                if not prompt_sent:
+                    pre_prompt_state = cold_state
+            if automatic and "automatic Vulkan snapshots disabled:" in text:
+                raise RuntimeError(f"{label}: automatic Vulkan snapshots were disabled")
+            if automatic and any(word in text.lower() for word in
+                                 ("snapshot failed", "snapshot error", "snapshot failure")):
+                raise RuntimeError(f"{label}: Vulkan snapshot error reported")
+            if model_mib and not cold and "hot" not in backing:
+                backing["hot"] = capture_backing(
+                    proc.pid, output_dir / f"{label}-hot.fdinfo.txt")
+            if "== Running in interactive mode. ==" in text and not ready:
+                ready = True
+                if model_mib and not cold:
+                    backing["hot"] = capture_backing(
+                        proc.pid, output_dir / f"{label}-hot.fdinfo.txt")
 
     def sample_resources():
         nonlocal minimum_available_mib, swap_peak_mib, last_ollama_check
@@ -235,29 +279,7 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
                     if prompt_sent and first_output_time is None:
                         first_output_time = time.monotonic()
                 else:
-                    stderr.extend(chunk)
-                    text = stderr.decode("utf-8", errors="replace")
-                    model_mib = [float(x.replace(",", "")) for x in VulkanBufferPattern.findall(text)]
-                    new_cold = [(int(a), int(b)) for a, b in ColdPattern.findall(text)]
-                    if len(new_cold) > len(cold):
-                        cold = new_cold
-                        last_cold_time = time.monotonic()
-                    states = [tuple(map(int, x)) for x in StatePattern.findall(text)]
-                    if states:
-                        cold_state = states[-1]
-                        if not prompt_sent:
-                            pre_prompt_state = cold_state
-                    if automatic and "automatic Vulkan snapshots disabled:" in text:
-                        raise RuntimeError(f"{label}: automatic Vulkan snapshots were disabled")
-                    if automatic and any(word in text.lower() for word in
-                                         ("snapshot failed", "snapshot error", "snapshot failure")):
-                        raise RuntimeError(f"{label}: Vulkan snapshot error reported")
-                    if model_mib and not cold and "hot" not in backing:
-                        backing["hot"] = capture_backing(proc.pid, output_dir / f"{label}-hot.fdinfo.txt")
-                    if "== Running in interactive mode. ==" in text and not ready:
-                        ready = True
-                        if model_mib and not cold:
-                            backing["hot"] = capture_backing(proc.pid, output_dir / f"{label}-hot.fdinfo.txt")
+                    read_stderr(chunk, parse_lines=True)
             if proc.poll() is not None:
                 raise RuntimeError(f"{label} exited before input (status {proc.returncode})")
             if not automatic and ready and model_mib:
@@ -278,7 +300,7 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
             raise RuntimeError(f"{label} timed out waiting for ready model/snapshot")
         sample_resources()
         prompt_time = time.monotonic()
-        pressure_stderr_start = len(stderr)
+        pressure_marker_tail = b""
         proc.stdin.write(Prompt)
         proc.stdin.close()
         prompt_sent = True
@@ -294,12 +316,7 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
                     if first_output_time is None:
                         first_output_time = time.monotonic()
                 else:
-                    stderr.extend(chunk)
-                    if (automatic and pressure_on_first_submit and prompt_sent and
-                            "pressure" not in backing and
-                            b"snapshot state event=restore" in stderr[pressure_stderr_start:]):
-                        backing["pressure"] = capture_backing(
-                            proc.pid, output_dir / f"{label}-pressure.fdinfo.txt")
+                    read_stderr(chunk, find_pressure_restore=True)
             if proc.poll() is not None:
                 break
         if proc.poll() is None:

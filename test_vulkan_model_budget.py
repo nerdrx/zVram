@@ -123,6 +123,46 @@ time.sleep(0.05)
             idle_model.capture_backing = capture
 
 
+def check_incremental_stderr_chunk_boundaries():
+    child = """
+import sys
+def emit(text):
+    sys.stderr.write(text)
+    sys.stderr.flush()
+emit('Vulkan0 model buffer size = 1,024 MiB\\n')
+emit('snapshot state event=bootstrap-bind resident=1048576 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0\\n')
+emit('== Running in interactive mode. ==\\n')
+sys.stdin.readline()
+emit('snapshot state event=restore resident=524288 cold-logical=524288 cold-stored=100 freezes=1 restores=1 failures=0\\n')
+emit('eval time = 1.0 ms / 1 runs (1000.0 tokens per second)\\n')
+print('done', flush=True)
+"""
+    capture = idle_model.capture_backing
+    original_read = idle_model.os.read
+    def fake_capture(pid, path):
+        path.write_text("CPU fixture")
+        return {"resident_vram_present": True}
+    def small_read(fd, size):
+        return original_read(fd, min(size, 5))
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        idle_model.capture_backing = fake_capture
+        try:
+            with mock.patch.object(idle_model.os, "read", side_effect=small_read):
+                result = idle_model.run_interactive(
+                    "split", [sys.executable, "-c", child], os.environ.copy(), root, 3,
+                    True, pressure_on_first_submit=True)
+        finally:
+            idle_model.capture_backing = capture
+    assert result["model_buffers_mib"] == [1024.0], result["model_buffers_mib"]
+    assert result["pre_prompt_state"][:2] == (1048576, 0), result["pre_prompt_state"]
+    assert result["pre_prompt_cold_state"] is None
+    assert "pressure" in result["backing"], result["backing"]
+    assert result["state_events"][-1][0] == "restore", result["state_events"]
+    assert idle_model.has_decode_tokens(result["performance"]), result["performance"]
+    assert result["stdout"] == b"done\n", result["stdout"]
+
+
 def check_launch_forwarding():
     class Captured(Exception):
         pass
@@ -240,6 +280,7 @@ def main():
 
     for pressure_mode in (False, True):
         check_prompt_gate(pressure_mode)
+    check_incremental_stderr_chunk_boundaries()
 
     # A late bind is reported even if the next admission successfully reduces
     # backing. An over-budget completed restore must still fail the budget gate.
