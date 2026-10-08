@@ -1,0 +1,34 @@
+{
+  "command.json": {
+    "bytes": 594,
+    "sha256": "92b212c8114aaa666a8bcf7155cb6c457852c4020d3b9ed8398f652981c3a633"
+  },
+  "env.json": {
+    "bytes": 309,
+    "sha256": "3cb71953080438fdfeed1d6e945bdecaa08836dbbaf0d24f4fa018bfa9a32976"
+  },
+  "local.log": {
+    "bytes": 22670,
+    "sha256": "19f023c2e0b0dde41212dbd9878537696a028985d97e283057c84891ca0c06e0"
+  },
+  "result.json": {
+    "bytes": 142,
+    "sha256": "53e44245823713ac3c363e232713b4584659bbc8a71abaf324bd4b874eeefebd"
+  },
+  "before-command.json": {
+    "bytes": 607,
+    "sha256": "2a6099b948a6129dd70d099852ed95ca1bca8e609f7b48bde4a0dc76fb5629a6"
+  },
+  "before-control.patch": {
+    "bytes": 566,
+    "sha256": "d032c4cc319b5143118d80fa0eefad809039f15e5b2ac6a57ccb56d4d8faa52d"
+  },
+  "provenance.json": {
+    "bytes": 1255,
+    "sha256": "0a2abdcfd5c6d986b533fd6d5d2c8c95260cb3c78d7a5542d1ef25444d783c86"
+  },
+  "README.md": {
+    "bytes": 1473,
+    "sha256": "dac1fd229b740246f4c078df760973977b26a1bafc7af012fcd97970a575a9c4"
+  }
+}
