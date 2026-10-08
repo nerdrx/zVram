@@ -288,6 +288,7 @@ struct Device {
     std::uint64_t gpuDecodeCalls{}, gpuDecodeBytes{}, gpuDecodeNanoseconds{}, gpuDecodeFallbacks{};
     std::uint64_t gpuEncodeCalls{}, gpuEncodeBytes{}, gpuEncodeNanoseconds{}, gpuEncodeFallbacks{};
     std::uint64_t gpuEncodeRawSnapshots{};
+    std::uint64_t lastGpuEncodeLoggedCalls{};
     VkPhysicalDeviceProperties gpuProperties{};
     std::uint32_t gpuTimestampBits{};
     std::unique_ptr<zvram::gdeflate::gpu::Decoder> gpuDecoder;
@@ -373,11 +374,13 @@ void runAsyncEncoderUnlocked(std::unique_lock<std::mutex>& deviceLock,
     deviceLock.lock(); queueLock.lock();
 }
 void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
-    if(force && (d.gpuEncodeCalls || d.gpuEncodeFallbacks))
+    if((force || d.gpuEncodeCalls>d.lastGpuEncodeLoggedCalls) && (d.gpuEncodeCalls || d.gpuEncodeFallbacks)) {
         logf("GPU BP16 encode calls=%llu raw-bytes=%llu host-ns=%llu fallbacks=%llu raw-snapshots=%llu%s",
             static_cast<unsigned long long>(d.gpuEncodeCalls),static_cast<unsigned long long>(d.gpuEncodeBytes),
             static_cast<unsigned long long>(d.gpuEncodeNanoseconds),static_cast<unsigned long long>(d.gpuEncodeFallbacks),
             static_cast<unsigned long long>(d.gpuEncodeRawSnapshots),suffix);
+        d.lastGpuEncodeLoggedCalls=d.gpuEncodeCalls;
+    }
     bool newProfile=false;
     if(d.gpuDecoder && d.gpuDecoder->profilingEnabled()) {
         const auto profile=d.gpuDecoder->profile();
