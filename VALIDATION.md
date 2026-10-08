@@ -1283,6 +1283,19 @@ profiling-only commit; its loaded runtime code commit and hash are in
 [eight-worker presentation fixture](validation/bp16-upload-workers/hidden-graphics-workers8/README.md), and
 [same-runtime comparison and per-run archives](validation/internlm-bp16-cold24-upload-worker-comparison/README.md).
 
+A longer attempt using the story prompt from the 92-token comparison was
+stopped by the RAM guard after the prompt was sent: `MemAvailable` reached
+**16,342 MiB**, below the **16,384 MiB** floor. Its reply was incomplete, so
+there is no accepted throughput or exact-output comparison. Partial profiling
+showed the upload copy phase dominating two cumulative subphase timers, but
+this is not a completed model result. [Abort record and partial evidence](validation/internlm-bp16-cold24-upload8-long128-ramguard-abort/README.md).
+
+A subsequent 25 GiB cold-quota run with eight upload workers completed at
+**0.5934093 tokens/s** with exact output, **49/49** layers, and no fallback.
+Minimum available RAM was **18,123 MiB** and swap grew by **621 MiB**. This
+single sequential result is below the 24 GiB run above and does not replace the
+current best or isolate a quota effect. [Run archive](validation/internlm-bp16-cold25-upload8/README.md).
+
 ### BP16 host-copy worker component matrix
 
 Twelve exact-byte 64-iteration runs measured a 29,202,816-byte frame at 1, 2,

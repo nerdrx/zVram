@@ -1,0 +1,9 @@
+{
+  "source_checkout_commit": "4d1b704827535061e9c686b62513edaa01343c73",
+  "source_file_hashes_match_checkout": true,
+  "runtime_library_sha256": "dc3fb518c5df65cc4b302abf89f2a8d502fb96d5b122ee2e4485ec0b68b1f46f",
+  "profile_test_context": {
+    "device-profile-checks.log": "20/20 selected CTests passed; seven BP16 GPU cases",
+    "device-profile-pressure.log": "1/1 BP16 native pressure test passed with profile telemetry"
+  }
+}

@@ -19,6 +19,16 @@ clocks and uncontrolled desktop/background activity, so the table documents
 the observed pattern and does not establish that worker count alone caused it.
 The production shader was unchanged.
 
+A longer attempt at the same story prompt was stopped by the RAM guard after
+prompt input when `MemAvailable` fell to **16,342 MiB**, below the **16,384 MiB**
+floor. Its output was incomplete and it has no throughput result; see the
+[abort record](../internlm-bp16-cold24-upload8-long128-ramguard-abort/README.md).
+
+A later run with the cold quota raised to 25 GiB completed at **0.5934093
+tokens/s**, below the 24 GiB observations above. It had exact output and no
+fallback, but used a different quota and remains a sequential observation, not
+a controlled quota comparison ([archive](../internlm-bp16-cold25-upload8/README.md)).
+
 The launch source commits and runtime-binary provenance are recorded per run.
 The repeat's launch checkout was commit `4d1b704`, but its library had not been
 rebuilt after that source-only profiling commit: it loaded runtime code commit
