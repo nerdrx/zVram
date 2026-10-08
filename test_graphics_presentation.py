@@ -30,6 +30,7 @@ def main():
     host_input.add_argument("--bp16-host-input", action="store_true")
     host_input.add_argument("--bp16-import-host-input", action="store_true")
     host_input.add_argument("--bp16-allocated-host-input", action="store_true")
+    parser.add_argument("--bp16-upload-workers", type=int, choices=range(1, 9))
     parser.add_argument("--video-driver", choices=("x11", "wayland"), default="x11")
     parser.add_argument("--prefer-device")
     parser.add_argument("--output-dir", type=Path, default=Path("build/presentation-check"))
@@ -44,6 +45,8 @@ def main():
         parser.error("refusal check requires headroom without encoder/decode options")
     if (args.bp16_host_input or args.bp16_import_host_input or args.bp16_allocated_host_input) and not args.bp16_gpu:
         parser.error("BP16 host input requires --bp16-gpu")
+    if args.bp16_upload_workers is not None and not args.bp16_gpu:
+        parser.error("BP16 upload workers require --bp16-gpu")
     if args.cpu and not args.native:
         parser.error("CPU control requires --native; this does not validate zVram paging")
     binary, icd = args.binary.resolve(strict=True), args.icd.resolve(strict=True)
@@ -64,6 +67,8 @@ def main():
         env["ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT"] = "1"
     if args.bp16_allocated_host_input:
         env["ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT"] = "1"
+    if args.bp16_upload_workers is not None:
+        env["ZVRAM_VULKAN_BP16_UPLOAD_WORKERS"] = str(args.bp16_upload_workers)
     command = ["gamescope", "--backend", "headless", "--expose-wayland",
                "-W", "16", "-H", "16", "-w", "16", "-h", "16", "-r", "60"]
     if args.prefer_device:
@@ -137,6 +142,10 @@ def main():
         import re
         profiles = re.findall(r"GPU BP16 restore calls=(\d+) bytes=(\d+) host-ns=(\d+) fallbacks=(\d+)", text)
         passed = passed and bool(profiles) and int(profiles[-1][0]) >= 3 and int(profiles[-1][3]) == 0
+    if args.bp16_upload_workers is not None:
+        import re
+        workers = re.findall(r"GPU BP16 upload workers=(\d+)", text)
+        passed = passed and bool(workers) and int(workers[-1]) == args.bp16_upload_workers
     if args.bp16_import_host_input:
         imports = re.findall(r"GPU BP16 imported input imports=(\d+) reuses=(\d+) bytes=(\d+)", text)
         passed = passed and bool(imports) and int(imports[-1][0]) > 0 and int(imports[-1][2]) > 0
@@ -163,6 +172,8 @@ def main():
         report["environment"]["ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT"] = env["ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT"]
     if args.bp16_import_host_input:
         report["environment"]["ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT"] = env["ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT"]
+    if args.bp16_upload_workers is not None:
+        report["environment"]["ZVRAM_VULKAN_BP16_UPLOAD_WORKERS"] = env["ZVRAM_VULKAN_BP16_UPLOAD_WORKERS"]
     if not args.native:
         report["layer_binary_sha256"] = hashlib.sha256((args.build_dir.resolve() / "libzvram_layer.so").read_bytes()).hexdigest()
     (args.output_dir / "result.json").write_text(json.dumps(report, indent=2) + "\n")
