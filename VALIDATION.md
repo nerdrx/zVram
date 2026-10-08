@@ -1167,7 +1167,7 @@ The last sampled profile covered **8,304** calls, while the final snapshot
 recorded **8,363** GPU restores. The application exited without a device
 destruction profile record, so these sampled phase totals are partial and are
 not presented as final totals. This sequential run does not replace the best
-measured **0.5275435 tokens/s** result below or establish a speed improvement.
+measured **0.61020197 tokens/s** result below or establish a speed improvement.
 
 [Sampled-run archive](validation/internlm-bp16-cache8g-sampled-profile/README.md),
 [result](validation/internlm-bp16-cache8g-sampled-profile/result.json.gz), and
@@ -1198,7 +1198,7 @@ This does not establish a speed improvement over the prior sampled-profile run
 at **0.3967118 tokens/s**: profile sampling/software-pipeline state and RAM
 conditions differed, while measured GPU decode duration was similar at about
 **7.75 s** versus **7.74 s**. The candidate remains unadopted, and the best
-measured rate remains **0.5275435 tokens/s**. The final profile call count
+measured rate remains **0.61020197 tokens/s**. The final profile call count
 matched the final snapshot at **8,409**; this is profile consistency evidence,
 not an end-to-end speed claim. The isolated shader had a **33.6% slower**
 device-input result on an exact 16 MiB all-mask component fixture; see the
@@ -1215,7 +1215,7 @@ and completed 12 decode runs at **0.4063374 tokens/s**, with exact output,
 49/49 layers and zero GPU fallback. Sampled live cache usage peaked at
 **10,736,501,008 bytes** of the **10,737,418,240-byte** limit; minimum available
 RAM was **19,199 MiB**, with **1,976 MiB** swap growth. This sequential,
-uncontrolled run was slower than the best measured result at **0.5275435 tokens/s**;
+uncontrolled run was slower than the best measured result at **0.61020197 tokens/s**;
 the larger cache is not a demonstrated speed improvement.
 
 [Run archive and limits](validation/internlm-bp16-host-cache10g/README.md).
@@ -1228,11 +1228,11 @@ completed 12 decode runs at **0.4384097 tokens/s**, with exact output, 49/49
 layers and zero GPU fallback. Final counters recorded 1,269 invalidations,
 6,884 clean reuses and 70,919,913,472 copied bytes. Minimum available RAM was
 19,104 MiB and swap grew by 2,104 MiB. This sequential run does not establish a
-speed gain and remains below the best measured **0.5275435 tokens/s** result.
+speed gain and remains below the best measured **0.61020197 tokens/s** result.
 
 [Run archive](validation/internlm-bp16-cold-cache22g/README.md).
 
-### Best observed BP16 run: 24 GiB cold/cache quota
+### Earlier best observed BP16 run: 24 GiB cold/cache quota
 
 The full InternLM2.5-20B F16 run used a **24 GiB** cold/clean-cache quota with
 the 8 GiB allocated-host cache, 19 GiB tracked-residency cap, 2.5 GiB headroom
@@ -1245,13 +1245,37 @@ clean reuses, and 56,357,421,056 copied bytes; final GPU profile calls matched
 the final snapshot at 8,458.
 
 This is a single sequential result with unlocked clocks and uncontrolled
-background activity. It is the best observed rate in the recorded runs, not
-evidence that changing the cold quota caused the speed difference. The runtime
+background activity. It was the best observed rate before the upload-worker
+run below, not evidence that changing the cold quota caused the speed difference. The runtime
 layer binary matches the earlier a8d113b build; the contemporaneously captured
 `gdeflate_gpu.hpp` source hash differs from the tracked header due to concurrent
 source editing, so the archive does not claim an exact source/binary match.
 
 [Run archive and provenance](validation/internlm-bp16-cold-cache24g/README.md).
+
+### Latest observed BP16 run: 24 GiB cold quota with eight upload workers
+
+The full InternLM2.5-20B F16 run retained the 24 GiB cold quota, 19 GiB tracked
+cap, 2.5 GiB headroom reserve, 8 GiB allocated-host input-cache bound, and 32
+BP16 encoding workers; it enabled the experimental eight-worker BP16 upload
+copy. It completed 12 decode runs in **19,665.62 ms**
+(`12,000 / 19,665.62 = 0.61020197 tokens/s`, reported as **0.61**), with exact
+output SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`, **49/49**
+layers, and zero GPU fallback or diagnostics. Minimum available RAM was
+**18,212 MiB** and swap grew by **1,062 MiB**.
+
+This is one sequential result with uncontrolled clocks/background activity; it
+does not establish that upload workers caused the rate change. The production
+shader was unchanged. The recorded source commit is
+`9f2fa795685356bd9eafbe817842338bc97dcd18`; per-file source hashes are retained
+in the result. The runtime library hash is recorded separately and matches the
+previous worker-regression library; this is not a claim that the worker setting
+alone explains the rate.
+
+[Run archive](validation/internlm-bp16-cold24-upload8/README.md),
+[full result](validation/internlm-bp16-cold24-upload8/result.json.gz), and
+[eight-worker presentation fixture](validation/bp16-upload-workers/hidden-graphics-workers8/README.md).
 
 ### BP16 host-copy worker component matrix
 
@@ -1281,7 +1305,7 @@ swap grew by 245 MiB and 3,248 MiB respectively, and the Ollama GPU guard found
 no process in either run. These runs were sequential
 with unlocked clocks and different RAM conditions, so this is not a controlled
 performance comparison. Its longer-run BP16 rate is below the separate short-run
-**0.5275435 tokens/s** result above and does not replace that as the best
+**0.61020197 tokens/s** result above and does not replace that as the best
 measured short-run rate.
 
 [Comparison summary](validation/internlm-bp16-allocated-long128/comparison-summary.json),
@@ -1342,7 +1366,7 @@ F16 check with **49/49** layers and the same output SHA-256 as other BP16 runs,
 but took **166,980.73 ms** for 12 decode runs:
 `12 * 1000 / 166980.73 = 0.0718646 tokens/s`. There were zero GPU fallbacks.
 This is correctness evidence with a substantial slowdown, not a faster mode;
-the latest measured compressed result is **0.5275435 tokens/s** in the
+the latest measured compressed result is **0.61020197 tokens/s** in the
 separate bounded allocated-host-cache run above. The earlier **0.40653** run
 remains a historical direct-host result.
 
@@ -1475,9 +1499,11 @@ six logs and the compressed helper source.
 
 ### Opt-in BP16 upload-copy workers
 
-`ZVRAM_VULKAN_BP16_UPLOAD_WORKERS` selects **1–8** workers for BP16 encoded
-input copies; it defaults to 1, skips parallel work below 1 MiB, and is ignored
-by GDeflate. Thread allocation or launch failure joins any started workers and
+`--vulkan-bp16-upload-workers 1..8` (or
+`ZVRAM_VULKAN_BP16_UPLOAD_WORKERS`) selects workers for BP16 encoded input
+copies. The CLI option requires BP16 GPU restoration and automatic snapshots;
+workers default to 1, copies below 1 MiB stay serial, and GDeflate ignores the
+setting. Thread allocation or launch failure joins any started workers and
 retries the copy serially. The full CTest suite passed **120/120** with eight
 workers and GPU profiling enabled. Focused GPU checks passed **8/8** in each of
 the device-input, direct-host, imported-host, and allocated-host BP16 modes.

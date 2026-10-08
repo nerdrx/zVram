@@ -217,7 +217,7 @@ host **0.4397801 tokens/s**. The latter stayed within the 8 GiB live-cache
 limit; the cumulative byte counter is not resident memory. Runs were sequential
 with unlocked clocks and different RAM conditions, so this is not a controlled
 comparison. It is a long-run result, not a replacement for the best measured
-**0.5275435 tokens/s** result. [Comparison and archive](../../VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
+**0.61020197 tokens/s** result. [Comparison and archive](../../VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
 
 At source `23c05842cebf2fe3c7093191ba7f448626505d6e`, focused GPU checks passed
 8/8 in 7.30 s with the default budget and 8/8 in 7.08 s with the cache
@@ -251,14 +251,14 @@ The opt-in `ZVRAM_VULKAN_BP16_CACHED_UPLOAD=1` prefers coherent, host-visible
 compatible non-device-local type. It is off by default and has no effect unless
 BP16 host input is enabled. The full-model trial preserved exact output with no
 GPU fallback, but measured **0.3941293 tokens/s**, below the separate best
-**0.5275435 tokens/s** result. These sequential, uncontrolled runs do not show
+**0.61020197 tokens/s** result. These sequential, uncontrolled runs do not show
 a speed improvement. [Run and correctness evidence](../../VALIDATION.md#bp16-cached-direct-host-upload-preference).
 
 A later allocated-host run with sampled profiling completed at **0.3967118
 tokens/s**, with the same exact output, 49/49 layers and zero fallback. The
 last sampled profile covered 8,304 calls, short of the final snapshot's 8,363
 GPU restores, so its phase totals are partial. It does not replace the best
-**0.5275435 tokens/s** result or prove a speed gain. [Run limits and archive](../../VALIDATION.md#bp16-allocated-host-run-with-sampled-profiling).
+**0.61020197 tokens/s** result or prove a speed gain. [Run limits and archive](../../VALIDATION.md#bp16-allocated-host-run-with-sampled-profiling).
 
 The allocation-free profiling change passed the focused **8/8 GPU CTests**
 with GPU profiling and allocated-host input enabled. The logs show the marker
@@ -268,7 +268,7 @@ performance. [Test log and binary provenance](../../validation/bp16-allocation-f
 The deposit-fastpath full-model candidate produced exact output at **0.4388061
 tokens/s**, but this was not a controlled improvement over the prior sampled
 run; GPU decode durations were similar and profile state differed. It remains
-unadopted, and the measured best remains **0.5275435 tokens/s**. [Candidate
+unadopted, and the measured best remains **0.61020197 tokens/s**. [Candidate
 run and limits](../../validation/internlm-bp16-deposit-fastpath/README.md).
 An exact 16 MiB all-mask device-input component fixture was 33.6% slower with
 the candidate shader. [Component archive](../../validation/bp16-deposit-fastpath/README.md).
@@ -284,14 +284,18 @@ below the best measured result and is not a controlled speed improvement. The
 12-case host-copy matrix passed exact bytes but showed noisy, non-monotonic
 rates and is not model-performance evidence. [Cold-quota run](../../validation/internlm-bp16-cold-cache22g/README.md) · [copy matrix](../../validation/bp16-host-copy-workers/README.md).
 
-The later 24 GiB cold/cache quota run measured **0.5275435 tokens/s**, with
+The earlier 24 GiB cold/cache quota run measured **0.5275435 tokens/s**, with
 exact output and zero fallback. It is one sequential, uncontrolled result; the
 run does not establish that the quota change caused the rate difference. It is
-the current observed best. [Run details](../../validation/internlm-bp16-cold-cache24g/README.md).
+superseded by the later run below. [Run details](../../validation/internlm-bp16-cold-cache24g/README.md).
 
-`ZVRAM_VULKAN_BP16_UPLOAD_WORKERS` is an experimental, default-one setting for
-copying encoded BP16 input into the upload buffer. It accepts 1–8 workers;
-GDeflate ignores it, and allocation/thread-launch failures return to serial
-copy after joining any started threads. The full suite and all four focused
-BP16 input-mode suites passed at eight workers. This verifies regression
-coverage only; no speed claim is made. [Logs and provenance](../../validation/bp16-upload-workers/README.md).
+`--vulkan-bp16-upload-workers 1..8` (or
+`ZVRAM_VULKAN_BP16_UPLOAD_WORKERS`) is an experimental setting for copying
+encoded BP16 input into the upload buffer. The CLI flag requires BP16 GPU
+restore and automatic snapshots; it defaults to one worker. GDeflate ignores
+it, and allocation/thread-launch failures return to serial copy after joining
+any started threads. The full suite and all four focused BP16 input-mode suites
+passed at eight workers. A later full-model run with the setting enabled
+completed at **0.61020197 tokens/s**, but this single uncontrolled result does
+not isolate an upload-worker speed effect. [Run and worker evidence](../../validation/internlm-bp16-cold24-upload8/README.md) ·
+[regression logs](../../validation/bp16-upload-workers/README.md).

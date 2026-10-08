@@ -272,7 +272,10 @@ any byte data in complete 256-byte blocks; unsupported sizes or frames without
 savings retain exact RAW bytes. It is built in without an external codec library,
 with Zstd remaining the default. Opt in with `--vulkan-codec bp16`; add
 `--vulkan-bp16-gpu` for GPU restoration. `--vulkan-bp16-workers 1..32` controls
-bounded CPU packing (default 1). Byte shuffle is restricted to Zstd.
+bounded CPU packing (default 1). `--vulkan-bp16-upload-workers 1..8` optionally
+parallelizes copies into the BP16 GPU upload buffer; it requires BP16 GPU restore
+and automatic snapshots, defaults to 1, and is ignored by GDeflate. Byte shuffle
+is restricted to Zstd.
 
 The paired 32 MiB component check measured median GPU decode at 0.118 ms for BP16
 and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored
@@ -280,14 +283,16 @@ and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored
 measurements, not a model speedup. [Component evidence](validation/bp16-component).
 
 The latest full InternLM2.5-20B F16 BP16 run completed 12 decode runs at
-**0.5275435 tokens/s** (reported as 0.53), with exact output, 49/49 layers, and
-zero GPU fallback. It used 32 workers, an 8 GiB allocated-host cache, a 19 GiB
-tracked-residency cap, and a 24 GiB cold/cache quota. Sampled live input-cache
-use stayed below its 8 GiB limit. This is one sequential result with unlocked
-clocks and uncontrolled background activity; it does not establish that the
-quota change caused the rate difference. The previous 8 GiB-cache run measured
-0.4626948 tokens/s; its counters and profile remain archived separately. The
-default worker count remains 1. [Current run and limits](VALIDATION.md#best-observed-bp16-run-24-gib-coldcache-quota);
+**0.61020197 tokens/s** (reported as 0.61), with exact output, 49/49 layers,
+and zero GPU fallback. It used 32 BP16 encoding workers, eight opt-in upload
+workers, an 8 GiB allocated-host cache, a 19 GiB tracked-residency cap, and a
+24 GiB cold/cache quota. This is one sequential result with uncontrolled
+clocks and background activity; it does not establish that eight upload
+workers caused the rate difference. The prior 24 GiB run measured
+0.5275435 tokens/s. The upload-worker setting remains default-one.
+[Current run and limits](VALIDATION.md#latest-observed-bp16-run-24-gib-cold-quota-with-eight-upload-workers);
+[prior 24 GiB run](VALIDATION.md#earlier-best-bp16-run-24-gib-coldcache-quota);
+[worker checks](VALIDATION.md#opt-in-bp16-upload-copy-workers);
 [previous 8 GiB-cache run](VALIDATION.md#earlier-best-bp16-run-bounded-allocated-host-cache-32-workers);
 [fresh native reference](VALIDATION.md#fresh-native-nodes4-reference).
 
@@ -296,7 +301,7 @@ identical output across 49/49 layers: **1.69935 tokens/s** native and
 **0.43978 tokens/s** allocated-host. It stayed within the 8 GiB live cache
 limit, but the sequential runs had unlocked clocks and different RAM conditions;
 this is not a controlled speed comparison. It does not replace the short-run
-0.52754 BP16 result above. [Long-run details and archive](VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
+0.61020 BP16 result above. [Long-run details and archive](VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
 
 A separate zVram virtual-native-spill run, without automatic snapshots or
 compression, measured 1.69936 tokens/s. It matches the fresh native rate, but
@@ -306,5 +311,5 @@ uncontrolled result is not a fair codec comparison. [Virtual-spill evidence](VAL
 The optional cached imported-host-input experiment completed the same full-model
 correctness check, but throughput fell to **0.0718646 tokens/s** despite 2,120
 imports and 6,495 reuses. It is experimental and not a speed improvement; the
-best measured compressed result above is **0.5275435 tokens/s**. [Import evidence and
+best measured compressed result above is **0.61020197 tokens/s**. [Import evidence and
 limits](VALIDATION.md#cached-bp16-imported-host-input).
