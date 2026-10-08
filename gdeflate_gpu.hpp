@@ -7,12 +7,14 @@
 #include <vulkan/vk_layer.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <vector>
 
 namespace zvram::gdeflate::gpu {
@@ -21,6 +23,49 @@ enum class Format { GDeflate, BP16 };
 
 class Decoder {
 public:
+    static bool importedHostAllocationSize(std::size_t encodedBytes, VkDeviceSize alignment,
+                                          std::size_t& allocationBytes) noexcept {
+        if (!encodedBytes || encodedBytes > MaxBP16InputBytes || alignment < sizeof(void*) ||
+            alignment > 65536 || (alignment & (alignment - 1)) ||
+            alignment > std::numeric_limits<std::size_t>::max()) return false;
+        const auto a = static_cast<std::size_t>(alignment);
+        if (encodedBytes > std::numeric_limits<std::size_t>::max() - (a - 1)) return false;
+        allocationBytes = (encodedBytes + a - 1) & ~(a - 1);
+        return allocationBytes >= encodedBytes && allocationBytes - encodedBytes < a &&
+               allocationBytes <= MaxBP16InputBytes + 65536u;
+    }
+    static bool importedHostFitsBudget(std::uint64_t coldBytes, std::uint64_t cacheBytes,
+                                      std::uint64_t paddingBytes, std::uint64_t budgetBytes) noexcept {
+        if (coldBytes > budgetBytes || cacheBytes > budgetBytes - coldBytes) return false;
+        return paddingBytes <= budgetBytes - coldBytes - cacheBytes;
+    }
+
+    struct ImportedHostInput {
+        ImportedHostInput() = default;
+        ImportedHostInput(const ImportedHostInput&) = delete;
+        ImportedHostInput& operator=(const ImportedHostInput&) = delete;
+        VkDevice device{};
+        VkBuffer buffer{};
+        VkDeviceMemory memory{};
+        void* allocation{};
+        std::size_t encodedBytes{};
+        VkDeviceSize allocationBytes{};
+        PFN_vkDestroyBuffer destroyBuffer{};
+        PFN_vkFreeMemory freeMemory{};
+        std::shared_ptr<std::atomic<bool>> poisoned;
+
+        ~ImportedHostInput() {
+            if (poisoned && poisoned->load(std::memory_order_acquire)) return;
+            if (device && buffer && destroyBuffer) destroyBuffer(device, buffer, nullptr);
+            if (device && memory && freeMemory) freeMemory(device, memory, nullptr);
+            std::free(allocation);
+        }
+        const std::uint8_t* data() const noexcept {
+            return static_cast<const std::uint8_t*>(allocation);
+        }
+    };
+    using ImportedHostInputPtr = std::shared_ptr<ImportedHostInput>;
+
     struct Profile {
         std::uint64_t calls{};
         std::uint64_t validationNs{};
@@ -41,6 +86,7 @@ public:
     bool unsafe() const noexcept { return poisoned_; }
     bool profilingEnabled() const noexcept { return profileEnabled_; }
     bool hostInputEnabled() const noexcept { return bp16HostInput_; }
+    bool importedHostInputEnabled() const noexcept { return bp16ImportHostInput_; }
     Profile profile() const noexcept { return profile_; }
 
     // GDeflate requires shaderInt64, subgroup-size-control, computeFullSubgroups,
@@ -53,7 +99,9 @@ public:
                         const char* shaderPath,
                         const VkPhysicalDeviceProperties* properties = nullptr,
                         Format format = Format::GDeflate,
-                        std::uint32_t timestampValidBits = 0) {
+                        std::uint32_t timestampValidBits = 0,
+                        bool importHostInput = false,
+                        VkDeviceSize importHostAlignment = 0) {
         const char* profileEnv = std::getenv("ZVRAM_VULKAN_GPU_PROFILE");
         profileEnabled_ = profileEnv && std::strcmp(profileEnv, "1") == 0;
         profile_ = {};
@@ -61,9 +109,18 @@ public:
             return VK_ERROR_INITIALIZATION_FAILED;
         if (format != Format::GDeflate && format != Format::BP16)
             return VK_ERROR_VALIDATION_FAILED_EXT;
+        bp16ImportHostInput_ = format == Format::BP16 && importHostInput;
         const char* hostInputEnv = std::getenv("ZVRAM_VULKAN_BP16_HOST_INPUT");
-        bp16HostInput_ = format == Format::BP16 && hostInputEnv &&
+        bp16HostInput_ = format == Format::BP16 && !bp16ImportHostInput_ && hostInputEnv &&
                          std::strcmp(hostInputEnv, "1") == 0;
+        if (bp16ImportHostInput_ && (!importHostAlignment || importHostAlignment > 65536 ||
+            (importHostAlignment & (importHostAlignment - 1))))
+            return VK_ERROR_FEATURE_NOT_PRESENT;
+        importHostAlignment_ = importHostAlignment;
+        if (bp16ImportHostInput_) {
+            try { poisonState_ = std::make_shared<std::atomic<bool>>(false); }
+            catch (const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+        }
         if (format == Format::BP16 && (!properties ||
             properties->limits.maxComputeWorkGroupInvocations < 256 ||
             properties->limits.maxComputeWorkGroupSize[0] < 256 ||
@@ -92,7 +149,7 @@ public:
             queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
             queryInfo.queryCount = 4;
             result = api_.createQueryPool(device_, &queryInfo, nullptr, &queryPool_);
-            if (result == VK_ERROR_DEVICE_LOST) poisoned_ = true;
+            if (result == VK_ERROR_DEVICE_LOST) markPoisoned();
             else if (result != VK_SUCCESS) result = VK_SUCCESS;
             else {
                 timestampValidBits_ = timestampValidBits;
@@ -124,12 +181,75 @@ public:
         if (result == VK_SUCCESS) result = createCommands();
         if (result == VK_SUCCESS) result = createFence();
         if (result != VK_SUCCESS) {
-            if (result == VK_ERROR_DEVICE_LOST) poisoned_ = true;
+            if (result == VK_ERROR_DEVICE_LOST) markPoisoned();
             else cleanup();
             return result;
         }
         inputCapacity_ = 4;
         initialized_ = true;
+        return VK_SUCCESS;
+    }
+
+    VkResult importHostInput(const std::uint8_t* encoded, std::size_t encodedSize,
+                             ImportedHostInputPtr& out) {
+        out.reset();
+        if (!initialized_ || poisoned_ || !bp16ImportHostInput_ || !encoded || !encodedSize ||
+            encodedSize > MaxBP16InputBytes) return VK_ERROR_FEATURE_NOT_PRESENT;
+        if (!bp16::inspect(encoded, encodedSize)) return VK_ERROR_VALIDATION_FAILED_EXT;
+        std::size_t hostBytes{};
+        if (!importedHostAllocationSize(encodedSize, importHostAlignment_, hostBytes))
+            return VK_ERROR_VALIDATION_FAILED_EXT;
+        void* allocation{};
+        if (posix_memalign(&allocation, static_cast<std::size_t>(importHostAlignment_), hostBytes) != 0)
+            return VK_ERROR_OUT_OF_HOST_MEMORY;
+        std::memcpy(allocation, encoded, encodedSize);
+        std::memset(static_cast<std::uint8_t*>(allocation) + encodedSize, 0, hostBytes - encodedSize);
+        ImportedHostInputPtr owner;
+        try { owner = std::make_shared<ImportedHostInput>(); }
+        catch (const std::bad_alloc&) { std::free(allocation); return VK_ERROR_OUT_OF_HOST_MEMORY; }
+        owner->device = device_; owner->allocation = allocation;
+        owner->encodedBytes = encodedSize; owner->allocationBytes = hostBytes;
+        owner->destroyBuffer = api_.destroyBuffer; owner->freeMemory = api_.freeMemory;
+        owner->poisoned = poisonState_;
+        VkExternalMemoryBufferCreateInfo external{VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO};
+        external.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+        VkBufferCreateInfo create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create.pNext = &external; create.size = hostBytes; create.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        VkResult result = api_.createBuffer(device_, &create, nullptr, &owner->buffer);
+        if (result != VK_SUCCESS) return checked(result);
+        VkBufferMemoryRequirementsInfo2 reqInfo{VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
+        reqInfo.buffer = owner->buffer;
+        VkMemoryDedicatedRequirements dedicated{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
+        VkMemoryRequirements2 requirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+        requirements.pNext = &dedicated;
+        api_.getBufferMemoryRequirements2(device_, &reqInfo, &requirements);
+        if (dedicated.requiresDedicatedAllocation) return VK_ERROR_FEATURE_NOT_PRESENT;
+        VkMemoryHostPointerPropertiesEXT pointerProperties{VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT};
+        result = api_.getMemoryHostPointerProperties(device_, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
+                                                      allocation, &pointerProperties);
+        if (result != VK_SUCCESS) return checked(result);
+        std::uint32_t type = UINT32_MAX;
+        const auto bits = requirements.memoryRequirements.memoryTypeBits & pointerProperties.memoryTypeBits;
+        for (std::uint32_t i = 0; i < memory_.memoryTypeCount; ++i) {
+            if (!(bits & (1u << i))) continue;
+            const auto flags = memory_.memoryTypes[i].propertyFlags;
+            if ((flags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) ==
+                (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) &&
+                !(flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) { type = i; break; }
+        }
+        if (type == UINT32_MAX || requirements.memoryRequirements.size > hostBytes)
+            return VK_ERROR_FEATURE_NOT_PRESENT;
+        VkImportMemoryHostPointerInfoEXT import{VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT};
+        import.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+        import.pHostPointer = allocation;
+        VkMemoryAllocateInfo allocate{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        allocate.pNext = &import; allocate.allocationSize = hostBytes;
+        allocate.memoryTypeIndex = type;
+        result = api_.allocateMemory(device_, &allocate, nullptr, &owner->memory);
+        if (result != VK_SUCCESS) return checked(result);
+        result = api_.bindBufferMemory(device_, owner->buffer, owner->memory, 0);
+        if (result != VK_SUCCESS) return checked(result);
+        out = std::move(owner);
         return VK_SUCCESS;
     }
 
@@ -139,7 +259,8 @@ public:
     // narrowed to the padded range, so shader control[2] remains zero. The
     // caller excludes concurrent use and synchronizes later access across queues.
     VkResult restore(const std::uint8_t* encoded, std::size_t encodedSize,
-                     VkBuffer output, VkDeviceSize offset, std::size_t rawSize) {
+                     VkBuffer output, VkDeviceSize offset, std::size_t rawSize,
+                     const ImportedHostInput* imported = nullptr) {
         using Clock = std::chrono::steady_clock;
         const auto validationStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
         if (profileEnabled_) ++profile_.calls;
@@ -150,6 +271,13 @@ public:
             return result;
         };
         if (!initialized_ || poisoned_) return finishValidation(VK_ERROR_DEVICE_LOST);
+        if (imported) {
+            if (!bp16ImportHostInput_ || imported->device != device_ ||
+                imported->buffer == VK_NULL_HANDLE || imported->memory == VK_NULL_HANDLE ||
+                imported->poisoned != poisonState_ ||
+                imported->encodedBytes != encodedSize || imported->data() != encoded)
+                return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
+        }
         const auto maxInputBytes = format_ == Format::BP16 ? MaxBP16InputBytes : MaxInputBytes;
         if (!encoded || !output || !rawSize || rawSize > MaxRawBytes ||
             encodedSize > maxInputBytes || encodedSize > MaxEncodedBytes ||
@@ -177,11 +305,16 @@ public:
         const auto inputBytes = (encodedSize + 3u) & ~std::size_t(3u);
         if (format_ == Format::BP16 && inputBytes > maxStorageBufferRange_)
             return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
+        if (imported && inputBytes > imported->allocationBytes)
+            return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
         (void)finishValidation(VK_SUCCESS);
 
         const auto inputPrepareStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
-        VkResult result = checked(ensureInputBuffers(inputBytes, output, offset,
-                                             static_cast<VkDeviceSize>(paddedRaw)));
+        VkResult result = imported
+            ? updateDescriptors(output, offset, static_cast<VkDeviceSize>(inputBytes),
+                                static_cast<VkDeviceSize>(paddedRaw), imported->buffer)
+            : checked(ensureInputBuffers(inputBytes, output, offset,
+                                         static_cast<VkDeviceSize>(paddedRaw)));
         if (result != VK_SUCCESS) {
             if (profileEnabled_)
                 profile_.inputPrepareNs += static_cast<std::uint64_t>(
@@ -189,9 +322,11 @@ public:
             return result;
         }
 
-        auto* upload = static_cast<std::uint8_t*>(upload_.mapped);
-        std::memcpy(upload, encoded, encodedSize);
-        std::memset(upload + encodedSize, 0, inputBytes - encodedSize);
+        if (!imported) {
+            auto* upload = static_cast<std::uint8_t*>(upload_.mapped);
+            std::memcpy(upload, encoded, encodedSize);
+            std::memset(upload + encodedSize, 0, inputBytes - encodedSize);
+        }
         const std::uint32_t controlWords[3]{1u, 0u, 0u};
         std::memcpy(control_.mapped, controlWords, sizeof(controlWords));
         if (profileEnabled_)
@@ -218,7 +353,7 @@ public:
             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &reuse, 0, nullptr, 0, nullptr);
 
         const VkBufferCopy uploadRegion{0, 0, static_cast<VkDeviceSize>(inputBytes)};
-        if (!bp16HostInput_)
+        if (!bp16HostInput_ && !imported)
             api_.cmdCopyBuffer(commandBuffer_, upload_.buffer, input_.buffer, 1, &uploadRegion);
         api_.cmdFillBuffer(commandBuffer_, scratch_.buffer, 0, 4, 0);
         // Canonical BP16 frames cover every output word. Avoid a redundant
@@ -288,6 +423,9 @@ public:
         const auto submitWaitStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
         result = checked(api_.queueSubmit(queue_, 1, &submit, fence_));
         if (result != VK_SUCCESS) {
+            // Submission failure leaves completion uncertain. Retain private
+            // resources and any imported owners instead of overwriting in flight.
+            markPoisoned();
             if (profileEnabled_)
                 profile_.submitWaitNs += static_cast<std::uint64_t>(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
@@ -295,7 +433,7 @@ public:
         }
         result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
         if (result != VK_SUCCESS) {
-            poisoned_ = true; // Work may still be in flight; never reset/free these objects.
+            markPoisoned(); // Work may still be in flight; never reset/free these objects.
             if (profileEnabled_)
                 profile_.submitWaitNs += static_cast<std::uint64_t>(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
@@ -341,6 +479,8 @@ private:
         PFN_vkCreateBuffer createBuffer{};
         PFN_vkDestroyBuffer destroyBuffer{};
         PFN_vkGetBufferMemoryRequirements getBufferMemoryRequirements{};
+        PFN_vkGetBufferMemoryRequirements2 getBufferMemoryRequirements2{};
+        PFN_vkGetMemoryHostPointerPropertiesEXT getMemoryHostPointerProperties{};
         PFN_vkAllocateMemory allocateMemory{};
         PFN_vkFreeMemory freeMemory{};
         PFN_vkBindBufferMemory bindBufferMemory{};
@@ -410,6 +550,13 @@ private:
         ZVRAM_GDEFLATE_LOAD(createBuffer, CreateBuffer);
         ZVRAM_GDEFLATE_LOAD(destroyBuffer, DestroyBuffer);
         ZVRAM_GDEFLATE_LOAD(getBufferMemoryRequirements, GetBufferMemoryRequirements);
+        api_.getBufferMemoryRequirements2 = reinterpret_cast<PFN_vkGetBufferMemoryRequirements2>(
+            nextGdpa(device_, "vkGetBufferMemoryRequirements2"));
+        if (!api_.getBufferMemoryRequirements2)
+            api_.getBufferMemoryRequirements2 = reinterpret_cast<PFN_vkGetBufferMemoryRequirements2>(
+                nextGdpa(device_, "vkGetBufferMemoryRequirements2KHR"));
+        api_.getMemoryHostPointerProperties = reinterpret_cast<PFN_vkGetMemoryHostPointerPropertiesEXT>(
+            nextGdpa(device_, "vkGetMemoryHostPointerPropertiesEXT"));
         ZVRAM_GDEFLATE_LOAD(allocateMemory, AllocateMemory);
         ZVRAM_GDEFLATE_LOAD(freeMemory, FreeMemory);
         ZVRAM_GDEFLATE_LOAD(bindBufferMemory, BindBufferMemory);
@@ -445,6 +592,9 @@ private:
         ZVRAM_GDEFLATE_LOAD(waitForFences, WaitForFences);
         ZVRAM_GDEFLATE_LOAD(queueSubmit, QueueSubmit);
 #undef ZVRAM_GDEFLATE_LOAD
+        if (bp16ImportHostInput_ && (!api_.getBufferMemoryRequirements2 ||
+                                    !api_.getMemoryHostPointerProperties))
+            return VK_ERROR_EXTENSION_NOT_PRESENT;
         return VK_SUCCESS;
     }
 
@@ -632,9 +782,10 @@ private:
     }
 
     VkResult updateDescriptors(VkBuffer output, VkDeviceSize outputOffset,
-                               VkDeviceSize inputRange, VkDeviceSize outputRange) {
+                               VkDeviceSize inputRange, VkDeviceSize outputRange,
+                               VkBuffer suppliedInput = VK_NULL_HANDLE) {
         VkDescriptorBufferInfo infos[4]{};
-        infos[0] = {shaderInputBuffer(), 0, inputRange};
+        infos[0] = {suppliedInput ? suppliedInput : shaderInputBuffer(), 0, inputRange};
         infos[1] = {control_.buffer, 0, 12};
         infos[2] = {output, outputOffset, outputRange};
         infos[3] = {scratch_.buffer, 0, 4};
@@ -697,8 +848,13 @@ private:
     }
 
     VkResult checked(VkResult result) noexcept {
-        if (result == VK_ERROR_DEVICE_LOST) poisoned_ = true;
+        if (result == VK_ERROR_DEVICE_LOST) markPoisoned();
         return result;
+    }
+
+    void markPoisoned() noexcept {
+        poisoned_ = true;
+        if (poisonState_) poisonState_->store(true, std::memory_order_release);
     }
 
     void cleanup() noexcept {
@@ -736,6 +892,9 @@ private:
         maxDispatchGroupsX_ = 0;
         maxStorageBufferRange_ = 0;
         bp16HostInput_ = false;
+        bp16ImportHostInput_ = false;
+        importHostAlignment_ = 0;
+        if (!poisoned_) poisonState_.reset();
         queryPool_ = VK_NULL_HANDLE;
         gpuProfileEnabled_ = false;
         timestampValidBits_ = 0;
@@ -768,6 +927,9 @@ private:
     bool profileEnabled_{};
     bool gpuProfileEnabled_{};
     bool bp16HostInput_{};
+    bool bp16ImportHostInput_{};
+    VkDeviceSize importHostAlignment_{};
+    std::shared_ptr<std::atomic<bool>> poisonState_;
     std::uint32_t timestampValidBits_{};
     double timestampPeriod_{};
     Profile profile_{};

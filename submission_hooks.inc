@@ -145,7 +145,7 @@ bool prepareRangeDecode(Device& d,const ActiveRefs::Use& use,std::size_t slot,
         if(d.gpuRestoreEnabled && chunk.compressed && chunk.codec!=zvram::snapshot::Codec::Zstd) return false;
         if(!chunk.rawSize || chunk.rawSize>s.chunkSize || chunk.rawSize>group.logicalBytes-bytes) return false;
         bytes+=chunk.rawSize;
-        chunks[i]={chunk.bytes.data(),chunk.bytes.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle,chunk.codec};
+        chunks[i]={chunk.data(),chunk.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle,chunk.codec};
     }
     if(bytes!=group.logicalBytes) return false;
     auto* mapped=static_cast<std::uint8_t*>(slot?s.lookaheadMapped:s.mapped);

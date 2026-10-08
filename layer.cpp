@@ -19,6 +19,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <thread>
+#include <unistd.h>
 #include <zstd.h>
 #include "auto_queues.hpp"
 #include "buffer_barriers.hpp"
@@ -70,6 +71,7 @@ struct Instance {
     PFN_vkGetPhysicalDeviceMemoryProperties memoryProperties{};
     PFN_vkGetPhysicalDeviceMemoryProperties2 memoryProperties2{};
     bool properties2Enabled{};
+    std::uint32_t apiVersion{VK_API_VERSION_1_0};
     PFN_vkGetPhysicalDeviceFeatures features{};
     PFN_vkGetPhysicalDeviceQueueFamilyProperties queueFamilies{};
     std::mutex physicalMutex;
@@ -104,11 +106,23 @@ struct VirtualMemory {
     std::vector<VkDeviceSize> childSizes;
     std::vector<std::uint32_t> childTypes;
     std::vector<std::uint64_t> childGenerations;
-    struct ColdChunk { std::vector<std::uint8_t> bytes; VkDeviceSize rawSize{}; bool compressed{}; unsigned byteShuffle{}; zvram::snapshot::Codec codec{zvram::snapshot::Codec::Zstd}; };
+    struct ColdChunk {
+        using Imported = zvram::gdeflate::gpu::Decoder::ImportedHostInputPtr;
+        std::vector<std::uint8_t> bytes;
+        Imported imported;
+        VkDeviceSize rawSize{};
+        bool compressed{};
+        bool importedUsed{};
+        unsigned byteShuffle{};
+        zvram::snapshot::Codec codec{zvram::snapshot::Codec::Zstd};
+        const std::uint8_t* data() const noexcept { return imported ? imported->data() : bytes.data(); }
+        std::size_t size() const noexcept { return imported ? imported->encodedBytes : bytes.size(); }
+    };
     struct ColdGroup {
         std::vector<ColdChunk> chunks;
         VkDeviceSize logicalBytes{};
         VkDeviceSize storedBytes{};
+        VkDeviceSize importedPaddingBytes{};
         std::uint64_t failedBudgetGeneration{};
         std::uint64_t failedBudgetSubmissionGeneration{};
         bool cold{};
@@ -117,6 +131,7 @@ struct VirtualMemory {
         bool budgetBlocked{};
         std::uint64_t writeEpoch{};
         std::chrono::steady_clock::time_point lastUse{std::chrono::steady_clock::now()};
+        VkDeviceSize accountedBytes() const noexcept { return storedBytes + importedPaddingBytes; }
     };
     struct Binding { VkBuffer buffer{}; VkDeviceSize memoryOffset{},size{},alignment{}; };
     std::vector<Binding> bindings;
@@ -256,6 +271,9 @@ struct Device {
     std::atomic<std::uint64_t> gpuProfileFreeCalls{}, gpuProfileFreeNs{};
     std::atomic<std::uint64_t> gpuProfileSparseCalls{}, gpuProfileSparseSuccess{}, gpuProfileSparseFailures{}, gpuProfileSparseNs{};
     bool gpuRestoreEnabled{}, gpuRestoreUnsafe{};
+    bool gpuImportHostInput{};
+    VkDeviceSize gpuImportHostAlignment{};
+    std::uint64_t gpuImportedFrames{}, gpuImportedReuses{}, gpuImportedBytes{};
     VkDeviceSize gpuStorageAlignment{1};
     VkDeviceSize gpuStorageRange{};
     std::uint64_t gpuDecodeCalls{}, gpuDecodeBytes{}, gpuDecodeNanoseconds{}, gpuDecodeFallbacks{};
@@ -365,6 +383,11 @@ void logSnapshotState(const char* event,const Device& d) {
              static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
              static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs));
     }
+    if(d.gpuImportHostInput && std::strcmp(event,"restore")==0)
+        logf("GPU BP16 imported input imports=%llu reuses=%llu bytes=%llu",
+             static_cast<unsigned long long>(d.gpuImportedFrames),
+             static_cast<unsigned long long>(d.gpuImportedReuses),
+             static_cast<unsigned long long>(d.gpuImportedBytes));
     if(d.gpuProfileEnabled && std::strcmp(event,"restore")==0)
         logf("GPU restore backing profile alloc-calls=%llu alloc-ok=%llu alloc-fail=%llu alloc-ns=%llu free-calls=%llu free-ns=%llu sparse-calls=%llu sparse-ok=%llu sparse-fail=%llu sparse-ns=%llu",
              static_cast<unsigned long long>(d.gpuProfileAllocCalls.load(std::memory_order_relaxed)),
@@ -536,6 +559,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateInstance(const VkInstanceCreateInfo* c
     VkResult r=create(ci,allocator,out); if(r!=VK_SUCCESS) return r;
     try {
         auto s=std::make_shared<Instance>(); s->handle=*out; s->gipa=next; s->physProc=nextPhys;
+        if(ci->pApplicationInfo && ci->pApplicationInfo->apiVersion)
+            s->apiVersion=ci->pApplicationInfo->apiVersion;
         s->properties2Enabled=ci->pApplicationInfo && ci->pApplicationInfo->apiVersion>=VK_API_VERSION_1_1;
         for(std::uint32_t i=0;i<ci->enabledExtensionCount;++i)
             if(std::strcmp(ci->ppEnabledExtensionNames[i],VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)==0)
@@ -603,6 +628,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     link->u.pLayerInfo=info->pNext;
     bool policy=hasPolicy(ci->pNext), supported=false;
     bool robustness2Supported=false, subgroupControlSupported=false, budgetSupported=false;
+    bool externalMemoryHostSupported=false;
     if(in->enumerateExtensions) {
         uint32_t count=0; VkResult er=in->enumerateExtensions(physical,nullptr,&count,nullptr);
         if(er==VK_SUCCESS || er==VK_INCOMPLETE) {
@@ -614,6 +640,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
 #ifdef VK_EXT_robustness2
                     if(std::strcmp(e.extensionName,VK_EXT_ROBUSTNESS_2_EXTENSION_NAME)==0) robustness2Supported=true;
 #endif
+                    if(std::strcmp(e.extensionName,VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME)==0) externalMemoryHostSupported=true;
                 }
             } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
         }
@@ -737,6 +764,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     const bool rangeEnabled=rangeMiB && snapshotRequested && physicalFeatures.sparseResidencyBuffer &&
         (!hasFeatures2 || features2AtHead || residencyEnabled);
     bool gpuRestorePlanned=false, injectGpuSubgroup=false, gpuRequiresInt64=false;
+    bool gpuImportHostPlanned=false;
+    VkDeviceSize gpuImportHostAlignment=0;
     VkPhysicalDeviceSubgroupSizeControlFeatures gpuSubgroup{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES};
     VkPhysicalDeviceProperties gpuProperties{};
     const char* codecEnv=std::getenv("ZVRAM_VULKAN_CODEC");
@@ -788,6 +817,52 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             gpuProperties.limits.maxComputeWorkGroupCount[0]>=32768 &&
             gpuProperties.limits.maxStorageBufferRange>=zvram::bp16::MaxRawBytes;
     }
+    const char* importHostEnv=std::getenv("ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT");
+    const bool importHostRequested=importHostEnv && std::strcmp(importHostEnv,"1")==0;
+    if(importHostRequested && gpuRestorePlanned && codecEnv && std::strcmp(codecEnv,"bp16")==0) {
+        auto getProperties2=reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(
+            in->gipa(in->handle,"vkGetPhysicalDeviceProperties2"));
+        auto getExternalBufferProperties=reinterpret_cast<PFN_vkGetPhysicalDeviceExternalBufferProperties>(
+            in->gipa(in->handle,"vkGetPhysicalDeviceExternalBufferProperties"));
+        if(in->apiVersion>=VK_API_VERSION_1_1 && gpuProperties.apiVersion>=VK_API_VERSION_1_1 &&
+           externalMemoryHostSupported && getProperties2 && getExternalBufferProperties) {
+            VkPhysicalDeviceExternalMemoryHostPropertiesEXT hostProperties{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT};
+            VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+            properties.pNext=&hostProperties; getProperties2(physical,&properties);
+            VkPhysicalDeviceExternalBufferInfo bufferInfo{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO};
+            bufferInfo.flags=0; bufferInfo.usage=VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            bufferInfo.handleType=VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+            VkExternalBufferProperties bufferProperties{VK_STRUCTURE_TYPE_EXTERNAL_BUFFER_PROPERTIES};
+            getExternalBufferProperties(physical,&bufferInfo,&bufferProperties);
+            const auto external=bufferProperties.externalMemoryProperties;
+            const auto pageSize=sysconf(_SC_PAGESIZE);
+            const auto importAlignment=pageSize>0
+                ?std::max<VkDeviceSize>(hostProperties.minImportedHostPointerAlignment,static_cast<VkDeviceSize>(pageSize)):0;
+            VkPhysicalDeviceMemoryProperties hostMemory{}; in->memoryProperties(physical,&hostMemory);
+            const bool hasCoherentNonlocal=std::any_of(hostMemory.memoryTypes,
+                hostMemory.memoryTypes+hostMemory.memoryTypeCount,[](const auto& type) {
+                    const auto flags=type.propertyFlags;
+                    return (flags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))==
+                           (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) &&
+                           !(flags&VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                });
+            if(hostProperties.minImportedHostPointerAlignment &&
+               !(hostProperties.minImportedHostPointerAlignment&(hostProperties.minImportedHostPointerAlignment-1)) &&
+               pageSize>0 && !(pageSize&(pageSize-1)) &&
+               importAlignment>=sizeof(void*) && importAlignment<=65536 &&
+               !(importAlignment&(importAlignment-1)) &&
+               (external.externalMemoryFeatures&VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) &&
+               !(external.externalMemoryFeatures&VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT) &&
+               (external.compatibleHandleTypes&VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT) &&
+               hasCoherentNonlocal) {
+                gpuImportHostPlanned=true;
+                gpuImportHostAlignment=importAlignment;
+            }
+        }
+        if(!gpuImportHostPlanned)
+            logf("BP16 imported host input unavailable; using ordinary compressed upload");
+    }
     bool strictRobustnessEnabled=false;
     bool appRobustnessPresent=false;
     VkDeviceSize robustAlignment=1;
@@ -835,6 +910,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     gpuRestorePlanned = gpuRestorePlanned && virtualEnabled && privateQueuePlanned;
     injectGpuSubgroup = injectGpuSubgroup && gpuRestorePlanned;
     gpuRequiresInt64 = gpuRequiresInt64 && gpuRestorePlanned;
+    gpuImportHostPlanned = gpuImportHostPlanned && gpuRestorePlanned;
     VkDeviceCreateInfo copy=*ci; VkDeviceMemoryOverallocationCreateInfoAMD behavior{VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD};
     if(privateQueuePlanned) { copy.queueCreateInfoCount=static_cast<std::uint32_t>(queueInfos.size()); copy.pQueueCreateInfos=queueInfos.data(); }
     std::vector<const char*> extensions;
@@ -906,6 +982,15 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             copy.ppEnabledExtensionNames=extensions.data();
         } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
     }
+    if(gpuImportHostPlanned && !appEnabled(ci,VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME)) {
+        try {
+            if(extensions.empty() && ci->enabledExtensionCount)
+                extensions.assign(ci->ppEnabledExtensionNames,ci->ppEnabledExtensionNames+ci->enabledExtensionCount);
+            extensions.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+            copy.enabledExtensionCount=static_cast<std::uint32_t>(extensions.size());
+            copy.ppEnabledExtensionNames=extensions.data();
+        } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+    }
     VkResult r=VK_ERROR_INITIALIZATION_FAILED;
     auto nextCreate=reinterpret_cast<PFN_vkCreateDevice>(nextGipa(in->handle,"vkCreateDevice"));
     if(!nextCreate) return VK_ERROR_INITIALIZATION_FAILED;
@@ -919,6 +1004,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         const char* asyncCompression=std::getenv("ZVRAM_VULKAN_ASYNC_COMPRESSION");
         d->asyncCompression=asyncCompression && std::strcmp(asyncCompression,"1")==0;
         d->gpuRestoreEnabled=gpuRestorePlanned;
+        d->gpuImportHostInput=gpuImportHostPlanned;
+        d->gpuImportHostAlignment=gpuImportHostAlignment;
         if(budgetRequested) {
             d->budgetProperties=in->memoryProperties2; d->budgetHeap=budgetHeap;
             d->budgetReserveBytes=reserveMiB*1024ull*1024ull;
@@ -1486,18 +1573,25 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
         const auto* path=std::getenv(bp16?"ZVRAM_BP16_SHADER_PATH":"ZVRAM_GDEFLATE_SHADER_PATH");
         const auto format=bp16?zvram::gdeflate::gpu::Format::BP16:zvram::gdeflate::gpu::Format::GDeflate;
         const auto result=d.gpuDecoder && path?d.gpuDecoder->initialize(d.handle,d.gdpa,d.memory,d.copyQueue,family,
-            d.setDeviceLoaderData,path,&d.gpuProperties,format,d.gpuTimestampBits):VK_ERROR_INITIALIZATION_FAILED;
+            d.setDeviceLoaderData,path,&d.gpuProperties,format,d.gpuTimestampBits,
+            bp16 && d.gpuImportHostInput,d.gpuImportHostAlignment):VK_ERROR_INITIALIZATION_FAILED;
         if(result!=VK_SUCCESS) {
             d.gpuRestoreEnabled=false; d.gpuDecoder.reset();
             logf("GPU %s restore unavailable result=%d; retaining CPU codec",codecName,result);
             if(result==VK_ERROR_DEVICE_LOST) { d.gpuGateError=result; return false; }
         } else logf("GPU %s restore enabled: %s, %s, direct backing output",codecName,bp16?"256-thread":"wave32",
+            d.gpuDecoder->importedHostInputEnabled()?"cached imported host input":
             d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
     }
     return true;
 }
 void releaseSnapshotResources(Device& d) {
     d.gpuDecoder.reset();
+    if(d.gpuImportHostInput)
+        logf("GPU BP16 imported input imports=%llu reuses=%llu bytes=%llu",
+             static_cast<unsigned long long>(d.gpuImportedFrames),
+             static_cast<unsigned long long>(d.gpuImportedReuses),
+             static_cast<unsigned long long>(d.gpuImportedBytes));
     if(d.gpuDecodeCalls || d.gpuDecodeFallbacks)
         logf("GPU %s restore calls=%llu bytes=%llu host-ns=%llu fallbacks=%llu",
              d.snapshotCodec==zvram::snapshot::Codec::BP16?"BP16":"GDeflate",
@@ -1550,8 +1644,8 @@ VkResult copyChunkLocked(Device& d,VkBuffer source,VkBuffer destination,VkDevice
 void discardCleanCacheLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     auto& group=memory.coldGroups[i];
     if(group.cold || !group.storedBytes) return;
-    d.cacheBytes-=group.storedBytes; memory.cacheStoredBytes-=group.storedBytes;
-    group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0;
+    d.cacheBytes-=group.accountedBytes(); memory.cacheStoredBytes-=group.accountedBytes();
+    group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0; group.importedPaddingBytes=0;
     ++d.cacheInvalidations; ++d.coldBudgetGeneration; d.activity.notify_all();
 }
 // Clean copies are expendable; cold copies remain the only lossless backing.
@@ -1692,19 +1786,42 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                 if(r==VK_SUCCESS) offset=preparedBytes;
             }
             for(std::size_t next=0;!preparedBuffer && next<group.chunks.size();) {
-                const auto& gpuChunk=group.chunks[next];
+                auto& gpuChunk=group.chunks[next];
                 if(d.gpuRestoreEnabled && d.gpuDecoder && gpuChunk.compressed &&
                    gpuChunk.codec==d.snapshotCodec && gpuChunk.codec!=zvram::snapshot::Codec::Zstd && !gpuChunk.byteShuffle &&
                    gpuChunk.rawSize && gpuChunk.rawSize<=s.chunkSize && offset<=group.logicalBytes &&
                    gpuChunk.rawSize<=group.logicalBytes-offset && offset%d.gpuStorageAlignment==0 &&
                    ((gpuChunk.rawSize+3)&~VkDeviceSize(3))<=d.gpuStorageRange && offset<=amount &&
                    ((gpuChunk.rawSize+3)&~VkDeviceSize(3))<=amount-offset) {
+                    if(d.gpuImportHostInput && !gpuChunk.imported) {
+                        zvram::gdeflate::gpu::Decoder::ImportedHostInputPtr imported;
+                        const auto importResult=d.gpuDecoder->importHostInput(gpuChunk.data(),gpuChunk.size(),imported);
+                        if(importResult==VK_SUCCESS && imported) {
+                            const auto padding=imported->allocationBytes-gpuChunk.size();
+                            const auto charged=gpuChunk.size()<=std::numeric_limits<std::uint64_t>::max()-padding
+                                ?gpuChunk.size()+padding:std::numeric_limits<std::uint64_t>::max();
+                            if(zvram::gdeflate::gpu::Decoder::importedHostFitsBudget(
+                                   d.coldBytes,d.cacheBytes,padding,d.coldBudget) &&
+                               padding<=std::numeric_limits<VkDeviceSize>::max()-group.importedPaddingBytes &&
+                               retainCompression(gpuChunk.rawSize,charged,d.minSavingsPercent)) {
+                                gpuChunk.imported=std::move(imported);
+                                gpuChunk.bytes.clear(); std::vector<std::uint8_t>().swap(gpuChunk.bytes);
+                                group.importedPaddingBytes+=padding;
+                                d.coldBytes+=padding; memory.coldStoredBytes+=padding;
+                            }
+                        }
+                    }
                     const auto gpuStarted=std::chrono::steady_clock::now();
-                    const auto gpuResult=d.gpuDecoder->restore(gpuChunk.bytes.data(),gpuChunk.bytes.size(),
-                        memory.poolViews[i],offset,static_cast<std::size_t>(gpuChunk.rawSize));
+                    const auto gpuResult=d.gpuDecoder->restore(gpuChunk.data(),gpuChunk.size(),
+                        memory.poolViews[i],offset,static_cast<std::size_t>(gpuChunk.rawSize),gpuChunk.imported.get());
                     d.gpuDecodeNanoseconds+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-gpuStarted).count();
                     if(gpuResult==VK_SUCCESS) {
                         ++d.gpuDecodeCalls; d.gpuDecodeBytes+=gpuChunk.rawSize;
+                        if(gpuChunk.imported) {
+                            if(gpuChunk.importedUsed) ++d.gpuImportedReuses;
+                            else { ++d.gpuImportedFrames; d.gpuImportedBytes+=gpuChunk.imported->allocationBytes; }
+                            gpuChunk.importedUsed=true;
+                        }
                         offset+=gpuChunk.rawSize; ++next; continue;
                     }
                     if(d.gpuDecoder->unsafe() || gpuResult==VK_TIMEOUT || gpuResult==VK_ERROR_DEVICE_LOST) {
@@ -1727,7 +1844,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                         r=VK_ERROR_UNKNOWN; break;
                     }
                     if(chunk.rawSize>s.stagingSize-staged) break;
-                    batch[count++]={chunk.bytes.data(),chunk.bytes.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle,chunk.codec};
+                    batch[count++]={chunk.data(),chunk.size(),static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle,chunk.codec};
                     staged+=chunk.rawSize; ++next;
                 }
                 if(r!=VK_SUCCESS || !count) { r=VK_ERROR_UNKNOWN; break; }
@@ -1766,18 +1883,19 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             }
             group.restoreBound=false;
             memory.bound=!memory.bindings.empty();
-            d.coldBytes-=group.storedBytes; d.coldLogicalBytes-=group.logicalBytes;
+            const auto accounted=group.accountedBytes();
+            d.coldBytes-=accounted; d.coldLogicalBytes-=group.logicalBytes;
             // Bootstrap admission permits the whole model to remain resident.
             // Keep no redundant snapshots until the resident cap is armed;
             // the cold chunks remain intact until restore has fully succeeded.
             const bool retainClean=d.cleanCache && d.residentAdmissionArmed && !group.pristine;
             if(retainClean) {
-                d.cacheBytes+=group.storedBytes; memory.cacheStoredBytes+=group.storedBytes;
+                d.cacheBytes+=accounted; memory.cacheStoredBytes+=accounted;
             } else if(group.storedBytes) {
                 ++d.coldBudgetGeneration; d.lastActivity=std::chrono::steady_clock::now(); d.activity.notify_all();
             }
-            memory.coldStoredBytes-=group.storedBytes; memory.coldLogicalSize-=group.logicalBytes;
-            if(!retainClean) { group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0; }
+            memory.coldStoredBytes-=accounted; memory.coldLogicalSize-=group.logicalBytes;
+            if(!retainClean) { group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0; group.importedPaddingBytes=0; }
             group.cold=false; group.pristine=false; group.restoreBound=false;
             restoredAny=true; ++d.restoreCount; ++restoredThisCall;
             memory.cold=std::any_of(memory.coldGroups.begin(),memory.coldGroups.end(),[](const auto& entry){return entry.cold;});
@@ -1825,10 +1943,10 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
         d.residentBytes-=memory.childSizes[i]; memory.residentBytes-=memory.childSizes[i];
         releaseBackingChild(d,memory,i);
         memory.bound=std::any_of(memory.children.begin(),memory.children.end(),[](VkDeviceMemory child){return child!=VK_NULL_HANDLE;});
-        d.cacheBytes-=group.storedBytes; memory.cacheStoredBytes-=group.storedBytes;
-        group.cold=true; memory.cold=true;
-        d.coldBytes+=group.storedBytes; d.coldLogicalBytes+=group.logicalBytes;
-        memory.coldStoredBytes+=group.storedBytes; memory.coldLogicalSize+=group.logicalBytes;
+            d.cacheBytes-=group.accountedBytes(); memory.cacheStoredBytes-=group.accountedBytes();
+            group.cold=true; memory.cold=true;
+            d.coldBytes+=group.accountedBytes(); d.coldLogicalBytes+=group.logicalBytes;
+            memory.coldStoredBytes+=group.accountedBytes(); memory.coldLogicalSize+=group.logicalBytes;
         ++d.freezeCount; ++d.cleanReuseCount;
         logf("snapshot reused clean bytes=%llu stored=%llu",static_cast<unsigned long long>(group.logicalBytes),static_cast<unsigned long long>(group.storedBytes));
         logSnapshotState("clean-freeze",d);

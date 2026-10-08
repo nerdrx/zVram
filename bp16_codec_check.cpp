@@ -1,8 +1,10 @@
 #include "bp16_codec.hpp"
+#include "gdeflate_gpu.hpp"
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -10,12 +12,75 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <type_traits>
 #include <vector>
 
 namespace {
 
 using Bytes = std::vector<std::uint8_t>;
 using namespace zvram::bp16;
+using ImportedInput = zvram::gdeflate::gpu::Decoder::ImportedHostInput;
+
+void require(bool condition, const char* message);
+
+unsigned destroyedImportBuffers{};
+unsigned freedImportMemory{};
+
+void VKAPI_CALL fakeDestroyImportBuffer(VkDevice, VkBuffer, const VkAllocationCallbacks*) {
+    ++destroyedImportBuffers;
+}
+void VKAPI_CALL fakeFreeImportMemory(VkDevice, VkDeviceMemory, const VkAllocationCallbacks*) {
+    ++freedImportMemory;
+}
+
+template<class T> T fakeHandle(std::uintptr_t value) {
+    if constexpr (std::is_pointer_v<T>) return reinterpret_cast<T>(value);
+    else return static_cast<T>(value);
+}
+
+void testImportedHostOwnerAccounting() {
+    using Decoder = zvram::gdeflate::gpu::Decoder;
+    std::size_t padded{};
+    require(Decoder::importedHostAllocationSize(12345, 4096, padded) && padded == 16384,
+            "host frame padding calculation failed");
+    require(!Decoder::importedHostAllocationSize(12345, 3, padded), "non-power-of-two alignment accepted");
+    require(!Decoder::importedHostAllocationSize(12345, 131072, padded), "unbounded alignment accepted");
+    constexpr auto maxFrame = zvram::bp16::HeaderBytes +
+        (zvram::bp16::MaxRawBytes / zvram::bp16::RawBytesPerBlock) * zvram::bp16::DescriptorBytes +
+        zvram::bp16::MaxRawBytes;
+    require(!Decoder::importedHostAllocationSize(maxFrame + 1u, 4096, padded),
+            "oversized imported frame accepted");
+    require(Decoder::importedHostFitsBudget(100, 50, 10, 160), "padded cache quota rejected exact fit");
+    require(!Decoder::importedHostFitsBudget(100, 50, 11, 160), "padded cache quota exceeded budget");
+    require(!Decoder::importedHostFitsBudget(UINT64_MAX, 1, 0, UINT64_MAX), "quota overflow accepted");
+
+    destroyedImportBuffers = freedImportMemory = 0;
+    void* host{};
+    require(posix_memalign(&host, 4096, 4096) == 0, "aligned host owner allocation failed");
+    auto owner = std::make_shared<ImportedInput>();
+    owner->device = fakeHandle<VkDevice>(1); owner->buffer = fakeHandle<VkBuffer>(2);
+    owner->memory = fakeHandle<VkDeviceMemory>(3); owner->allocation = host;
+    owner->destroyBuffer = fakeDestroyImportBuffer; owner->freeMemory = fakeFreeImportMemory;
+    auto moved = std::move(owner);
+    require(!owner && moved->data() == host && reinterpret_cast<std::uintptr_t>(host) % 4096 == 0,
+            "owner move/alignment failed");
+    moved.reset();
+    require(destroyedImportBuffers == 1 && freedImportMemory == 1,
+            "owned Vulkan import handles were not released exactly once");
+
+    void* poisonedHost{};
+    require(posix_memalign(&poisonedHost, 4096, 4096) == 0, "poison owner allocation failed");
+    auto poison = std::make_shared<std::atomic<bool>>(true);
+    auto retained = std::make_shared<ImportedInput>();
+    retained->device = fakeHandle<VkDevice>(4); retained->buffer = fakeHandle<VkBuffer>(5);
+    retained->memory = fakeHandle<VkDeviceMemory>(6); retained->allocation = poisonedHost;
+    retained->destroyBuffer = fakeDestroyImportBuffer; retained->freeMemory = fakeFreeImportMemory;
+    retained->poisoned = poison;
+    retained.reset();
+    require(destroyedImportBuffers == 1 && freedImportMemory == 1,
+            "poisoned import owner freed potentially in-flight handles");
+    std::free(poisonedHost); // The poisoned owner intentionally leaked this in production.
+}
 
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
@@ -274,7 +339,8 @@ int main(int argc, char** argv) {
         testPatterns();
         testMalformed();
         testWorkerEncoding();
-        std::cout << "PASS: BP16 reference/portable-fast/BMI2 streams, worker byte identity, decode, and malformed frames\n";
+        testImportedHostOwnerAccounting();
+        std::cout << "PASS: BP16 codec and imported-host ownership, alignment, quota, and poison checks\n";
         if (argc == 3) benchmarkWorkers(argv[1], argv[2]);
         return 0;
     } catch (const std::exception& error) {
