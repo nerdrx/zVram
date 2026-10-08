@@ -653,13 +653,30 @@ std::uint32_t parseResidentImportBytes(const char* text) {
     return value;
 }
 
+std::uint32_t parseHostCopyIterations(const char* text) {
+    constexpr std::uint32_t maximum = 256;
+    if (!text || !*text)
+        throw std::runtime_error("--host-copy-iterations expects an integer from 1 to 256");
+    std::uint32_t value = 0;
+    for (; *text; ++text) {
+        if (*text < '0' || *text > '9')
+            throw std::runtime_error("--host-copy-iterations expects an integer from 1 to 256");
+        const auto digit = static_cast<std::uint32_t>(*text - '0');
+        if (value > (maximum - digit) / 10u)
+            throw std::runtime_error("--host-copy-iterations must be from 1 to 256");
+        value = value * 10u + digit;
+    }
+    if (!value) throw std::runtime_error("--host-copy-iterations must be from 1 to 256");
+    return value;
+}
+
 void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
          const std::vector<std::uint8_t>& expected, std::uint32_t iterations,
          bool bp16 = false, bool hostInput = false, bool freshOutput = false,
          bool importHostInput = false, std::uint32_t residentImports = 0,
          std::uint32_t residentImportBytes = 4096,
          bool residentImportBytesSpecified = false,
-         bool allocatedHostInput = false) {
+         bool allocatedHostInput = false, std::uint32_t hostCopyIterations = 0) {
     if ((hostInput || importHostInput || allocatedHostInput) && !bp16)
         throw std::runtime_error("direct host input is available only for BP16");
     if (static_cast<unsigned>(hostInput) + static_cast<unsigned>(importHostInput) +
@@ -669,6 +686,8 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         throw std::runtime_error("--resident-imports requires --import-host-input or --allocated-host-input");
     if (residentImportBytesSpecified && !(importHostInput || allocatedHostInput))
         throw std::runtime_error("--resident-import-bytes requires --import-host-input or --allocated-host-input");
+    if (hostCopyIterations && (!bp16 || importHostInput || !(hostInput || allocatedHostInput)))
+        throw std::runtime_error("--host-copy-iterations requires direct --host-input or --allocated-host-input");
     const auto allocationLimit = runtime.properties.limits.maxMemoryAllocationCount > 16
         ? runtime.properties.limits.maxMemoryAllocationCount - 16 : 0;
     if (residentImports > std::min(1024u, allocationLimit))
@@ -750,6 +769,22 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
                   << " bda=" << (runtime.bufferDeviceAddressEnabled ? "enabled" : "disabled") << '\n';
     }
     if (!importHostInput) std::memcpy(upload.mapped, encoded.data(), encoded.size());
+    if (hostCopyIterations) {
+        const auto copyStarted = std::chrono::steady_clock::now();
+        for (std::uint32_t i = 0; i < hostCopyIterations; ++i) {
+            std::atomic_signal_fence(std::memory_order_seq_cst);
+            std::memcpy(upload.mapped, encoded.data(), encoded.size());
+            std::atomic_signal_fence(std::memory_order_seq_cst);
+        }
+        const auto copyNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - copyStarted).count();
+        std::cout << "host-copy iterations=" << hostCopyIterations
+                  << " bytes-per-copy=" << encoded.size()
+                  << " total-bytes=" << static_cast<std::uint64_t>(encoded.size()) * hostCopyIterations
+                  << " elapsed-ns=" << copyNs
+                  << " memory-type=" << upload.memoryType
+                  << " flags=0x" << std::hex << upload.memoryFlags << std::dec << '\n';
+    }
     if (allocatedHostInput) {
         const auto flags = upload.memoryFlags;
         if ((flags & (hostCoherent | VK_MEMORY_PROPERTY_HOST_CACHED_BIT | deviceLocal)) !=
@@ -1006,8 +1041,10 @@ int main(int argc, char** argv) {
     bool deviceAddress = false;
     bool residentImportsSpecified = false;
     bool residentImportBytesSpecified = false;
+    bool hostCopyIterationsSpecified = false;
     std::uint32_t residentImports = 0;
     std::uint32_t residentImportBytes = 4096;
+    std::uint32_t hostCopyIterations = 0;
     int arg = bp16 ? 3 : 1;
     while (bp16 && arg < argc) {
         if (std::strcmp(argv[arg], "--host-input") == 0) hostInput = true;
@@ -1042,6 +1079,19 @@ int main(int argc, char** argv) {
             residentImportBytesSpecified = true;
             ++arg;
         }
+        else if (std::strcmp(argv[arg], "--host-copy-iterations") == 0) {
+            if (arg + 1 >= argc) {
+                std::cerr << "FAIL: --host-copy-iterations expects an integer from 1 to 256\n";
+                return 2;
+            }
+            try { hostCopyIterations = parseHostCopyIterations(argv[arg + 1]); }
+            catch (const std::exception& error) {
+                std::cerr << "FAIL: " << error.what() << '\n';
+                return 2;
+            }
+            hostCopyIterationsSpecified = true;
+            ++arg;
+        }
         else break;
         ++arg;
     }
@@ -1055,7 +1105,7 @@ int main(int argc, char** argv) {
                           std::strcmp(argv[1], "--software-smoke") == 0);
     if ((!bp16 && !regular) || (bp16 && !bp16Args)) {
         std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n"
-                     "       vulkan_gdeflate_smoke --codec bp16 [--host-input|--import-host-input|--allocated-host-input] [--resident-imports 0..1024] [--resident-import-bytes 4096..33554432] [--device-address] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
+                     "       vulkan_gdeflate_smoke --codec bp16 [--host-input|--import-host-input|--allocated-host-input] [--resident-imports 0..1024] [--resident-import-bytes 4096..33554432] [--host-copy-iterations 1..256] [--device-address] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
         return 2;
     }
     const bool singleTile = !bp16 && std::strcmp(argv[arg], "--gpu-smoke") == 0;
@@ -1070,6 +1120,9 @@ int main(int argc, char** argv) {
         if (static_cast<unsigned>(hostInput) + static_cast<unsigned>(importHostInput) +
             static_cast<unsigned>(allocatedHostInput) > 1)
             throw std::runtime_error("--host-input, --import-host-input, and --allocated-host-input are mutually exclusive");
+        if (hostCopyIterationsSpecified && (!gpu || importHostInput ||
+            !(hostInput || allocatedHostInput)))
+            throw std::runtime_error("--host-copy-iterations requires --gpu-bounded-smoke with --host-input or --allocated-host-input");
         if (shader.size() < 20 || shader.size() % 4 ||
             zvram::gdeflate::loadLe32(shader.data()) != 0x07230203u)
             throw std::runtime_error("invalid SPIR-V envelope");
@@ -1100,6 +1153,7 @@ int main(int argc, char** argv) {
             if (importHostInput) throw std::runtime_error("--import-host-input requires --gpu-bounded-smoke");
             if (residentImportsSpecified) throw std::runtime_error("--resident-imports requires --gpu-bounded-smoke");
             if (residentImportBytesSpecified) throw std::runtime_error("--resident-import-bytes requires --gpu-bounded-smoke");
+            if (hostCopyIterationsSpecified) throw std::runtime_error("--host-copy-iterations requires --gpu-bounded-smoke");
             if (deviceAddress) throw std::runtime_error("--device-address requires --gpu-bounded-smoke");
             std::cout << (bp16 ? "CPU-only BP16 frame preflight; shader decode is unverified\n"
                                : "CPU-only envelope preflight; compressed payload and GPU decoder are unverified\n");
@@ -1122,7 +1176,7 @@ int main(int argc, char** argv) {
         runtime.initPipeline(shader, iterations, bp16);
         run(runtime, encoded, expected, iterations, bp16, hostInput, freshOutput,
             importHostInput, residentImports, residentImportBytes,
-            residentImportBytesSpecified, allocatedHostInput);
+            residentImportBytesSpecified, allocatedHostInput, hostCopyIterations);
         status = 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
