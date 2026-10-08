@@ -1,0 +1,24 @@
+{
+  "scope": "Sequential 92-token InternLM2.5-20B F16 LFU runs with 8 GiB and 16 GiB allocated-host input-owner caps; unlocked clocks; no causal performance claim",
+  "stdout_sha256": "b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b",
+  "runtime_layer_sha256": "3b5915ddc1b36560ff765f6efb5917b20ffa64c3a632ee81a586586060859b5e",
+  "shader_sha256": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+  "runs": {
+    "owner_8_gib": {
+      "decode_ms": 160023.76,
+      "tokens_per_second_exact": 0.574914625178161,
+      "direct_copy_ns": 41054645429,
+      "raw_copy_calls": 5390,
+      "raw_copy_bytes": 178222596096,
+      "raw_copy_ns": 18220534996
+    },
+    "owner_16_gib": {
+      "decode_ms": 134742.22,
+      "tokens_per_second_exact": 0.6827852472669665,
+      "direct_copy_ns": 20279358302,
+      "raw_copy_calls": 4912,
+      "raw_copy_bytes": 162115420160,
+      "raw_copy_ns": 17020950155
+    }
+  }
+}
