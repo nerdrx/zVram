@@ -1,0 +1,14 @@
+{
+  "source_commit": "8cdef8c36b637df7dd9113047c71d1ce773c9e4c",
+  "scope": "4GiBclean-cache fullF16trial samecompiledbinary; background state uncontrolled",
+  "sha256": {
+    "build/bp16-codec/libzvram_layer.so": "04c6d673e812e7ebee1922e6e4b8fe43580bb663a44ed39b67d14788b2bf87d2",
+    "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d",
+    "layer.cpp": "1fc51bc2ba3c877eea2a04122b87a24b2f99bca3c66fb5c613d42f42d38a790e",
+    "gdeflate_gpu.hpp": "eafc28bf35c08d92bda77f94778ce9c935079bf5cc14381a07e1ec3b4a89940e",
+    "submission_hooks.inc": "a23725021e7eb3cff6dd52c6831d5513e5abfd26fcd49bf8fa61e5481f6ece2e",
+    "clean_cache_policy.hpp": "32215872aa58d700f7fb2d803a3fa4dd19e645e5a7d97b0c51b4ff79c546692c",
+    "bp16_codec.hpp": "703bc061cb460926f83c88194668b6412408a00c94b4d107deb3a6784f6a97c4",
+    "zvram": "c88bccef1146b5f6e38ad106a1ae8e02815877a38d1af42220bf273ca5dc2416"
+  }
+}

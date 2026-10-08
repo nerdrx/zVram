@@ -1,0 +1,6 @@
+{
+  "scope": "Fresh native reference after same-hour compressedcache1/4trials;measuredhwmonclocktelemetry;92-token story, sequential unlocked clocks; no compression/paging snapshots/resident cap",
+  "prompt_utf8": "Write a 300-word story about a fox exploring a forest. Continue the story until you have written at least 300 words.\n",
+  "runs": {},
+  "error": "native: MemAvailable 16365 MiB below guard floor 16384 MiB"
+}

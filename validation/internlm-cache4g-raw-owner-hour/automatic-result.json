@@ -1,0 +1,14 @@
+{
+  "scope": "4GiB clean-cache cap plus opt-in raw-owner trial, budgetsnapshotON,26GiB cold/owner19GiB rawhardcap,1536MiB headroom;  Clean-first resident victim ranking plus synchronous GPU BP16 encoding; bothpasses fenced, finalcanonicalownedframe; Immutable-owner validation cache plus26GiB cold/owner ceiling (samequota); restored knownsafe19GiB resident hardcap and1.5GiB reserve;LFU;32encoder/8upload;fixed128KiB childallocator;16GiB availableRAMguard;sequential unlocked clocks;not isolated attribution",
+  "prompt_utf8": "Write a 300-word story about a fox exploring a forest. Continue the story until you have written at least 300 words.\n",
+  "source_sha256": {
+    "clean_cache_policy.hpp": "32215872aa58d700f7fb2d803a3fa4dd19e645e5a7d97b0c51b4ff79c546692c",
+    "bp16_codec.hpp": "703bc061cb460926f83c88194668b6412408a00c94b4d107deb3a6784f6a97c4",
+    "layer.cpp": "1fc51bc2ba3c877eea2a04122b87a24b2f99bca3c66fb5c613d42f42d38a790e",
+    "gdeflate_gpu.hpp": "eafc28bf35c08d92bda77f94778ce9c935079bf5cc14381a07e1ec3b4a89940e",
+    "submission_hooks.inc": "a23725021e7eb3cff6dd52c6831d5513e5abfd26fcd49bf8fa61e5481f6ece2e",
+    "check_vulkan_idle_model.py": "7063006f7e4243728f79ee8a0383408ee04ca75ee727ec6f637bc4be6b8d0f2e"
+  },
+  "runs": {},
+  "error": "automatic: MemAvailable 16374 MiB below guard floor 16384 MiB"
+}
