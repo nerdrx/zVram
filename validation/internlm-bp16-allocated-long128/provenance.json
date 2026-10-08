@@ -1,0 +1,12 @@
+{
+  "comparison_summary": "comparison-summary.json",
+  "automatic_host_input_source_commit": "23c05842cebf2fe3c7093191ba7f448626505d6e",
+  "native_source_hashes": "native/native-result.json.gz (captured at native launch, before the allocated-host budget source mutation)",
+  "automatic_source_and_binary_hashes": "allocated-host/automatic-runtime-sha256.json",
+  "native_binary_provenance": "The native application binary was verified unchanged at automatic-run launch; no native pre-run binary hash is claimed.",
+  "run_harnesses": {
+    "native": "native/native-run.py",
+    "allocated_host": "allocated-host/automatic-run.py"
+  },
+  "unused_prepared_combined_run_script": "The build-directory run.py was prepared but not used and is intentionally not archived."
+}

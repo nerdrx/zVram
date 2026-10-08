@@ -1116,6 +1116,32 @@ the cache alone caused the difference. [Run summary](validation/internlm-bp16-al
 [full result](validation/internlm-bp16-allocated-host-cache8g/result.json.gz), and
 [full stderr](validation/internlm-bp16-allocated-host-cache8g/automatic.stderr.txt.gz).
 
+### Same-prompt 92-token native/allocated-host comparison
+
+A separate longer generation used the same prompt, temperature 0, seed 1,
+context 512, 128-token prediction setting, and four-node Vulkan execution for
+native and BP16 allocated-host mode. Both completed 92 decode runs, offloaded
+**49/49** layers, and produced identical stdout
+(SHA-256 `b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`).
+Native measured **54,138.45 ms** (**1.6993468 tokens/s**); allocated-host mode
+measured **209,195.45 ms** (**0.4397801 tokens/s**).
+
+The cache stayed within its 8 GiB live limit: sampled peak **8,589,929,408** of
+**8,589,934,592 bytes**. Allocated-host counters recorded 1,548 allocations,
+19,607 reuses and **26,524,914,384 cumulative bytes**, which are not resident
+memory. Minimum available RAM was 28,255 MiB native and 20,876 MiB allocated;
+swap grew by 245 MiB and 3,248 MiB respectively, and the Ollama GPU guard found
+no process in either run. These runs were sequential
+with unlocked clocks and different RAM conditions, so this is not a controlled
+performance comparison. Its longer-run BP16 rate is below the separate short-run
+**0.4626948 tokens/s** result above and does not replace that as the best
+measured short-run rate.
+
+[Comparison summary](validation/internlm-bp16-allocated-long128/comparison-summary.json),
+[archive provenance](validation/internlm-bp16-allocated-long128/provenance.json),
+[native logs and harness](validation/internlm-bp16-allocated-long128/native/), and
+[allocated-host logs and hashes](validation/internlm-bp16-allocated-long128/allocated-host/).
+
 ### Bounded imported BP16 host input and current regression checks
 
 The standalone research decoder now has an opt-in `--import-host-input` path using
@@ -1288,3 +1314,14 @@ HMM validation of the userptr range on submission
 ([AMDGPU CS validation](https://github.com/CachyOS/linux/blob/cachyos-7.2.9-1/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c#L901)).
 This mechanism fits the component timing difference, but does not establish
 causality or explain the full-model submit/wait delay.
+
+### BP16 host-copy component check
+
+A smoke-only helper copied the same **29,202,816-byte** encoded BP16 frame 64
+times using direct coherent host input and allocated cached host input. All six
+runs passed with zero validation errors/VUIDs; the measured copy rates were
+22.31–24.11 GB/s for direct host input and 23.51–49.41 GB/s for allocated
+cached input. The allocated range is noisy and these component copies do not
+show a full-model speedup. The captured source and binary hashes are in the
+[matrix summary](validation/bp16-host-copy-matrix/summary.json), alongside all
+six logs and the compressed helper source.

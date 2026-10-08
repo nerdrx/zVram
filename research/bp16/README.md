@@ -211,6 +211,14 @@ numerically 13.8% above the prior 0.40653 run, but those sequential runs had
 unlocked clocks and different RAM conditions; it is not a controlled
 improvement claim. [Run summary and limits](../../VALIDATION.md#latest-completed-bp16-run-bounded-allocated-host-cache-32-workers).
 
+A separate same-prompt 92-token native/allocated-host comparison produced
+identical stdout and 49/49 layers: native **1.6993468 tokens/s**, allocated
+host **0.4397801 tokens/s**. The latter stayed within the 8 GiB live-cache
+limit; the cumulative byte counter is not resident memory. Runs were sequential
+with unlocked clocks and different RAM conditions, so this is not a controlled
+comparison. It is a long-run result, not a replacement for the short-run
+**0.4626948 tokens/s** measured above. [Comparison and archive](../../VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
+
 At source `23c05842cebf2fe3c7093191ba7f448626505d6e`, focused GPU checks passed
 8/8 in 7.30 s with the default budget and 8/8 in 7.08 s with the cache
 disabled; CPU budget-parser/ownership checks passed. The earlier 120 CTests,
@@ -231,3 +239,9 @@ HMM validation of the userptr range on submission
 ([AMDGPU CS validation](https://github.com/CachyOS/linux/blob/cachyos-7.2.9-1/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c#L901)).
 This mechanism fits the component timing difference, but it does not establish
 causality or explain the full-model delay.
+
+The smoke-only host-copy matrix also passed six 64-iteration copies of the same
+29,202,816-byte encoded frame with zero validation errors/VUIDs. Direct coherent
+host input measured 22.31–24.11 GB/s; allocated cached host input measured
+23.51–49.41 GB/s. This noisy component result does not establish a full-model
+speedup. [Logs, source, and hashes](../../validation/bp16-host-copy-matrix/summary.json).

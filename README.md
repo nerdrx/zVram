@@ -293,6 +293,13 @@ VRAM/GTT path and uncontrolled conditions. The default worker count remains 1.
 [earlier direct-host run](VALIDATION.md#nineteen-gibibyte-direct-host-input-run-32-workers);
 [fresh native reference and limits](VALIDATION.md#fresh-native-nodes4-reference).
 
+A separate same-prompt 92-token native/allocated-host comparison produced
+identical output across 49/49 layers: **1.69935 tokens/s** native and
+**0.43978 tokens/s** allocated-host. It stayed within the 8 GiB live cache
+limit, but the sequential runs had unlocked clocks and different RAM conditions;
+this is not a controlled speed comparison. It does not replace the short-run
+0.46269 BP16 result above. [Long-run details and archive](VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
+
 A separate zVram virtual-native-spill run, without automatic snapshots or
 compression, measured 1.69936 tokens/s. It matches the fresh native rate, but
 uses driver VRAM/GTT spillover rather than compressed restore; this sequential,

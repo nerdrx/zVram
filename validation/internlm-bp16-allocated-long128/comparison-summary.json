@@ -1,0 +1,68 @@
+{
+  "scope": "sequential same-prompt long generation; unlocked clocks; no game claim",
+  "output_matches": true,
+  "stdout_sha256": "b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b",
+  "native": {
+    "performance": {
+      "decode_ms": 54138.45,
+      "decode_runs": 92,
+      "tokens_per_second": 1.7,
+      "prompt_ms": 1428.72,
+      "restore_ms": []
+    },
+    "rate_exact": 1.6993467674083762,
+    "offload": [
+      49,
+      49
+    ]
+  },
+  "automatic": {
+    "performance": {
+      "decode_ms": 209195.45,
+      "decode_runs": 92,
+      "tokens_per_second": 0.44,
+      "prompt_ms": 6531.7,
+      "restore_ms": []
+    },
+    "rate_exact": 0.439780119500687,
+    "offload": [
+      49,
+      49
+    ]
+  },
+  "last_allocated_counters": "GPU BP16 allocated input allocations=1548 reuses=19607 bytes=26524914384 live-bytes=8589060368 limit-bytes=8589934592",
+  "sampled_cache_live_peak_bytes": 8589929408,
+  "cache_limit_bytes": 8589934592,
+  "resources": {
+    "native": {
+      "scope": "sampled system-wide resources; not a hard allocation cap",
+      "pid": 2130443,
+      "elapsed_seconds": 115.30933315999937,
+      "process_returncode": 0,
+      "prompt_sent": true,
+      "minimum_available_mib": 28255,
+      "min_available_mib": 16384,
+      "swap_used_baseline_mib": 11068,
+      "swap_used_peak_mib": 11313,
+      "swap_growth_mib": 245,
+      "max_swap_growth_mib": 16384,
+      "reject_ollama_gpu": true,
+      "ollama_gpu_detected": []
+    },
+    "automatic": {
+      "scope": "sampled system-wide resources; not a hard allocation cap",
+      "pid": 2208848,
+      "elapsed_seconds": 284.1553810309997,
+      "process_returncode": 0,
+      "prompt_sent": true,
+      "minimum_available_mib": 20876,
+      "min_available_mib": 16384,
+      "swap_used_baseline_mib": 12825,
+      "swap_used_peak_mib": 16073,
+      "swap_growth_mib": 3248,
+      "max_swap_growth_mib": 16384,
+      "reject_ollama_gpu": true,
+      "ollama_gpu_detected": []
+    }
+  }
+}
