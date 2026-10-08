@@ -58,6 +58,13 @@ public:
         return paddingBytes <= budgetBytes - coldBytes - cacheBytes;
     }
 
+    static bool localOwnerFitsLiveBudget(std::uint64_t usedBytes, std::uint64_t requestedBytes,
+                                         std::uint64_t configuredLimitBytes,
+                                         std::uint64_t liveLimitBytes) noexcept {
+        const auto limit = std::min(configuredLimitBytes, liveLimitBytes);
+        return usedBytes <= limit && requestedBytes <= limit - usedBytes;
+    }
+
     static bool parseAllocatedHostBudgetMiB(const char* text, std::uint64_t& bytes) noexcept {
         constexpr std::uint64_t MiB = 1024ull * 1024ull;
         constexpr std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max() / MiB;
@@ -133,6 +140,14 @@ public:
         bool reserve(std::uint64_t bytes) noexcept {
             auto used = usedBytes_.load(std::memory_order_relaxed);
             while (used <= limitBytes_ && bytes <= limitBytes_ - used) {
+                if (usedBytes_.compare_exchange_weak(used, used + bytes,
+                        std::memory_order_acq_rel, std::memory_order_relaxed)) return true;
+            }
+            return false;
+        }
+        bool reserve(std::uint64_t bytes, std::uint64_t liveLimitBytes) noexcept {
+            auto used = usedBytes_.load(std::memory_order_relaxed);
+            while (localOwnerFitsLiveBudget(used, bytes, limitBytes_, liveLimitBytes)) {
                 if (usedBytes_.compare_exchange_weak(used, used + bytes,
                         std::memory_order_acq_rel, std::memory_order_relaxed)) return true;
             }
@@ -465,7 +480,8 @@ public:
     // readable and stable until this call returns; uncertain GPU completion
     // poisons the decoder so the caller retains the sparse backing and owner.
     VkResult encodeBP16(VkBuffer rawBuffer, VkDeviceSize rawOffset, std::size_t rawBytes,
-                        std::size_t maxEncodedBytes, ImportedHostInputPtr& out) {
+                        std::size_t maxEncodedBytes, ImportedHostInputPtr& out,
+                        std::uint64_t localOwnerLiveLimitBytes = UINT64_MAX) {
         out.reset();
         if (!initialized_ || poisoned_) return VK_ERROR_DEVICE_LOST;
         if (!allocatedHostBudget_ || !allocatedHostBudget_->limitBytes() ||
@@ -524,7 +540,8 @@ public:
             return VK_ERROR_VALIDATION_FAILED_EXT;
 
         ImportedHostInputPtr owner;
-        result = allocateHostFrameBuffer(nextPayload, owner, maxEncodedBytes, true);
+        result = allocateHostFrameBuffer(nextPayload, owner, maxEncodedBytes, true,
+                                         localOwnerLiveLimitBytes);
         if (result != VK_SUCCESS) return result;
         std::memcpy(owner->allocation_, prefix.data(), prefix.size());
         std::memset(static_cast<std::uint8_t*>(owner->allocation_) + nextPayload, 0,
@@ -562,7 +579,8 @@ public:
 private:
     VkResult allocateHostFrameBuffer(std::size_t encodedSize, ImportedHostInputPtr& out,
                                      std::uint64_t maxAllocationBytes = MaxBP16InputBytes + 65536u,
-                                     bool preferLocal = false) {
+                                     bool preferLocal = false,
+                                     std::uint64_t localOwnerLiveLimitBytes = UINT64_MAX) {
         out.reset();
         if (!allocatedHostBudget_ || !allocatedHostBudget_->limitBytes())
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
@@ -621,7 +639,7 @@ private:
                 gttType = i;
         }
         const bool useLocal = preferLocal && localOwnerBudget_ && localType != UINT32_MAX &&
-            localOwnerBudget_->reserve(memoryRequirements.size);
+            localOwnerBudget_->reserve(memoryRequirements.size, localOwnerLiveLimitBytes);
         if (!useLocal && gttType == UINT32_MAX) return VK_ERROR_FEATURE_NOT_PRESENT;
         if (!allocatedHostBudget_->reserve(memoryRequirements.size))
         {

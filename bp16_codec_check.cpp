@@ -129,6 +129,9 @@ void testImportedHostOwnerAccounting() {
             !Decoder::parseAllocatedHostBudgetMiB("1.5", budgetBytes) &&
             !Decoder::parseAllocatedHostBudgetMiB("17592186044416", budgetBytes),
             "invalid or overflowing allocated-host budget accepted");
+    require(Decoder::parseLocalOwnerBudgetMiB("13312", budgetBytes) &&
+            budgetBytes == 13312ull * 1024u * 1024u,
+            "local-owner budget MiB parse failed");
     Budget disabledBudget(0);
     require(disabledBudget.limitBytes() == 0 && !disabledBudget.reserve(1),
             "zero allocated-host budget did not disable owner caching");
@@ -143,6 +146,16 @@ void testImportedHostOwnerAccounting() {
     require(overflowBudget.reserve(UINT64_MAX) && !overflowBudget.reserve(1) &&
             overflowBudget.usedBytes() == UINT64_MAX,
             "allocated-host budget overflow accepted");
+    require(Decoder::localOwnerFitsLiveBudget(0, 10, 20, 10) &&
+            !Decoder::localOwnerFitsLiveBudget(5, 6, 20, 10) &&
+            !Decoder::localOwnerFitsLiveBudget(0, 6, 5, 10) &&
+            !Decoder::localOwnerFitsLiveBudget(UINT64_MAX, 1, UINT64_MAX, UINT64_MAX),
+            "local-owner live/configured cap arithmetic failed");
+    Budget liveBudget(20);
+    require(liveBudget.reserve(7, 10) && !liveBudget.reserve(4, 10) &&
+            liveBudget.release(7) && liveBudget.reserve(10, 10) &&
+            liveBudget.usedBytes() == 10,
+            "local-owner live cap reservation failed");
 
     std::size_t padded{};
     require(Decoder::importedHostAllocationSize(12345, 4096, padded) && padded == 16384,
