@@ -274,6 +274,7 @@ struct Device {
     std::atomic<std::uint64_t> gpuProfileFreeCalls{}, gpuProfileFreeNs{};
     std::atomic<std::uint64_t> gpuProfileSparseCalls{}, gpuProfileSparseSuccess{}, gpuProfileSparseFailures{}, gpuProfileSparseNs{};
     bool gpuRestoreEnabled{}, gpuRestoreUnsafe{};
+    bool bp16RestoreBatchRequested{}, bp16RestoreBatchEnabled{};
     bool gpuImportHostInput{};
     bool gpuAllocatedHostInput{};
     std::uint64_t gpuAllocatedHostBudgetBytes{
@@ -386,13 +387,18 @@ void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
         const auto profile=d.gpuDecoder->profile();
         newProfile=profile.calls>d.lastGpuProfileLoggedCalls;
         if(newProfile || force) {
-            logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu%s",
+            logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu batch-submissions=%llu batch-items=%llu%s",
                  static_cast<unsigned long long>(profile.calls),static_cast<unsigned long long>(profile.validationNs),
-                 static_cast<unsigned long long>(profile.inputPrepareNs),static_cast<unsigned long long>(profile.submitWaitNs),suffix);
+                 static_cast<unsigned long long>(profile.inputPrepareNs),static_cast<unsigned long long>(profile.submitWaitNs),
+                 static_cast<unsigned long long>(profile.batchSubmissions),static_cast<unsigned long long>(profile.batchItems),suffix);
             if(d.snapshotCodec==zvram::snapshot::Codec::BP16)
                 logf("GPU BP16 upload profile buffer-prepare-ns=%llu direct-copy-ns=%llu%s",
                      static_cast<unsigned long long>(profile.bp16BufferPrepareNs),
                      static_cast<unsigned long long>(profile.bp16DirectCopyNs),suffix);
+            if(profile.batchSubmissions)
+                logf("GPU BP16 restore batch submissions=%llu items=%llu%s",
+                     static_cast<unsigned long long>(profile.batchSubmissions),
+                     static_cast<unsigned long long>(profile.batchItems),suffix);
             logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu%s",
                  static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
                  static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs),suffix);
@@ -1079,6 +1085,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         const char* asyncCompression=std::getenv("ZVRAM_VULKAN_ASYNC_COMPRESSION");
         d->asyncCompression=asyncCompression && std::strcmp(asyncCompression,"1")==0;
         d->gpuRestoreEnabled=gpuRestorePlanned;
+        const char* restoreBatch=std::getenv("ZVRAM_VULKAN_BP16_RESTORE_BATCH");
+        d->bp16RestoreBatchRequested=restoreBatch && std::strcmp(restoreBatch,"1")==0;
         d->gpuImportHostInput=gpuImportHostPlanned;
         d->gpuAllocatedHostInput=gpuAllocatedHostPlanned;
         d->gpuAllocatedHostBudgetBytes=gpuAllocatedHostBudgetBytes;
@@ -1676,6 +1684,11 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
                 d.gpuDecoder->importedHostInputEnabled()?"cached imported host input":
                 d.gpuDecoder->allocatedHostInputEnabled()?"cached allocated host input":
                 d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
+            d.bp16RestoreBatchEnabled=bp16 && d.bp16RestoreBatchRequested &&
+                (d.gpuDecoder->importedHostInputEnabled() || d.gpuDecoder->allocatedHostInputEnabled());
+            if(d.bp16RestoreBatchRequested)
+                logf("BP16 GPU restore batch requested=%u effective=%u max-items=4",
+                     d.bp16RestoreBatchRequested?1u:0u,d.bp16RestoreBatchEnabled?1u:0u);
             if(bp16) logf("GPU BP16 upload workers=%u",d.gpuDecoder->uploadWorkers());
             if(d.gpuDecoder->bp16EncoderEnabled()) {
                 // The first GPU encoder uses the existing synchronous freeze transaction.
@@ -2083,6 +2096,211 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
     }
     return VK_SUCCESS;
 }
+// One bounded transaction for a few immutable, already-owned BP16 frames.
+// VK_NOT_READY means "not eligible" and leaves state untouched for the serial path.
+VkResult restoreColdBP16BatchLocked(Device& d,const VkDeviceMemory* memories,
+                                    const std::size_t* children,std::size_t count,
+                                    std::size_t& restored) {
+    using Decoder=zvram::gdeflate::gpu::Decoder;
+    restored=0;
+    if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
+    if(!d.bp16RestoreBatchEnabled || !d.autoInitialized ||
+       !d.gpuDecoder || !d.gpuRestoreEnabled || d.snapshotCodec!=zvram::snapshot::Codec::BP16 ||
+       d.restoreFailureAfterGroups || d.restoreFailureInjected || !memories || !children || count<2 || count>4)
+        return VK_NOT_READY;
+
+    struct Entry { VirtualMemory* memory; VirtualMemory::ColdGroup* group; std::size_t child; VkDeviceSize amount; };
+    std::array<Entry,4> entries{};
+    std::array<Decoder::RestoreItem,4> items{};
+    std::array<bool,4> allocated{};
+    VkDeviceSize incoming=0;
+    for(std::size_t n=0;n<count;n++) {
+        auto p=d.virtualMemory.find(memories[n]);
+        if(p==d.virtualMemory.end()) return VK_NOT_READY;
+        auto& memory=p->second;
+        const auto i=children[n];
+        if(i>=memory.children.size() || i>=memory.childSizes.size() || i>=memory.childTypes.size() ||
+           i>=memory.coldGroups.size() || i>=memory.poolViews.size()) return VK_NOT_READY;
+        auto& group=memory.coldGroups[i];
+        if(!group.cold || group.pristine || group.restoreBound || group.chunks.size()!=1 ||
+           group.logicalBytes>std::numeric_limits<VkDeviceSize>::max()-3 ||
+           !group.chunks[0].compressed || group.chunks[0].codec!=zvram::snapshot::Codec::BP16 ||
+           group.chunks[0].byteShuffle || !group.chunks[0].imported || !group.chunks[0].data() ||
+           !group.chunks[0].size() || group.chunks[0].rawSize!=group.logicalBytes ||
+           !group.chunks[0].rawSize ||
+           group.chunks[0].rawSize%zvram::bp16::RawBytesPerBlock ||
+           group.chunks[0].rawSize>d.snapshot.chunkSize ||
+           ((group.chunks[0].rawSize+3)&~VkDeviceSize(3))>d.gpuStorageRange ||
+           group.chunks[0].rawSize>memory.childSizes[i] ||
+           ((group.chunks[0].rawSize+3)&~VkDeviceSize(3))>memory.childSizes[i] ||
+           !memory.poolViews[i]) return VK_NOT_READY;
+        for(std::size_t j=0;j<n;j++)
+            if(memories[j]==memories[n] && children[j]==i) return VK_NOT_READY;
+        entries[n]={&memory,&group,i,memory.childSizes[i]};
+        items[n]={group.chunks[0].imported.get(),memory.poolViews[i],0,
+                  static_cast<std::size_t>(group.chunks[0].rawSize)};
+        if(!memory.children[i]) {
+            const auto amount=memory.childSizes[i];
+            if(amount>std::numeric_limits<VkDeviceSize>::max()-incoming) return VK_NOT_READY;
+            incoming+=amount;
+        }
+    }
+    if(d.residentLimitBytes && d.residentAdmissionArmed) {
+        VkDeviceSize limit{};
+        const auto budgetResult=residentAdmissionLimit(d,limit);
+        if(budgetResult!=VK_SUCCESS) return budgetResult;
+        if(incoming>limit || d.residentBytes>limit-incoming) return VK_NOT_READY;
+    }
+    std::vector<std::vector<std::uint32_t>> types;
+    try {
+        types.resize(count);
+        for(std::size_t n=0;n<count;n++) if(!entries[n].memory->children[entries[n].child]) {
+            VkMemoryRequirements req{}; req.memoryTypeBits=entries[n].memory->backingMemoryTypeBits;
+            types[n]=backingMemoryTypes(d,req);
+            if(types[n].empty()) return VK_NOT_READY;
+        }
+    } catch(const std::bad_alloc&) { return VK_NOT_READY; }
+    if(!d.activeEviction) {
+        const auto idle=d.snapshot.deviceWaitIdle(d.handle);
+        if(idle!=VK_SUCCESS) return idle;
+    }
+    auto rollbackAllocations=[&] {
+        for(std::size_t n=count;n>0;n--) if(allocated[n-1]) {
+            auto& entry=entries[n-1];
+            releaseBackingChild(d,*entry.memory,entry.child);
+            entry.memory->residentBytes-=entry.amount;
+            d.residentBytes-=entry.amount;
+            allocated[n-1]=false;
+        }
+    };
+    for(std::size_t n=0;n<count;n++) {
+        auto& entry=entries[n];
+        if(entry.memory->children[entry.child]) continue;
+        VkDeviceMemory child{}; std::uint32_t used=UINT32_MAX;
+        VkResult result=VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        for(auto type:types[n]) {
+            result=allocateBackingChild(d,d.handle,entry.amount,type,entry.memory->allocationFlags,
+                entry.memory->hasPriority,entry.memory->priority,&child);
+            if(result==VK_SUCCESS) { used=type; break; }
+            if(result==VK_ERROR_DEVICE_LOST) break;
+        }
+        if(result!=VK_SUCCESS) {
+            rollbackAllocations();
+            return result==VK_ERROR_DEVICE_LOST?result:VK_NOT_READY;
+        }
+        entry.memory->children[entry.child]=child;
+        entry.memory->childTypes[entry.child]=used;
+        if(entry.child<entry.memory->childGenerations.size())
+            bumpAsyncVersion(d,entry.memory->childGenerations[entry.child]);
+        if(entry.memory->trackPhysicalStats) trackBackingAllocation(d,used,entry.amount);
+        entry.memory->residentBytes+=entry.amount; d.residentBytes+=entry.amount;
+        allocated[n]=true;
+    }
+    std::array<VkSparseMemoryBind,4> binds{};
+    std::array<VkSparseBufferMemoryBindInfo,4> buffers{};
+    for(std::size_t n=0;n<count;n++) {
+        binds[n].size=entries[n].amount;
+        binds[n].memory=entries[n].memory->children[entries[n].child];
+        buffers[n].buffer=entries[n].memory->poolViews[entries[n].child];
+        buffers[n].bindCount=1; buffers[n].pBinds=&binds[n];
+    }
+    const auto sparseStarted=d.gpuProfileEnabled?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
+    const auto bindResult=bindSparseBatchLocked(d.handle,d,buffers.data(),static_cast<std::uint32_t>(count));
+    if(d.gpuProfileEnabled) {
+        d.gpuProfileSparseCalls.fetch_add(1,std::memory_order_relaxed);
+        (bindResult==VK_SUCCESS?d.gpuProfileSparseSuccess:d.gpuProfileSparseFailures).fetch_add(1,std::memory_order_relaxed);
+        d.gpuProfileSparseNs.fetch_add(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now()-sparseStarted).count()),std::memory_order_relaxed);
+    }
+    if(bindResult!=VK_SUCCESS) {
+        if(d.gpuGateError==VK_SUCCESS) rollbackAllocations();
+        return bindResult;
+    }
+    for(std::size_t n=0;n<count;n++) entries[n].group->restoreBound=true;
+
+    const auto decodeStarted=std::chrono::steady_clock::now();
+    auto result=d.gpuDecoder->restoreBatch(items.data(),count);
+    d.gpuDecodeNanoseconds+=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now()-decodeStarted).count());
+    if(result!=VK_SUCCESS && (d.gpuDecoder->unsafe() || result==VK_TIMEOUT || result==VK_ERROR_DEVICE_LOST)) {
+        d.gpuRestoreUnsafe=true; d.gpuGateError=VK_ERROR_DEVICE_LOST;
+        d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
+        return VK_ERROR_DEVICE_LOST;
+    }
+    if(result==VK_SUCCESS) {
+        for(std::size_t n=0;n<count;n++) {
+            const auto& chunk=entries[n].group->chunks[0];
+            ++d.gpuDecodeCalls; d.gpuDecodeBytes+=chunk.rawSize;
+            if(chunk.imported) {
+                if(d.gpuAllocatedHostInput) {
+                    if(chunk.hostInputUsed) ++d.gpuAllocatedHostReuses;
+                    else { ++d.gpuAllocatedHostAllocations; d.gpuAllocatedHostBytes+=chunk.imported->allocationBytes(); }
+                } else if(chunk.hostInputUsed) ++d.gpuImportedReuses;
+                else { ++d.gpuImportedFrames; d.gpuImportedBytes+=chunk.imported->allocationBytes(); }
+                entries[n].group->chunks[0].hostInputUsed=true;
+            }
+        }
+    } else {
+        logf("GPU BP16 restore batch fallback result=%d items=%zu",result,count);
+        for(std::size_t n=0;n<count;n++) {
+            const auto& chunk=entries[n].group->chunks[0];
+            const zvram::snapshot::EncodedChunk encoded{chunk.data(),chunk.size(),
+                static_cast<std::size_t>(chunk.rawSize),chunk.compressed,chunk.byteShuffle,chunk.codec};
+            const auto cpuStarted=std::chrono::steady_clock::now();
+            const bool decoded=zvram::snapshot::decodeBatch(&encoded,1,static_cast<std::uint8_t*>(d.snapshot.mapped),
+                static_cast<std::size_t>(d.snapshot.stagingSize),static_cast<std::size_t>(d.snapshot.chunkSize));
+            d.snapshot.decodeBytes+=decoded?chunk.rawSize:0;
+            d.snapshot.decodeNanoseconds+=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now()-cpuStarted).count());
+            if(!decoded) { result=VK_ERROR_UNKNOWN; break; }
+            result=copyChunkLocked(d,d.snapshot.stagingBuffer,entries[n].memory->poolViews[entries[n].child],
+                                   0,0,chunk.rawSize,true);
+            if(result!=VK_SUCCESS) break;
+            ++d.gpuDecodeFallbacks;
+        }
+        if(result!=VK_SUCCESS) {
+            std::array<VkSparseMemoryBind,4> unbinds{};
+            for(std::size_t n=0;n<count;n++) unbinds[n].size=entries[n].amount;
+            for(std::size_t n=0;n<count;n++) buffers[n].pBinds=&unbinds[n];
+            const auto unbind=bindSparseBatchLocked(d.handle,d,buffers.data(),static_cast<std::uint32_t>(count));
+            if(unbind==VK_SUCCESS) for(std::size_t n=0;n<count;n++) entries[n].group->restoreBound=false;
+            else d.gpuGateError=unbind;
+            return result;
+        }
+    }
+
+    for(std::size_t n=0;n<count;n++) {
+        auto& entry=entries[n];
+        result=bindChildAppsLocked(d.handle,d,*entry.memory,entry.child,false,
+                                   entry.memory->poolViews[entry.child]);
+        if(result!=VK_SUCCESS) { d.gpuGateError=result; return result; }
+        auto& group=*entry.group;
+        group.restoreBound=false; entry.memory->bound=!entry.memory->bindings.empty();
+        const auto accounted=group.accountedBytes();
+        d.coldBytes-=accounted; d.coldLogicalBytes-=group.logicalBytes;
+        const bool retainClean=d.cleanCache && d.residentAdmissionArmed && !group.pristine;
+        if(retainClean) { d.cacheBytes+=accounted; entry.memory->cacheStoredBytes+=accounted; }
+        else if(group.storedBytes) {
+            ++d.coldBudgetGeneration; d.lastActivity=std::chrono::steady_clock::now(); d.activity.notify_all();
+        }
+        entry.memory->coldStoredBytes-=accounted; entry.memory->coldLogicalSize-=group.logicalBytes;
+        if(!retainClean) { group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0; group.importedPaddingBytes=0; }
+        group.cold=false; group.pristine=false; group.restoreBound=false;
+        ++d.restoreCount; ++restored;
+        entry.memory->cold=std::any_of(entry.memory->coldGroups.begin(),entry.memory->coldGroups.end(),
+            [](const auto& item){return item.cold;});
+    }
+    if(d.activeEviction) {
+        if(d.restoreGeneration==std::numeric_limits<std::uint64_t>::max()) result=VK_ERROR_UNKNOWN;
+        else ++d.restoreGeneration;
+    } else result=d.autoQueues.fromCopyQueue();
+    if(result==VK_SUCCESS) logSnapshotState("restore",d);
+    else {
+        d.gpuGateError=result; d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
+    }
+    return result;
+}
+
 VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     if(i>=memory.children.size() || i>=memory.coldGroups.size() ||
        i>=memory.childSizes.size() || i>=memory.poolViews.size()) return VK_ERROR_UNKNOWN;
