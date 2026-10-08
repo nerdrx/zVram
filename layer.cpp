@@ -2147,7 +2147,11 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
                 }
             }
             if(keepCompressed) {
-                chunk.bytes.resize(compressed); std::memcpy(chunk.bytes.data(),encoded.data(),compressed); chunk.compressed=true;
+                // Transfer exact-sized BP16 storage; keep copying when spare capacity would evade the quota.
+                if(d.snapshotCodec==zvram::snapshot::Codec::BP16 && encoded.size()==compressed && encoded.capacity()==compressed)
+                    chunk.bytes=std::move(encoded);
+                else { chunk.bytes.resize(compressed); std::memcpy(chunk.bytes.data(),encoded.data(),compressed); }
+                chunk.compressed=true;
                 chunk.byteShuffle=d.byteShuffle;
                 chunk.codec=d.snapshotCodec;
             } else {
@@ -2243,7 +2247,9 @@ bool encodeAsyncSnapshot(const std::uint8_t* raw,std::size_t rawSize,std::size_t
                 }
             }
             if(keepCompressed) {
-                chunk.bytes.assign(encoded.begin(),encoded.begin()+compressed);
+                if(codec==zvram::snapshot::Codec::BP16 && encoded.size()==compressed && encoded.capacity()==compressed)
+                    chunk.bytes=std::move(encoded);
+                else chunk.bytes.assign(encoded.begin(),encoded.begin()+compressed);
                 chunk.compressed=true; chunk.codec=codec;
                 chunk.byteShuffle=codec==zvram::snapshot::Codec::Zstd?shuffle:0;
             } else chunk.bytes.assign(source,source+amount);
