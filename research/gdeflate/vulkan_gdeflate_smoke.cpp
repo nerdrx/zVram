@@ -126,6 +126,10 @@ struct Runtime {
     VkPipelineLayout pipelineLayout{};
     VkShaderModule shader{};
     VkPipeline pipeline{};
+    VkShaderModule encoderAnalyzeShader{};
+    VkShaderModule encoderPackShader{};
+    VkPipeline encoderAnalyzePipeline{};
+    VkPipeline encoderPackPipeline{};
     VkDescriptorPool descriptorPool{};
     VkCommandPool commandPool{};
     VkFence fence{};
@@ -144,7 +148,11 @@ struct Runtime {
         if (device && timestampPool) vkDestroyQueryPool(device, timestampPool, nullptr);
         if (device && commandPool) vkDestroyCommandPool(device, commandPool, nullptr);
         if (device && descriptorPool) vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+        if (device && encoderAnalyzePipeline) vkDestroyPipeline(device, encoderAnalyzePipeline, nullptr);
+        if (device && encoderPackPipeline) vkDestroyPipeline(device, encoderPackPipeline, nullptr);
         if (device && pipeline) vkDestroyPipeline(device, pipeline, nullptr);
+        if (device && encoderAnalyzeShader) vkDestroyShaderModule(device, encoderAnalyzeShader, nullptr);
+        if (device && encoderPackShader) vkDestroyShaderModule(device, encoderPackShader, nullptr);
         if (device && shader) vkDestroyShaderModule(device, shader, nullptr);
         if (device && pipelineLayout) vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         if (device && setLayout) vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
@@ -426,6 +434,56 @@ struct Runtime {
             queryInfo.queryCount = iterations * 5;
             check(vkCreateQueryPool(device, &queryInfo, nullptr, &timestampPool), "create timestamp query pool");
         }
+    }
+
+    void initEncoderPipelines(const std::vector<std::uint8_t>& analyze,
+                              const std::vector<std::uint8_t>& pack) {
+        if (analyze.size() % 4 || pack.size() % 4)
+            throw std::runtime_error("BP16 encoder SPIR-V size is not word aligned");
+        VkDescriptorSetLayoutBinding bindings[4]{};
+        for (std::uint32_t i = 0; i < 4; ++i) {
+            bindings[i].binding = i;
+            bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            bindings[i].descriptorCount = 1;
+            bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        }
+        VkDescriptorSetLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        layoutInfo.bindingCount = 4;
+        layoutInfo.pBindings = bindings;
+        check(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &setLayout), "create encoder descriptor layout");
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &setLayout;
+        check(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout),
+              "create encoder pipeline layout");
+        auto createPipeline = [&](const std::vector<std::uint8_t>& code, const char* entry,
+                                  VkShaderModule& module, VkPipeline& result) {
+            VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+            shaderInfo.codeSize = code.size();
+            shaderInfo.pCode = reinterpret_cast<const std::uint32_t*>(code.data());
+            check(vkCreateShaderModule(device, &shaderInfo, nullptr, &module), "create BP16 encoder shader module");
+            VkComputePipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+            pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            pipelineInfo.stage.module = module;
+            pipelineInfo.stage.pName = entry;
+            pipelineInfo.layout = pipelineLayout;
+            check(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &result),
+                  "create BP16 encoder compute pipeline");
+        };
+        createPipeline(analyze, "AnalyzeMain", encoderAnalyzeShader, encoderAnalyzePipeline);
+        createPipeline(pack, "PackMain", encoderPackShader, encoderPackPipeline);
+        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
+        VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        poolInfo.maxSets = 1;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &size;
+        check(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool), "create encoder descriptor pool");
+        VkCommandPoolCreateInfo commandInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+        commandInfo.queueFamilyIndex = queueFamily;
+        check(vkCreateCommandPool(device, &commandInfo, nullptr, &commandPool), "create encoder command pool");
+        VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        check(vkCreateFence(device, &fenceInfo, nullptr, &fence), "create encoder fence");
     }
 };
 
@@ -1083,6 +1141,346 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
               << " across " << iterations << " iterations\n";
 }
 
+std::uint64_t submitAndWait(Runtime& runtime, VkCommandBuffer command, const char* label) {
+    check(vkEndCommandBuffer(command), "end BP16 encoder command buffer");
+    check(vkResetFences(runtime.device, 1, &runtime.fence), "reset BP16 encoder fence");
+    VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &command;
+    const auto start = std::chrono::steady_clock::now();
+    const auto submitted = vkQueueSubmit(runtime.queue, 1, &submit, runtime.fence);
+    if (submitted != VK_SUCCESS) runtime.abandonOnExit = true;
+    check(submitted, "submit BP16 encoder pass");
+    const auto waited = vkWaitForFences(runtime.device, 1, &runtime.fence, VK_TRUE,
+                                        WaitNanoseconds);
+    if (waited != VK_SUCCESS) runtime.abandonOnExit = true;
+    check(waited, "wait for BP16 encoder pass");
+    (void)label;
+    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - start).count());
+}
+
+VkCommandBuffer beginEncoderCommand(Runtime& runtime) {
+    VkCommandBufferAllocateInfo allocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    allocation.commandPool = runtime.commandPool;
+    allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocation.commandBufferCount = 1;
+    VkCommandBuffer command{};
+    check(vkAllocateCommandBuffers(runtime.device, &allocation, &command),
+          "allocate BP16 encoder command buffer");
+    VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    check(vkBeginCommandBuffer(command, &begin), "begin BP16 encoder command buffer");
+    return command;
+}
+
+void runEncoder(Runtime& runtime, const std::vector<std::uint8_t>& raw,
+                const std::vector<std::uint8_t>& expected, std::uint32_t iterations) {
+    if (raw.empty() || raw.size() > zvram::bp16::MaxRawBytes ||
+        raw.size() % zvram::bp16::RawBytesPerBlock)
+        throw std::runtime_error("BP16 encoder raw input must be a positive block multiple up to 32 MiB");
+    zvram::bp16::FrameInfo expectedInfo{};
+    if (!zvram::bp16::validate(expected.data(), expected.size(),
+                               static_cast<std::uint32_t>(raw.size()), &expectedInfo))
+        throw std::runtime_error("expected output is not a canonical BP16 frame for this raw input");
+    const auto rawBytes = static_cast<VkDeviceSize>(raw.size());
+    const auto blockCount = static_cast<std::uint32_t>(raw.size() / 256u);
+    const auto metadataBytes = static_cast<VkDeviceSize>(blockCount) * 4u;
+    const auto analyzeGroups = (blockCount + 255u) / 256u;
+    const auto packGroups = (blockCount * 64u + 255u) / 256u;
+    if (rawBytes > runtime.properties.limits.maxStorageBufferRange ||
+        metadataBytes > runtime.properties.limits.maxStorageBufferRange ||
+        analyzeGroups > runtime.properties.limits.maxComputeWorkGroupCount[0] ||
+        packGroups > runtime.properties.limits.maxComputeWorkGroupCount[0] ||
+        runtime.properties.limits.maxComputeWorkGroupInvocations < 256 ||
+        runtime.properties.limits.maxComputeWorkGroupSize[0] < 256)
+        throw std::runtime_error("BP16 encoder exceeds selected device compute/storage limits");
+
+    const auto hostCoherent = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    const auto hostCachedCoherent = hostCoherent | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+    Buffer upload, input, metadata;
+    upload.init(runtime, rawBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, hostCoherent);
+    input.init(runtime, rawBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    metadata.init(runtime, metadataBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                  hostCachedCoherent, VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if ((metadata.memoryFlags & hostCachedCoherent) != hostCachedCoherent)
+        throw std::runtime_error("BP16 encoder requires HOST_CACHED|HOST_COHERENT metadata memory");
+    std::memcpy(upload.mapped, raw.data(), raw.size());
+
+    VkDescriptorSetAllocateInfo setInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    setInfo.descriptorPool = runtime.descriptorPool;
+    setInfo.descriptorSetCount = 1;
+    setInfo.pSetLayouts = &runtime.setLayout;
+    VkDescriptorSet set{};
+    check(vkAllocateDescriptorSets(runtime.device, &setInfo, &set), "allocate encoder descriptor set");
+    Buffer* boundBuffers[4]{&input, &metadata, &metadata, &metadata};
+    VkDescriptorBufferInfo bufferInfos[4]{};
+    VkWriteDescriptorSet writes[4]{};
+    for (std::uint32_t i = 0; i < 4; ++i) {
+        bufferInfos[i] = {boundBuffers[i]->buffer, 0, boundBuffers[i]->descriptorSize};
+        writes[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        writes[i].dstSet = set;
+        writes[i].dstBinding = i;
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[i].pBufferInfo = &bufferInfos[i];
+    }
+    vkUpdateDescriptorSets(runtime.device, 4, writes, 0, nullptr);
+
+    // Initial fixture upload is deliberately outside both encoder timings.
+    auto command = beginEncoderCommand(runtime);
+    const VkBufferCopy uploadRegion{0, 0, rawBytes};
+    vkCmdCopyBuffer(command, upload.buffer, input.buffer, 1, &uploadRegion);
+    VkBufferMemoryBarrier inputReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    inputReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    inputReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    inputReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    inputReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    inputReady.buffer = input.buffer;
+    inputReady.offset = 0;
+    inputReady.size = rawBytes;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr,
+                         1, &inputReady, 0, nullptr);
+    const auto uploadWaitNs = submitAndWait(runtime, command, "raw upload");
+    vkFreeCommandBuffers(runtime.device, runtime.commandPool, 1, &command);
+    std::cout << "encoder-input-upload-submit-wait-ns=" << uploadWaitNs << " (excluded)\n";
+
+    std::vector<std::uint64_t> analyzeNs, prefixNs, ownerNs, packNs, totalNs;
+    analyzeNs.reserve(iterations);
+    prefixNs.reserve(iterations);
+    ownerNs.reserve(iterations);
+    packNs.reserve(iterations);
+    totalNs.reserve(iterations);
+    std::vector<std::uint8_t> finalFrame;
+    for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+        const auto totalStart = std::chrono::steady_clock::now();
+        command = beginEncoderCommand(runtime);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.encoderAnalyzePipeline);
+        vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.pipelineLayout,
+                                0, 1, &set, 0, nullptr);
+        vkCmdDispatch(command, analyzeGroups, 1, 1);
+        VkBufferMemoryBarrier metadataReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        metadataReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        metadataReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        metadataReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        metadataReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        metadataReady.buffer = metadata.buffer;
+        metadataReady.offset = 0;
+        metadataReady.size = metadataBytes;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr,
+                             1, &metadataReady, 0, nullptr);
+        analyzeNs.push_back(submitAndWait(runtime, command, "analysis"));
+        vkFreeCommandBuffers(runtime.device, runtime.commandPool, 1, &command);
+
+        const auto prefixStart = std::chrono::steady_clock::now();
+        std::vector<std::uint8_t> prefix(zvram::bp16::HeaderBytes +
+                                         std::size_t(blockCount) * zvram::bp16::DescriptorBytes);
+        auto* prefixData = prefix.data();
+        zvram::bp16::store32(prefixData, zvram::bp16::Magic);
+        zvram::bp16::store32(prefixData + 4, zvram::bp16::Version);
+        zvram::bp16::store32(prefixData + 8, static_cast<std::uint32_t>(rawBytes));
+        zvram::bp16::store32(prefixData + 12, blockCount);
+        const auto* metadataData = static_cast<const std::uint8_t*>(metadata.mapped);
+        std::uint64_t nextPayload = prefix.size();
+        for (std::uint32_t block = 0; block < blockCount; ++block) {
+            const auto packed = zvram::bp16::load32(metadataData + std::size_t(block) * 4u);
+            const auto mask = static_cast<std::uint16_t>(packed >> 16);
+            const auto payloadBytes = std::uint64_t(16u * zvram::bp16::popcount16(mask));
+            if (nextPayload > MaxBP16FrameBytes || payloadBytes > MaxBP16FrameBytes - nextPayload)
+                throw std::runtime_error("BP16 encoder prefix exceeds bounded frame size");
+            const auto descriptor = zvram::bp16::HeaderBytes +
+                                    std::size_t(block) * zvram::bp16::DescriptorBytes;
+            zvram::bp16::store32(prefixData + descriptor, static_cast<std::uint32_t>(nextPayload));
+            zvram::bp16::store32(prefixData + descriptor + 4, packed);
+            nextPayload += payloadBytes;
+        }
+        if (nextPayload > runtime.properties.limits.maxStorageBufferRange ||
+            nextPayload > expected.size())
+            throw std::runtime_error("BP16 encoder output exceeds expected/device storage bounds");
+        prefixNs.push_back(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - prefixStart).count()));
+
+        const auto ownerStart = std::chrono::steady_clock::now();
+        Buffer frame;
+        frame.init(runtime, nextPayload, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                   hostCoherent, VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        std::memcpy(frame.mapped, prefix.data(), prefix.size());
+        ownerNs.push_back(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - ownerStart).count()));
+        bufferInfos[2] = {frame.buffer, 0, frame.descriptorSize};
+        writes[2].pBufferInfo = &bufferInfos[2];
+        vkUpdateDescriptorSets(runtime.device, 1, &writes[2], 0, nullptr);
+
+        command = beginEncoderCommand(runtime);
+        VkBufferMemoryBarrier prefixReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        prefixReady.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        prefixReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        prefixReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        prefixReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        prefixReady.buffer = frame.buffer;
+        prefixReady.offset = 0;
+        prefixReady.size = nextPayload;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_HOST_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr,
+                             1, &prefixReady, 0, nullptr);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.encoderPackPipeline);
+        vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.pipelineLayout,
+                                0, 1, &set, 0, nullptr);
+        vkCmdDispatch(command, packGroups, 1, 1);
+        VkBufferMemoryBarrier frameReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        frameReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        frameReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        frameReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        frameReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        frameReady.buffer = frame.buffer;
+        frameReady.offset = 0;
+        frameReady.size = nextPayload;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr,
+                             1, &frameReady, 0, nullptr);
+        packNs.push_back(submitAndWait(runtime, command, "pack"));
+        vkFreeCommandBuffers(runtime.device, runtime.commandPool, 1, &command);
+        totalNs.push_back(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - totalStart).count()));
+
+        finalFrame.assign(static_cast<const std::uint8_t*>(frame.mapped),
+                          static_cast<const std::uint8_t*>(frame.mapped) + nextPayload);
+        if (finalFrame.size() != expected.size() || finalFrame != expected)
+            throw std::runtime_error("GPU-encoded BP16 frame differs byte-for-byte from CPU reference");
+        zvram::bp16::FrameInfo resultInfo{};
+        if (!zvram::bp16::validate(finalFrame.data(), finalFrame.size(),
+                                   static_cast<std::uint32_t>(raw.size()), &resultInfo))
+            throw std::runtime_error("GPU output failed canonical BP16 validation");
+        std::vector<std::uint8_t> decoded(raw.size());
+        if (!zvram::bp16::decode(finalFrame.data(), finalFrame.size(), decoded.data(), decoded.size()) ||
+            decoded != raw)
+            throw std::runtime_error("CPU decode of GPU-encoded BP16 frame differs from raw input");
+    }
+
+    Buffer rawReadback;
+    const auto readbackAllocationStart = std::chrono::steady_clock::now();
+    rawReadback.init(runtime, rawBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     hostCachedCoherent, VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    const auto readbackAllocationNs = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - readbackAllocationStart).count());
+    if ((rawReadback.memoryFlags & hostCachedCoherent) != hostCachedCoherent)
+        throw std::runtime_error("BP16 CPU baseline requires HOST_CACHED|HOST_COHERENT readback memory");
+    const auto baselineStart = std::chrono::steady_clock::now();
+    command = beginEncoderCommand(runtime);
+    const VkBufferCopy baselineCopy{0, 0, rawBytes};
+    vkCmdCopyBuffer(command, input.buffer, rawReadback.buffer, 1, &baselineCopy);
+    VkBufferMemoryBarrier baselineReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    baselineReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    baselineReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    baselineReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    baselineReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    baselineReady.buffer = rawReadback.buffer;
+    baselineReady.offset = 0;
+    baselineReady.size = rawBytes;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr,
+                         1, &baselineReady, 0, nullptr);
+    const auto baselineReadbackNs = submitAndWait(runtime, command, "baseline raw readback");
+    vkFreeCommandBuffers(runtime.device, runtime.commandPool, 1, &command);
+    if (std::memcmp(rawReadback.mapped, raw.data(), raw.size()) != 0)
+        throw std::runtime_error("CPU baseline raw readback differs from original fixture");
+
+    std::vector<std::uint8_t> cpuFrame;
+    const auto cpuEncodeStart = std::chrono::steady_clock::now();
+    if (!zvram::bp16::encodeFast(static_cast<const std::uint8_t*>(rawReadback.mapped),
+                                 raw.size(), cpuFrame, 32))
+        throw std::runtime_error("CPU BP16 baseline encode failed");
+    const auto cpuEncodeNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - cpuEncodeStart).count());
+    Buffer cpuOwner;
+    const auto cpuOwnerStart = std::chrono::steady_clock::now();
+    cpuOwner.init(runtime, cpuFrame.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                  hostCachedCoherent, VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if ((cpuOwner.memoryFlags & hostCachedCoherent) != hostCachedCoherent)
+        throw std::runtime_error("BP16 CPU baseline requires HOST_CACHED|HOST_COHERENT output memory");
+    std::memcpy(cpuOwner.mapped, cpuFrame.data(), cpuFrame.size());
+    const auto cpuOwnerCopyNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - cpuOwnerStart).count());
+    const auto baselineTotalNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - baselineStart).count());
+    if (cpuFrame != expected || cpuFrame != finalFrame)
+        throw std::runtime_error("CPU baseline and expected frame differ byte-for-byte");
+    std::cout << "bp16-gpu-encode iterations=" << iterations
+              << " raw-bytes=" << raw.size() << " output-bytes=" << expected.size()
+              << " analyze-groups=" << analyzeGroups << " pack-groups=" << packGroups << '\n'
+              << "gpu-encode-submit-wait-plus-prefix-and-output-allocation-ns=";
+    for (std::size_t i = 0; i < totalNs.size(); ++i) std::cout << (i ? "," : "") << totalNs[i];
+    std::cout << " analyze-submit-wait-ns=";
+    for (std::size_t i = 0; i < analyzeNs.size(); ++i) std::cout << (i ? "," : "") << analyzeNs[i];
+    std::cout << " cpu-prefix-ns=";
+    for (std::size_t i = 0; i < prefixNs.size(); ++i) std::cout << (i ? "," : "") << prefixNs[i];
+    std::cout << " host-output-allocation-copy-ns=";
+    for (std::size_t i = 0; i < ownerNs.size(); ++i) std::cout << (i ? "," : "") << ownerNs[i];
+    std::cout << " pack-submit-wait-ns=";
+    for (std::size_t i = 0; i < packNs.size(); ++i) std::cout << (i ? "," : "") << packNs[i];
+    std::cout << "\ncpu-baseline-source=resident-gpu-buffer workers=32 raw-bytes=" << raw.size()
+              << " cached-readback-allocation-ns=" << readbackAllocationNs
+              << " readback-submit-wait-ns=" << baselineReadbackNs
+              << " encode-ns=" << cpuEncodeNs
+              << " cached-output-allocation-copy-ns=" << cpuOwnerCopyNs
+              << " total-readback-encode-output-ns=" << baselineTotalNs << '\n'
+              << "PASS: GPU BP16 encoder output matched CPU frame and decoded raw bytes exactly\n";
+}
+
+int runEncoderCommand(int argc, char** argv, int arg, bool gpu) {
+    ValidationCounts validation;
+    int status = 1;
+    try {
+        const auto analyze = readFile(argv[arg + 1], 4u * 1024u * 1024u);
+        const auto pack = readFile(argv[arg + 2], 4u * 1024u * 1024u);
+        const auto raw = readFile(argv[arg + 3], zvram::bp16::MaxRawBytes);
+        const auto expected = readFile(argv[arg + 4], MaxBP16FrameBytes);
+        auto validSpirv = [](const std::vector<std::uint8_t>& code) {
+            return code.size() >= 20 && code.size() % 4 == 0 &&
+                   zvram::gdeflate::loadLe32(code.data()) == 0x07230203u;
+        };
+        if (!validSpirv(analyze) || !validSpirv(pack))
+            throw std::runtime_error("invalid BP16 encoder SPIR-V module");
+        if (raw.empty() || raw.size() > zvram::bp16::MaxRawBytes ||
+            raw.size() % zvram::bp16::RawBytesPerBlock)
+            throw std::runtime_error("BP16 raw input must be a positive block multiple up to 32 MiB");
+        zvram::bp16::FrameInfo frame{};
+        if (!zvram::bp16::validate(expected.data(), expected.size(),
+                                   static_cast<std::uint32_t>(raw.size()), &frame))
+            throw std::runtime_error("expected output is not a canonical BP16 frame for raw input");
+        std::cout << "preflight codec=BP16-encoder blocks=" << frame.blockCount
+                  << " raw-bytes=" << raw.size() << " expected-frame-bytes=" << expected.size() << '\n';
+        if (!gpu) {
+            std::cout << "CPU-only BP16 encoder input preflight; GPU encoding is unverified\n";
+            status = 0;
+        } else {
+            const auto iterations = researchIterations();
+            Runtime runtime(validation);
+            runtime.initInstance();
+            runtime.pickDevice(true);
+            runtime.initEncoderPipelines(analyze, pack);
+            runEncoder(runtime, raw, expected, iterations);
+            status = 0;
+        }
+    } catch (const std::exception& error) {
+        std::cerr << "FAIL: " << error.what() << '\n';
+    }
+    std::cout << "validation-errors=" << validation.errors.load()
+              << " validation-vuids=" << validation.vuids.load() << '\n';
+    if (validation.errors.load()) return 1;
+    (void)argc;
+    return status;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1166,9 +1564,12 @@ int main(int argc, char** argv) {
         else break;
         ++arg;
     }
-    const bool bp16Args = bp16 && argc == arg + 4 &&
+    const bool bp16Encode = bp16 && argc == arg + 5 &&
+        (std::strcmp(argv[arg], "--encode-preflight-only") == 0 ||
+         std::strcmp(argv[arg], "--gpu-encode-bounded-smoke") == 0);
+    const bool bp16Args = bp16 && ((argc == arg + 4 &&
         (std::strcmp(argv[arg], "--preflight-only") == 0 ||
-         std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0);
+         std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0)) || bp16Encode);
     const bool regular = argc == 5 &&
                          (std::strcmp(argv[1], "--preflight-only") == 0 ||
                           std::strcmp(argv[1], "--gpu-smoke") == 0 ||
@@ -1176,8 +1577,19 @@ int main(int argc, char** argv) {
                           std::strcmp(argv[1], "--software-smoke") == 0);
     if ((!bp16 && !regular) || (bp16 && !bp16Args)) {
         std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n"
-                     "       vulkan_gdeflate_smoke --codec bp16 [--host-input|--import-host-input|--allocated-host-input] [--resident-imports 0..1024] [--resident-import-bytes 4096..33554432] [--host-copy-iterations 1..256] [--host-copy-workers 1..8] [--device-address] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
+                     "       vulkan_gdeflate_smoke --codec bp16 [--host-input|--import-host-input|--allocated-host-input] [--resident-imports 0..1024] [--resident-import-bytes 4096..33554432] [--host-copy-iterations 1..256] [--host-copy-workers 1..8] [--device-address] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n"
+                     "       vulkan_gdeflate_smoke --codec bp16 --encode-preflight-only|--gpu-encode-bounded-smoke ANALYZE.spv PACK.spv RAW.bin EXPECTED.bp16\n";
         return 2;
+    }
+    if (bp16Encode) {
+        if (hostInput || importHostInput || allocatedHostInput || freshOutput || robustness2 ||
+            deviceAddress || residentImportsSpecified || residentImportBytesSpecified ||
+            hostCopyIterationsSpecified || hostCopyWorkersSpecified) {
+            std::cerr << "FAIL: decoder input and allocation options do not apply to BP16 encoder mode\n";
+            return 2;
+        }
+        return runEncoderCommand(argc, argv, arg,
+            std::strcmp(argv[arg], "--gpu-encode-bounded-smoke") == 0);
     }
     const bool singleTile = !bp16 && std::strcmp(argv[arg], "--gpu-smoke") == 0;
     const bool gpu = singleTile || std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0;

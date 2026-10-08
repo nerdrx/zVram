@@ -1,0 +1,15 @@
+preflight codec=BP16-encoder blocks=131072 raw-bytes=33554432 expected-frame-bytes=29202816
+validation=on debug-utils=on
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=0x1002 type=2 queue-family=0 shaderInt64=not-required robustness2=disabled bufferDeviceAddress=disabled execution=GPU-compute default-subgroup=64 supported-stages=0x3fff supported-operations=0x6ff subgroup-range=32-64
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=2 flags=0x6 host-visible=yes device-local=no
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=524288 allocation-bytes=524288 memory-type=5 flags=0xe host-visible=yes device-local=no
+encoder-input-upload-submit-wait-ns=1577447 (excluded)
+buffer bytes=29202816 allocation-bytes=29202816 memory-type=5 flags=0xe host-visible=yes device-local=no
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=5 flags=0xe host-visible=yes device-local=no
+buffer bytes=29202816 allocation-bytes=29202816 memory-type=5 flags=0xe host-visible=yes device-local=no
+bp16-gpu-encode iterations=1 raw-bytes=33554432 output-bytes=29202816 analyze-groups=512 pack-groups=32768
+gpu-encode-submit-wait-plus-prefix-and-output-allocation-ns=5154072 analyze-submit-wait-ns=400001 cpu-prefix-ns=370762 host-output-allocation-copy-ns=2897532 pack-submit-wait-ns=1310106
+cpu-baseline-source=resident-gpu-buffer workers=32 raw-bytes=33554432 cached-readback-allocation-ns=3013253 readback-submit-wait-ns=1394226 encode-ns=4038237 cached-output-allocation-copy-ns=3434194 total-readback-encode-output-ns=10356063
+PASS: GPU BP16 encoder output matched CPU frame and decoded raw bytes exactly
+validation-errors=0 validation-vuids=0

@@ -1,0 +1,21 @@
+Command: ZVRAM_RESEARCH_ITERATIONS=1 /tmp/zvram-bp16-encoder-smoke --codec bp16 --gpu-encode-bounded-smoke research/bp16/encode_analyze.spv research/bp16/encode_pack.spv build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16
+Environment: VK_LAYER_VALIDATE_SYNC=1; no loader/ICD filtering; UTC 2026-10-08 03:11 UTC
+
+preflight codec=BP16-encoder blocks=131072 raw-bytes=33554432 expected-frame-bytes=29202816
+Vulkan validation error: loader_create_instance_chain: Failed to find 'vkGetInstanceProcAddr' in layer "liblsfg-vk-layer.so"
+validation=on debug-utils=on
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=0x1002 type=2 queue-family=0 shaderInt64=not-required robustness2=disabled bufferDeviceAddress=disabled execution=GPU-compute default-subgroup=64 supported-stages=0x3fff supported-operations=0x6ff subgroup-range=32-64
+Vulkan validation error: loader_create_device_chain: Failed to find 'vkGetInstanceProcAddr' in layer "liblsfg-vk-layer.so".  Skipping layer.
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=2 flags=0x6 host-visible=yes device-local=no
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=524288 allocation-bytes=524288 memory-type=5 flags=0xe host-visible=yes device-local=no
+encoder-input-upload-submit-wait-ns=3349584 (excluded)
+buffer bytes=29202816 allocation-bytes=29202816 memory-type=5 flags=0xe host-visible=yes device-local=no
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=5 flags=0xe host-visible=yes device-local=no
+buffer bytes=29202816 allocation-bytes=29202816 memory-type=5 flags=0xe host-visible=yes device-local=no
+bp16-gpu-encode iterations=1 raw-bytes=33554432 output-bytes=29202816 analyze-groups=512 pack-groups=32768
+gpu-encode-submit-wait-plus-prefix-and-output-allocation-ns=4839550 analyze-submit-wait-ns=416481 cpu-prefix-ns=374252 host-output-allocation-copy-ns=2479810 pack-submit-wait-ns=1306205
+cpu-baseline-source=resident-gpu-buffer workers=32 raw-bytes=33554432 readback-submit-wait-ns=1512747 encode-ns=3083753 cached-output-allocation-copy-ns=3554355 total-readback-encode-output-ns=12638473
+PASS: GPU BP16 encoder output matched CPU frame and decoded raw bytes exactly
+validation-errors=2 validation-vuids=0
+Exit status: 1. The GPU byte check passed, but this attempt is excluded as a clean validation result due to implicit-layer loader errors.
