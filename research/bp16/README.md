@@ -225,6 +225,13 @@ at the RAM floor, so this is not a controlled allocator-speed comparison. It
 remains separate from and below the best 12-token short-run result; the
 thresholds are not application defaults. [Tuned run and monitored baseline](../../VALIDATION.md#92-token-bp16-run-with-child-only-allocator-thresholds).
 
+The same thresholds were used in two short 12-token runs: normal upload reuse
+measured **0.5423239 tokens/s** and the cached-upload preference measured
+**0.5249606**. The cached preference did not win this sequential pair. Both are
+below the earlier best short run and used a later profiling runtime build, so
+they are not matched comparisons and do not justify changing defaults.
+[Pair archive](../../validation/bp16-short-mmap-threshold-comparison/README.md).
+
 At source `23c05842cebf2fe3c7093191ba7f448626505d6e`, focused GPU checks passed
 8/8 in 7.30 s with the default budget and 8/8 in 7.08 s with the cache
 disabled; CPU budget-parser/ownership checks passed. The earlier 120 CTests,

@@ -1,0 +1,5 @@
+{
+  "build/bp16-codec/libzvram_layer.so": "dc3fb518c5df65cc4b302abf89f2a8d502fb96d5b122ee2e4485ec0b68b1f46f",
+  "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+  "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+}

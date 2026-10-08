@@ -1,0 +1,29 @@
+{
+  "scope": "Sequential 12-token full-model pair; same loaded runtime, production BP16 shader, 128 KiB child-only glibc mmap/trim thresholds; no causal performance claim.",
+  "runs": [
+    {
+      "name": "internlm-bp16-cold24-upload8-mmap",
+      "mode": "normal",
+      "decode_ms": 22127.0,
+      "tokens_per_second": 0.5423238577303746,
+      "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+      "source_commit": "f953ceb32231f9ef2b35668a97e27d626f1fb1c2",
+      "min_available_mib": 20412,
+      "swap_growth_mib": 749
+    },
+    {
+      "name": "internlm-bp16-cold24-upload8-cached-mmap",
+      "mode": "cached",
+      "decode_ms": 22858.86,
+      "tokens_per_second": 0.5249605623377543,
+      "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+      "source_commit": "f953ceb32231f9ef2b35668a97e27d626f1fb1c2",
+      "min_available_mib": 20154,
+      "swap_growth_mib": 1351
+    }
+  ],
+  "shared_output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "runtime_code_commit": "4d1b704",
+  "runtime_library_sha256": "dc3fb518c5df65cc4b302abf89f2a8d502fb96d5b122ee2e4485ec0b68b1f46f",
+  "shader_sha256": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854"
+}

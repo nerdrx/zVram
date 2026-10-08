@@ -1,0 +1,7 @@
+{
+  "runtime_code_commit": "4d1b704",
+  "runtime_library_sha256": "dc3fb518c5df65cc4b302abf89f2a8d502fb96d5b122ee2e4485ec0b68b1f46f",
+  "shader_sha256": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+  "allocator_environment": "MALLOC_ARENA_MAX=2, MALLOC_MMAP_THRESHOLD_=131072, MALLOC_TRIM_THRESHOLD_=131072",
+  "upload_preference": "normal reusable upload"
+}

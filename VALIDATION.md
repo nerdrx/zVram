@@ -1354,6 +1354,18 @@ throughput breakdown.
 [Tuned run and monitor archive](validation/internlm-bp16-cold24-upload8-long128-mmap/README.md),
 [threshold-unset guard stop and memory samples](validation/internlm-bp16-cold24-upload8-long128-monitored-abort/README.md).
 
+### BP16 short pair with child-only allocator thresholds
+
+Two 12-token runs used these child-only thresholds and the same loaded runtime:
+the normal reusable upload path measured **0.5423239 tokens/s** (22,127.00 ms),
+while the cached-upload preference measured **0.5249606** (22,858.86 ms). Both
+matched the same exact output, offloaded **49/49** layers, and had zero GPU
+fallback. The cached preference did not win in this sequential pair; clocks and
+background activity were uncontrolled. Both rates are below the separate
+**0.61020197** short-run result, which used an earlier runtime build, so these
+are not matched comparisons. No allocator or cache default changed.
+[Pair summary and per-run archives](validation/bp16-short-mmap-threshold-comparison/README.md).
+
 ### Bounded imported BP16 host input and current regression checks
 
 The standalone research decoder now has an opt-in `--import-host-input` path using

@@ -308,6 +308,13 @@ sequential long-run observations are distinct from the 12-token **0.61020**
 short-run BP16 result, which remains the best measured short run. The allocator
 thresholds are not application defaults. [Long-run evidence and limits](VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
 
+Two separate 12-token runs with the same child-only thresholds measured
+**0.54232 tokens/s** with normal upload reuse and **0.52496** with the cached
+upload preference. The cached preference did not win this sequential pair;
+these rates are below the best short-run result and used a later profiling
+runtime build, so they are not matched comparisons or a reason to change
+defaults. [Pair details](VALIDATION.md#bp16-short-pair-with-child-only-allocator-thresholds).
+
 A separate zVram virtual-native-spill run, without automatic snapshots or
 compression, measured 1.69936 tokens/s. It matches the fresh native rate, but
 uses driver VRAM/GTT spillover rather than compressed restore; this sequential,
