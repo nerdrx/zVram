@@ -12,6 +12,9 @@ with a 32 MiB local-owner limit and an 8 MiB shared allocation limit.
   diagnostics passed.
 - `local-owner-fixture-liveheadroom.log` records a later full-helper PASS for
   the local-owner path after `7826856`.
+- `local-owner-cpu12-gpu2.log` records the focused 14/14 CPU/GPU CTest suite
+  after metadata fix `427d93a` / `e394ea8` (12 CPU checks and two owner GPU
+  fixtures; 5.41 s).
 
 The fused-four BP16 shader design from `c3f8850` remains research-only. A later
 GPU component run decoded four distinct canonical 32 MiB BP16 frames in one

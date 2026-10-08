@@ -1,0 +1,14 @@
+{
+  "scope": "Experimental local VRAM GPU-encoded BP16 owners13GiB; raw6GiB; combined19GiB; cold/totalowner32GiB; live nativeheadroom;  Clean-first resident victim ranking plus synchronous GPU BP16 encoding; bothpasses fenced, finalcanonicalownedframe; Immutable-owner validation cache plus26GiB cold/owner ceiling (samequota); restored knownsafe19GiB resident hardcap and2.5GiB reserve;LFU;32encoder/8upload;fixed128KiB childallocator;16GiB availableRAMguard;sequential unlocked clocks;not isolated attribution",
+  "prompt_utf8": "Write a 300-word story about a fox exploring a forest. Continue the story until you have written at least 300 words.\n",
+  "source_sha256": {
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "layer.cpp": "40f401ac38a2751999bfdae2e7c996bb329db2422720344fbf941fc49624f1a1",
+    "gdeflate_gpu.hpp": "9bad9ca1a769ca45f2e2c4c24e20a3beabed57cdd33690e462be6a2c8e0ab5fd",
+    "submission_hooks.inc": "846ce6984b8612cd83c2b4909d59819012d3810b39250dc968e8ec16e9309efc",
+    "check_vulkan_idle_model.py": "7063006f7e4243728f79ee8a0383408ee04ca75ee727ec6f637bc4be6b8d0f2e"
+  },
+  "runs": {},
+  "error": "automatic exited with status -6"
+}

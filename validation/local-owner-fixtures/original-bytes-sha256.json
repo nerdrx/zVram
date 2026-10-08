@@ -25,5 +25,9 @@
   "bp16-fused4-component.log": {
     "bytes": 2246,
     "sha256": "321eae067c85e4329069ce7a810052d59f6042028d0b6c0d7f0e180474f5e34f"
+  },
+  "local-owner-cpu12-gpu2.log": {
+    "bytes": 1763,
+    "sha256": "87bc9e034d5c99676b919c5749c30cb0ce24cd57792e9aab748b89a61335708a"
   }
 }
