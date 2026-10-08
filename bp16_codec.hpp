@@ -115,6 +115,33 @@ inline void packBlock(std::uint8_t* payload, const std::uint8_t* raw,
     }
 }
 
+#if ZVRAM_BP16_X86_BMI2
+template<>
+__attribute__((target("bmi2")))
+inline void packBlock<gatherBmi2>(std::uint8_t* payload, const std::uint8_t* raw,
+                                  std::uint16_t mask, unsigned bitsPerWord) noexcept {
+    if (!bitsPerWord) return;
+    if (bitsPerWord == 16) {
+        std::memcpy(payload, raw, RawBytesPerBlock);
+        return;
+    }
+    std::uint64_t accumulator = 0;
+    unsigned filled = 0;
+    std::size_t outputWord = 0;
+    for (std::size_t i = 0; i < WordsPerBlock; ++i) {
+        const auto compact = static_cast<std::uint16_t>(_pext_u32(load16(raw + i * 2), mask));
+        accumulator |= std::uint64_t(compact) << filled;
+        filled += bitsPerWord;
+        if (filled >= 32) {
+            store32(payload + outputWord * 4, static_cast<std::uint32_t>(accumulator));
+            ++outputWord;
+            accumulator >>= 32;
+            filled -= 32;
+        }
+    }
+}
+#endif
+
 struct JoinThreads {
     std::vector<std::thread>& threads;
     void join() noexcept {
