@@ -253,3 +253,9 @@ BP16 host input is enabled. The full-model trial preserved exact output with no
 GPU fallback, but measured **0.3941293 tokens/s**, below the separate best
 **0.4626948 tokens/s** result. These sequential, uncontrolled runs do not show
 a speed improvement. [Run and correctness evidence](../../VALIDATION.md#bp16-cached-direct-host-upload-preference).
+
+A later allocated-host run with sampled profiling completed at **0.3967118
+tokens/s**, with the same exact output, 49/49 layers and zero fallback. The
+last sampled profile covered 8,304 calls, short of the final snapshot's 8,363
+GPU restores, so its phase totals are partial. It does not replace the best
+**0.4626948 tokens/s** result or prove a speed gain. [Run limits and archive](../../VALIDATION.md#bp16-allocated-host-run-with-sampled-profiling).

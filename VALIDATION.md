@@ -1153,6 +1153,26 @@ inference performance proof.
 [run result](validation/internlm-bp16-cached-upload/result.json.gz), and
 [full stderr](validation/internlm-bp16-cached-upload/automatic.stderr.txt.gz).
 
+### BP16 allocated-host run with sampled profiling
+
+A separate sampled-profile run used the 8 GiB bounded allocated-host cache with
+the same 19 GiB tracked cap, 2.5 GiB reserve, and 32 BP16 workers. It completed
+12 decode runs in **30,248.66 ms** (**0.3967118 tokens/s**), with the same exact
+output SHA-256, **49/49** layers, and zero GPU fallback. Minimum available RAM
+was **18,651 MiB**; swap grew by **4,316 MiB**. The final recorded live cache
+charge was **8,586,139,232 bytes** of the **8,589,934,592-byte** cap; cumulative
+accepted-use traffic is not resident memory.
+
+The last sampled profile covered **8,304** calls, while the final snapshot
+recorded **8,363** GPU restores. The application exited without a device
+destruction profile record, so these sampled phase totals are partial and are
+not presented as final totals. This sequential run does not replace the best
+measured **0.4626948 tokens/s** result or establish a speed improvement.
+
+[Sampled-run archive](validation/internlm-bp16-cache8g-sampled-profile/README.md),
+[result](validation/internlm-bp16-cache8g-sampled-profile/result.json.gz), and
+[full stderr](validation/internlm-bp16-cache8g-sampled-profile/automatic.stderr.txt.gz).
+
 ### Same-prompt 92-token native/allocated-host comparison
 
 A separate longer generation used the same prompt, temperature 0, seed 1,
