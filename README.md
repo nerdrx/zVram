@@ -326,13 +326,12 @@ measured **0.85462257 tokens/s** versus **1.10252711** with GPU encoding; this
 sequential pair also does not isolate cause. The 12-token **0.61020197 tokens/s**
 short-run result remains separate. [Latest encoder repeat and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md); [first encoder run](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md).
 
-A subsequent single run with the clean-first resident-victim policy measured
-**1.16969830 tokens/s**, about **6.09%** above the prior repeated 1.10252711
-rate, with exact matching output, 49/49 layers, and zero GPU restore fallback.
-Minimum available RAM was **28.43 GiB**; swap growth was **0 MiB**. This
-sequential observation had uncontrolled clocks and background activity, so it
-does not show that clean-first caused the difference; a same-profile repeat is
-pending. The policy remains experimental. [Run details and provenance](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md).
+Two clean-first resident-victim runs measured **1.16969830** and **1.17068766
+tokens/s**, about **6.1–6.2%** above the prior repeated 1.10252711 rate. Both
+preserved exact output, offloaded 49/49 layers, and had zero GPU restore fallback
+and zero swap growth; minimum available RAM was 28.43 and 27.77 GiB. These
+sequential runs had uncontrolled clocks/background activity, so they do not
+establish clean-first as the cause. The policy remains experimental. [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md).
 
 A same-prompt 92-token comparison produced identical stdout across 49/49 layers:
 **1.69935 tokens/s** native and **0.43978 tokens/s** allocated-host under the
