@@ -1,0 +1,9 @@
+{
+  "base_commit": "add294cfac3dce70f4a495280eba5153f2fdd167",
+  "sha256": {
+    "gdeflate_gpu.hpp": "36cb40673b9f6a3bdd2f4166e696402123baaa2056b2edb878a7bf10404ec53c",
+    "layer.cpp": "cb4ea89f1fe01b30126d7c6d1d96117302800dec193854d59e5227776f2a0cb4",
+    "build/bp16-codec/libzvram_layer.so": "8f92cd204cf2597378a5aa9b4145b947a5e9c12424a9c66095b6c84050b154ed",
+    "build/libzvram_layer.so": "49c5119a8bd87a153f17c9f4a4dad37b4fc551079f41c8ff2473a5afba28b19a"
+  }
+}

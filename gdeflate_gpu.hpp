@@ -204,6 +204,8 @@ public:
         std::uint64_t bp16BufferPrepareNs{};
         std::uint64_t bp16DirectCopyNs{};
         std::uint64_t submitWaitNs{};
+        std::uint64_t queueSubmitNs{};
+        std::uint64_t fenceWaitNs{};
         std::uint64_t gpuTransferNs{};
         std::uint64_t gpuDecodeNs{};
         std::uint64_t gpuFinishNs{};
@@ -798,6 +800,9 @@ public:
         submit.pCommandBuffers = &commandBuffer_;
         const auto submitWaitStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
         result = checked(api_.queueSubmit(queue_, 1, &submit, fence_));
+        if (profileEnabled_)
+            profile_.queueSubmitNs += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
         if (result != VK_SUCCESS) {
             // Submission failure leaves completion uncertain. Retain private
             // resources and any imported owners instead of overwriting in flight.
@@ -807,7 +812,11 @@ public:
                     std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
             return result;
         }
+        const auto fenceWaitStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
         result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
+        if (profileEnabled_)
+            profile_.fenceWaitNs += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - fenceWaitStarted).count());
         if (result != VK_SUCCESS) {
             markPoisoned(); // Work may still be in flight; never reset/free these objects.
             if (profileEnabled_)

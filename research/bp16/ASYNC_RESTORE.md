@@ -25,3 +25,11 @@ native backing, partial restore failures, multi-queue visibility, host-blocked
 queues, unknown accesses, owner lifetime, and budget accounting. Repeat the
 unchanged 92-token F16 model with exact output and zero fallback, alongside a
 fresh native reference. Keep it opt-in until those gates pass.
+
+## Measure before changing synchronization
+
+With `ZVRAM_VULKAN_GPU_PROFILE=1`, the new optional diagnostic build reports
+`GPU restore host split queue-submit-ns=... fence-wait-ns=...`. This separates
+downstream submission time from fence waiting while retaining the old combined
+metric. Hardware validation is pending; use the next guarded same-profile run
+to locate the delay before choosing an overlap implementation.
