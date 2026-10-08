@@ -348,6 +348,9 @@ live allocation. Invalid combinations fail initialization. CPU metadata
 validation was fixed in `427d93a` and covered by the fixtures in `e394ea8`.
 The CPU codec and ownership checks also passed [AddressSanitizer,
 UndefinedBehaviorSanitizer, and leak detection](../../validation/bp16-sanitizer-local-owner/README.md).
+A [current tiny fixture and isolated before-control build](../../validation/local-owner-metadata-control/README.md)
+are archived separately. The current fixture passed, but the paired GPU timing
+check was not launched while the GPU was busy; no model-speed claim follows.
 
 A 7 GiB local-owner + 12 GiB shared/raw trial completed exact output and 49/49
 layers with zero GPU restore fallback, but measured **1.076476 tokens/s**, below
