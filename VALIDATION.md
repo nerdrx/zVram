@@ -1732,4 +1732,8 @@ not isolate a causal speed effect. The fresh native reference was
 **1.69935367 tokens/s**; the older 0.43978 observation is about 2.5x slower by
 rate but is not a matched comparison. The 12-token **0.61020197 tokens/s**
 short run remains distinct. The original launch stopped at Ollama preflight
-before prompting, with no model result. [Latest repeat and provenance](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md) · [first run](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md) · [preflight diagnostic](validation/internlm-bp16-gpu-encode-cold26-preflight-abort/README.md).
+before prompting, with no model result. A same-runtime CPU-synchronous encoder
+comparator measured **0.85462257 tokens/s** versus **1.10252711** for GPU
+encoding; exact output and zero GPU restore fallback matched, but sequential
+uncontrolled runs do not isolate cause. [CPU comparator and provenance](validation/internlm-bp16-cpu-sync-cold26-owner26-resident19-lfu/README.md).
+[Latest repeat and provenance](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md) · [first run](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md) · [preflight diagnostic](validation/internlm-bp16-gpu-encode-cold26-preflight-abort/README.md).

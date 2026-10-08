@@ -310,8 +310,10 @@ residency, a 2.5 GiB reserve, 32 encoder/eight upload workers, LFU, and
 immutable-owner validation caching. The fresh native 92-token reference was
 **1.69935367 tokens/s**; the older 0.43978 observation is about 2.5x slower by
 rate, but these sequential runs had uncontrolled clocks and background activity
-and do not isolate causality. The 12-token **0.61020197 tokens/s** short-run
-result remains separate. [Latest encoder repeat and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md); [first encoder run](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md).
+and do not isolate causality. A same-runtime CPU-synchronous encoder comparator
+measured **0.85462257 tokens/s** versus **1.10252711** with GPU encoding; this
+sequential pair also does not isolate cause. The 12-token **0.61020197 tokens/s**
+short-run result remains separate. [Latest encoder repeat and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md); [first encoder run](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md).
 
 A same-prompt 92-token comparison produced identical stdout across 49/49 layers:
 **1.69935 tokens/s** native and **0.43978 tokens/s** allocated-host under the
