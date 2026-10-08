@@ -1,0 +1,55 @@
+{
+  "scope": "fresh native nodes=4 reference for unchanged InternLM2.5-20B F16, after BP16 runs; not a controlled matched comparison",
+  "source_commit": "7a7ac8a921d2824a1c4030ad45e5c922d28a6968",
+  "performance": {
+    "decode_ms": 7060.86,
+    "decode_runs": 12,
+    "tokens_per_second": 1.7,
+    "prompt_ms": 1364.24,
+    "restore_ms": []
+  },
+  "rate_calculation": "12 * 1000 / 7060.86 = 1.69951 tokens/s",
+  "returncode": 0,
+  "offload": [
+    49,
+    49
+  ],
+  "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "diagnostics": [],
+  "minimum_available_mib": 29286,
+  "swap_used_baseline_mib": 14421,
+  "swap_used_peak_mib": 14881,
+  "swap_growth_mib": 460,
+  "native_vulkan_memory": {
+    "resident-vram": 23155245056,
+    "memory-vram": 23155245056,
+    "resident-gtt": 16757374976,
+    "memory-gtt": 16757374976,
+    "unique_drm_clients": 1,
+    "resident_vram_present": true
+  },
+  "guards": {
+    "min_available_guard_mib": 16384,
+    "max_swap_growth_mib": 16384,
+    "reject_ollama_gpu": true,
+    "ollama_gpu_detected": []
+  },
+  "model_buffer_mib": [
+    36798.77
+  ],
+  "source_sha256": {
+    "layer.cpp": "dc976b8c422fa077009d6d435937d7d0243c37490ee879599e38d2ee18c3ce96",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "9f07b8f369e4ce0580d3597207b37546f64328c64c57d8e181f9b12478b55872"
+  },
+  "binary_sha256": {
+    "check_vulkan_idle_model.py": "9f07b8f369e4ce0580d3597207b37546f64328c64c57d8e181f9b12478b55872",
+    "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+  },
+  "limits": [
+    "The BP16 host-input and native runs were sequential, with clocks unlocked and desktop/background activity uncontrolled.",
+    "Native VRAM/GTT placement differs from zVram tracked-residency behavior; this is not a controlled codec comparison.",
+    "This result is a reference measurement, not proof of equal operating conditions."
+  ]
+}

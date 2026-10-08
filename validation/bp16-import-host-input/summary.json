@@ -1,0 +1,56 @@
+{
+  "scope": "Standalone bounded BP16 imported immutable aligned host input; not production layer or full-model throughput",
+  "device": "RX 7900 XTX / RADV NAVI31",
+  "cases": [
+    {
+      "raw_bytes": 4352,
+      "iterations": 3,
+      "exact_bytes": true,
+      "validation_errors": 0,
+      "validation_vuids": 0,
+      "imported_bytes": 2328,
+      "allocation_bytes": 4096,
+      "gpu_decode_ns_median": 3360
+    },
+    {
+      "raw_bytes": 33554432,
+      "iterations": 3,
+      "exact_bytes": true,
+      "validation_errors": 0,
+      "validation_vuids": 0,
+      "imported_bytes": 29202816,
+      "allocation_bytes": 29204480,
+      "gpu_decode_ns_median": 1063560
+    }
+  ],
+  "command_prefix": [
+    "env",
+    "VK_LOADER_LAYERS_DISABLE=~implicit~",
+    "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.json",
+    "ZVRAM_RESEARCH_ITERATIONS=3",
+    "timeout",
+    "45s",
+    "/tmp/zvram-bp16-import-host-smoke",
+    "--codec",
+    "bp16",
+    "--import-host-input",
+    "--gpu-bounded-smoke",
+    "research/bp16/decode.spv"
+  ],
+  "sha256": {
+    "research/gdeflate/vulkan_gdeflate_smoke.cpp": "98236337c512643a95be2a05ae0385b890c286fff2758c534d5804da7f458487",
+    "research/bp16/decode.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+    "build/bp16-research/gpu-mixed-pattern.bp16": "1fbd14455b7d2d6c0b9ea953347633d00e0a5859715018f869695a29fd2b5c52",
+    "build/bp16-research/gpu-mixed-pattern.raw": "715fee79596fd47082fdda475b662772adacae64f8a8da8e76d68d3d4c1e283a",
+    "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16": "2b519249c04122e43696dd164d039348af90890c0f47745dd46463ede667cf5a",
+    "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw": "8a67e5cb4721587afbd3c22104e5cbac52f6460f5db9e9117e939f5186a80895",
+    "/tmp/zvram-bp16-import-host-smoke": "ba039ae121abb8a5afa787211cdb0824de960b1d67368b502db9cf67cd30ecda"
+  },
+  "limits": [
+    "Component GPU decode includes host memory reads; timings are three samples, not full inference results.",
+    "One setup copy into owned aligned allocation remains; cached production frame ownership is not implemented.",
+    "Vulkan host import does not guarantee physical pinning or zero-copy driver behavior.",
+    "Production full 120 checks passed before final exception-only fixture guard; focused four unknown-image checks repeated after final guard.",
+    "Default CPU checks: 12/12 passed."
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "scope": "full wrapped InternLM2.5-20B F16; BP16 GPU restore with direct coherent host input; MRU, lazy backing, async compression, 8 workers, 19 GiB tracked cap and 2.5 GiB reserve",
+  "source_commit": "50fc8b966928bdfcfd61a390b131d346f3295394",
+  "performance": {
+    "decode_ms": 30595.01,
+    "decode_runs": 12,
+    "tokens_per_second_reported": 0.39,
+    "prompt_ms": 6558.23
+  },
+  "rate_calculation": "12 * 1000 / 30595.01 = 0.39222 tokens/s",
+  "returncode": 0,
+  "offload": [
+    49,
+    49
+  ],
+  "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "diagnostics": [],
+  "environment": {
+    "ZVRAM_VULKAN_BP16_HOST_INPUT": "1",
+    "ZVRAM_VULKAN_GPU_PROFILE": "1",
+    "GGML_VK_MAX_NODES_PER_SUBMIT": "4",
+    "VK_LOADER_LAYERS_DISABLE": "~implicit~",
+    "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/radeon_icd.json"
+  },
+  "guards": {
+    "minimum_available_mib": 20599,
+    "min_available_guard_mib": 16384,
+    "swap_growth_mib": 1910,
+    "max_swap_growth_mib": 16384,
+    "reject_ollama_gpu": true,
+    "ollama_gpu_detected": [],
+    "child_core_limit": "RLIMIT_CORE=0"
+  },
+  "final_snapshot_state": {
+    "resident": 20368195584,
+    "cold-logical": 18381602816,
+    "cold-stored": 14760006928,
+    "freezes": 8896,
+    "restores": 9509,
+    "failures": 0,
+    "gpu-decode-calls": 8341,
+    "gpu-decode-bytes": 276114243584,
+    "gpu-decode-fallbacks": 0
+  },
+  "device_profile_ns": {
+    "samples": 8341,
+    "transfer-ns": 41311880,
+    "decode-ns": 7771907120,
+    "finish-ns": 75588760
+  },
+  "host_profile_ns": {
+    "calls": 8341,
+    "validation-ns": 1370198300,
+    "input-prepare-ns": 13351933960,
+    "submit-wait-ns": 9501526741
+  },
+  "backing_profile_ns": {
+    "alloc-calls": 9509,
+    "alloc-ok": 9509,
+    "alloc-fail": 0,
+    "alloc-ns": 181133661,
+    "free-calls": 8896,
+    "free-ns": 129525341,
+    "sparse-calls": 12071,
+    "sparse-ok": 12071,
+    "sparse-fail": 0,
+    "sparse-ns": 213153094
+  },
+  "source_sha256": {
+    "layer.cpp": "dc976b8c422fa077009d6d435937d7d0243c37490ee879599e38d2ee18c3ce96",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "9f07b8f369e4ce0580d3597207b37546f64328c64c57d8e181f9b12478b55872"
+  },
+  "binary_sha256": {
+    "layer.cpp": "dc976b8c422fa077009d6d435937d7d0243c37490ee879599e38d2ee18c3ce96",
+    "gdeflate_gpu.hpp": "e75e31aa0fb4faa860486126c77741394ae29ac0b86dc1d04c42ba5077a622f0",
+    "check_vulkan_idle_model.py": "9f07b8f369e4ce0580d3597207b37546f64328c64c57d8e181f9b12478b55872",
+    "build/bp16-codec/libzvram_layer.so": "248c781186fc17091ddfc84c362ce418472eae1f19fa3b8364a9ee57b7891f2c",
+    "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+    "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+  },
+  "limits": [
+    "Sequential result using a different input path; GPU clocks and background activity were uncontrolled.",
+    "The preceding 0.25 device-input run and the later 1.6995 native reference are sequential and not paired comparisons.",
+    "The device compute phase includes PCIe reads from coherent host input; it is not shader-only time.",
+    "This result does not establish general application compatibility or sustained throughput."
+  ]
+}

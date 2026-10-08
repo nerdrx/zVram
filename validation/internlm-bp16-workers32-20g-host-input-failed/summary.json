@@ -1,0 +1,40 @@
+{
+  "status": "failed; no accepted throughput/output result",
+  "scope": "BP16 direct coherent host-input full-model attempt, 32 workers, requested 20 GiB tracked cap and 2 GiB headroom reserve",
+  "error": "vk::Queue::submit: ErrorOutOfDeviceMemory",
+  "elapsed_seconds": 65.22075883599973,
+  "prompt_sent": true,
+  "process_returncode": -6,
+  "last_gpu_restore_calls": 235,
+  "gpu_fallbacks": 0,
+  "snapshot_failures_at_last_state": 0,
+  "last_snapshot_line": "[zvram] snapshot state event=async-freeze resident=21048983552 cold-logical=17700814848 cold-stored=14184089696 freezes=767 restores=1402 failures=0 cache-stored=1060155824 clean-reuses=5 cache-invalidations=191 copy-calls=762 copy-bytes=25329205248 copy-ns=2340470482 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=235 gpu-decode-bytes=7823949824 gpu-decode-ns=627795707 gpu-decode-fallbacks=0",
+  "minimum_available_mib": 29189,
+  "minimum_memory_guard_mib": 16384,
+  "swap_growth_mib": 0,
+  "ollama_gpu_guard": {
+    "enabled": true,
+    "detected": []
+  },
+  "core_dump_limit": "RLIMIT_CORE=0 for owned child; no large core dump was allowed",
+  "comparison_limits": [
+    "A 19 GiB cap / 2.5 GiB reserve run with this input path succeeded earlier; this failed run changed both cap and reserve.",
+    "This failure does not prove a host-input defect or native GPU fault.",
+    "No inference rate, final output hash, or accepted result."
+  ],
+  "source_commit": "df22d6df9da1fb241240c4ff7cef2730b500391c",
+  "source_sha256": {
+    "layer.cpp": "dc976b8c422fa077009d6d435937d7d0243c37490ee879599e38d2ee18c3ce96",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf"
+  },
+  "binary_sha256": {
+    "layer.cpp": "dc976b8c422fa077009d6d435937d7d0243c37490ee879599e38d2ee18c3ce96",
+    "gdeflate_gpu.hpp": "e75e31aa0fb4faa860486126c77741394ae29ac0b86dc1d04c42ba5077a622f0",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf",
+    "build/bp16-codec/libzvram_layer.so": "248c781186fc17091ddfc84c362ce418472eae1f19fa3b8364a9ee57b7891f2c",
+    "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+    "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+  }
+}

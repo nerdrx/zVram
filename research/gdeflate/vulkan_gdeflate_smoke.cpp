@@ -17,6 +17,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -24,6 +25,10 @@ namespace {
 constexpr std::uint64_t WaitNanoseconds = 5'000'000'000ull;
 constexpr std::uint32_t TileBytes = 64u * 1024u;
 constexpr std::uint32_t ShaderThreads = 32;
+constexpr VkDeviceSize MaxBP16FrameBytes = zvram::bp16::MaxRawBytes +
+    zvram::bp16::HeaderBytes +
+    (zvram::bp16::MaxRawBytes / zvram::bp16::RawBytesPerBlock) *
+        zvram::bp16::DescriptorBytes;
 
 void check(VkResult result, const char* what) {
     if (result != VK_SUCCESS)
@@ -100,6 +105,7 @@ struct Runtime {
     VkInstance instance{};
     VkDebugUtilsMessengerEXT messenger{};
     PFN_vkDestroyDebugUtilsMessengerEXT destroyMessenger{};
+    PFN_vkGetMemoryHostPointerPropertiesEXT getHostPointerProperties{};
     VkPhysicalDevice physical{};
     VkPhysicalDeviceProperties properties{};
     VkPhysicalDeviceSubgroupProperties subgroupProperties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
@@ -108,6 +114,7 @@ struct Runtime {
     VkPhysicalDeviceMemoryProperties memoryProperties{};
     std::uint32_t queueFamily{};
     std::uint32_t timestampValidBits{};
+    VkDeviceSize hostPointerAlignment{};
     VkDevice device{};
     VkQueue queue{};
     VkDescriptorSetLayout setLayout{};
@@ -178,7 +185,8 @@ struct Runtime {
         }
     }
 
-    void pickDevice(bool simpleShader = false, bool robustness2 = false) {
+    void pickDevice(bool simpleShader = false, bool robustness2 = false,
+                    bool importHostInput = false) {
         std::uint32_t count = 0;
         check(vkEnumeratePhysicalDevices(instance, &count, nullptr), "enumerate physical device count");
         if (!count) throw std::runtime_error("no Vulkan physical device");
@@ -207,6 +215,8 @@ struct Runtime {
             }
         }
         if (!physical) throw std::runtime_error("no Vulkan compute queue");
+        if (importHostInput && !hasDeviceExtension(physical, VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))
+            throw std::runtime_error("selected device lacks VK_EXT_external_memory_host");
         vkGetPhysicalDeviceMemoryProperties(physical, &memoryProperties);
         const bool subgroupSizeControl =
             hasDeviceExtension(physical, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
@@ -216,9 +226,33 @@ struct Runtime {
             throw std::runtime_error("selected device lacks VK_EXT_robustness2 required by --robust-access2");
         subgroupProperties.pNext = &subgroupSizeProperties;
         if (!subgroupSizeControl) subgroupProperties.pNext = nullptr;
+        VkPhysicalDeviceExternalMemoryHostPropertiesEXT hostProperties{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT};
+        if (importHostInput) hostProperties.pNext = &subgroupProperties;
         VkPhysicalDeviceProperties2 props2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
-        props2.pNext = &subgroupProperties;
+        props2.pNext = importHostInput ? static_cast<void*>(&hostProperties)
+                                       : static_cast<void*>(&subgroupProperties);
         vkGetPhysicalDeviceProperties2(physical, &props2);
+        if (importHostInput) {
+            hostPointerAlignment = hostProperties.minImportedHostPointerAlignment;
+            if (!hostPointerAlignment || (hostPointerAlignment & (hostPointerAlignment - 1)) ||
+                hostPointerAlignment > 65536)
+                throw std::runtime_error("unsupported minImportedHostPointerAlignment (expected power-of-two <= 64 KiB)");
+            VkPhysicalDeviceExternalBufferInfo externalInfo{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO};
+            externalInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            externalInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+            VkExternalBufferProperties externalProperties{VK_STRUCTURE_TYPE_EXTERNAL_BUFFER_PROPERTIES};
+            vkGetPhysicalDeviceExternalBufferProperties(physical, &externalInfo, &externalProperties);
+            if (!(externalProperties.externalMemoryProperties.externalMemoryFeatures &
+                  VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) ||
+                !(externalProperties.externalMemoryProperties.compatibleHandleTypes &
+                  VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT))
+                throw std::runtime_error("storage buffers cannot import host allocations on this device");
+            if (externalProperties.externalMemoryProperties.externalMemoryFeatures &
+                VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT)
+                throw std::runtime_error("dedicated-only host imports are outside this bounded prototype");
+        }
         VkPhysicalDeviceSubgroupSizeControlFeatures subgroupFeatures{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES};
         VkPhysicalDeviceRobustness2FeaturesEXT robustnessFeatures{
@@ -292,10 +326,11 @@ struct Runtime {
         VkDeviceCreateInfo deviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         deviceInfo.queueCreateInfoCount = 1;
         deviceInfo.pQueueCreateInfos = &queueInfo;
-        const char* deviceExtensions[2]{};
+        const char* deviceExtensions[3]{};
         std::uint32_t enabledExtensionCount = 0;
         if (!simpleShader) deviceExtensions[enabledExtensionCount++] = VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME;
         if (robustness2) deviceExtensions[enabledExtensionCount++] = VK_EXT_ROBUSTNESS_2_EXTENSION_NAME;
+        if (importHostInput) deviceExtensions[enabledExtensionCount++] = VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME;
         deviceInfo.enabledExtensionCount = enabledExtensionCount;
         deviceInfo.ppEnabledExtensionNames = enabledExtensionCount ? deviceExtensions : nullptr;
         VkPhysicalDeviceFeatures2 enabledFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
@@ -309,6 +344,12 @@ struct Runtime {
         deviceInfo.pNext = &enabledFeatures;
         deviceInfo.pEnabledFeatures = nullptr;
         check(vkCreateDevice(physical, &deviceInfo, nullptr, &device), "create Vulkan device");
+        if (importHostInput) {
+            getHostPointerProperties = reinterpret_cast<PFN_vkGetMemoryHostPointerPropertiesEXT>(
+                vkGetDeviceProcAddr(device, "vkGetMemoryHostPointerPropertiesEXT"));
+            if (!getHostPointerProperties)
+                throw std::runtime_error("vkGetMemoryHostPointerPropertiesEXT is unavailable");
+        }
         vkGetDeviceQueue(device, queueFamily, 0, &queue);
         std::uint32_t familyCount = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, nullptr);
@@ -373,6 +414,14 @@ struct Runtime {
     }
 };
 
+struct HostAllocation {
+    Runtime* owner{};
+    void* pointer{};
+    ~HostAllocation() {
+        if (pointer && !(owner && owner->abandonOnExit)) std::free(pointer);
+    }
+};
+
 struct Buffer {
     Runtime* owner{};
     VkDevice device{};
@@ -418,6 +467,71 @@ struct Buffer {
     }
 
     ~Buffer() { destroy(); }
+
+    void initImportedHost(Runtime& runtime, VkDeviceSize size, const std::uint8_t* source,
+                          HostAllocation& host) {
+        if (!size || size > MaxBP16FrameBytes)
+            throw std::runtime_error("imported BP16 frame exceeds 32 MiB plus metadata bound");
+        owner = &runtime;
+        device = runtime.device;
+        descriptorSize = size;
+        VkExternalMemoryBufferCreateInfo external{VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO};
+        external.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+        VkBufferCreateInfo create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create.pNext = &external;
+        create.size = size;
+        create.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        create.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        check(vkCreateBuffer(device, &create, nullptr, &buffer), "create importable storage buffer");
+        VkMemoryRequirements requirements{};
+        vkGetBufferMemoryRequirements(device, buffer, &requirements);
+        const auto alignment = runtime.hostPointerAlignment;
+        const auto needed = std::max<VkDeviceSize>(size, requirements.size);
+        if (needed > UINT64_MAX - (alignment - 1))
+            throw std::runtime_error("imported host allocation size overflow");
+        allocationSize = (needed + alignment - 1) & ~(alignment - 1);
+        const auto pageSize = sysconf(_SC_PAGESIZE);
+        if (pageSize <= 0 || (pageSize & (pageSize - 1)))
+            throw std::runtime_error("cannot determine a power-of-two host page size");
+        const auto hostAlignment = std::max<VkDeviceSize>(
+            std::max<VkDeviceSize>(alignment, sizeof(void*)), static_cast<VkDeviceSize>(pageSize));
+        if (allocationSize > MaxBP16FrameBytes + 65536 || allocationSize > SIZE_MAX ||
+            posix_memalign(&host.pointer, static_cast<std::size_t>(hostAlignment),
+                           static_cast<std::size_t>(allocationSize)) != 0)
+            throw std::runtime_error("cannot allocate aligned host input");
+        host.owner = &runtime;
+        std::memset(host.pointer, 0, static_cast<std::size_t>(allocationSize));
+        std::memcpy(host.pointer, source, static_cast<std::size_t>(size));
+        VkMemoryHostPointerPropertiesEXT pointerProperties{
+            VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT};
+        check(runtime.getHostPointerProperties(device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
+                                               host.pointer, &pointerProperties),
+              "query imported host memory types");
+        const auto required = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        std::uint32_t memoryType = UINT32_MAX;
+        for (std::uint32_t i = 0; i < runtime.memoryProperties.memoryTypeCount; ++i) {
+            const auto flags = runtime.memoryProperties.memoryTypes[i].propertyFlags;
+            if ((requirements.memoryTypeBits & pointerProperties.memoryTypeBits & (1u << i)) &&
+                (flags & required) == required && !(flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+                memoryType = i;
+                memoryFlags = flags;
+                break;
+            }
+        }
+        if (memoryType == UINT32_MAX)
+            throw std::runtime_error("no imported HOST_VISIBLE|HOST_COHERENT nonlocal memory type");
+        VkImportMemoryHostPointerInfoEXT import{VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT};
+        import.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+        import.pHostPointer = host.pointer;
+        VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        allocation.pNext = &import;
+        allocation.allocationSize = allocationSize;
+        allocation.memoryTypeIndex = memoryType;
+        check(vkAllocateMemory(device, &allocation, nullptr, &memory), "import aligned host input");
+        check(vkBindBufferMemory(device, buffer, memory, 0), "bind imported host input");
+        std::cout << "imported-host-input bytes=" << size << " allocation-bytes=" << allocationSize
+                  << " alignment=" << alignment << " memory-type=" << memoryType << '\n';
+    }
 
     void init(Runtime& runtime, VkDeviceSize size, VkBufferUsageFlags usage,
               VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred = 0,
@@ -485,9 +599,12 @@ std::uint32_t researchIterations() {
 
 void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
          const std::vector<std::uint8_t>& expected, std::uint32_t iterations,
-         bool bp16 = false, bool hostInput = false, bool freshOutput = false) {
-    if (hostInput && !bp16)
+         bool bp16 = false, bool hostInput = false, bool freshOutput = false,
+         bool importHostInput = false) {
+    if ((hostInput || importHostInput) && !bp16)
         throw std::runtime_error("direct host input is available only for BP16");
+    if (hostInput && importHostInput)
+        throw std::runtime_error("--host-input and --import-host-input are mutually exclusive");
     const auto rawSize = expected.size();
     if (!rawSize || rawSize > UINT32_MAX || encoded.size() > UINT32_MAX - 3u)
         throw std::runtime_error("shader input and output must fit nonzero uint32 byte offsets");
@@ -504,12 +621,15 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
     const auto hostCoherent = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     const auto deviceLocal = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     const auto excluded = runtime.software ? VkMemoryPropertyFlags(0) : VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    const bool directHostInput = hostInput || importHostInput;
+    HostAllocation importedHost;
     Buffer upload, input, control, output, scratch, readback;
-    const auto uploadUsage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-        (hostInput ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT : VkBufferUsageFlags(0));
-    upload.init(runtime, inputSize, uploadUsage, hostCoherent, 0,
-                hostInput ? deviceLocal : VkMemoryPropertyFlags(0));
-    if (!hostInput)
+    if (importHostInput) input.initImportedHost(runtime, inputSize, encoded.data(), importedHost);
+    else upload.init(runtime, inputSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                     (hostInput ? VkBufferUsageFlags(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) : VkBufferUsageFlags(0)),
+                     hostCoherent, 0, hostInput ? VkMemoryPropertyFlags(deviceLocal)
+                                                : VkMemoryPropertyFlags(0));
+    if (!directHostInput)
         input.init(runtime, inputSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                    deviceLocal, deviceLocal, excluded);
     control.init(runtime, 12, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -519,7 +639,7 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
     scratch.init(runtime, 4, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                  deviceLocal, deviceLocal, excluded);
     readback.init(runtime, outputSize + 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, hostCoherent);
-    std::memcpy(upload.mapped, encoded.data(), encoded.size());
+    if (!importHostInput) std::memcpy(upload.mapped, encoded.data(), encoded.size());
     const std::uint32_t streamControl[3]{1, 0, 0};
     std::memcpy(control.mapped, streamControl, sizeof(streamControl));
 
@@ -579,7 +699,7 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
             vkCmdResetQueryPool(command, runtime.timestampPool, queryBase, 5);
         if (runtime.timestampPool)
             vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, runtime.timestampPool, queryBase);
-        if (!hostInput) {
+        if (!directHostInput) {
             const VkBufferCopy uploadRegion{0, 0, inputSize};
             vkCmdCopyBuffer(command, upload.buffer, input.buffer, 1, &uploadRegion);
         }
@@ -708,7 +828,7 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
         std::vector<std::uint64_t> uploadNs, decodeNs, copyNs;
         for (std::uint32_t i = 0; i < iterations; ++i) {
             const auto base = i * 5;
-            uploadNs.push_back(hostInput ? 0 : static_cast<std::uint64_t>((((values[base + 1] - values[base]) & mask) *
+            uploadNs.push_back(directHostInput ? 0 : static_cast<std::uint64_t>((((values[base + 1] - values[base]) & mask) *
                                                                            runtime.properties.limits.timestampPeriod)));
             decodeNs.push_back(static_cast<std::uint64_t>((((values[base + 3] - values[base + 2]) & mask) *
                                                           runtime.properties.limits.timestampPeriod)));
@@ -719,8 +839,9 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
             std::sort(samples.begin(), samples.end());
             return samples[samples.size() / 2];
         };
-        if (hostInput) {
-            std::cout << "gpu-timing input-mode=direct-host-visible upload-gpu-copy-ns=0 decode-includes-host-memory-reads"
+        if (directHostInput) {
+            std::cout << "gpu-timing input-mode=" << (importHostInput ? "imported-host" : "direct-host-visible")
+                      << " upload-gpu-copy-ns=0 decode-includes-host-memory-reads"
                       << " iterations=" << iterations
                       << " decode-ns-median=" << median(decodeNs)
                       << " readback-copy-ns-median=" << median(copyNs) << '\n';
@@ -745,11 +866,13 @@ int main(int argc, char** argv) {
     const bool bp16 = argc >= 3 && std::strcmp(argv[1], "--codec") == 0 &&
                       std::strcmp(argv[2], "bp16") == 0;
     bool hostInput = false;
+    bool importHostInput = false;
     bool freshOutput = false;
     bool robustness2 = false;
     int arg = bp16 ? 3 : 1;
     while (bp16 && arg < argc) {
         if (std::strcmp(argv[arg], "--host-input") == 0) hostInput = true;
+        else if (std::strcmp(argv[arg], "--import-host-input") == 0) importHostInput = true;
         else if (std::strcmp(argv[arg], "--fresh-output") == 0) freshOutput = true;
         else if (std::strcmp(argv[arg], "--robust-access2") == 0) robustness2 = true;
         else break;
@@ -765,7 +888,7 @@ int main(int argc, char** argv) {
                           std::strcmp(argv[1], "--software-smoke") == 0);
     if ((!bp16 && !regular) || (bp16 && !bp16Args)) {
         std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n"
-                     "       vulkan_gdeflate_smoke --codec bp16 [--host-input] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
+                     "       vulkan_gdeflate_smoke --codec bp16 [--host-input|--import-host-input] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n";
         return 2;
     }
     const bool singleTile = !bp16 && std::strcmp(argv[arg], "--gpu-smoke") == 0;
@@ -802,6 +925,7 @@ int main(int argc, char** argv) {
         if (!gpu && !software) {
             if (freshOutput) throw std::runtime_error("--fresh-output requires GPU smoke mode");
             if (robustness2) throw std::runtime_error("--robust-access2 requires GPU smoke mode");
+            if (importHostInput) throw std::runtime_error("--import-host-input requires --gpu-bounded-smoke");
             std::cout << (bp16 ? "CPU-only BP16 frame preflight; shader decode is unverified\n"
                                : "CPU-only envelope preflight; compressed payload and GPU decoder are unverified\n");
             return 0;
@@ -814,9 +938,9 @@ int main(int argc, char** argv) {
         const auto iterations = researchIterations();
         Runtime runtime(validation, software);
         runtime.initInstance();
-        runtime.pickDevice(bp16, robustness2);
+        runtime.pickDevice(bp16, robustness2, importHostInput);
         runtime.initPipeline(shader, iterations, bp16);
-        run(runtime, encoded, expected, iterations, bp16, hostInput, freshOutput);
+        run(runtime, encoded, expected, iterations, bp16, hostInput, freshOutput, importHostInput);
         status = 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';

@@ -949,3 +949,134 @@ harness `9b05065`.
 [host-input log](validation/bp16-presentation/host-input/run.log.gz) ·
 [device-input result](validation/bp16-presentation/device-input/result.json) ·
 [device-input log](validation/bp16-presentation/device-input/run.log.gz).
+
+
+### Nineteen-gibibyte direct host-input run
+
+A clean full-model run enabled `ZVRAM_VULKAN_BP16_HOST_INPUT=1`, using BP16 GPU
+restore with direct coherent host input, eight encoding workers, MRU, lazy
+backing, and async compression. Under the same **19 GiB** tracked cap and
+**2.5 GiB** headroom reserve, it completed 12 decode runs in **30,595.01 ms**:
+`12 * 1000 / 30595.01 = 0.39222 tokens/s` (reported as **0.39**). All
+**49/49** layers were offloaded, output matched the prior BP16 runs byte for
+byte (SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`), and
+there were zero diagnostics or GPU fallbacks.
+
+This is a sequential result using a different input path. The preceding **0.25**
+device-input result and the fresh native reference below are not paired
+comparisons; GPU clocks and background activity were uncontrolled. Device profiling recorded
+**8,341 samples**: **0.041 s transfer**, **7.772 s compute**, and **0.076 s
+finish**. The compute phase includes PCIe reads from host memory, so it is not
+shader-only timing. Host profiling recorded **1.370 s validation**, **13.352 s
+input preparation**, and **9.502 s submit/wait**.
+
+The resource guard detected no Ollama GPU process during the run and enforced a
+**16,384 MiB** available-memory floor; minimum available RAM was **20,599 MiB**
+and swap grew by **1,910 MiB**. The child core-dump limit was zero. Source commit
+was `50fc8b9`. This result does not establish a general application or gaming
+speedup.
+
+[Summary](validation/internlm-bp16-workers8-19g-host-input-clean/summary.json),
+[command](validation/internlm-bp16-workers8-19g-host-input-clean/command.json),
+[run harness](validation/internlm-bp16-workers8-19g-host-input-clean/run.py),
+[resource samples](validation/internlm-bp16-workers8-19g-host-input-clean/automatic.resources.json.gz),
+[runtime hashes](validation/internlm-bp16-workers8-19g-host-input-clean/runtime-binary-sha256.json),
+[full result](validation/internlm-bp16-workers8-19g-host-input-clean/result.json.gz), and
+[full stderr](validation/internlm-bp16-workers8-19g-host-input-clean/automatic.stderr.txt.gz).
+
+### Fresh native nodes=4 reference
+
+A fresh native run of the same 39,725,643,136-byte model completed 12 decode
+runs in **7,060.86 ms** at **1.6995 tokens/s** (reported as **1.70**), with
+**49/49** layers and the same output SHA-256 as the wrapped BP16 runs. The
+numerical comparison with the preceding **0.39222 tokens/s** host-input result
+is about **23.1%** (or **4.33x slower** for BP16), but the runs were sequential,
+GPU clocks were unlocked, and this is not a controlled matched comparison.
+
+Native placement used driver VRAM and GTT spillover: the run recorded
+23,155,245,056 resident VRAM bytes and 16,757,374,976 resident GTT bytes for a
+36,798.77 MiB model buffer. This differs from zVram's tracked-residency path.
+Minimum available RAM was **29,286 MiB**, swap grew by **460 MiB**, and the
+Ollama GPU guard detected no process.
+
+[Summary](validation/internlm-native-nodes4-clean/summary.json),
+[command](validation/internlm-native-nodes4-clean/command.json),
+[resource samples](validation/internlm-native-nodes4-clean/native.resources.json.gz),
+[runtime hashes](validation/internlm-native-nodes4-clean/runtime-binary-sha256.json),
+[full result](validation/internlm-native-nodes4-clean/native-result.json.gz), and
+[full stderr](validation/internlm-native-nodes4-clean/native.stderr.txt.gz).
+
+### Nineteen-gibibyte direct host-input run: 32 workers
+
+This later run kept the same model, **19 GiB** tracked cap, **2.5 GiB** reserve,
+BP16 direct coherent host input, and restore settings, with CPU encoding set to
+32 workers. It completed 12 decode runs in **29,518.12 ms**:
+`12 * 1000 / 29518.12 = 0.40653 tokens/s` (reported as **0.41**). All
+**49/49** layers were offloaded, output matched the other BP16 runs byte for
+byte (SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`), and
+there were zero diagnostics or GPU fallbacks.
+
+The layer binary hash matches the eight-worker direct-host run, but the
+collector source changed. The observed rate is about **3.6%** above the earlier
+eight-worker result, which is not an isolated worker-count comparison. This
+does not make 32 workers mandatory or change the default of one. The separate
+fresh native reference measured **1.6995 tokens/s**, about **4.18x** the BP16
+rate; that sequential comparison used different VRAM/GTT placement and
+uncontrolled clocks, so it is not a controlled benchmark.
+
+Device profiling recorded **8,405 samples**: **0.042 s transfer**, **7.765 s
+compute** (including PCIe reads from coherent host memory), and **0.077 s
+finish**. Host profiling recorded **1.537 s validation**, **13.773 s input
+preparation**, and **9.482 s submit/wait**. Backing allocation, free, and sparse
+binding summed to **0.210 s**, **0.127 s**, and **0.241 s** respectively. The
+final snapshot showed **9,573 restores**, **8,962 freezes**, and zero failures.
+Minimum available RAM was **22,359 MiB** against a **16,384 MiB** floor; swap
+grew by **1,714 MiB**. The Ollama GPU guard detected no process.
+
+Source commit was `df22d6d`; it includes a collector fix. The run used
+`ZVRAM_VULKAN_BP16_HOST_INPUT=1` with the same guarded child-core and memory
+limits archived alongside the command and run harness.
+
+[Summary](validation/internlm-bp16-workers32-19g-host-input-clean/summary.json),
+[command](validation/internlm-bp16-workers32-19g-host-input-clean/command.json),
+[run harness](validation/internlm-bp16-workers32-19g-host-input-clean/run.py),
+[resource samples](validation/internlm-bp16-workers32-19g-host-input-clean/automatic.resources.json.gz),
+[runtime hashes](validation/internlm-bp16-workers32-19g-host-input-clean/runtime-binary-sha256.json),
+[full result](validation/internlm-bp16-workers32-19g-host-input-clean/result.json.gz), and
+[full stderr](validation/internlm-bp16-workers32-19g-host-input-clean/automatic.stderr.txt.gz).
+
+### Failed 20 GiB BP16 host-input attempt
+
+A later run with a **20 GiB** tracked cap and **2 GiB** reserve aborted after
+65.22 seconds at `vk::Queue::submit: ErrorOutOfDeviceMemory` (status **-6**).
+The last recorded state showed **235 GPU restores**, zero GPU fallback, and zero
+snapshot failures; inference did not complete, so there is no accepted rate or
+output. Minimum available RAM was **29,189 MiB**, swap growth was zero, and the
+Ollama GPU guard detected no process. The child core-dump limit was zero.
+
+The successful **19 GiB / 2.5 GiB** run used a different cap and reserve. This
+failure does not establish a host-input defect or native GPU fault. See the
+[summary](validation/internlm-bp16-workers32-20g-host-input-failed/summary.json),
+[incident notes](validation/internlm-bp16-workers32-20g-host-input-failed/incident-notes.md),
+[command](validation/internlm-bp16-workers32-20g-host-input-failed/command.json),
+and [full stderr](validation/internlm-bp16-workers32-20g-host-input-failed/automatic.stderr.txt.gz).
+
+### Bounded imported BP16 host input and current regression checks
+
+The standalone research decoder now has an opt-in `--import-host-input` path using
+`VK_EXT_external_memory_host`. On the RX 7900 XTX, a mixed 4,352-byte frame and a
+32 MiB F16 slice each passed three exact-byte iterations with zero validation
+errors/VUIDs. The 32 MiB GPU decode median was 1.064 ms and includes host reads.
+This is component evidence only: the production layer still copies frames into
+its coherent upload buffer, and no imported-input inference speed is established.
+The prototype owns aligned immutable memory through completion and retains it on
+uncertain completion; it never imports arbitrary vector storage.
+[Logs and hashes](validation/bp16-import-host-input/summary.json).
+
+The BP16-enabled full suite passed **120/120** checks. Four initially stale unknown
+command fixtures used an event that is now classified as resource-free; they now
+use a native image clear to exercise conservative restore. After a final
+exception-path image-lifetime guard, the four affected checks passed again. The
+default build CPU checks passed **12/12**. Archived logs are linked above.

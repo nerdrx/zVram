@@ -1,0 +1,84 @@
+{
+  "scope": "full wrapped InternLM2.5-20B F16; BP16 direct coherent host-input GPU restore, 32 CPU encoding workers, MRU/lazy/async, 19 GiB tracked cap, 2.5 GiB reserve",
+  "source_commit": "df22d6df9da1fb241240c4ff7cef2730b500391c",
+  "performance": {
+    "decode_ms": 29518.12,
+    "decode_runs": 12,
+    "tokens_per_second": 0.41,
+    "prompt_ms": 6358.67,
+    "restore_ms": []
+  },
+  "rate_calculation": "12 * 1000 / 29518.12 = 0.40653 tokens/s",
+  "returncode": 0,
+  "offload": [
+    49,
+    49
+  ],
+  "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "diagnostics": [],
+  "minimum_available_mib": 22359,
+  "swap_used_baseline_mib": 14803,
+  "swap_used_peak_mib": 16517,
+  "swap_growth_mib": 1714,
+  "final_snapshot_state": {
+    "resident": 20375994368,
+    "cold-logical": 18373804032,
+    "cold-stored": 14750054640,
+    "freezes": 8962,
+    "restores": 9573,
+    "failures": 0,
+    "gpu-decode-calls": 8405,
+    "gpu-decode-bytes": 278292398080,
+    "gpu-decode-fallbacks": 0
+  },
+  "device_profile_ns": {
+    "samples": 8405,
+    "transfer-ns": 42004440,
+    "decode-ns": 7765150960,
+    "finish-ns": 77263680
+  },
+  "host_profile_ns": {
+    "calls": 8405,
+    "validation-ns": 1536998372,
+    "input-prepare-ns": 13773334230,
+    "submit-wait-ns": 9482221281
+  },
+  "backing_profile_ns": {
+    "alloc-calls": 9573,
+    "alloc-ok": 9573,
+    "alloc-fail": 0,
+    "alloc-ns": 210389436,
+    "free-calls": 8962,
+    "free-ns": 126619581,
+    "sparse-calls": 12229,
+    "sparse-ok": 12229,
+    "sparse-fail": 0,
+    "sparse-ns": 240839360
+  },
+  "guards": {
+    "min_available_guard_mib": 16384,
+    "max_swap_growth_mib": 16384,
+    "reject_ollama_gpu": true,
+    "ollama_gpu_detected": []
+  },
+  "source_sha256": {
+    "layer.cpp": "dc976b8c422fa077009d6d435937d7d0243c37490ee879599e38d2ee18c3ce96",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf"
+  },
+  "binary_sha256": {
+    "layer.cpp": "dc976b8c422fa077009d6d435937d7d0243c37490ee879599e38d2ee18c3ce96",
+    "gdeflate_gpu.hpp": "e75e31aa0fb4faa860486126c77741394ae29ac0b86dc1d04c42ba5077a622f0",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf",
+    "build/bp16-codec/libzvram_layer.so": "248c781186fc17091ddfc84c362ce418472eae1f19fa3b8364a9ee57b7891f2c",
+    "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+    "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+  },
+  "limits": [
+    "Sequential and uncontrolled relative to the 8-worker direct-host run; collector/harness source changed, so the rate difference is not an isolated worker-count comparison.",
+    "The stored layer binary hash matches the 8-worker run.",
+    "The fresh native 1.6995 tokens/s result is a separate sequential reference with different memory placement and unlocked clocks, not a paired comparison.",
+    "This does not establish 32 workers as a required setting or change the default."
+  ]
+}

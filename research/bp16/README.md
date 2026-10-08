@@ -101,3 +101,24 @@ GPU decode timing in this mode includes reads from host memory. Eight GPU checks
 passed in each mode, including zero/nonzero output, native/synthetic range,
 resident-pressure, queue lifetime and partial-restore cases.
 [Regression evidence](../../validation/bp16-host-input/summary.json).
+
+The separate smoke-only `--import-host-input` experiment imports a BP16 frame
+from an owned aligned host allocation with `VK_EXT_external_memory_host`; it
+does not import `std::vector` storage. It requires an importable storage buffer,
+the reported pointer alignment and compatible HOST_VISIBLE|HOST_COHERENT
+non-device-local memory type; unsupported devices fail before dispatch. The
+allocation stays immutable and alive through the fence, and is intentionally
+retained on timeout/device loss. This does not guarantee driver pinning or
+zero-copy behavior. Bounded RX 7900 XTX checks passed for a mixed 4,352-byte
+frame and a 32 MiB F16 slice (three exact-byte iterations each, no validation
+errors). The 32 MiB GPU decode median was 1.064 ms, including host reads; this
+is component evidence, not an inference speed result.
+[Evidence](../../validation/bp16-import-host-input/summary.json). Try it only with the
+bounded smoke command:
+
+```sh
+/tmp/zvram-bp16-import-host-smoke --codec bp16 --import-host-input \
+  --gpu-bounded-smoke research/bp16/decode.spv \
+  build/bp16-research/gpu-mixed-pattern.bp16 \
+  build/bp16-research/gpu-mixed-pattern.raw
+```

@@ -279,10 +279,12 @@ and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored
 87.0% of raw bytes versus GDeflate's 81.1% on that slice. These are decoder-only
 measurements, not a model speedup. [Component evidence](validation/bp16-component).
 
-The latest full InternLM2.5-20B F16 BP16 run used eight CPU encoding workers
-and completed 12 decode runs at 0.252252 tokens/s (reported as 0.25), with exact
-output and zero GPU fallback. It followed the 0.195155 same-cap run sequentially
-and removed a redundant BP16 output fill; clocks and background activity were
-uncontrolled, so the full run-to-run change is not isolated to that edit.
-[Latest run and limits](VALIDATION.md#nineteen-gibibyte-no-prefill-follow-up);
-[previous same-cap run](VALIDATION.md#nineteen-gibibyte-sequential-profile-run).
+The latest full InternLM2.5-20B F16 BP16 run used 32 CPU encoding workers and
+direct coherent host input, completing 12 decode runs at 0.40653 tokens/s
+(reported as 0.41), with exact output and zero GPU fallback. The layer binary
+matches the earlier eight-worker run, but the collector source changed; the
+observed 3.6% rate difference is not an isolated worker comparison. A separate
+fresh native reference measured 1.6995 tokens/s (4.18x the BP16 rate), but uses
+a different VRAM/GTT path and was not a controlled comparison. The default
+worker count remains 1. [Latest BP16 run](VALIDATION.md#nineteen-gibibyte-direct-host-input-run-32-workers);
+[fresh native reference and limits](VALIDATION.md#fresh-native-nodes4-reference).

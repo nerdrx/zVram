@@ -393,6 +393,18 @@ struct Context {
     }
 };
 
+struct NativeImage {
+    VkDevice device{};
+    VkImage handle{};
+    VkDeviceMemory memory{};
+    bool unsafe{};
+    ~NativeImage() {
+        if (unsafe) return;
+        if (handle) vkDestroyImage(device, handle, nullptr);
+        if (memory) vkFreeMemory(device, memory, nullptr);
+    }
+};
+
 struct Staging {
     VkDevice device{};
     VkBuffer buffer{};
@@ -539,6 +551,94 @@ std::uint32_t gpuOnlyNativeType(const Context& context, std::uint32_t bits) {
     }
     return UINT32_MAX;
 }
+
+void createUnknownResourceImage(const Context& context, NativeImage& image) {
+    image.device = context.device;
+    VkImageFormatProperties supported{};
+    check(vkGetPhysicalDeviceImageFormatProperties(context.physical, VK_FORMAT_R8G8B8A8_UNORM,
+          VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT, 0, &supported),
+          "query unknown-resource image format");
+    require(supported.maxExtent.width && supported.maxExtent.height && supported.maxExtent.depth &&
+            supported.maxMipLevels && supported.maxArrayLayers && (supported.sampleCounts & VK_SAMPLE_COUNT_1_BIT),
+            "unknown-resource image format has no 1x1 transfer support");
+    VkImageCreateInfo create{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    create.imageType = VK_IMAGE_TYPE_2D;
+    create.format = VK_FORMAT_R8G8B8A8_UNORM;
+    create.extent = {1, 1, 1};
+    create.mipLevels = 1;
+    create.arrayLayers = 1;
+    create.samples = VK_SAMPLE_COUNT_1_BIT;
+    create.tiling = VK_IMAGE_TILING_OPTIMAL;
+    create.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    create.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    check(vkCreateImage(context.device, &create, nullptr, &image.handle), "create unknown-resource image");
+    VkMemoryRequirements requirements{};
+    vkGetImageMemoryRequirements(context.device, image.handle, &requirements);
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize = requirements.size;
+    allocation.memoryTypeIndex = gpuOnlyNativeType(context, requirements.memoryTypeBits);
+    require(allocation.memoryTypeIndex != UINT32_MAX,
+            "unknown-resource image has no compatible native GPU-only memory type");
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &image.memory),
+          "allocate unknown-resource image memory");
+    check(vkBindImageMemory(context.device, image.handle, image.memory, 0),
+          "bind unknown-resource image memory");
+}
+
+void recordUnknownResourceClear(VkCommandBuffer command, VkImage image) {
+    VkImageMemoryBarrier ready{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    ready.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ready.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    ready.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    ready.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ready.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ready.image = image;
+    ready.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    ready.subresourceRange.levelCount = 1;
+    ready.subresourceRange.layerCount = 1;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ready);
+    const VkClearColorValue color{};
+    const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdClearColorImage(command, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &color, 1, &range);
+}
+
+struct PendingSubmission {
+    VkDevice device{};
+    VkQueue queue{};
+    VkCommandPool pool{};
+    VkCommandBuffer command{};
+    VkSemaphore timeline{};
+    bool submitted{};
+    NativeImage* image{};
+
+    VkResult finish() noexcept {
+        if (submitted) {
+            std::uint64_t value{};
+            VkResult result = vkGetSemaphoreCounterValue(device, timeline, &value);
+            if (result != VK_SUCCESS) return result;
+            if (value < 1) {
+                VkSemaphoreSignalInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+                signal.semaphore = timeline;
+                signal.value = 1;
+                result = vkSignalSemaphore(device, &signal);
+                if (result != VK_SUCCESS) return result;
+            }
+            result = vkQueueWaitIdle(queue);
+            if (result != VK_SUCCESS) return result;
+            submitted = false;
+        }
+        if (command) {
+            vkFreeCommandBuffers(device, pool, 1, &command);
+            command = VK_NULL_HANDLE;
+        }
+        return VK_SUCCESS;
+    }
+
+    ~PendingSubmission() {
+        if (finish() != VK_SUCCESS && image) image->unsafe = true;
+    }
+};
 
 void probeNativeTokenLifetimes(Context& context, VkDeviceMemory original,
                                const ZvramSnapshotStatsNX& cold) {
@@ -1662,32 +1762,31 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
         commandInfo.commandPool = context.secondCommands;
         commandInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         commandInfo.commandBufferCount = 1;
-        VkCommandBuffer blockedCommand{};
-        check(vkAllocateCommandBuffers(context.device, &commandInfo, &blockedCommand),
+        // Declare image first so its destructor runs only after the pending
+        // queue submission has been signaled and drained on exceptional exits.
+        NativeImage unknownImage;
+        if (unknownCommand) createUnknownResourceImage(context, unknownImage);
+        PendingSubmission pending{context.device, context.secondQueue, context.secondCommands,
+                                  VK_NULL_HANDLE, context.pendingTimeline, false,
+                                  unknownCommand ? &unknownImage : nullptr};
+        check(vkAllocateCommandBuffers(context.device, &commandInfo, &pending.command),
               "allocate active-submit command buffer");
-        VkEvent unknownEvent{};
-        if (unknownCommand) {
-            VkEventCreateInfo eventInfo{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
-            check(vkCreateEvent(context.device, &eventInfo, nullptr, &unknownEvent),
-                  "create active-submit unknown event");
-        }
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        check(vkBeginCommandBuffer(blockedCommand, &begin), "begin active-submit command buffer");
+        check(vkBeginCommandBuffer(pending.command, &begin), "begin active-submit command buffer");
         VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
         barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        vkCmdPipelineBarrier(blockedCommand, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        vkCmdPipelineBarrier(pending.command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
         VkBufferCopy copy{0, 0, ChunkBytes};
-        vkCmdCopyBuffer(blockedCommand, a.handle, staging.buffer, 1, &copy);
-        if (unknownEvent)
-            vkCmdSetEvent(blockedCommand, unknownEvent, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+        vkCmdCopyBuffer(pending.command, a.handle, staging.buffer, 1, &copy);
+        if (unknownCommand) recordUnknownResourceClear(pending.command, unknownImage.handle);
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-        vkCmdPipelineBarrier(blockedCommand, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        vkCmdPipelineBarrier(pending.command, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
-        check(vkEndCommandBuffer(blockedCommand), "end active-submit command buffer");
+        check(vkEndCommandBuffer(pending.command), "end active-submit command buffer");
 
         VkTimelineSemaphoreSubmitInfo waitValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
         const std::uint64_t signalValue = 1;
@@ -1700,23 +1799,12 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
         blockedSubmit.pWaitSemaphores = &context.pendingTimeline;
         blockedSubmit.pWaitDstStageMask = &waitStage;
         blockedSubmit.commandBufferCount = 1;
-        blockedSubmit.pCommandBuffers = &blockedCommand;
+        blockedSubmit.pCommandBuffers = &pending.command;
         check(vkQueueSubmit(context.secondQueue, 1, &blockedSubmit, VK_NULL_HANDLE),
               "submit A behind host timeline wait");
+        pending.submitted = true;
 
-        auto unblockA = [&] {
-            std::uint64_t currentValue = 0;
-            check(vkGetSemaphoreCounterValue(context.device, context.pendingTimeline, &currentValue),
-                  "query active-submit timeline");
-            if (currentValue < signalValue) {
-                VkSemaphoreSignalInfo unblock{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
-                unblock.semaphore = context.pendingTimeline; unblock.value = signalValue;
-                check(vkSignalSemaphore(context.device, &unblock), "host-signal active-submit timeline");
-            }
-            check(vkQueueWaitIdle(context.secondQueue), "finish host-unblocked A submission");
-            vkFreeCommandBuffers(context.device, context.secondCommands, 1, &blockedCommand);
-            if (unknownEvent) vkDestroyEvent(context.device, unknownEvent, nullptr);
-        };
+        auto unblockA = [&] { check(pending.finish(), "finish host-unblocked A submission"); };
 
         if (unknownCommand) {
             const auto pendingStart = context.stats();
@@ -1822,17 +1910,24 @@ void selectiveSubmitCheck(Context& context, bool api2, bool unknownCommand, bool
             "queue/device idle or metadata query woke selective-submit pools");
 
     if (unknownCommand) {
-        VkEvent event{};
-        VkEventCreateInfo eventInfo{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
-        check(vkCreateEvent(context.device, &eventInfo, nullptr, &event), "create selective-submit unknown event");
-        check(context.submit([&](VkCommandBuffer command) {
-            vkCmdSetEvent(command, event, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-        }), "submit unknown selective-submit command");
+        {
+            NativeImage unknownImage;
+            createUnknownResourceImage(context, unknownImage);
+            try {
+                check(context.submit([&](VkCommandBuffer command) {
+                    recordUnknownResourceClear(command, unknownImage.handle);
+                }), "submit unknown selective-submit image clear");
+            } catch (...) {
+                // Context::submit may fail while waiting after submission; in
+                // that case the image must outlive the uncertain queue work.
+                unknownImage.unsafe = true;
+                throw;
+            }
+        }
         const auto restored = context.stats();
         require(restored.residentBytes == coldBytes && restored.coldLogicalBytes == 0 &&
                 restored.restores >= afterIdleWaits.restores + 2,
                 "unknown command did not conservatively restore every cold pool");
-        vkDestroyEvent(context.device, event, nullptr);
         setAddress(a.handle);
         readbackAndVerify(context, a.handle, staging, 0, false, ChunkBytes);
         setAddress(b.handle);
