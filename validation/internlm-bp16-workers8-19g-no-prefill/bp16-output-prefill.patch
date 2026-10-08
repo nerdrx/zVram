@@ -1,0 +1,14 @@
+--- a/gdeflate_gpu.hpp
++++ b/gdeflate_gpu.hpp
+@@ -209,7 +209,10 @@
+         const VkBufferCopy uploadRegion{0, 0, static_cast<VkDeviceSize>(inputBytes)};
+         api_.cmdCopyBuffer(commandBuffer_, upload_.buffer, input_.buffer, 1, &uploadRegion);
+         api_.cmdFillBuffer(commandBuffer_, scratch_.buffer, 0, 4, 0);
+-        api_.cmdFillBuffer(commandBuffer_, output, offset, static_cast<VkDeviceSize>(paddedRaw), 0);
++        // Canonical BP16 frames cover every output word. Avoid a redundant
++        // full-range transfer write; scratch clearing still detects errors.
++        if (format_ != Format::BP16)
++            api_.cmdFillBuffer(commandBuffer_, output, offset, static_cast<VkDeviceSize>(paddedRaw), 0);
+         if (gpuProfileEnabled_)
+             api_.cmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_TRANSFER_BIT, queryPool_, 1);
+ 

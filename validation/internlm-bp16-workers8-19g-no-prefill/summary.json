@@ -1,0 +1,78 @@
+{
+  "scope": "full wrapped InternLM2.5-20B F16; BP16 GPU restore, MRU, lazy backing, async compression, 8 workers, 19 GiB tracked cap, 2.5 GiB reserve; BP16 output prefill skipped; device profiling enabled",
+  "source_commit": "09fcc573af6dffbb97999b8aee875205937b4451",
+  "source_note": "Working-tree BP16-only output-fill removal; source hashes retained and the minimal patch is archived.",
+  "performance": {
+    "decode_ms": 47571.45,
+    "decode_runs": 12,
+    "tokens_per_second_reported": 0.25,
+    "prompt_ms": 8664.21
+  },
+  "rate_calculation": "12 * 1000 / 47571.45 = 0.252252 tokens/s",
+  "returncode": 0,
+  "offload": [
+    49,
+    49
+  ],
+  "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "diagnostics": [],
+  "minimum_available_mib": 16882,
+  "swap_used_baseline_mib": 13501,
+  "swap_used_peak_mib": 17180,
+  "swap_growth_mib": 3679,
+  "final_snapshot_state": {
+    "resident": 20367802368,
+    "cold-logical": 18381996032,
+    "cold-stored": 14758698640,
+    "freezes": 8903,
+    "restores": 9516,
+    "failures": 0,
+    "gpu-decode-calls": 8348,
+    "gpu-decode-bytes": 276376780800,
+    "gpu-decode-ns": 40291135540,
+    "gpu-decode-fallbacks": 0
+  },
+  "device_profile_ns": {
+    "samples": 8348,
+    "transfer-ns": 22252395840,
+    "decode-ns": 1085197520,
+    "finish-ns": 64252040
+  },
+  "host_profile_ns": {
+    "calls": 8348,
+    "validation-ns": 1537798604,
+    "input-prepare-ns": 13699033396,
+    "submit-wait-ns": 24987165109
+  },
+  "backing_profile_ns": {
+    "alloc-calls": 9516,
+    "alloc-ok": 9516,
+    "alloc-fail": 0,
+    "alloc-ns": 142385766,
+    "free-calls": 8903,
+    "free-ns": 97494776,
+    "sparse-calls": 12752,
+    "sparse-ok": 12752,
+    "sparse-fail": 0,
+    "sparse-ns": 197801052
+  },
+  "source_sha256": {
+    "layer.cpp": "a858324bbf6f472998004c1649faff892a4daec920bde0b515fa52cbc681422a",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "ab685aa6fefac2174bfb9f0bcaf4e58ff1a2bde90f1162c5cd2f789c0fcd64bd"
+  },
+  "binary_sha256": {
+    "layer.cpp": "a858324bbf6f472998004c1649faff892a4daec920bde0b515fa52cbc681422a",
+    "gdeflate_gpu.hpp": "71a5bb208f3fd38639705b50ce3b54270e7c11d2331be80652d5c25d01431de5",
+    "build/bp16-codec/libzvram_layer.so": "3656646807a44265d1e46014523e4ddab523f79903345a995e9d115daea60ef8",
+    "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+    "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+  },
+  "limits": [
+    "Sequential same-cap follow-up to the prior 19 GiB run; GPU clocks and desktop/background activity were uncontrolled.",
+    "The output-fill removal is the known source delta; elapsed-time difference cannot be attributed solely to it.",
+    "Transfer/compute/finish are device component timings, not model throughput.",
+    "The opt-in direct-host-input prototype is not part of this run or measured here."
+  ]
+}

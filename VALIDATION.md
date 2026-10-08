@@ -880,3 +880,72 @@ working-tree profiling additions. The compiled profiling source revision was
 [source commit](validation/internlm-bp16-workers8-19g/source-commit.txt),
 [full result](validation/internlm-bp16-workers8-19g/result.json.gz), and
 [full stderr](validation/internlm-bp16-workers8-19g/automatic.stderr.txt.gz).
+
+### Nineteen-gibibyte no-prefill follow-up
+
+The next run kept the same **19 GiB** tracked cap, **2.5 GiB** headroom reserve,
+model, eight BP16 encoding workers, and restore settings. It completed 12 decode
+runs in **47,571.45 ms**, or `12 * 1000 / 47571.45 = 0.252252 tokens/s`
+(reported as **0.25**). All **49/49** layers were offloaded, output matched the
+previous runs byte-for-byte (SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`), and
+there were zero diagnostics or GPU fallbacks.
+
+This build skipped the redundant full-range output fill for canonical BP16
+frames; the exact four-line source patch and matching source hash are archived.
+The device profile recorded **8,348 samples**: **22.252 s transfer**, **1.085 s
+compute**, and **0.064 s finish**. The prior same-cap run recorded 42.281 s
+transfer and 1.092 s compute. This is consistent with removing a transfer
+operation, but the trials were sequential with uncontrolled GPU clocks and
+background activity, so the full elapsed-time change cannot be attributed only
+to that edit. The direct-host-input prototype was not part of this run and has
+no performance result here.
+
+Host profiling recorded **1.538 s validation**, **13.699 s input preparation**,
+and **24.987 s submit/wait**. Backing profiling recorded **0.142 s allocation**,
+**0.097 s free**, and **0.198 s sparse binding** cumulatively. The final snapshot
+had **9,516 restores**, **8,903 freezes**, and zero failures. Minimum available
+RAM was **16,882 MiB** against a **16,384 MiB** guard; swap grew by **3,679 MiB**.
+
+[Summary](validation/internlm-bp16-workers8-19g-no-prefill/summary.json),
+[command](validation/internlm-bp16-workers8-19g-no-prefill/command.json),
+[run harness](validation/internlm-bp16-workers8-19g-no-prefill/run.py),
+[controller result](validation/internlm-bp16-workers8-19g-no-prefill/controller.log),
+[runtime hashes](validation/internlm-bp16-workers8-19g-no-prefill/runtime-binary-sha256.json),
+[source note](validation/internlm-bp16-workers8-19g-no-prefill/source-commit.txt),
+[output-fill patch](validation/internlm-bp16-workers8-19g-no-prefill/bp16-output-prefill.patch),
+[full result](validation/internlm-bp16-workers8-19g-no-prefill/result.json.gz), and
+[full stderr](validation/internlm-bp16-workers8-19g-no-prefill/automatic.stderr.txt.gz).
+
+### Interrupted BP16 direct host-input trial
+
+An opt-in direct coherent host-input attempt ended at
+`vk::Queue::submit: ErrorOutOfDeviceMemory` after **353 GPU restores**, with
+zero GPU fallback but **10 snapshot failures**. It did not complete inference
+and has no accepted rate. The recorded process status is **-9**; PID 1756378 was
+later killed while blocked in core-dump handling under disk pressure, so that
+status is not the original crash signal.
+
+During the attempt, an external Ollama 9B model reload was observed at 6.1 GB
+VRAM; native budget fell to 15.7 GB and effective budget to 13.0 GB from the
+planned 19 GB. No GPU reset was seen in the journal. These concurrent changes
+do not prove host-input mode caused the submit failure. See the
+[incident summary](validation/internlm-bp16-workers8-19g-host-input-interrupted/summary.json),
+[incident notes](validation/internlm-bp16-workers8-19g-host-input-interrupted/incident-notes.md),
+[command](validation/internlm-bp16-workers8-19g-host-input-interrupted/command.json),
+and [full stderr](validation/internlm-bp16-workers8-19g-host-input-interrupted/automatic.stderr.txt.gz).
+
+### BP16 presentation fixture: host and device input
+
+Both BP16 GPU input modes passed the hidden Gamescope presentation fixture for
+**3 frames** each, with sync validation enabled, native graphics allocation,
+lazy backing, async snapshots, full 32 MiB buffer checks, and exact pixel
+readback. Each recorded zero BP16 GPU fallbacks. This exercises the presentation
+and restore fixture only; it is not a game compatibility or performance result,
+and it does not use the GDeflate shader. The run used source `cefb8fc` and
+harness `9b05065`.
+
+[Host-input result](validation/bp16-presentation/host-input/result.json) ·
+[host-input log](validation/bp16-presentation/host-input/run.log.gz) ·
+[device-input result](validation/bp16-presentation/device-input/result.json) ·
+[device-input log](validation/bp16-presentation/device-input/run.log.gz).

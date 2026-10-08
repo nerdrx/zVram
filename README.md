@@ -280,7 +280,9 @@ and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored
 measurements, not a model speedup. [Component evidence](validation/bp16-component).
 
 The latest full InternLM2.5-20B F16 BP16 run used eight CPU encoding workers
-and completed 12 decode runs at 0.195155 tokens/s (reported as 0.20), with exact
-output and zero GPU fallback. It used a 19 GiB tracked cap and 2.5 GiB reserve,
-so it is a sequential run at a different cap from the earlier 18 GiB result,
-not a controlled codec or worker comparison. [Latest run details](VALIDATION.md#nineteen-gibibyte-sequential-profile-run); [earlier 18 GiB result](VALIDATION.md#eight-worker-sequential-repeat).
+and completed 12 decode runs at 0.252252 tokens/s (reported as 0.25), with exact
+output and zero GPU fallback. It followed the 0.195155 same-cap run sequentially
+and removed a redundant BP16 output fill; clocks and background activity were
+uncontrolled, so the full run-to-run change is not isolated to that edit.
+[Latest run and limits](VALIDATION.md#nineteen-gibibyte-no-prefill-follow-up);
+[previous same-cap run](VALIDATION.md#nineteen-gibibyte-sequential-profile-run).
