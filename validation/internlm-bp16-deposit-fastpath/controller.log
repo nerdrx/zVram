@@ -1,0 +1,16 @@
+{
+  "error": null,
+  "performance": {
+    "decode_ms": 27346.93,
+    "decode_runs": 12,
+    "tokens_per_second": 0.44,
+    "prompt_ms": 6276.63,
+    "restore_ms": []
+  },
+  "offload": [
+    49,
+    49
+  ],
+  "stdout_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "diagnostics": []
+}

@@ -264,3 +264,9 @@ The allocation-free profiling change passed the focused **8/8 GPU CTests**
 with GPU profiling and allocated-host input enabled. The logs show the marker
 and final profile records; this confirms opt-in reporting behavior only, not
 performance. [Test log and binary provenance](../../validation/bp16-allocation-free-profile-check/).
+
+The deposit-fastpath full-model candidate produced exact output at **0.4388061
+tokens/s**, but this was not a controlled improvement over the prior sampled
+run; GPU decode durations were similar and profile state differed. It remains
+unadopted, and the measured best remains **0.4626948 tokens/s**. [Candidate
+run and limits](../../validation/internlm-bp16-deposit-fastpath/README.md).

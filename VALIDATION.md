@@ -1184,6 +1184,28 @@ checks only opt-in profile reporting; it makes no speed claim. The tests used
 source `a8d113b`; the runtime layer binary hash is archived alongside the
 [CTest logs](validation/bp16-allocation-free-profile-check/).
 
+### BP16 deposit-fastpath candidate full-model run
+
+An experimental deposit-fastpath candidate completed 12 decode runs in
+**27,346.93 ms** (**0.4388061 tokens/s**), with exact output SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`,
+**49/49** layers, and zero GPU fallback. Minimum available RAM was
+**19,995 MiB** and swap grew by **381 MiB**. The source was
+`a8d113bac4dc2bce8867286f10199d56c09ca2f5`; the isolated BP16 shader hash was
+`43e49ac77c0e6adef9db24dadc6df889a285cc0e9505f03dbbf9ba80e1445ab4`.
+
+This does not establish a speed improvement over the prior sampled-profile run
+at **0.3967118 tokens/s**: profile sampling/software-pipeline state and RAM
+conditions differed, while measured GPU decode duration was similar at about
+**7.75 s** versus **7.74 s**. The candidate remains unadopted, and the best
+measured rate remains **0.4626948 tokens/s**. The final profile call count
+matched the final snapshot at **8,409**; this is profile consistency evidence,
+not an end-to-end speed claim.
+
+[Candidate archive](validation/internlm-bp16-deposit-fastpath/README.md),
+[result](validation/internlm-bp16-deposit-fastpath/result.json.gz), and
+[full stderr](validation/internlm-bp16-deposit-fastpath/automatic.stderr.txt.gz).
+
 ### Same-prompt 92-token native/allocated-host comparison
 
 A separate longer generation used the same prompt, temperature 0, seed 1,
