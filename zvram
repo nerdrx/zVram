@@ -25,6 +25,7 @@ parser.add_argument("--vulkan-byte-shuffle", type=int, choices=(2,4), help="loss
 parser.add_argument("--vulkan-codec", choices=("zstd", "gdeflate", "bp16"), help="snapshot codec (default zstd); GDeflate and BP16 are experimental optional codecs")
 parser.add_argument("--vulkan-gdeflate-workers", type=int, choices=range(1,33), help="bounded CPU GDeflate encoding workers (default 1); requires the GDeflate codec and automatic snapshots")
 parser.add_argument("--vulkan-bp16-workers", type=int, choices=range(1,33), help="bounded CPU BP16 encoding workers (default 1); requires the BP16 codec and automatic snapshots")
+parser.add_argument("--vulkan-bp16-upload-workers", type=int, choices=range(1,9), help="bounded BP16 GPU upload-copy workers (default 1); requires BP16 GPU restore")
 parser.add_argument("--vulkan-gdeflate-gpu", action="store_true", help="restore GDeflate snapshots directly on a supported wave32 GPU (experimental, CPU fallback)")
 parser.add_argument("--vulkan-bp16-gpu", action="store_true", help="restore BP16 snapshots directly on a supported GPU (experimental, CPU fallback)")
 parser.add_argument("--vulkan-selective-restore", action="store_true", help="restore only allocations referenced by tracked Vulkan submissions; unknown access restores all (experimental)")
@@ -87,6 +88,9 @@ if not args.hip and gdeflate_gpu and (effective_codec != "gdeflate" or args.vulk
     parser.error("--vulkan-gdeflate-gpu requires the gdeflate codec and Vulkan automatic snapshots")
 if not args.hip and bp16_gpu and (effective_codec != "bp16" or args.vulkan_auto_idle_ms is None):
     parser.error("--vulkan-bp16-gpu requires the bp16 codec and Vulkan automatic snapshots")
+if args.vulkan_bp16_upload_workers is not None and (
+        args.hip or not bp16_gpu or effective_codec != "bp16" or args.vulkan_auto_idle_ms is None):
+    parser.error("--vulkan-bp16-upload-workers requires BP16 GPU restore and Vulkan automatic snapshots")
 if args.hip and args.vulkan_gdeflate_gpu:
     parser.error("--vulkan-gdeflate-gpu requires the Vulkan backend")
 if args.hip and (args.vulkan_bp16_gpu or os.environ.get("ZVRAM_VULKAN_BP16_GPU") == "1" or effective_codec == "bp16"):
@@ -201,6 +205,8 @@ else:
         env["ZVRAM_VULKAN_GDEFLATE_WORKERS"] = str(args.vulkan_gdeflate_workers)
     if args.vulkan_bp16_workers is not None:
         env["ZVRAM_VULKAN_BP16_WORKERS"] = str(args.vulkan_bp16_workers)
+    if args.vulkan_bp16_upload_workers is not None:
+        env["ZVRAM_VULKAN_BP16_UPLOAD_WORKERS"] = str(args.vulkan_bp16_upload_workers)
     if gpu_restore:
         if gdeflate_gpu:
             env["ZVRAM_VULKAN_GDEFLATE_GPU"] = "1"

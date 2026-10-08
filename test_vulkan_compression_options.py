@@ -97,6 +97,22 @@ with tempfile.TemporaryDirectory() as temporary:
                   ("--vulkan-bp16-workers", "2", "--vulkan-codec", "zstd")):
         result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", *extra, "--", sys.executable, "-c", "pass")
         assert result.returncode == 2, result.stderr
+    for workers in (1, 8):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "bp16",
+                     "--vulkan-bp16-gpu", "--vulkan-bp16-upload-workers", str(workers),
+                     "--", sys.executable, "-c",
+                     "import os; print(os.environ['ZVRAM_VULKAN_BP16_UPLOAD_WORKERS'])")
+        assert result.returncode == 0 and result.stdout == str(workers) + "\n", (result.stdout, result.stderr)
+    for extra in (("--vulkan-bp16-upload-workers", "0"), ("--vulkan-bp16-upload-workers", "9"),
+                  ("--vulkan-bp16-upload-workers", "2", "--vulkan-codec", "bp16"),
+                  ("--vulkan-bp16-upload-workers", "2", "--vulkan-codec", "zstd", "--vulkan-bp16-gpu")):
+        result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", *extra, "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2, (extra, result.stderr)
+    no_gpu_upload = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "bp16",
+                        "--vulkan-bp16-upload-workers", "2", "--", sys.executable, "-c", "pass")
+    assert no_gpu_upload.returncode == 2 and "requires BP16 GPU restore" in no_gpu_upload.stderr
+    hip_upload = run(launcher, "--hip", "--vulkan-bp16-upload-workers", "2", "--", sys.executable, "-c", "pass")
+    assert hip_upload.returncode == 2 and "requires BP16 GPU restore" in hip_upload.stderr
     for extra in (("--vulkan-bp16-gpu",), ("--vulkan-codec", "bp16", "--vulkan-bp16-gpu", "--vulkan-gdeflate-gpu"),
                   ("--vulkan-codec", "bp16", "--vulkan-byte-shuffle", "2")):
         result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", *extra, "--", sys.executable, "-c", "pass")
@@ -106,9 +122,13 @@ with tempfile.TemporaryDirectory() as temporary:
     inherited_bp16 = os.environ.copy()
     for key in ("ZVRAM_VULKAN_CODEC", "ZVRAM_VULKAN_BP16_GPU", "ZVRAM_VULKAN_GDEFLATE_GPU", "ZVRAM_VULKAN_BYTE_SHUFFLE"):
         inherited_bp16.pop(key, None)
-    inherited_bp16.update({"ZVRAM_VULKAN_CODEC": "bp16", "ZVRAM_VULKAN_BP16_GPU": "1"})
+    inherited_bp16.update({"ZVRAM_VULKAN_CODEC": "bp16", "ZVRAM_VULKAN_BP16_GPU": "1",
+                           "ZVRAM_VULKAN_BP16_UPLOAD_WORKERS": "7"})
     result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--", sys.executable, "-c", bp16_child, env=inherited_bp16)
     assert result.returncode == 0 and result.stdout == "bp16\n1\n" + str(build / "bp16.spv") + "\n", (result.stdout, result.stderr)
+    result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--", sys.executable, "-c",
+                 "import os; print(os.environ['ZVRAM_VULKAN_BP16_UPLOAD_WORKERS'])", env=inherited_bp16)
+    assert result.returncode == 0 and result.stdout == "7\n", (result.stdout, result.stderr)
     inherited_bp16["ZVRAM_VULKAN_CODEC"] = "zstd"
     result = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--", sys.executable, "-c", "pass", env=inherited_bp16)
     assert result.returncode == 2 and "requires the bp16 codec" in result.stderr, result.stderr
