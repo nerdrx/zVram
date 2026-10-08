@@ -1,0 +1,30 @@
+{
+  "compiler": "c++ (GCC) 16.2.1 20260810",
+  "source_commit": "56c2286739dc96ff928b4c724837d3e26606c252",
+  "compile_command": [
+    "c++",
+    "-std=c++17",
+    "-O1",
+    "-g",
+    "-fsanitize=address,undefined",
+    "-fno-omit-frame-pointer",
+    "-pthread",
+    "bp16_codec_check.cpp",
+    "-o",
+    "build/bp16-sanitizer/codec-check"
+  ],
+  "run_command": [
+    "build/bp16-sanitizer/codec-check"
+  ],
+  "environment": {
+    "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1"
+  },
+  "exit_code": 0,
+  "sha256": {
+    "bp16_codec_check.cpp": "09c4a21a1a9282ff2452b286df58d6c80431bb6b5c44cbf6b89a3d0744f0aa7b",
+    "bp16_codec.hpp": "703bc061cb460926f83c88194668b6412408a00c94b4d107deb3a6784f6a97c4",
+    "gdeflate_gpu.hpp": "39a1d9c188b907a65926940fc95b9912a5f52193e2bc23dd24f8fdd60ffd492e",
+    "build/bp16-sanitizer/codec-check": "e3ef523a37a864cf116bc5a7cefb096fae0e9f91b14c81995a55d4abd36c9a99"
+  }
+}
