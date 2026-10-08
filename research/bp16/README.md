@@ -219,6 +219,12 @@ with unlocked clocks and different RAM conditions, so this is not a controlled
 comparison. It is a long-run result, not a replacement for the best measured
 **0.61020197 tokens/s** result. [Comparison and archive](../../VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
 
+A later child-only glibc 128 KiB mmap/trim-threshold run completed the same
+92-token output at **0.4652449 tokens/s**. The default-threshold retry stopped
+at the RAM floor, so this is not a controlled allocator-speed comparison. It
+remains separate from and below the best 12-token short-run result; the
+thresholds are not application defaults. [Tuned run and monitored baseline](../../VALIDATION.md#92-token-bp16-run-with-child-only-allocator-thresholds).
+
 At source `23c05842cebf2fe3c7093191ba7f448626505d6e`, focused GPU checks passed
 8/8 in 7.30 s with the default budget and 8/8 in 7.08 s with the cache
 disabled; CPU budget-parser/ownership checks passed. The earlier 120 CTests,

@@ -1,0 +1,12 @@
+{
+  "scope": "24GiB cold quota and8upload workers long-generation trial; native historical baseline available; identical prompt/temp0/seed1/ctx512/predict128; sequential unlocked clocks; no game claim",
+  "prompt_utf8": "Write a 300-word story about a fox exploring a forest. Continue the story until you have written at least 300 words.\n",
+  "source_sha256": {
+    "layer.cpp": "e9e80c102b21cca672374f77b9a41878b2d4636d9c6efaf9535969824ad75036",
+    "gdeflate_gpu.hpp": "7c643f6af6f2630858ae277fcfaedd4d9b7889d0567a8962c6f46b149b070294",
+    "submission_hooks.inc": "fb1bf489cf9ab8ee9756d42635ed0b299f27306f77a6ed332b1ca2a7f3af6546",
+    "check_vulkan_idle_model.py": "7063006f7e4243728f79ee8a0383408ee04ca75ee727ec6f637bc4be6b8d0f2e"
+  },
+  "runs": {},
+  "error": "automatic: MemAvailable 16383 MiB below guard floor 16384 MiB"
+}

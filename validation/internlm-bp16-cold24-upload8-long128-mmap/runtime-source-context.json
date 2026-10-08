@@ -1,0 +1,5 @@
+{
+  "runtime_code_commit": "4d1b704",
+  "allocator_reference": "https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html",
+  "note": "Child-only allocator environment experiment; same rebuilt profiling library and unchanged production BP16shader; guards unchanged."
+}

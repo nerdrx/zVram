@@ -1332,6 +1332,28 @@ measured short-run rate.
 [native logs and harness](validation/internlm-bp16-allocated-long128/native/), and
 [allocated-host logs and hashes](validation/internlm-bp16-allocated-long128/allocated-host/).
 
+### 92-token BP16 run with child-only allocator thresholds
+
+A later same-prompt run set glibc `MALLOC_MMAP_THRESHOLD_=131072` and
+`MALLOC_TRIM_THRESHOLD_=131072` for the child process only, retaining
+`MALLOC_ARENA_MAX=2`. It completed 92 decode runs in **197,745.32 ms**
+(**0.4652449 tokens/s**), with **49/49** layers, zero GPU fallback, and stdout
+identical to the native 92-token output (SHA-256
+`b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`). Minimum
+available RAM was **20,601 MiB** and swap grew by **2,056 MiB**.
+
+The monitored run with thresholds unset stopped at **16,383 MiB** available,
+below the **16,384 MiB** floor after prompt input; it has no completed rate.
+Consequently, the tuned run does not establish an allocator speed effect. It
+is a separate 92-token long-run observation, not a replacement for the **0.61**
+12-token short-run result. The child-only thresholds are not defaults. Both
+runs used the same runtime library and production shader; the tuned run's
+profile counters are retained as cumulative instrumentation, not a causal
+throughput breakdown.
+
+[Tuned run and monitor archive](validation/internlm-bp16-cold24-upload8-long128-mmap/README.md),
+[threshold-unset guard stop and memory samples](validation/internlm-bp16-cold24-upload8-long128-monitored-abort/README.md).
+
 ### Bounded imported BP16 host input and current regression checks
 
 The standalone research decoder now has an opt-in `--import-host-input` path using

@@ -299,12 +299,14 @@ measured 0.5275435 tokens/s. The upload-worker setting remains default-one.
 [previous 8 GiB-cache run](VALIDATION.md#earlier-best-bp16-run-bounded-allocated-host-cache-32-workers);
 [fresh native reference](VALIDATION.md#fresh-native-nodes4-reference).
 
-A separate same-prompt 92-token native/allocated-host comparison produced
-identical output across 49/49 layers: **1.69935 tokens/s** native and
-**0.43978 tokens/s** allocated-host. It stayed within the 8 GiB live cache
-limit, but the sequential runs had unlocked clocks and different RAM conditions;
-this is not a controlled speed comparison. It does not replace the short-run
-0.61020 BP16 result above. [Long-run details and archive](VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
+A same-prompt 92-token comparison produced identical stdout across 49/49 layers:
+**1.69935 tokens/s** native and **0.43978 tokens/s** allocated-host under the
+8 GiB cache. A later child-only glibc threshold run completed the same 92-token
+output at **0.46524 tokens/s**; its default-threshold retry stopped at the RAM
+guard and has no rate, so this does not prove an allocator speed effect. These
+sequential long-run observations are distinct from the 12-token **0.61020**
+short-run BP16 result, which remains the best measured short run. The allocator
+thresholds are not application defaults. [Long-run evidence and limits](VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
 
 A separate zVram virtual-native-spill run, without automatic snapshots or
 compression, measured 1.69936 tokens/s. It matches the fresh native rate, but
