@@ -1,0 +1,14 @@
+{
+  "focused20.log": {
+    "bytes": 2530,
+    "sha256": "036cb5da9de6ead72feb4415b9b28d8ae5881b2496cdd7bafaedeacf6a8cc3df"
+  },
+  "focused20-LastTest.log": {
+    "bytes": 117516,
+    "sha256": "0d38fca95656aba81c885d8a47b86cf87a1cced3ae8531555a384d99beea2331"
+  },
+  "README.md": {
+    "bytes": 414,
+    "sha256": "bec5f5c96370054f25bc2c9ef1cc556da9b9e2bf9a990b0b09e36a4175f4fa63"
+  }
+}

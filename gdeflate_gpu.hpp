@@ -206,8 +206,6 @@ public:
         std::uint64_t submitWaitNs{};
         std::uint64_t queueSubmitNs{};
         std::uint64_t fenceWaitNs{};
-        std::uint64_t fenceSpinCompleted{};
-        std::uint64_t fenceSpinFallbacks{};
         std::uint64_t gpuTransferNs{};
         std::uint64_t gpuDecodeNs{};
         std::uint64_t gpuFinishNs{};
@@ -228,7 +226,6 @@ public:
     bool importedHostInputEnabled() const noexcept { return bp16ImportHostInput_; }
     bool allocatedHostInputEnabled() const noexcept { return bp16AllocatedHostInput_; }
     bool bp16EncoderEnabled() const noexcept { return bp16EncoderEnabled_; }
-    bool spinWaitEnabled() const noexcept { return bp16SpinWaitEnabled_; }
     unsigned uploadWorkers() const noexcept { return bp16UploadWorkers_; }
     std::uint64_t allocatedHostInputUsedBytes() const noexcept {
         return allocatedHostBudget_ ? allocatedHostBudget_->usedBytes() : 0;
@@ -262,9 +259,6 @@ public:
             return VK_ERROR_INITIALIZATION_FAILED;
         if (format != Format::GDeflate && format != Format::BP16)
             return VK_ERROR_VALIDATION_FAILED_EXT;
-        const char* spinWaitEnv = std::getenv("ZVRAM_VULKAN_BP16_SPIN_WAIT");
-        const bool spinWaitRequested = format == Format::BP16 && spinWaitEnv &&
-                                       std::strcmp(spinWaitEnv, "1") == 0;
         bp16UploadWorkers_ = 1;
         if (format == Format::BP16) {
             if (const char* uploadWorkers = std::getenv("ZVRAM_VULKAN_BP16_UPLOAD_WORKERS"))
@@ -370,7 +364,6 @@ public:
         }
         inputCapacity_ = 4;
         initialized_ = true;
-        bp16SpinWaitEnabled_ = spinWaitRequested;
         bp16EncoderEnabled_ = bp16EncoderRequested_;
         return VK_SUCCESS;
     }
@@ -820,7 +813,7 @@ public:
             return result;
         }
         const auto fenceWaitStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
-        result = waitForSubmittedFence();
+        result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
         if (profileEnabled_)
             profile_.fenceWaitNs += static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - fenceWaitStarted).count());
@@ -1448,23 +1441,6 @@ private:
         return result;
     }
 
-    VkResult waitForSubmittedFence() {
-        if (!bp16SpinWaitEnabled_) return api_.waitForFences(
-            device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
-        const auto deadline = std::chrono::steady_clock::now() +
-                              std::chrono::milliseconds(3);
-        do {
-            const VkResult result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, 0);
-            if (result == VK_SUCCESS) {
-                if (profileEnabled_) ++profile_.fenceSpinCompleted;
-                return VK_SUCCESS;
-            }
-            if (result != VK_TIMEOUT) return result;
-        } while (std::chrono::steady_clock::now() < deadline);
-        if (profileEnabled_) ++profile_.fenceSpinFallbacks;
-        return api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
-    }
-
     void markPoisoned() noexcept {
         poisoned_ = true;
         if (poisonState_) poisonState_->store(true, std::memory_order_release);
@@ -1510,7 +1486,6 @@ private:
         bp16CachedUploadPreference_ = false;
         bp16ImportHostInput_ = false;
         bp16AllocatedHostInput_ = false;
-        bp16SpinWaitEnabled_ = false;
         bp16EncoderRequested_ = false;
         bp16EncoderEnabled_ = false;
         importHostAlignment_ = 0;
@@ -1560,7 +1535,6 @@ private:
     bool bp16CachedUploadPreference_{};
     bool bp16ImportHostInput_{};
     bool bp16AllocatedHostInput_{};
-    bool bp16SpinWaitEnabled_{};
     bool bp16EncoderRequested_{};
     bool bp16EncoderEnabled_{};
     unsigned bp16UploadWorkers_{1};

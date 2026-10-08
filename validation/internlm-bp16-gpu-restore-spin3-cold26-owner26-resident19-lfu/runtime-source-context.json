@@ -1,0 +1,13 @@
+{
+  "runtime_code_commit": "0086d4240ac22598b2b5734831fef97831b48995",
+  "note": "Restore-only bounded3mszero-timeout fencepoll. Samebaselineprofile,26GiBcoldowner/19GiBresident/2.5GiBreserve,nodes4. Noencoderpoll/globalpriority/clockchanges. deadline08:04:31UTC.",
+  "sources": {
+    "layer.cpp": "0f39742ba81fa0faf0a674bb652a24973810d38037da6d56a75343c35dfda9af",
+    "gdeflate_gpu.hpp": "5afcfe7efa1c11d157ae1ebb853a27e56103cab993f2068c909cb7a03d4af726",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "submission_hooks.inc": "846ce6984b8612cd83c2b4909d59819012d3810b39250dc968e8ec16e9309efc",
+    "zvram": "7e2b177eb6cecdcbbcd48cccc419e78d460f6fec28b6e2c98e43394053958a49",
+    "CMakeLists.txt": "c544ea4cd0853609607c6f83145c4e78b0a8d5ecd8851dcbd14de540400a9cf9"
+  }
+}

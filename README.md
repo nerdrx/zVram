@@ -340,10 +340,11 @@ keep 26 GiB as the recommendation. The policy remains experimental; a 20 GiB
 resident-cap attempt hit Vulkan out-of-device-memory, so retain the validated
 19 GiB resident limit. A separate single run with llama.cpp `GGML_VK_MAX_NODES_PER_SUBMIT=16` measured 1.134885 tokens/s versus 1.170688 at 4 nodes; keep 4 as the recommendation. This sequential result does not isolate the setting. [16-node run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-nodes16/README.md) · [28 GiB trial](validation/internlm-bp16-gpu-clean-first-cold28-owner28-resident19-lfu/README.md) · [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [20 GiB failure](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
 
-A bounded fence-polling prototype was also tested and discarded: its 92-token run
-measured 1.16783681 tokens/s versus 1.17068766 for the clean-first repeat, with
-exact output and 49/49 layers. It showed no observed gain; its flag is not a
-current runtime option. [Archived experiment](VALIDATION.md#discarded-bp16-fence-polling-prototype).
+A bounded fence-polling prototype was tested and discarded. The later 3 ms run
+completed at 1.1741 tokens/s versus 1.1725 for the immediately prior timing
+baseline, which is no meaningful observed gain; polling completed on 97.3% of
+restores, but fence wait still dominated. Exact output and 49/49 layers passed.
+Its flag is not a current runtime option. [Runs and limits](VALIDATION.md#discarded-bp16-fence-polling-prototype).
 
 A same-prompt 92-token comparison produced identical stdout across 49/49 layers:
 **1.69935 tokens/s** native and **0.43978 tokens/s** allocated-host under the

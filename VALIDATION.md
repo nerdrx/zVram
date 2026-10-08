@@ -1807,6 +1807,18 @@ as a hash-verified patch in [the fixture archive](validation/bp16-fence-spin/REA
 [the model archive](validation/internlm-bp16-gpu-spin-cold26-owner26-resident19-lfu/README.md)
 contains run provenance.
 
+A later **3 ms** spin trial completed the same prompt in **78,357.64 ms**
+(**1.1741 tokens/s**) with exact output, 49/49 layers, and zero GPU restore
+fallback. It was effectively unchanged from the immediately prior 78,464.32 ms
+restore-timing run, so it showed no meaningful observed gain. Across 54,530
+restores, polling completed 53,065 times and fell back to blocking 1,465 times
+(97.3%). Queue-submit time was **0.27356 s** and fence-wait time **73.9426 s**,
+versus **0.26648 s** and **74.54250 s** without spin. Fence waiting still
+accounted for nearly all measured restore host time; this weakens the wakeup
+hypothesis but does not identify the wait's cause. The prototype was removed
+from the current runtime; its full-model run, **20/20** focused checks, and
+implementation patch are preserved in [the archive](validation/internlm-bp16-gpu-restore-spin3-cold26-owner26-resident19-lfu/README.md) and [focused-check record](validation/bp16-restore-spin3/README.md).
+
 ### Failed 20 GiB clean-first resident-cap attempt
 
 A clean-first run with **20 GiB** tracked residency, the same 26 GiB cold/owner

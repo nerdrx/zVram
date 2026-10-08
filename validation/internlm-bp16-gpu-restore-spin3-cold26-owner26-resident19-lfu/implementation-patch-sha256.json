@@ -1,0 +1,11 @@
+{
+  "bytes": 6722,
+  "sha256": "652a3a2de9022eb3f172a01d541c1e5f987012e4a77e749e1fb3a16998d6a76f",
+  "from": "45bd211",
+  "through": "0086d42",
+  "files": [
+    "gdeflate_gpu.hpp",
+    "layer.cpp",
+    "test_gdeflate_gpu_layer.py"
+  ]
+}
