@@ -1,0 +1,36 @@
+[
+  {
+    "shader": "baseline",
+    "command": [
+      "build/bp16-codec/zvram-gdeflate-research",
+      "--codec",
+      "bp16",
+      "--gpu-bounded-smoke",
+      "build/bp16-fastpath-research/baseline.spv",
+      "build/bp16-fastpath-research/all-masks.bp16",
+      "build/bp16-fastpath-research/all-masks.raw"
+    ],
+    "returncode": 0,
+    "timing": [
+      "gpu-timing iterations=3 upload-ns-median=431640 decode-ns-median=58800 readback-copy-ns-median=536640"
+    ],
+    "pass": true
+  },
+  {
+    "shader": "candidate",
+    "command": [
+      "build/bp16-codec/zvram-gdeflate-research",
+      "--codec",
+      "bp16",
+      "--gpu-bounded-smoke",
+      "build/bp16-fastpath-research/candidate.spv",
+      "build/bp16-fastpath-research/all-masks.bp16",
+      "build/bp16-fastpath-research/all-masks.raw"
+    ],
+    "returncode": 0,
+    "timing": [
+      "gpu-timing iterations=3 upload-ns-median=412520 decode-ns-median=78560 readback-copy-ns-median=536880"
+    ],
+    "pass": true
+  }
+]

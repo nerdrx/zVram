@@ -1,0 +1,90 @@
+[
+  {
+    "name": "exact-all-masks-device-input",
+    "command": [
+      "build/bp16-codec/zvram-gdeflate-research",
+      "--codec",
+      "bp16",
+      "--gpu-bounded-smoke",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/candidate.spv",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/all-masks.bp16",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/all-masks.raw"
+    ],
+    "returncode": 0,
+    "pass": true
+  },
+  {
+    "name": "exact-all-masks---host-input",
+    "command": [
+      "build/bp16-codec/zvram-gdeflate-research",
+      "--codec",
+      "bp16",
+      "--host-input",
+      "--gpu-bounded-smoke",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/candidate.spv",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/all-masks.bp16",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/all-masks.raw"
+    ],
+    "returncode": 0,
+    "pass": true
+  },
+  {
+    "name": "exact-all-masks---allocated-host-input",
+    "command": [
+      "build/bp16-codec/zvram-gdeflate-research",
+      "--codec",
+      "bp16",
+      "--allocated-host-input",
+      "--gpu-bounded-smoke",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/candidate.spv",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/all-masks.bp16",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/all-masks.raw"
+    ],
+    "returncode": 0,
+    "pass": true
+  },
+  {
+    "name": "exact-mixed-device-input",
+    "command": [
+      "build/bp16-codec/zvram-gdeflate-research",
+      "--codec",
+      "bp16",
+      "--gpu-bounded-smoke",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/candidate.spv",
+      "build/bp16-research/gpu-mixed-pattern.bp16",
+      "build/bp16-research/gpu-mixed-pattern.raw"
+    ],
+    "returncode": 0,
+    "pass": true
+  },
+  {
+    "name": "exact-mixed---host-input",
+    "command": [
+      "build/bp16-codec/zvram-gdeflate-research",
+      "--codec",
+      "bp16",
+      "--host-input",
+      "--gpu-bounded-smoke",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/candidate.spv",
+      "build/bp16-research/gpu-mixed-pattern.bp16",
+      "build/bp16-research/gpu-mixed-pattern.raw"
+    ],
+    "returncode": 0,
+    "pass": true
+  },
+  {
+    "name": "exact-mixed---allocated-host-input",
+    "command": [
+      "build/bp16-codec/zvram-gdeflate-research",
+      "--codec",
+      "bp16",
+      "--allocated-host-input",
+      "--gpu-bounded-smoke",
+      "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/candidate.spv",
+      "build/bp16-research/gpu-mixed-pattern.bp16",
+      "build/bp16-research/gpu-mixed-pattern.raw"
+    ],
+    "returncode": 0,
+    "pass": true
+  }
+]

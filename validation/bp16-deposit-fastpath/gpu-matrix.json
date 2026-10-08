@@ -1,0 +1,123 @@
+{
+  "binary_sha256": "49513fd22718c1e11511a531b0279077853df1fd01abb810f960696e15aac68d",
+  "records": [
+    {
+      "name": "00-baseline---host-input",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--gpu-bounded-smoke",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/baseline.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 10.273931711999467,
+      "shader_sha256": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+      "pass": true,
+      "gpu_timing": [
+        "gpu-timing input-mode=direct-host-visible upload-gpu-copy-ns=0 decode-includes-host-memory-reads iterations=3 decode-ns-median=1064560 readback-copy-ns-median=1130480"
+      ]
+    },
+    {
+      "name": "01-candidate---host-input",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--gpu-bounded-smoke",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/candidate.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 10.50816004799708,
+      "shader_sha256": "43e49ac77c0e6adef9db24dadc6df889a285cc0e9505f03dbbf9ba80e1445ab4",
+      "pass": true,
+      "gpu_timing": [
+        "gpu-timing input-mode=direct-host-visible upload-gpu-copy-ns=0 decode-includes-host-memory-reads iterations=3 decode-ns-median=1049040 readback-copy-ns-median=1122040"
+      ]
+    },
+    {
+      "name": "02-baseline-device-input",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--gpu-bounded-smoke",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/baseline.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 10.788944477997575,
+      "shader_sha256": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+      "pass": true,
+      "gpu_timing": [
+        "gpu-timing iterations=3 upload-ns-median=1272680 decode-ns-median=117800 readback-copy-ns-median=1143280"
+      ]
+    },
+    {
+      "name": "03-candidate-device-input",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--gpu-bounded-smoke",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/candidate.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 10.644316202997288,
+      "shader_sha256": "43e49ac77c0e6adef9db24dadc6df889a285cc0e9505f03dbbf9ba80e1445ab4",
+      "pass": true,
+      "gpu_timing": [
+        "gpu-timing iterations=3 upload-ns-median=1168200 decode-ns-median=72880 readback-copy-ns-median=1138920"
+      ]
+    },
+    {
+      "name": "04-baseline---host-input",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--gpu-bounded-smoke",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/baseline.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 10.645921745999658,
+      "shader_sha256": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+      "pass": true,
+      "gpu_timing": [
+        "gpu-timing input-mode=direct-host-visible upload-gpu-copy-ns=0 decode-includes-host-memory-reads iterations=3 decode-ns-median=1060560 readback-copy-ns-median=1132120"
+      ]
+    },
+    {
+      "name": "05-candidate---host-input",
+      "command": [
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec/zvram-gdeflate-research",
+        "--codec",
+        "bp16",
+        "--host-input",
+        "--gpu-bounded-smoke",
+        "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-fastpath-research/candidate.spv",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+        "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 10.552761326998734,
+      "shader_sha256": "43e49ac77c0e6adef9db24dadc6df889a285cc0e9505f03dbbf9ba80e1445ab4",
+      "pass": true,
+      "gpu_timing": [
+        "gpu-timing input-mode=direct-host-visible upload-gpu-copy-ns=0 decode-includes-host-memory-reads iterations=3 decode-ns-median=1051160 readback-copy-ns-median=1123880"
+      ]
+    }
+  ]
+}
