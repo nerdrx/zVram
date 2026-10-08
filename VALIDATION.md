@@ -1794,6 +1794,17 @@ as a hash-verified patch in [the fixture archive](validation/bp16-fence-spin/REA
 [the model archive](validation/internlm-bp16-gpu-spin-cold26-owner26-resident19-lfu/README.md)
 contains run provenance.
 
+### Failed 20 GiB clean-first resident-cap attempt
+
+A clean-first run with **20 GiB** tracked residency, the same 26 GiB cold/owner
+ceilings, and a **2.5 GiB** reserve exited **-6** after prompting with
+`vk::Queue::submit: ErrorOutOfDeviceMemory`. It did not complete inference and
+has no accepted rate. Minimum available RAM was **29,738 MiB**, swap growth was
+**658 MiB**, and the Ollama GPU guard detected no model. The captured runtime
+contained the fence-spin code, but its environment value was `0`, so spinning
+was disabled. Keep the previous **19 GiB** resident profile; this failure does
+not prove all 20 GiB configurations fail. [Diagnostic archive](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
+
 ### Latest BP16 GPU-encoder full-model repeat: 26 GiB cold/owner ceilings
 
 The opt-in synchronous GPU BP16 encoder completed two 92-token

@@ -1,0 +1,13 @@
+{
+  "runtime_code_commit": "0237548f7f0a7f0ad4894a5dad15f1aea175f5c0",
+  "note": "Bounded 1ms zero-timeout fence polling before ordinary wait, BP16 only. Clean-first GPU encoder profile, same fixed quotas/guards. No priority changes. Sequential unlocked clocks.",
+  "sources": {
+    "layer.cpp": "0da989592554b3f0f078e986073c99c3a64f569de99ab037beab9415707bc6ca",
+    "gdeflate_gpu.hpp": "34067c5854bcebcd4e9cc92c70729ba2f15a1bd5c4cec523e389b61d867844fc",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "submission_hooks.inc": "846ce6984b8612cd83c2b4909d59819012d3810b39250dc968e8ec16e9309efc",
+    "zvram": "7e2b177eb6cecdcbbcd48cccc419e78d460f6fec28b6e2c98e43394053958a49",
+    "CMakeLists.txt": "c544ea4cd0853609607c6f83145c4e78b0a8d5ecd8851dcbd14de540400a9cf9"
+  }
+}

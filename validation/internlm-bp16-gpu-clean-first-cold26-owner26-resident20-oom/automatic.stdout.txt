@@ -1,0 +1,40 @@
+
+> [New LWP 1526066 (id 2)]
+[New LWP 1526065 (id 3)]
+[New LWP 1526064 (id 4)]
+[New LWP 1526063 (id 5)]
+[New LWP 1526062 (id 6)]
+[New LWP 1526061 (id 7)]
+
+This GDB supports auto-downloading debuginfo from the following URLs:
+  <https://debuginfod.archlinux.org>
+  <https://debuginfod.cachyos.org>
+Enable debuginfod for this session? (y or [n]) [answered N; input not from terminal]
+Debuginfod has been disabled.
+To make this setting permanent, add 'set debuginfod enabled off' to .gdbinit.
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/usr/lib/libthread_db.so.1".
+[Switching to thread 1 (Thread 0x7fe37bc34400 (LWP 1526059))]
+0x00007fe3786b6132 in ?? () from /usr/lib/libc.so.6
+#0  0x00007fe3786b6132 in ?? () from /usr/lib/libc.so.6
+#1  0x00007fe37872e512 in wait4 () from /usr/lib/libc.so.6
+#2  0x00007fe37c97fa3b in ggml_print_backtrace () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libggml-base.so.0
+#3  0x00007fe37c994739 in ggml_uncaught_exception() () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libggml-base.so.0
+#4  0x00007fe378aba1ac in ?? () from /usr/lib/libstdc++.so.6
+#5  0x00007fe378a9a650 in std::terminate() () from /usr/lib/libstdc++.so.6
+#6  0x00007fe378aba48c in __cxa_throw () from /usr/lib/libstdc++.so.6
+#7  0x00007fe378e2dae0 in vk_queue_handle_unsynchronized::submit(vk::ArrayProxy<vk::SubmitInfo const>, vk::Fence) [clone .cold] () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libggml-vulkan.so.0
+#8  0x00007fe378e8ca23 in ggml_vk_submit(std::shared_ptr<vk_context_struct>&, vk::Fence) () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libggml-vulkan.so.0
+#9  0x00007fe378e8cc86 in ggml_vk_compute_forward(ggml_backend_vk_context*, ggml_cgraph*, ggml_tensor*, int, bool) () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libggml-vulkan.so.0
+#10 0x00007fe378f469a6 in ggml_vk_build_graph(ggml_backend_vk_context*, ggml_cgraph*, int, ggml_tensor*, int, bool, bool, bool) () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libggml-vulkan.so.0
+#11 0x00007fe378f480a9 in ggml_backend_vk_graph_compute(ggml_backend*, ggml_cgraph*) () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libggml-vulkan.so.0
+#12 0x00007fe37c99e726 in ggml_backend_sched_graph_compute_async () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libggml-base.so.0
+#13 0x00007fe37c0144cb in llama_context::graph_compute(ggml_cgraph*, bool) () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libllama.so.0
+#14 0x00007fe37c0189be in llama_context::process_ubatch(llama_ubatch const&, llm_graph_type, llama_memory_context_i*, ggml_status&) () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libllama.so.0
+#15 0x00007fe37c02238b in llama_context::decode(llama_batch_ext const&) () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libllama.so.0
+#16 0x00007fe37c6764a3 in common_prompt_batch_decode(llama_context*, std::vector<int, std::allocator<int> > const&, int, int&, int, std::basic_string_view<char, std::char_traits<char> >, bool) () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libllama-common.so.0
+#17 0x00007fe37ca5f18f in llama_completion(int, char**) () from /home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/llama-vulkan-build/bin/libllama-completion-impl.so
+#18 0x00007fe378627c8e in ?? () from /usr/lib/libc.so.6
+#19 0x00007fe378627dcb in __libc_start_main () from /usr/lib/libc.so.6
+#20 0x00005654b3a3b075 in _start ()
+[Inferior 1 (process 1526059) detached]
