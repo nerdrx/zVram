@@ -48,4 +48,9 @@ if os.environ.get("ZVRAM_VULKAN_BP16_GPU_ENCODE") == "1":
     if (expected != "bp16" or "GPU BP16 encoder enabled:" not in result.stdout or
             not encodes or int(encodes[-1][0]) <= 0 or int(encodes[-1][1]) <= 0 or int(encodes[-1][3]) != 0):
         raise SystemExit("FAIL: requested GPU BP16 encoding was not observed without fallback")
+if os.environ.get("ZVRAM_VULKAN_BP16_SPIN_WAIT") == "1":
+    spins = re.findall(r"GPU BP16 fence spin completed=(\d+) blocking=(\d+)", result.stdout)
+    if ("GPU BP16 fence spin enabled budget-us=1000" not in result.stdout or
+            not spins or sum(map(int, spins[-1])) <= 0):
+        raise SystemExit("FAIL: bounded BP16 fence polling was not observed")
 print("PASS: application byte checks, observed GPU decoding, zero fallback and validation diagnostics")

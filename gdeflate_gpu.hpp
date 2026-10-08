@@ -209,6 +209,8 @@ public:
         std::uint64_t gpuFinishNs{};
         std::uint64_t gpuSamples{};
         std::uint64_t bp16InputBytes{};
+        std::uint64_t fenceSpinCompleted{};
+        std::uint64_t fenceSpinFallbacks{};
     };
 
     Decoder() = default;
@@ -224,6 +226,7 @@ public:
     bool importedHostInputEnabled() const noexcept { return bp16ImportHostInput_; }
     bool allocatedHostInputEnabled() const noexcept { return bp16AllocatedHostInput_; }
     bool bp16EncoderEnabled() const noexcept { return bp16EncoderEnabled_; }
+    bool spinWaitEnabled() const noexcept { return bp16SpinWaitEnabled_; }
     unsigned uploadWorkers() const noexcept { return bp16UploadWorkers_; }
     std::uint64_t allocatedHostInputUsedBytes() const noexcept {
         return allocatedHostBudget_ ? allocatedHostBudget_->usedBytes() : 0;
@@ -257,6 +260,7 @@ public:
             return VK_ERROR_INITIALIZATION_FAILED;
         if (format != Format::GDeflate && format != Format::BP16)
             return VK_ERROR_VALIDATION_FAILED_EXT;
+        const char* spinWaitEnv = std::getenv("ZVRAM_VULKAN_BP16_SPIN_WAIT");
         bp16UploadWorkers_ = 1;
         if (format == Format::BP16) {
             if (const char* uploadWorkers = std::getenv("ZVRAM_VULKAN_BP16_UPLOAD_WORKERS"))
@@ -308,6 +312,8 @@ public:
             timestampPeriod_ = properties->limits.timestampPeriod;
         }
         VkResult result = loadFunctions(nextGdpa);
+        bp16SpinWaitEnabled_ = result == VK_SUCCESS && format == Format::BP16 && spinWaitEnv &&
+                               std::strcmp(spinWaitEnv, "1") == 0;
         if (result == VK_SUCCESS && profileEnabled_ && timestampValidBits &&
             timestampValidBits <= 64 && timestampPeriod_ > 0.0 &&
             loadTimestampFunctions(nextGdpa)) {
@@ -807,7 +813,7 @@ public:
                     std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
             return result;
         }
-        result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
+        result = waitForSubmittedFence();
         if (result != VK_SUCCESS) {
             markPoisoned(); // Work may still be in flight; never reset/free these objects.
             if (profileEnabled_)
@@ -1312,7 +1318,7 @@ private:
             markPoisoned();
             return result;
         }
-        result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
+        result = waitForSubmittedFence();
         if (result != VK_SUCCESS) {
             markPoisoned();
             return result;
@@ -1432,6 +1438,22 @@ private:
         return result;
     }
 
+    VkResult waitForSubmittedFence() {
+        if (bp16SpinWaitEnabled_) {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1);
+            while (std::chrono::steady_clock::now() < deadline) {
+                const VkResult poll = api_.waitForFences(device_, 1, &fence_, VK_TRUE, 0);
+                if (poll == VK_SUCCESS) {
+                    if (profileEnabled_) ++profile_.fenceSpinCompleted;
+                    return VK_SUCCESS;
+                }
+                if (poll != VK_TIMEOUT) return poll;
+            }
+            if (profileEnabled_) ++profile_.fenceSpinFallbacks;
+        }
+        return api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
+    }
+
     void markPoisoned() noexcept {
         poisoned_ = true;
         if (poisonState_) poisonState_->store(true, std::memory_order_release);
@@ -1479,6 +1501,7 @@ private:
         bp16AllocatedHostInput_ = false;
         bp16EncoderRequested_ = false;
         bp16EncoderEnabled_ = false;
+        bp16SpinWaitEnabled_ = false;
         importHostAlignment_ = 0;
         if (!poisoned_) {
             poisonState_.reset();
@@ -1528,6 +1551,7 @@ private:
     bool bp16AllocatedHostInput_{};
     bool bp16EncoderRequested_{};
     bool bp16EncoderEnabled_{};
+    bool bp16SpinWaitEnabled_{};
     unsigned bp16UploadWorkers_{1};
     VkDeviceSize importHostAlignment_{};
     std::shared_ptr<std::atomic<bool>> poisonState_;
