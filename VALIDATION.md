@@ -1165,3 +1165,56 @@ Source commit was `2502f05`.
 [full result](validation/internlm-bp16-workers32-19g-import-host-input/result.json.gz), and
 [full stderr](validation/internlm-bp16-workers32-19g-import-host-input/automatic.stderr.txt.gz).
 Initial guard evidence is in the [separate attempt record](validation/internlm-bp16-workers32-19g-import-host-input/initial-guard/result.json).
+
+### BP16 imported-input resident-count component matrix
+
+A 4,352-byte active mixed-pattern frame ran for 16 iterations at resident import
+counts 0, 128, 512 and 1,024, with buffer-device-address both disabled and
+enabled; a final zero-count case in a fresh process provided a baseline. All
+nine cases passed exact bytes with validation/VUID counts at zero. The
+1,024-import case reserved about 4 MiB in dummy allocations, plus the active
+fixture owner.
+Median host submit time rose from about 8 us at zero imports to 38, 130 and
+329 us at 128, 512 and 1,024; fence wait
+stayed roughly 163–183 us. Imports were retained across the timed submissions,
+so this measures count-dependent per-submission host cost, not import creation
+cost. It does not establish the cause of the full-model 121.6 s submit/wait
+interval. Validation was enabled, so this does not isolate driver-only cost;
+runs were sequential, with clocks/background activity uncontrolled; this is
+not an inference benchmark.
+[Logs, source and hashes](validation/bp16-resident-import-count/summary.json).
+
+### BP16 imported-input dummy allocation-size matrix
+
+A six-case follow-up varied total dummy bytes as well as import count using the
+same 4,352-byte exact-output fixture and 16 iterations. All cases passed with
+zero validation/VUID errors; the largest total dummy allocation was 256 MiB,
+plus the active fixture owner. Median host submit time was about 13 us for
+16 × 4 KiB, 100.75 us for 16 × 16 MiB, 333.57 us for 256 × 1 MiB, and 349 us
+for 1,024 × 4 KiB. Fence wait stayed
+roughly 163–181 us. This supports both a count and allocation-size cost in this
+component's per-submission host path with retained imports, not import creation
+cost. It does not establish the cause or explain the magnitude of the full-model
+delay. Validation was enabled; runs were sequential with uncontrolled
+clocks/background activity. [Logs, source and hashes](validation/bp16-resident-import-size/summary.json).
+
+### BP16 allocated-host-input size matrix
+
+A separate six-case 4,352-byte fixture used ordinary `vkAllocateMemory`
+HOST_VISIBLE|HOST_COHERENT|HOST_CACHED allocations without DEVICE_LOCAL memory;
+it did not use `VK_EXT_external_memory_host`. Across 16 × 4 KiB,
+16 × 16 MiB, 256 × 1 MiB, and 1,024 × 4 KiB allocations, all cases passed
+exact bytes with zero validation/VUID errors. Median host-submit time stayed
+about 6–8 us. The corresponding imported-input matrix measured 13, 100.75,
+333.57, and 349 us in a separate sequential run. This is component evidence
+that the input/allocation path changes per-submission host cost, not a
+controlled comparison or explanation of full-model timing. [Logs, source and
+recorded hashes](validation/bp16-allocated-host-size/summary.json).
+
+The follow-up [BDA and 32 MiB cases](validation/bp16-allocated-host-size/extra/summary.json)
+also passed exact bytes with zero validation/VUID errors. The 32 MiB frame
+used an exact-size **29,202,816-byte** ordinary host-visible allocation
+(memory type 5, flags `0xe`) and buffer-device-address. Across three component
+iterations, BP16 decode median was **1.05684 ms** and readback-copy median was
+**1.13584 ms**. This is decoder-component timing, not end-to-end model
+performance.

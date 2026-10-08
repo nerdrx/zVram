@@ -1,0 +1,12 @@
+{
+  "source_commit": "4ddc358a4462c1d94e7f93df84f1af7314df6402",
+  "source_file": "source.cpp.gz",
+  "source_sha256_uncompressed": "b0726bed684f80f06c1b1458331ea7febaf3ea06c4f2e84efb1684f89ac53bd8",
+  "binary": "build/bp16-codec/zvram-gdeflate-research",
+  "binary_sha256": "f592cdfecb5ed42b64edd034b975bd135ab0f4e696e9eb1bc09a5eed3e874155",
+  "archive_files": [
+    "bda-n1024.log.gz",
+    "full32m.log.gz",
+    "summary.json"
+  ]
+}

@@ -148,3 +148,45 @@ run; this experiment is correct-output evidence, not a speed path. It recorded
 those counts do not describe resident memory. Host input preparation was
 **9.62 ms**, while submit/wait was **121.59 s**. A possible driver BO-overhead
 explanation remains unproven. [Full-model result and limits](../../VALIDATION.md#cached-bp16-imported-host-input).
+
+### Imported-input per-submission cost component check
+
+A separate 4,352-byte mixed-pattern fixture passed 16 exact-byte iterations for
+resident import counts 0/128/512/1,024, with buffer-device-address off and on,
+plus a final zero-count baseline in a fresh process. Median host submit time
+increased from about 8 us at zero imports to 38/130/329 us; fence wait remained
+roughly 163–183 us. Imports were retained across timed submissions, so this
+measures count-dependent per-submission host cost, not import creation cost. It
+does not explain the full-model submit/wait slowdown by itself; validation was
+enabled, and clocks/activity were uncontrolled.
+[Matrix evidence and hashes](../../validation/bp16-resident-import-count/summary.json).
+
+### Imported-input dummy allocation-size check
+
+A six-case 4,352-byte fixture varied both count and total dummy allocation size
+over 16 iterations. Exact output passed with no validation/VUID errors. The
+largest total dummy allocation was 256 MiB plus the active fixture owner.
+Median host submit was about 13 us for 16 × 4 KiB, 100.75 us for 16 × 16 MiB,
+333.57 us for 256 × 1 MiB, and 349 us for 1,024 × 4 KiB; fence wait remained
+about 163–181 us. Imports were retained across timed submissions; the bounded
+component confirms count- and size-dependent per-submission host cost, not
+import creation cost. It does not explain the full-model delay. Validation was
+enabled; runs were sequential with uncontrolled clocks/background
+activity. [Evidence and hashes](../../validation/bp16-resident-import-size/summary.json).
+
+### Allocated host-input component matrix
+
+A separate six-case 4,352-byte fixture used ordinary mapped
+HOST_VISIBLE|HOST_COHERENT|HOST_CACHED, non-DEVICE_LOCAL Vulkan memory, not
+external-memory imports. All cases passed exact bytes with no validation/VUID
+errors. Median host submit stayed about 6–8 us for 16 × 4 KiB, 16 × 16 MiB,
+256 × 1 MiB, and 1,024 × 4 KiB. A separate imported-input matrix measured
+13/100.75/333.57/349 us for those corresponding count/size cases. These
+sequential component runs do not isolate a full-model performance effect.
+[Evidence and recorded hashes](../../validation/bp16-allocated-host-size/summary.json).
+
+The BDA follow-up also passed for a real 32 MiB frame using an exact-size
+29,202,816-byte ordinary host-visible allocation. Decode median was 1.05684 ms
+and readback-copy median 1.13584 ms over three exact-byte iterations with zero
+validation/VUID errors. This is component timing, not end-to-end inference
+performance. [BDA and full-frame evidence](../../validation/bp16-allocated-host-size/extra/summary.json).

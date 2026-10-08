@@ -1,0 +1,17 @@
+{
+  "source_commit": "4ddc358a4462c1d94e7f93df84f1af7314df6402",
+  "source_file": "smoke-source.cpp.gz",
+  "source_sha256_uncompressed": "317201827349896e7cb8a548910b846254b8793d2bfeb8dd1a85766a5b3598f1",
+  "binary": "build/bp16-codec/zvram-gdeflate-research",
+  "binary_sha256_recorded_for_run": "b2c9763ac7b4619ea26ba10f624f1390b12bdf8cebfaf406d6f26db08d412241",
+  "binary_sha256_at_archive_time": "f592cdfecb5ed42b64edd034b975bd135ab0f4e696e9eb1bc09a5eed3e874155",
+  "archive_files": [
+    "00-n0-bytes4096.log.gz",
+    "01-n16-bytes4096.log.gz",
+    "02-n16-bytes16777216.log.gz",
+    "03-n256-bytes1048576.log.gz",
+    "04-n1024-bytes4096.log.gz",
+    "05-n0-bytes4096.log.gz",
+    "summary.json"
+  ]
+}
