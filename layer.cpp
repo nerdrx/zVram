@@ -10,6 +10,7 @@
 #include <limits>
 #include <mutex>
 #include <new>
+#include <stdexcept>
 #include <type_traits>
 #include <tuple>
 #include <string>
@@ -273,6 +274,7 @@ struct Device {
     std::atomic<std::uint64_t> gpuProfileAllocCalls{}, gpuProfileAllocSuccess{}, gpuProfileAllocFailures{}, gpuProfileAllocNs{};
     std::atomic<std::uint64_t> gpuProfileFreeCalls{}, gpuProfileFreeNs{};
     std::atomic<std::uint64_t> gpuProfileSparseCalls{}, gpuProfileSparseSuccess{}, gpuProfileSparseFailures{}, gpuProfileSparseNs{};
+    std::uint64_t gpuProfileRemapBatchCalls{}, gpuProfileRemapBatchChildren{}, gpuProfileRemapBatchBuffers{};
     bool gpuRestoreEnabled{}, gpuRestoreUnsafe{};
     bool bp16RestoreBatchRequested{}, bp16RestoreBatchEnabled{};
     bool gpuImportHostInput{};
@@ -417,6 +419,11 @@ void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
              static_cast<unsigned long long>(d.gpuProfileSparseSuccess.load(std::memory_order_relaxed)),
              static_cast<unsigned long long>(d.gpuProfileSparseFailures.load(std::memory_order_relaxed)),
              static_cast<unsigned long long>(d.gpuProfileSparseNs.load(std::memory_order_relaxed)),suffix);
+    if(d.gpuProfileEnabled && (newProfile || force) && d.gpuProfileRemapBatchCalls)
+        logf("GPU BP16 batch remap calls=%llu children=%llu buffers=%llu%s",
+             static_cast<unsigned long long>(d.gpuProfileRemapBatchCalls),
+             static_cast<unsigned long long>(d.gpuProfileRemapBatchChildren),
+             static_cast<unsigned long long>(d.gpuProfileRemapBatchBuffers),suffix);
 }
 void logSnapshotState(const char* event,Device& d) {
     logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu cache-stored=%llu clean-reuses=%llu cache-invalidations=%llu copy-calls=%llu copy-bytes=%llu copy-ns=%llu decode-bytes=%llu decode-ns=%llu pipeline-prefetches=%llu pipeline-restores=%llu pipeline-wait-ns=%llu gpu-decode-calls=%llu gpu-decode-bytes=%llu gpu-decode-ns=%llu gpu-decode-fallbacks=%llu",
@@ -1391,6 +1398,114 @@ VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std
             buffers.size()-(releaseView?1:0),unbind?1u:0u,releaseView?1u:0u);
     return result;
 }
+// Build every view release and app alias bind before submitting any of them.
+// false means the plan is unsafe or unavailable, so callers may use the serial path.
+bool bindRestoredChildrenBatchLocked(VkDevice device,Device& d,const VkDeviceMemory* memories,
+                                     const std::size_t* children,std::size_t count,VkResult& result) {
+    result=VK_SUCCESS;
+    if(!memories || !children || count<2 || count>4) return false;
+    struct BufferPlan { VkBuffer buffer{}; std::vector<VkSparseMemoryBind> binds; };
+    std::vector<BufferPlan> plans;
+    std::unordered_map<VkBuffer,std::size_t> indices;
+    std::size_t totalBinds=0;
+    try {
+        std::size_t reserve=0;
+        for(std::size_t n=0;n<count;n++) {
+            const auto p=d.virtualMemory.find(memories[n]);
+            if(p==d.virtualMemory.end()) return false;
+            if(reserve==std::numeric_limits<std::size_t>::max() ||
+               p->second.bindings.size()>std::numeric_limits<std::size_t>::max()-reserve-1) return false;
+            reserve+=p->second.bindings.size()+1;
+        }
+        plans.reserve(reserve); indices.reserve(reserve);
+        auto add=[&](VkBuffer buffer,const VkSparseMemoryBind& bind) {
+            if(!buffer || !bind.size || bind.resourceOffset>std::numeric_limits<VkDeviceSize>::max()-bind.size)
+                return false;
+            auto found=indices.find(buffer);
+            std::size_t index{};
+            if(found==indices.end()) {
+                index=plans.size();
+                plans.push_back({buffer,{}});
+                indices.emplace(buffer,index);
+            } else index=found->second;
+            auto& binds=plans[index].binds;
+            const auto end=bind.resourceOffset+bind.size;
+            for(const auto& old:binds) {
+                const auto oldEnd=old.resourceOffset+old.size;
+                if(bind.resourceOffset<oldEnd && old.resourceOffset<end) return false;
+            }
+            binds.push_back(bind);
+            if(totalBinds==std::numeric_limits<std::size_t>::max()) return false;
+            ++totalBinds;
+            return true;
+        };
+        for(std::size_t n=0;n<count;n++) {
+            auto p=d.virtualMemory.find(memories[n]);
+            auto& memory=p->second;
+            const auto child=children[n];
+            if(child>=memory.children.size() || child>=memory.childSizes.size() ||
+               child>=memory.poolViews.size() || !memory.children[child] || !memory.poolViews[child])
+                return false;
+            for(std::size_t j=0;j<n;j++) if(memories[j]==memories[n] && children[j]==child) return false;
+            VkSparseMemoryBind release{};
+            release.size=memory.childSizes[child];
+            if(!add(memory.poolViews[child],release)) return false;
+
+            VkDeviceSize childBase=0;
+            for(std::size_t j=0;j<child;j++) {
+                if(memory.childSizes[j]>std::numeric_limits<VkDeviceSize>::max()-childBase) return false;
+                childBase+=memory.childSizes[j];
+            }
+            const auto amount=memory.childSizes[child];
+            if(amount>std::numeric_limits<VkDeviceSize>::max()-childBase) return false;
+            const auto childEnd=childBase+amount;
+            for(const auto& app:memory.bindings) {
+                if(app.size>std::numeric_limits<VkDeviceSize>::max()-app.memoryOffset) return false;
+                const auto appEnd=app.memoryOffset+app.size;
+                const auto lo=std::max(app.memoryOffset,childBase), hi=std::min(appEnd,childEnd);
+                if(lo>=hi) continue;
+                if(!app.alignment || (lo-app.memoryOffset)%app.alignment ||
+                   (lo-childBase)%app.alignment || (hi-lo)%app.alignment) return false;
+                VkSparseMemoryBind bind{};
+                bind.resourceOffset=lo-app.memoryOffset; bind.size=hi-lo;
+                bind.memory=memory.children[child]; bind.memoryOffset=lo-childBase;
+                if(!add(app.buffer,bind)) return false;
+            }
+        }
+        if(plans.empty() || plans.size()>std::numeric_limits<std::uint32_t>::max() ||
+           totalBinds>std::numeric_limits<std::uint32_t>::max()) return false;
+        std::vector<VkSparseMemoryBind> binds;
+        std::vector<VkSparseBufferMemoryBindInfo> buffers(plans.size());
+        binds.reserve(totalBinds);
+        for(std::size_t i=0;i<plans.size();i++) {
+            const auto& plan=plans[i];
+            if(plan.binds.empty() || plan.binds.size()>std::numeric_limits<std::uint32_t>::max()) return false;
+            const auto offset=binds.size();
+            binds.insert(binds.end(),plan.binds.begin(),plan.binds.end());
+            buffers[i]={plan.buffer,static_cast<std::uint32_t>(plan.binds.size()),binds.data()+offset};
+        }
+        const auto sparseStarted=d.gpuProfileEnabled?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
+        result=bindSparseBatchLocked(device,d,buffers.data(),static_cast<std::uint32_t>(buffers.size()));
+        if(d.gpuProfileEnabled) {
+            d.gpuProfileSparseCalls.fetch_add(1,std::memory_order_relaxed);
+            (result==VK_SUCCESS?d.gpuProfileSparseSuccess:d.gpuProfileSparseFailures).fetch_add(1,std::memory_order_relaxed);
+            d.gpuProfileSparseNs.fetch_add(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now()-sparseStarted).count()),std::memory_order_relaxed);
+            ++d.gpuProfileRemapBatchCalls;
+            d.gpuProfileRemapBatchChildren+=count;
+            d.gpuProfileRemapBatchBuffers+=buffers.size();
+            logf("GPU BP16 batch remap calls=%llu children=%llu buffers=%llu",
+                 static_cast<unsigned long long>(d.gpuProfileRemapBatchCalls),
+                 static_cast<unsigned long long>(d.gpuProfileRemapBatchChildren),
+                 static_cast<unsigned long long>(d.gpuProfileRemapBatchBuffers));
+        }
+        return true;
+    } catch(const std::bad_alloc&) {
+        return false;
+    } catch(const std::length_error&) {
+        return false;
+    }
+}
 VkResult createPoolViews(Device& d,VirtualMemory& memory,const std::vector<VkDeviceSize>& sizes) {
     if(!d.autoEnabled) return VK_SUCCESS;
     if(!d.snapshot.createBuffer || !d.snapshot.destroyBuffer) return VK_ERROR_FEATURE_NOT_PRESENT;
@@ -2269,11 +2384,30 @@ VkResult restoreColdBP16BatchLocked(Device& d,const VkDeviceMemory* memories,
         }
     }
 
+    std::array<VkDeviceMemory,4> remapMemories{};
+    std::array<std::size_t,4> remapChildren{};
+    for(std::size_t n=0;n<count;n++) {
+        remapMemories[n]=memories[n]; remapChildren[n]=children[n];
+    }
+    VkResult remapResult=VK_SUCCESS;
+    const bool remappedTogether=bindRestoredChildrenBatchLocked(d.handle,d,remapMemories.data(),
+        remapChildren.data(),count,remapResult);
+    if(remappedTogether && remapResult!=VK_SUCCESS) {
+        d.gpuRestoreUnsafe=true; d.gpuGateError=remapResult;
+        d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
+        return remapResult;
+    }
     for(std::size_t n=0;n<count;n++) {
         auto& entry=entries[n];
-        result=bindChildAppsLocked(d.handle,d,*entry.memory,entry.child,false,
-                                   entry.memory->poolViews[entry.child]);
-        if(result!=VK_SUCCESS) { d.gpuGateError=result; return result; }
+        if(!remappedTogether) {
+            result=bindChildAppsLocked(d.handle,d,*entry.memory,entry.child,false,
+                                       entry.memory->poolViews[entry.child]);
+            if(result!=VK_SUCCESS) {
+                d.gpuRestoreUnsafe=true; d.gpuGateError=result;
+                d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
+                return result;
+            }
+        }
         auto& group=*entry.group;
         group.restoreBound=false; entry.memory->bound=!entry.memory->bindings.empty();
         const auto accounted=group.accountedBytes();
