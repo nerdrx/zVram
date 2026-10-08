@@ -299,6 +299,18 @@ measured 0.5275435 tokens/s. The upload-worker setting remains default-one.
 [previous 8 GiB-cache run](VALIDATION.md#earlier-best-bp16-run-bounded-allocated-host-cache-32-workers);
 [fresh native reference](VALIDATION.md#fresh-native-nodes4-reference).
 
+The separate 92-token long run now measures **0.889116537 tokens/s** (92 /
+103,473.50 ms), with exact output SHA-256
+`b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`, 49/49
+layers, and zero GPU fallback. This experimental run used 26 GiB cold and
+allocated-owner ceilings, 19 GiB tracked residency, a 2.5 GiB reserve, 32 BP16
+workers, eight upload workers, LFU, and immutable-owner validation caching. It
+is about 2x the earlier 0.43978 long-run observation, but these sequential
+results had uncontrolled clocks and background activity and do not isolate a
+causal speedup. The fresh native 92-token reference measured **1.69935367**
+tokens/s. This long-run result is separate from the best 12-token short run
+above (**0.61020197 tokens/s**). [Safe26 run and limits](VALIDATION.md#latest-safe-bp16-long-run-26-gib); [27 GiB Ollama preflight abort](validation/internlm-bp16-cold27-preflight-abort/README.md).
+
 A same-prompt 92-token comparison produced identical stdout across 49/49 layers:
 **1.69935 tokens/s** native and **0.43978 tokens/s** allocated-host under the
 8 GiB cache. A later child-only glibc threshold run completed the same 92-token

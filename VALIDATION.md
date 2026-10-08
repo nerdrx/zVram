@@ -1338,6 +1338,28 @@ Minimum available RAM was **18,123 MiB** and swap grew by **621 MiB**. This
 single sequential result is below the 24 GiB run above and does not replace the
 current best or isolate a quota effect. [Run archive](validation/internlm-bp16-cold25-upload8/README.md).
 
+### Latest safe BP16 long run: 26 GiB cold/owner ceilings
+
+The 92-token InternLM2.5-20B F16 run completed in **103,473.50 ms**
+(**0.889116537 tokens/s**) with exact stdout SHA-256
+`b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`, **49/49**
+layers, and zero GPU fallback. Minimum available RAM was **18,644 MiB** and
+swap grew by **4,453 MiB**. The experimental configuration used 26 GiB cold
+and allocated-owner ceilings (separate limits), 19 GiB tracked residency, a
+2.5 GiB headroom reserve, 32 BP16 encoder workers, eight upload workers, LFU,
+and immutable-owner validation caching.
+
+This is a combined observed configuration, not an isolated code or setting
+comparison. It is about 2x the earlier 0.43978 tokens/s long-run result, but
+sequential runs had uncontrolled clocks and background activity. The fresh
+native 92-token reference measured **1.69935367 tokens/s** under a different
+memory path. These long runs remain distinct from the best 12-token short run
+of **0.61020197 tokens/s**. [Run archive and provenance](validation/internlm-bp16-cold26-owner26-resident19-lfu-cached-validation-retry/README.md).
+
+A separate 27 GiB cold/owner preflight was stopped before prompting because
+Ollama's `qwen3.5:9b-local` was using **6,113,858,682 bytes of VRAM**. It has no
+throughput or inference result. [Preflight diagnostic](validation/internlm-bp16-cold27-preflight-abort/README.md).
+
 ### BP16 host-copy worker component matrix
 
 Twelve exact-byte 64-iteration runs measured a 29,202,816-byte frame at 1, 2,

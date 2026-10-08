@@ -1,0 +1,11 @@
+{
+  "runtime_code_commit": "dba6a62",
+  "note": "Private immutable BP16 owners cache canonical metadata inspected on finalownedcopy; productionGPUdecoderSPV unchanged; researchGPUencoder not integrated. Combined tuning, not isolated attribution.",
+  "sources": {
+    "layer.cpp": "df1ac8e220c6b7bdf3c5c21852d7c2d7eb9e4ca0d6ea1c86b9b6f277ea7769a7",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "gdeflate_gpu.hpp": "e67940b4d48b0aa438b0b40251d0cb6f96f821ff04360b19659ad310a712ec41",
+    "bp16_codec_check.cpp": "97a0be767d37c5455a302b31a26b18a3687cd01290d13fe295483b7b7b13bef0"
+  }
+}
