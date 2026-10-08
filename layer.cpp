@@ -25,6 +25,7 @@
 #include "buffer_barriers.hpp"
 #include "submission_tracking.hpp"
 #include "active_refs.hpp"
+#include "live_control.hpp"
 #include "compression_policy.hpp"
 #include "clean_cache_policy.hpp"
 #include "snapshot_decode.hpp"
@@ -327,6 +328,7 @@ struct Device {
     std::condition_variable activity;
     std::chrono::steady_clock::time_point lastActivity{std::chrono::steady_clock::now()};
     std::thread snapshotWorker;
+    zvram::control::Endpoint liveControl;
     SnapshotResources snapshot;
     VkPhysicalDeviceMemoryProperties memory{};
     std::string gpu;
@@ -337,6 +339,42 @@ struct Device {
     std::mutex queueMutex;
     uint64_t liveLocal{}, peakLocal{}, liveOther{}, peakOther{}, failures{};
 };
+bool liveControlCapable(const Device& d) {
+    return d.autoEnabled && d.activeEviction && d.rangeChunkBytes && d.residentLimitBytes &&
+        d.residentAdmissionArmed && !d.stopWorker.load();
+}
+std::uint64_t liveControlMaximum(const Device& d) {
+    std::uint64_t maximum=0;
+    for(std::uint32_t index=0;index<d.memory.memoryHeapCount;index++)
+        if(d.memory.memoryHeaps[index].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+            maximum=std::max<std::uint64_t>(maximum,d.memory.memoryHeaps[index].size);
+    if(d.gpuLocalOwnerCombinedLimitBytes) {
+        const auto owner=d.gpuDecoder?d.gpuDecoder->localOwnerLimitBytes():0;
+        maximum=std::min(maximum,d.gpuLocalOwnerCombinedLimitBytes>owner?
+            d.gpuLocalOwnerCombinedLimitBytes-owner:0);
+    }
+    return maximum;
+}
+// Called only while holding d.mutex. Control failures never affect the application.
+void pollLiveControl(Device& d,bool force=false) noexcept {
+    try {
+        if(!d.liveControl.active() || (!force && !d.liveControl.due())) return;
+        const bool capable=liveControlCapable(d);
+        const auto maximum=liveControlMaximum(d);
+        auto limit=static_cast<std::uint64_t>(d.residentLimitBytes);
+        zvram::control::Request request;
+        bool applied=false;
+        if(d.liveControl.read(request))
+            applied=d.liveControl.state.accept(request,capable,d.rangeChunkBytes,maximum,
+                d.gpuLocalOwnerCombinedLimitBytes,d.gpuDecoder?d.gpuDecoder->localOwnerLimitBytes():0,
+                d.residentBytes,limit);
+        applied=d.liveControl.state.settle(capable,d.residentBytes,limit)||applied;
+        if(applied) { d.residentLimitBytes=limit; d.admissionBudgetSnapshotValid=false; }
+        if(!d.liveControl.publish(capable,d.residentBytes,d.residentLimitBytes,d.rangeChunkBytes,maximum))
+            d.liveControl.reset();
+    } catch(...) { d.liveControl.reset(); }
+}
+
 struct AsyncFreezeToken {
     VkDeviceMemory memory{};
     std::uint64_t allocationGeneration{};
@@ -1388,6 +1426,12 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         }
         if(virtualEnabled && !privateQueuePlanned)
             logf("virtual sparse binds use an application queue and wait synchronously: no unused sparse queue is available");
+        {
+            std::lock_guard<std::mutex> lock(d->mutex);
+            try { d->liveControl.init(std::getenv("ZVRAM_CONTROL_DIR"),handleToken(d->handle)); }
+            catch(...) { d->liveControl.reset(); }
+            pollLiveControl(*d,true);
+        }
         logf("device=%s policy=%s",d->gpu.c_str(),policy?"application-specified":inject?"allowed":"unchanged");
     } catch(const std::bad_alloc&) {
         auto destroy=reinterpret_cast<PFN_vkDestroyDevice>(nextGdpa(*out,"vkDestroyDevice")); if(destroy) destroy(*out,allocator);
@@ -2647,6 +2691,7 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
     auto& d=*shared;
     std::unique_lock<std::mutex> lock(d.mutex);
     while(!d.stopWorker.load()) {
+        pollLiveControl(d);
         const auto deadline=d.activeEviction?
             std::chrono::steady_clock::now()+std::chrono::milliseconds(std::min<std::uint64_t>(d.idleMilliseconds,10)):
             d.lastActivity+std::chrono::milliseconds(d.idleMilliseconds);
@@ -2743,6 +2788,7 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
                 d.gpuSubmissionGeneration!=observedGeneration || d.coldBudgetGeneration!=observedBudgetGeneration;});
         }
     }
+    pollLiveControl(d,true);
 }
 bool eligibleBuffer(const Device& d,const VkBufferCreateInfo* ci) {
     constexpr VkBufferUsageFlags allowed=VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|
@@ -3331,6 +3377,9 @@ VKAPI_ATTR void VKAPI_CALL layerDestroyDevice(VkDevice device,const VkAllocation
     auto d=findDevice(device); if(!d) return;
     d->stopWorker.store(true); d->activity.notify_all();
     if(d->snapshotWorker.joinable()) d->snapshotWorker.join();
+    { std::lock_guard<std::mutex> lock(d->mutex);
+      pollLiveControl(*d,true); d->liveControl.reset();
+    }
     { std::lock_guard<std::mutex> lock(d->mutex); std::lock_guard<std::mutex> queueLock(d->queueMutex);
       if(!d->gpuRestoreUnsafe && d->autoInitialized && d->snapshot.deviceWaitIdle) d->snapshot.deviceWaitIdle(device);
       if(d->autoInitialized) logSnapshotState("destroy-cleanup",*d);

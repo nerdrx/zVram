@@ -23,6 +23,7 @@ if len(sys.argv) > 1 and sys.argv[1] in ("gui", "tui", "manage", "model", "run")
         sys.exit("zVram manager: " + str(exc))
 
 parser = argparse.ArgumentParser(description="zVram experimental GPU memory launcher")
+parser.add_argument("--live-control", action="store_true", help="enable experimental range paging and live residency caps from the manager")
 parser.add_argument("--build-dir", type=Path, help="use backend files from this CMake build directory (default: local build/)")
 parser.add_argument("--hip", action="store_true", help="use the HIP allocation spillover backend instead of the Vulkan layer")
 parser.add_argument("--hip-vmm", action="store_true", help="use HIP virtual memory for a single pointer backed by VRAM and RAM (experimental)")
@@ -62,6 +63,19 @@ parser.add_argument("--validate", action="store_true", help="enable Vulkan core 
 parser.add_argument("--isolate-layers", action="store_true", help="disable implicit layers for a controlled experiment")
 parser.add_argument("command", nargs=argparse.REMAINDER, help="-- application [arguments]")
 args = parser.parse_args()
+if args.live_control:
+    if args.hip:
+        parser.error('--live-control currently requires the Vulkan backend')
+    from zvram_manager import gpu_status
+    if args.vulkan_virtual_gib is None and args.vulkan_virtual_mib is None:
+        args.vulkan_virtual_gib = 96
+    defaults = dict(vulkan_auto_idle_ms=1000, vulkan_cold_mib=4096, vulkan_range_mib=32,
+                    vulkan_resident_mib=max(256, int(max((c['vram_total_mib'] for c in gpu_status()), default=8192) * .5)),
+                    vulkan_headroom_mib=1536)
+    for key, value in defaults.items():
+        if getattr(args, key) is None:
+            setattr(args, key, value)
+    args.vulkan_selective_restore = args.vulkan_active_eviction = args.vulkan_lazy_backing = True
 if args.vulkan_virtual_gib is not None:
     args.vulkan_virtual_mib = args.vulkan_virtual_gib * 1024
 command = args.command
@@ -190,6 +204,9 @@ if args.hip and not (build / "libzvram_hip.so").is_file():
 if not args.hip and (not (build / "VK_LAYER_NX_zvram.json").is_file() or not (build / "libzvram_layer.so").is_file()):
     parser.error("build first: cmake -S zvram -B zvram/build && cmake --build zvram/build")
 env = os.environ.copy()
+if not args.hip:
+    import zvram_control
+    env['ZVRAM_CONTROL_DIR'] = str(zvram_control.directory())
 if args.hip:
     # The loader accepts spaces/colons in LD_PRELOAD, without escaping. Reject an ambiguous checkout path.
     library = str(build / "libzvram_hip.so")

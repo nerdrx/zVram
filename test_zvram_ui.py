@@ -37,6 +37,12 @@ class FakeManager:
     def set_priority(self, name, priority):
         self.profiles[name].update(priority=priority, resident_mib=None)
 
+    def set_live_limit(self, name, mib):
+        self.calls.append(("live_limit", name, mib))
+
+    def set_live_priority(self, name, priority):
+        self.calls.append(("live_priority", name, priority))
+
     def log_tail(self, name, lines=30):
         return "Test log: no workload launched."
 
@@ -64,9 +70,11 @@ def check_fields():
     assert "VRAM 100/24000 MiB" in system_status(FakeManager().status())
     assert "not physical residency" in profile_details({})
     details = profile_details(EXTERNAL)
-    assert "read-only" in details and "Configured cap: unknown" in details
+    assert "restart with zvram --live-control" in details and "Configured cap: unknown" in details
     assert "Next launch" not in details and "not running" not in details
     assert "Configured cap: 1024 MiB" in profile_details(dict(EXTERNAL, active_resident_mib=1024))
+    live = dict(EXTERNAL, live_capable=True, control_devices=[dict(device="2", current_limit_mib=1024, resident_mib=900, requested_mib=768, result=2, reason=7)])
+    assert "GPU 1: cap 1024 MiB · resident 900 MiB · requested 768 MiB · rejected (request rejected)" in profile_details(live)
     check_external_tui()
 
 
@@ -116,21 +124,40 @@ def check_gui():
     window.table.selection_set(EXTERNAL["name"])
     root.update()
     assert window.fields["name"].get() == "vrchat.exe"
-    assert window.read_only and "read-only" in window.details.get()
-    assert all(widget.instate(["disabled"]) for widget in window.controls + list(window.field_widgets.values()))
+    assert window.read_only and "restart with zvram --live-control" in window.details.get()
+    assert window.controls["Stop app"].instate(["!disabled"])
+    assert all(widget.instate(["disabled"]) for label, widget in window.controls.items() if label != "Stop app")
+    assert all(widget.instate(["disabled"]) for widget in window.field_widgets.values())
     from unittest.mock import DEFAULT
     with patch.multiple(manager, **{name: DEFAULT for name in ("save_profile", "start", "stop", "delete", "log_tail")}) as actions:
         window.save()
         window.act("start")
-        window.act("stop")
         window.delete()
         window.logs()
         for action in actions.values():
             action.assert_not_called()
     assert manager.profiles[EXTERNAL["name"]] == EXTERNAL
+    window.act("stop")
+    assert manager.calls[-1] == ("stop", EXTERNAL["name"])
+    manager.profiles[EXTERNAL["name"]].update(live_capable=True, running=True, control_devices=[dict(device="0", capable=True, current_limit_mib=1024, resident_mib=512, requested_mib=768, result=1)])
+    window.refresh()
+    root.update()
+    assert "pending" in window.details.get()
+    assert window.controls["Apply live"].instate(["!disabled"])
+    assert window.field_widgets["priority"].instate(["!disabled"])
+    assert window.field_widgets["command"].instate(["disabled"])
+    window.fields["resident_mib"].set("768")
+    window.save()
+    assert manager.calls[-1] == ("live_limit", EXTERNAL["name"], 768)
+    window.fields["resident_mib"].set("")
+    window.fields["priority"].set("high")
+    window.apply_live()
+    assert manager.calls[-1] == ("live_priority", EXTERNAL["name"], "high")
+    assert manager.profiles[EXTERNAL["name"]]["priority"] == "—"
     window.new()
     assert not window.read_only
-    assert all(not widget.instate(["disabled"]) for widget in window.controls + list(window.field_widgets.values()))
+    assert all(not widget.instate(["disabled"]) for label, widget in window.controls.items() if label != "Apply live")
+    assert all(not widget.instate(["disabled"]) for widget in window.field_widgets.values())
     if "--screenshot" in sys.argv:
         import subprocess
         from pathlib import Path
@@ -145,7 +172,7 @@ def check_external_tui():
     from zvram_ui import _tui
     class Screen:
         def __init__(self):
-            self.keys = iter(map(ord, "epsxldq"))
+            self.keys = iter(map(ord, "epsldq"))
             self.lines = []
         def getmaxyx(self): return (30, 180)
         def timeout(self, value): pass
@@ -164,7 +191,7 @@ def check_external_tui():
             action.assert_not_called()
     assert manager.profiles == {EXTERNAL["name"]: EXTERNAL}
     assert manager.calls == []
-    assert any("vrchat.exe" in line and "read-only" in line for line in screen.lines)
+    assert any("vrchat.exe" in line and "External" in line for line in screen.lines)
     assert any("Configured cap: unknown" in line for line in screen.lines)
 
 

@@ -16,7 +16,7 @@ jobs:
       - name: Check low-memory abort cleanup
         run: python3 test_vulkan_ram_guard.py
       - name: Check userspace manager, model bridge, and UI parsing
-        run: python3 -m unittest test_zvram_manager test_zvram_model test_package && python3 test_zvram_ui.py --tui
+        run: python3 -m unittest test_zvram_manager test_zvram_model test_package test_zvram_control && python3 test_zvram_ui.py --tui
       - name: Check Vulkan compression options and CPU policy
         run: python3 test_vulkan_compression_options.py && ctest --test-dir build -R '^cpu-(compression-policy|resident-bootstrap)$' --output-on-failure
       - name: Check bounded model evidence

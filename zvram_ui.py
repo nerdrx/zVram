@@ -5,7 +5,7 @@ Profiles affect wrapped launches only. Changed residency takes effect on restart
 import shlex
 
 PRIORITIES = ("high", "normal", "low")
-NOTICE = "zVram launches only. External launches are read-only. Priority presets apply on next launch; an explicit MiB cap overrides them. Native mode has no cap."
+NOTICE = "zVram launches only. Live controls set per-device residency caps, not global scheduling. Reductions can remain pending until resident data fits. Saved profile presets apply next launch; an explicit MiB cap overrides them. Native mode has no cap."
 
 
 def profile_from_fields(name, priority, resident_mib, command, mode="vulkan"):
@@ -33,7 +33,7 @@ def command_text(profile):
 
 def status_text(profile):
     if profile.get("running"):
-        return ("External · read-only (PID %s)" if profile.get("external") else "Running (PID %s)") % profile.get("pid", "?")
+        return ("External zVram (PID %s)" if profile.get("external") else "Running (PID %s)") % profile.get("pid", "?")
     return str(profile.get("state", "stopped")).capitalize()
 
 
@@ -48,7 +48,9 @@ def profile_details(profile):
     text = "RSS %s MiB · DRM VRAM %s MiB · GTT %s MiB (logical; not physical residency)" % (value("rss_mib"), value("vram_mib"), value("gtt_mib"))
     if profile.get("external"):
         cap = "%s MiB" % profile["active_resident_mib"] if profile.get("active_resident_mib") is not None else "unknown"
-        text += " | External zVram launch · read-only | " + profile.get("state", "Launch configured") + " | Configured cap: " + cap
+        text += " | External zVram launch | " + profile.get("state", "Launch configured") + " | Configured cap: " + cap
+        if not profile.get("live_capable"):
+            text += " · restart with zvram --live-control for live residency controls"
     elif profile.get("mode") == "native":
         text += " | Native: no zVram residency cap"
     else:
@@ -57,6 +59,12 @@ def profile_details(profile):
         text += " | Active cap: %s · Next launch: %s" % (active, pending)
         if profile.get("mode") == "wrapped":
             text += " · existing zVram command"
+    for index, device in enumerate(profile.get("control_devices", []), 1):
+        result = device.get("result", 0)
+        state = {0: "applied/idle", 1: "pending", 2: "rejected"}.get(result, "unknown")
+        text += " | GPU %s: cap %s MiB · resident %s MiB · requested %s MiB · %s" % (index, device.get("current_limit_mib", "?"), device.get("resident_mib", "?"), device.get("requested_mib", "?"), state)
+        if result == 2:
+            text += " (" + {1: 'paging unavailable', 2: 'outside supported bounds', 3: 'decoder memory reserve'}.get(device.get('reason'), 'request rejected') + ")"
     if profile.get("pid"):
         text += " | PID %s" % profile["pid"]
     if profile.get("lastlog"):
@@ -80,7 +88,7 @@ class ManagerWindow:
         self.root, self.manager = root, manager
         self.profiles, self.editing = {}, None
         self.read_only = False
-        self.controls, self.field_widgets = [], {}
+        self.controls, self.field_widgets = {}, {}
         root.title("zVram Manager")
         root.minsize(1080, 900)
         root.geometry("1200x920")
@@ -163,7 +171,7 @@ class ManagerWindow:
         titlebar.columnconfigure(0, weight=1)
         ttk.Label(titlebar, text="Profiles & zVram apps", style="Section.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Button(titlebar, text="+ New", command=self.new).grid(row=0, column=1, sticky="e")
-        ttk.Label(left, text="External zVram launches appear read-only.", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 12))
+        ttk.Label(left, text="Profiles and apps launched through zVram.", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 12))
         self.table = ttk.Treeview(left, columns=("priority", "state"), height=7)
         self.table.heading("#0", text="APP / PROFILE", anchor="w")
         self.table.column("#0", width=175, minwidth=120, stretch=True)
@@ -178,7 +186,7 @@ class ManagerWindow:
             button = ttk.Button(leftactions, text=label, command=callback)
             button.pack(side="left", padx=(0, 7))
             if label != "Refresh":
-                self.controls.append(button)
+                self.controls[label] = button
         right = ttk.Frame(workspace, style="Card.TFrame", padding=20)
         right.grid(row=0, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
@@ -199,10 +207,10 @@ class ManagerWindow:
         actions = ttk.Frame(right, style="Panel.TFrame")
         actions.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(2, 16))
         for label, callback, kind in (("Save settings", self.save, "TButton"), ("Start app", lambda: self.act("start"), "Accent.TButton"),
-                                     ("Stop app", lambda: self.act("stop"), "TButton")):
+                                     ("Stop app", lambda: self.act("stop"), "TButton"), ("Apply live", self.apply_live, "TButton")):
             button = ttk.Button(actions, text=label, command=callback, style=kind)
             button.pack(side="left", padx=(0, 10))
-            self.controls.append(button)
+            self.controls[label] = button
         ttk.Label(right, text="PROCESS ACCOUNTING", style="CardMuted.TLabel", font=("DejaVu Sans", 9, "bold")).grid(row=11, column=0, columnspan=2, sticky="w")
         self.details = tk.StringVar(value="Select a profile to inspect its process.")
         ttk.Label(right, textvariable=self.details, style="CardMuted.TLabel", wraplength=545, justify="left").grid(row=12, column=0, columnspan=2, sticky="nw", pady=(8, 0))
@@ -233,31 +241,59 @@ class ManagerWindow:
         selection = self.table.selection()
         return selection[0] if selection else None
 
-    def set_read_only(self, read_only):
-        self.read_only = read_only
-        for widget in self.controls:
-            widget.configure(state="disabled" if read_only else "normal")
+    def configure_controls(self, profile=None):
+        external = bool(profile and profile.get("external"))
+        live = bool(profile and profile.get("live_capable"))
+        self.read_only = external
+        for label, widget in self.controls.items():
+            enabled = not external or label == "Stop app" or label == "Save settings" and live
+            if label == "Apply live":
+                enabled = live
+            widget.configure(state="normal" if enabled else "disabled")
+        self.controls["Save settings"].configure(text="Save live cap" if external else "Save settings")
         for key, widget in self.field_widgets.items():
-            widget.configure(state="disabled" if read_only else "readonly" if key in ("priority", "mode") else "normal")
+            enabled = not external or live and key in ("priority", "resident_mib")
+            widget.configure(state="disabled" if not enabled else "readonly" if key in ("priority", "mode") else "normal")
 
-    def blocked(self):
+    def blocked(self, action=None):
         if self.read_only or self.profiles.get(self.selected(), {}).get("external"):
-            self.message.set("External zVram launch is read-only; manage it from its original launcher.")
+            if action == "stop" and self.selected() in self.profiles:
+                return False
+            self.message.set("External launch: use live cap controls or stop; no saved profile is changed.")
             return True
         return False
 
+    def apply_live(self):
+        profile = self.profiles.get(self.selected())
+        if not profile or not profile.get("live_capable"):
+            self.message.set("Restart with zvram --live-control for live residency controls.")
+            return
+        try:
+            resident = self.fields["resident_mib"].get().strip()
+            if resident:
+                self.manager.set_live_limit(profile["name"], int(resident))
+            else:
+                self.manager.set_live_priority(profile["name"], self.fields["priority"].get())
+            self.refresh()
+            self.message.set("Live cap requested. Reductions may remain pending until resident data fits.")
+        except Exception as error:
+            self.message.set("Error: %s" % error)
+
     def select(self, event=None):
         profile = self.profiles.get(self.selected())
-        self.set_read_only(bool(profile and profile.get("external")))
+        self.configure_controls(profile)
         if profile:
             self.details.set(profile_details(profile))
         if profile and self.editing != profile["name"]:
             self.editing = profile["name"]
             for key in self.fields:
+                if key == "priority" and profile.get("external"):
+                    self.fields[key].set(profile.get("priority") if profile.get("priority") in PRIORITIES else "normal")
+                    continue
                 self.fields[key].set(command_text(profile) if key == "command" else profile.get("display_name", profile["name"]) if key == "name" else str(profile.get(key) if profile.get(key) is not None else ""))
 
     def new(self):
-        self.set_read_only(False)
+        self.configure_controls()
         self.editing = None
         self.table.selection_remove(*self.table.selection())
         for key, variable in self.fields.items():
@@ -272,7 +308,7 @@ class ManagerWindow:
             self.table.delete(*self.table.get_children())
             for profile in profiles:
                 self.table.insert("", "end", iid=profile["name"], text=profile.get("display_name", profile["name"]), values=(
-                    profile["priority"].upper(), "External · read-only" if profile.get("external") else "Running" if profile.get("running") else status_text(profile)))
+                    profile["priority"].upper(), "External · live" if profile.get("external") and profile.get("live_capable") else "External" if profile.get("external") else "Running" if profile.get("running") else status_text(profile)))
             if selected in self.profiles:
                 self.table.selection_set(selected)
                 self.select()
@@ -285,6 +321,9 @@ class ManagerWindow:
             self.message.set("Error: %s" % error)
 
     def save(self):
+        if self.profiles.get(self.selected(), {}).get("external"):
+            self.apply_live()
+            return
         if self.blocked():
             return
         try:
@@ -299,7 +338,7 @@ class ManagerWindow:
             self.message.set("Error: %s" % error)
 
     def act(self, action):
-        if self.blocked():
+        if self.blocked(action):
             return
         name = self.selected()
         if not name:
@@ -435,7 +474,7 @@ def _tui(screen, manager):
         if index >= offset + visible:
             offset = index - visible + 1
         screen.erase()
-        _draw(screen, 0, "zVram Manager | zVram launches only; external apps are read-only")
+        _draw(screen, 0, "zVram Manager | zVram launches only; external e/p: live cap, x: stop")
         _draw(screen, 1, "Profile                   Priority  Resident MiB  Status")
         for row, profile in enumerate(profiles[offset:offset + visible], 2):
             text = "%-25.25s %-9s %-13s %s" % (profile.get("display_name", profile["name"]), profile["priority"], (profile.get("active_resident_mib") if profile.get("active_resident_mib") is not None else "Unknown") if profile.get("external") else profile.get("resident_mib") if profile.get("resident_mib") is not None else "Default", status_text(profile))
@@ -460,8 +499,19 @@ def _tui(screen, manager):
         else:
             profile = profiles[index] if profiles else None
             try:
-                if profile and profile.get("external") and key in map(ord, "epsxld"):
-                    message = "External zVram launch is read-only; manage it from its original launcher."
+                if profile and profile.get("external") and key in map(ord, "espld"):
+                    if key in map(ord, "ep") and profile.get("live_capable"):
+                        if key == ord("e"):
+                            value = _prompt(screen, "Live resident cap MiB: ")
+                            if value is not None:
+                                manager.set_live_limit(profile["name"], int(value))
+                        else:
+                            priority = _prompt(screen, "Live priority [high/normal/low]: ", "normal")
+                            if priority is not None:
+                                manager.set_live_priority(profile["name"], priority)
+                        message = "Live cap requested; reduction may remain pending until resident data fits"
+                    else:
+                        message = "External launch: restart with zvram --live-control for live residency controls" if key in map(ord, "ep") else "External launch has no saved profile or manager log"
                     continue
                 if key == ord("n") or key == ord("e") and profile:
                     edited = _edit(screen, profile if key == ord("e") else None)

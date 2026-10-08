@@ -56,12 +56,15 @@ class ManagerChecks(unittest.TestCase):
                 self.assertTrue(row['external'])
                 self.assertNotIn(unrelated.pid, [r['pid'] for r in rows])
                 self.assertIn(wrapped.pid, [r['pid'] for r in manager.list_profiles()])
-                for action in (manager.start, manager.stop, manager.delete):
+                for action in (manager.start, manager.delete):
                     with self.assertRaises(ValueError):
                         action(row['name'])
                 self.assertIsNone(wrapped.poll())
                 self.assertIsNone(unrelated.poll())
                 self.assertFalse(manager.profiles_path.exists())
+                self.assertTrue(manager.stop(row['name']))
+                self.assertEqual(wrapped.wait(timeout=5), -signal.SIGTERM)
+                self.assertIsNone(unrelated.poll())
             finally:
                 wrapped.terminate()
                 unrelated.terminate()

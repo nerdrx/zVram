@@ -23,6 +23,8 @@ with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     launcher = root / "zvram"
     shutil.copyfile(SOURCE, launcher)
+    for module in ('zvram_control.py', 'zvram_manager.py'):
+        shutil.copyfile(SOURCE.with_name(module), root / module)
     build = root / "build"
     build.mkdir()
     (build / "VK_LAYER_NX_zvram.json").touch()

@@ -190,6 +190,25 @@ class Manager:
         self._workers = {}
         self._discovered = []
         self._discovered_at = 0
+        import zvram_control
+        self.control_home = zvram_control.directory(self.home)
+
+    def control_target(self, name):
+        row = next((r for r in self.list_profiles() if r['name'] == name and r.get('running')), None)
+        if row is None:
+            raise ValueError('Process is no longer running')
+        saved = identity(row['pid'])
+        if not saved or saved['uid'] != os.getuid() or str(saved['start']) != str(row.get('process_start')):
+            raise ValueError('Process identity changed')
+        return row, saved
+
+    def set_live_limit(self, name, mib):
+        import zvram_control
+        return zvram_control.request(self, name, mib=mib)
+
+    def set_live_priority(self, name, priority):
+        import zvram_control
+        return zvram_control.request(self, name, priority=priority)
 
     @contextlib.contextmanager
     def lock(self):
@@ -255,13 +274,29 @@ class Manager:
             row = dict(profile, running=running, pid=job.get("child_pid") if running else None,
                        state="running" if running else job.get("state", "stopped"),
                        active_resident_mib=job.get("resident_mib"), lastlog=job.get("reason", ""))
+            if row['pid']:
+                child = identity(row['pid'])
+                try:
+                    parent = int(Path(f"/proc/{row['pid']}/stat").read_text().rsplit(')', 1)[1].split()[1])
+                except (OSError, ValueError, IndexError):
+                    parent = None
+                if not child or parent != job['identity']['pid'] or (job.get('child_identity') and child != job['child_identity']):
+                    row['pid'] = None
             row.update(process_usage(row["pid"]))
             rows.append(row)
         if time.monotonic() - self._discovered_at >= 2:
             self._discovered = discovered_processes(excluded)
             self._discovered_at = time.monotonic()
-        return rows + [row for row in self._discovered if row['pid'] not in excluded and
-                       (identity(row['pid']) or {}).get('start') == row['process_start']]
+        rows += [dict(row) for row in self._discovered if row['pid'] not in excluded and
+                 (identity(row['pid']) or {}).get('start') == row['process_start']]
+        import zvram_control
+        for row in rows:
+            saved = identity(row.get('pid')) if row.get('pid') else None
+            if saved and saved['uid'] == os.getuid():
+                row['process_start'] = saved['start']
+                row['control_devices'] = zvram_control.status(self.control_home, saved['pid'], saved['start'])
+                row['live_capable'] = any(d['capable'] for d in row['control_devices'])
+        return rows
 
     def status(self):
         return dict(memory_status(), gpu=gpu_status(), jobs=self.list_profiles())
@@ -335,6 +370,16 @@ class Manager:
             return job
 
     def stop(self, name):
+        if name.startswith('@'):
+            row, saved = self.control_target(name)
+            fd = os.pidfd_open(saved['pid'])
+            try:
+                if identity(saved['pid']) != saved:
+                    raise ValueError('Process identity changed; refusing to signal')
+                signal.pidfd_send_signal(fd, signal.SIGTERM)
+            finally:
+                os.close(fd)
+            return True
         with self.lock():
             job = read_json(self.job_path(name), {})
             if not owned_worker(job):
@@ -368,7 +413,7 @@ class Manager:
             try:
                 child = subprocess.Popen(job["command"], env=dict(os.environ, **profile.get("env", {})),
                                          stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-                job.update(child_pid=child.pid, state="running")
+                job.update(child_pid=child.pid, child_identity=identity(child.pid), state="running")
                 with self.lock():
                     write_json(path, job)
                 while child.poll() is None and not stopping:
@@ -422,6 +467,11 @@ def main(argv=None):
     run.add_argument("command", nargs="+")
     for action in ("start", "stop", "delete", "logs"):
         sub.add_parser(action).add_argument("name")
+    live = sub.add_parser('live', help='request a live residency cap on a running zVram process')
+    live.add_argument('name')
+    live_choice = live.add_mutually_exclusive_group(required=True)
+    live_choice.add_argument('--resident-mib', type=int)
+    live_choice.add_argument('--priority', choices=PRIORITIES)
     priority = sub.add_parser("priority")
     priority.add_argument("name")
     priority.add_argument("priority", choices=PRIORITIES)
@@ -454,7 +504,9 @@ def main(argv=None):
                 signal.signal(sig, handler)
         job = read_json(manager.job_path(name), {})
         return job.get("returncode", 1) or 0
-    if args.action == "add":
+    if args.action == 'live':
+        result = manager.set_live_limit(args.name, args.resident_mib) if args.resident_mib is not None else manager.set_live_priority(args.name, args.priority)
+    elif args.action == "add":
         command = args.command[1:] if args.command[:1] == ["--"] else args.command
         result = manager.save_profile(dict(name=args.name, priority=args.priority, mode=args.mode,
                                            resident_mib=args.resident_mib, command=command))

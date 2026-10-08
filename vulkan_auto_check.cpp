@@ -1995,6 +1995,7 @@ int main(int argc, char** argv) try {
     bool rangeCacheQuota = false, rangeCacheUnknown = false;
     bool robustCore = false;
     bool concurrentWait = false;
+    std::uint32_t controlHoldMilliseconds = 0;
     bool suballocation = false, suballocationAuto = false, suballocationApi2 = false;
     bool selectiveBind = false, selectiveBindApi2 = false;
     bool selectiveSubmit = false, selectiveSubmitApi2 = false, selectiveSubmitUnknown = false;
@@ -2038,8 +2039,17 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--range-cache-unknown") == 0) {
             rangeSubmit=true; rangeCache=true; rangeCacheUnknown=true;
         }
+        else if (std::strcmp(argv[i], "--control-hold-ms") == 0) {
+            require(i+1<argc,"--control-hold-ms requires a value from 0 to 15000");
+            const std::string value=argv[++i];
+            require(!value.empty() && value.size()<=5 &&
+                    value.find_first_not_of("0123456789")==std::string::npos,
+                    "--control-hold-ms requires a value from 0 to 15000");
+            controlHoldMilliseconds=static_cast<std::uint32_t>(std::stoul(value));
+            require(controlHoldMilliseconds<=15000,"--control-hold-ms maximum is 15000");
+        }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues] [--control-hold-ms 0..15000]");
     }
     require(!useZeroPattern || rangeCompressed,
             "--zero-pattern requires --range-compressed");
@@ -2105,6 +2115,10 @@ int main(int argc, char** argv) try {
             "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind, activeSubmit, rangePressure && twoQueues, robustCore);
+    if(controlHoldMilliseconds) {
+        std::cout<<"CONTROL_READY hold-ms="<<controlHoldMilliseconds<<std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(controlHoldMilliseconds));
+    }
     if (rangeCacheUnknown) { rangeCacheUnknownCheck(context); return 0; }
     if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap, rangeCompressed); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }

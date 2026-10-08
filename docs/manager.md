@@ -4,8 +4,9 @@
 
 The GUI and TUI show managed profiles and detect other same-user zVram launches,
 including Steam launch options and terminal commands. Detected external apps
-show PID, RSS and available DRM memory accounting, but remain read-only: use
-their original launcher to stop them or change the next launch. Ordinary apps
+show PID, RSS and available DRM memory accounting. Stop can terminate the
+selected detected zVram process. Updated Vulkan paging launches also accept
+live residency caps and priority presets. Ordinary apps
 without zVram stay hidden and keep normal driver behavior. No root daemon,
 system GPU settings, or Ollama service changes are required.
 
@@ -18,7 +19,8 @@ zvram manage status
 High, normal, and low are launch-time eligible-buffer cap presets: 85%, 50%,
 and 25% of the largest detected GPU's VRAM. An explicit Resident MiB value overrides
 the preset. The TUI priority action clears that override. Profile changes
-apply on the next launch, not to running processes. These caps are neither
+apply on the next launch. **Apply live** separately requests a runtime cap on
+capable devices. These caps are neither
 physical VRAM reservations nor a global priority scheduler. Native mode adds
 no layer or cap; wrapped mode uses an existing zVram command.
 
@@ -31,7 +33,32 @@ zvram run --name vrchat --priority high -- %command%
 This selects experimental range paging with a launch cap and native-budget
 headroom. Test per game; tracked buffers only, with images and unknown access
 outside the narrow paging guarantee. The original `zvram --vulkan-virtual-gib
-96 -- %command%` remains available and appears as a detected read-only app.
+96 -- %command%` remains available with telemetry and Stop, but does not enable
+live paging controls. To enable them in a Steam or terminal launch:
+
+```text
+zvram --live-control --vulkan-virtual-gib 96 -- %command%
+```
+
+`--live-control` opts into experimental range paging, a normal-priority initial
+cap and 1536 MiB native-budget headroom. Explicit launch settings override its
+defaults. This changes paging behavior; test compatibility per application.
+Existing apps must restart once to load the updated layer and paging features.
+The GUI provides **Apply live** (or **Save live cap** on a detected external app).
+In the TUI, `p` selects a live preset and `e` sets MiB for an external app.
+
+Live presets use 85%, 50% or 25% of each capable device's supported maximum.
+Lowering stays pending while tracked resident memory exceeds the request;
+the old cap stays active until the request fits naturally. No forced eviction
+or device-wide wait is added. Requests outside supported bounds are rejected.
+The UI shows the current cap, tracked residency, request and acknowledgment.
+A later workload can still exceed a chosen cap and fail allocation, just as
+with a launch-time cap. The cap controls eligible tracked buffers, not images
+or total physical VRAM. It is not cross-application driver scheduling.
+
+The private request/status files live under `$XDG_RUNTIME_DIR/zvram-control`,
+or the manager state directory's `control` subdirectory when unavailable.
+No service or elevated privileges are required. HIP live caps are unsupported.
 Discovery refreshes about every two seconds. A configured launch environment
 does not prove that the app has loaded the Vulkan layer; process details
 distinguish configured launches from a mapped zVram backend. Process inspection
@@ -43,7 +70,9 @@ GUI telemetry shows driver-reported physical GPU VRAM/GTT totals, system RAM
 and swap, process RSS, and process DRM allocation accounting. The latter can
 exceed physical VRAM and does not prove local residency. Limits are for tracked
 allocations; they exclude driver overhead. Stop sends TERM to an owned worker,
-which terminates its child session; SIGSTOP is not used because it retains VRAM.
+which terminates its child session. External Stop sends TERM only to the selected
+same-user PID after checking its start identity and opening a pidfd; it does not
+signal Steam or unrelated process groups. SIGSTOP is not used because it retains VRAM.
 Existing models and unrelated programs are never stopped automatically.
 
 The worker stops its own process when available RAM falls below its floor or
