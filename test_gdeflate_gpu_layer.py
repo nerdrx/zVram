@@ -56,4 +56,12 @@ if os.environ.get("ZVRAM_TEST_REQUIRE_BP16_REMAP") == "1":
     remaps = re.findall(r"GPU BP16 batch remap calls=(\d+) children=(\d+) buffers=(\d+)", result.stdout)
     if not remaps or tuple(map(int, remaps[-1][:2])) != (1, 4):
         raise SystemExit("FAIL: four-child restore did not use exactly one batch remap")
+if os.environ.get("ZVRAM_VULKAN_BP16_STAGE_OWNED_INPUT") == "1":
+    stages = re.findall(r"GPU BP16 owned input stage calls=(\d+) bytes=(\d+)", result.stdout)
+    if ("GPU BP16 owned input staging requested=1 effective=1" not in result.stdout or
+            not stages or int(stages[-1][0]) != profiles[-1][1] or int(stages[-1][1]) <= 0):
+        raise SystemExit("FAIL: owned input was not staged on GPU for every decode")
+    if (os.environ.get("ZVRAM_VULKAN_BP16_RESTORE_BATCH") == "1" and
+            "BP16 GPU restore batch requested=1 effective=0" not in result.stdout):
+        raise SystemExit("FAIL: serial owned-input staging did not disable restore batching")
 print("PASS: application byte checks, observed GPU decoding, zero fallback and validation diagnostics")
