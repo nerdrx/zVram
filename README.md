@@ -86,7 +86,7 @@ Compute write proofs are now associated with the pipeline/set pairing at each di
 
 On a supported wave32 device, `--vulkan-gdeflate-gpu` opts into direct GPU restore for compressed GDeflate chunks; it requires `--vulkan-codec gdeflate` and automatic snapshots. Zstd remains the default, and without this flag GDeflate restore stays on CPU. Compressed chunks up to 32 MiB decode directly into private sparse backing views; RAW chunks use the CPU/copy path. `--vulkan-gdeflate-workers 1..32` sets CPU encoding parallelism and defaults to `1`. Recoverable GPU errors are counted and fall back to CPU; unsafe fence/device failures stop reuse. A small-model run passed 14/14 checks with matching output and 31/31 layers, recording 11 GPU calls over 308,084,736 bytes with zero fallback or validation diagnostics. Its timing overlapped synthetic GPU tests and is not a speed comparison. GPU input, upload, and scratch allocations sit outside the tracked backing cap and can raise temporary memory peaks. The focused layer suite now passes 5/5, including compressed synthetic and native ranges; RAW restores in their second cycle correctly use CPU. This is not a 40 GiB GPU restore or general application compatibility result. See [GPU GDeflate restore evidence and limits](VALIDATION.md#opt-in-gpu-gdeflate-restore).
 
-`ZVRAM_VULKAN_BP16_RESTORE_BATCH=1` optionally batches 2–4 existing immutable owned BP16 frames during known selective restores; it requires BP16 GPU restore and remains off by default. One 92-token run preserved exact output and 49/49 layers, but measured 1.0928 tokens/s versus 1.1025 without batching; host submit/wait was 70.196 s versus 69.785 s. A later restore-plus-remap run measured 1.1033 tokens/s and 70.540 s, essentially matching the same 1.1025/69.785 s encoder baseline. These sequential comparisons are uncontrolled and show no observed speed gain. See [batching evidence and limits](VALIDATION.md#experimental-bp16-batched-gpu-restore).
+The BP16 restore-batching and combined-remap prototypes were removed from the current runtime after two full-model runs showed no observed speed gain. Their exact-output results and reproducible implementation patch are archived in [the research record](VALIDATION.md#experimental-bp16-restore-batching-prototype-removed); those historical flags are not current CLI options.
 
 With range residency and an immediate `--vulkan-resident-mib` cap, `--vulkan-lazy-backing` starts pristine eligible chunks unallocated and allocates/binds them before admitted use. It does not copy undefined initial bytes; after initialization, chunks use the normal lossless snapshot path. Restore preflight refuses requests whose tracked working set would exceed the cap. Lazy backing rejects `--vulkan-resident-after-cold`, which would delay admission. A CPU production-path harness passed checks for zero-allocation startup, exact-cap restore, pre-allocation refusal one byte over cap, disjoint binding while cold, initial-bind rollback, allocation retry, and sticky sparse-failure accounting, plus conservative unknown-submit admission/restore. Tiny hardware and small-model gates passed; game and 40 GiB behavior remain unverified. Allocation or bind failure can prevent paging; swapchain presentation uses the conservative fallback by default, and explicit app sparse submissions remain unsupported, so treat this as experimental for controlled compute/offscreen use. This is not a global VRAM cap.
 
@@ -277,10 +277,11 @@ with Zstd remaining the default. Opt in with `--vulkan-codec bp16`; add
 bounded CPU packing (default 1). `--vulkan-bp16-upload-workers 1..8` optionally
 parallelizes copies into the BP16 GPU upload buffer; it requires BP16 GPU restore
 and automatic snapshots, defaults to 1, and is ignored by GDeflate.
-`ZVRAM_VULKAN_BP16_RESTORE_BATCH=1` optionally batches 2–4 existing immutable
-BP16-owned frames for known selective restores; it defaults off. Unsafe decode
-or device errors retain backing and stop GPU paging. Full-model runs preserved
-exact output but showed no observed speed gain; see the batching evidence below.
+A four-frame BP16 restore-batching prototype and a combined sparse-remap variant
+were tested in historical builds. Both model runs preserved exact output, but
+neither showed an observed speed gain, so these features were removed from the
+current runtime and their flags are not supported by the current CLI. The
+implementation patch and measurements are archived below.
 An owned-input staging prototype passed CPU/GPU correctness checks but was
 removed from the current runtime after a full-model experiment measured
 0.5078 tokens/s versus 1.1025 for the encoder repeat. It is research-only, not a

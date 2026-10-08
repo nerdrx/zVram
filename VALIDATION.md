@@ -1728,27 +1728,29 @@ provenance](validation/internlm-bp16-gpu-stage-cold26-owner26-resident19-lfu/REA
 
 
 
-### Experimental BP16 batched GPU restore
+### Experimental BP16 restore-batching prototype (removed)
 
-`ZVRAM_VULKAN_BP16_RESTORE_BATCH=1` opts into batching **2–4** existing
-immutable owned BP16 frames during known selective restores. It is off by
-default and requires BP16 GPU restore; it does not widen restore selection. The
-focused GPU batch fixtures pass with full-byte checks. Unsafe/device errors keep
-the backing owners and stop GPU paging; recoverable decode errors retain the
-existing CPU fallback. One 92-token InternLM2.5-20B F16 run completed at
+The four-frame restore batching and combined sparse-remap features were tested
+in historical builds and removed from the current runtime. Their environment
+flags are not current CLI options. The focused historical GPU fixtures passed
+with full-byte checks in that historical build. Unsafe/device errors kept the
+backing owners and stopped GPU paging; recoverable decode errors retained the
+CPU fallback. One 92-token InternLM2.5-20B F16 run completed at
 **1.09282503 tokens/s** with exact output, 49/49 layers, zero GPU restore
 fallback, and **15,074 batch submissions / 51,174 frame items**. The synchronous
 GPU-encoder repeat without restore batching measured **1.10252711 tokens/s**;
 the batch run's host submit/wait was **70.196 s**, versus **69.785 s** for the
 encoder repeat. This is no observed speed gain from batching. These
 sequential runs had uncontrolled clocks/background activity, so the comparison
-is not causal; batching remains opt-in and defaults off. A later run combined the
-four-frame restore batches with one sparse remap transaction and measured
+is not causal. The prototype was removed from the current runtime. A later run
+combined four-frame restore batches with one sparse remap transaction and measured
 **1.10334585 tokens/s**, essentially matching the **1.10252711** encoder repeat;
-host submit/wait was **70.540 s** versus **69.785 s** for the encoder repeat. It completed exact output,
-49/49 layers, zero GPU restore fallback, with **14,957 submissions / 50,894
-frames**. This likewise shows no observed gain. [Combined-remap run and
-provenance](validation/internlm-bp16-gpu-remap-batch-cold26-owner26-resident19-lfu/README.md)
+host submit/wait was **70.540 s** versus **69.785 s** for the encoder repeat.
+It completed exact output, 49/49 layers, zero GPU restore fallback, with
+**14,957 submissions / 50,894 frames**. This likewise shows no observed gain.
+The combined implementation can be reproduced by checking out commit `40b3a0d`; the patch from base `f882a74` is
+preserved with a byte hash in [the fixture archive](validation/bp16-remap-batch/README.md).
+[Combined-remap run and provenance](validation/internlm-bp16-gpu-remap-batch-cold26-owner26-resident19-lfu/README.md)
 · [Remap fixture gates](validation/bp16-remap-batch/README.md) · [Earlier batch
 run](validation/internlm-bp16-gpu-batch-cold26-owner26-resident19-lfu/README.md)
 · [Ollama preflight abort](validation/internlm-bp16-gpu-batch-cold26-owner26-resident19-lfu-preflight-abort/README.md).

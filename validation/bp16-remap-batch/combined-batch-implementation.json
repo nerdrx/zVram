@@ -1,0 +1,14 @@
+{
+  "base_commit": "f882a74",
+  "implementation_commit": "40b3a0d",
+  "files": [
+    "layer.cpp",
+    "gdeflate_gpu.hpp",
+    "submission_hooks.inc",
+    "vulkan_auto_check.cpp",
+    "CMakeLists.txt",
+    "test_gdeflate_gpu_layer.py"
+  ],
+  "patch_bytes": 64316,
+  "patch_sha256": "c4494b6f7292464acfa479da4b50c80509917912b5b18cb6c5a592cd8d8ba40a"
+}
