@@ -1,0 +1,50 @@
+{
+  "run.py": {
+    "bytes": 3273,
+    "sha256": "a2651a59776313fd674604c7c28392481e33cb828072369e2e6df971b6a6a34a"
+  },
+  "automatic-command.json": {
+    "bytes": 1256,
+    "sha256": "f09a10da80b3b4319c097bba2f8fb33c121d72991e3f22417146c55e7b81eba1"
+  },
+  "source-commit.txt": {
+    "bytes": 41,
+    "sha256": "b15d8536bcdba75b80595f857c6da73032aa05bf3013ed09c92568fdcf194951"
+  },
+  "runtime-source-context.json": {
+    "bytes": 940,
+    "sha256": "477378b63e3a84f3ed4afca54d1e57d02cc3f5da14f5c075f3b7f51aae2dcda6"
+  },
+  "runtime-binary-sha256.json": {
+    "bytes": 566,
+    "sha256": "0df03ab18e3d1f02ab4794597c2ec21f4e5a474416254c4876849a19135a3916"
+  },
+  "controller.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "memory-monitor.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "memory.jsonl": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "automatic.stdout.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "automatic.stderr.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "automatic.resources.json": {
+    "bytes": 1899,
+    "sha256": "55b76f8fb01550379721863c89bf3d6246fd46460e906851522c107f8e69231b"
+  },
+  "automatic-result.json": {
+    "bytes": 1264,
+    "sha256": "85d3d975d256a9f9a74851fcb421121358c43d67ae3c5e449043ecc0a54a9f2b"
+  }
+}

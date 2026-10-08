@@ -1,0 +1,13 @@
+{
+  "runtime_code_commit": "45bd211a946c591bff696c234fa646045b6cef84",
+  "note": "GPU-validated timing split baseline.26GiB cold/owner19GiBresident2.5GiBreserve,nodes4,clean-firstGPUencoder. New authorized deadline2026-10-08 08:04:31UTC.16GiB availableRAMguard and16GiBswapgrowthguard.",
+  "sources": {
+    "layer.cpp": "cb4ea89f1fe01b30126d7c6d1d96117302800dec193854d59e5227776f2a0cb4",
+    "gdeflate_gpu.hpp": "36cb40673b9f6a3bdd2f4166e696402123baaa2056b2edb878a7bf10404ec53c",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "submission_hooks.inc": "846ce6984b8612cd83c2b4909d59819012d3810b39250dc968e8ec16e9309efc",
+    "zvram": "7e2b177eb6cecdcbbcd48cccc419e78d460f6fec28b6e2c98e43394053958a49",
+    "CMakeLists.txt": "c544ea4cd0853609607c6f83145c4e78b0a8d5ecd8851dcbd14de540400a9cf9"
+  }
+}

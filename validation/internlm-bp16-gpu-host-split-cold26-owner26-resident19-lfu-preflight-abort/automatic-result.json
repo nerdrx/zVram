@@ -1,0 +1,14 @@
+{
+  "scope": "restore submission/fence timing split; Clean-first resident victim ranking plus synchronous GPU BP16 encoding; bothpasses fenced, finalcanonicalownedframe; Immutable-owner validation cache plus26GiB cold/owner ceiling (samequota); restored knownsafe19GiB resident hardcap and2.5GiB reserve;LFU;32encoder/8upload;fixed128KiB childallocator;16GiB availableRAMguard;sequential unlocked clocks;not isolated attribution",
+  "prompt_utf8": "Write a 300-word story about a fox exploring a forest. Continue the story until you have written at least 300 words.\n",
+  "source_sha256": {
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "layer.cpp": "cb4ea89f1fe01b30126d7c6d1d96117302800dec193854d59e5227776f2a0cb4",
+    "gdeflate_gpu.hpp": "36cb40673b9f6a3bdd2f4166e696402123baaa2056b2edb878a7bf10404ec53c",
+    "submission_hooks.inc": "846ce6984b8612cd83c2b4909d59819012d3810b39250dc968e8ec16e9309efc",
+    "check_vulkan_idle_model.py": "7063006f7e4243728f79ee8a0383408ee04ca75ee727ec6f637bc4be6b8d0f2e"
+  },
+  "runs": {},
+  "error": "automatic: Ollama GPU model active: qwen3.5:9b-local (6113858682 bytes VRAM)"
+}
