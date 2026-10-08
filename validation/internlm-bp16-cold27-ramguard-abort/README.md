@@ -9,3 +9,7 @@ A first launch attempt failed before app startup because its Python import path
 was incomplete; `launch-import-error.log` preserves that separate setup error.
 The later guarded attempt is the run represented by `automatic-result.json`.
 This archive is diagnostic only.
+
+The runtime binary/source metadata is copied from the previously captured safe26
+run: the executed layer was the unchanged `dba6a62` binary. It does not hash the
+newer library rebuilt after these attempts.

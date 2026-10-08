@@ -12,3 +12,7 @@ run; source changes visible on disk during the repeat were still unbuilt and
 are recorded separately in `automatic-result.json`. This single failure does
 not establish that the successful configuration is unstable, but the 0.889
 result has not yet been reproduced. This archive is a failure diagnostic only.
+
+The captured runtime binary hash is copied from the original safe26 run and
+confirms the same `dba6a62` layer. The source-context record preserves the
+separate dirty on-disk source hashes; those edits were not in the loaded binary.
