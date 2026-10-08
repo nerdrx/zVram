@@ -1,0 +1,7 @@
+{
+  "app_sha256": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d",
+  "model_path": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/third-party/models/internlm2_5-20b-chat-fp16.gguf",
+  "model_bytes": 39725643136,
+  "model_mtime_ns": 1791345842035069341,
+  "note": "Native unwrapped app; no zVram layer loaded. Child allocator thresholds match owner-cache trials. Sequential unlocked clocks."
+}
