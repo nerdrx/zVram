@@ -379,7 +379,14 @@ snapshot completed exact output and 49/49 layers at **0.743201 tokens/s**, with
 zero GPU restore fallback. The previously validated installed binary, run with
 the same limits, failed during loading with Vulkan out-of-device-memory while
 machine budget conditions had changed. This cannot attribute the result to the
-snapshot option or establish a performance regression or improvement. The next
-planned run uses 19 GiB raw, a 1.5 GiB reserve, and admission snapshots
-disabled; it has no result yet. [Budget-snapshot run](../../validation/internlm-bp16-cold26-raw19-budget-snapshot/README.md) ·
-[untouched-binary control](../../validation/internlm-untouched-installed-cold26-raw19-control/README.md).
+snapshot option or establish a performance regression or improvement. The
+19 GiB raw, 1.5 GiB reserve, snapshots-off attempt failed during restore after
+about seven seconds with Vulkan out-of-device-memory. The available budget
+shrunk between admission and restore again, so there is no output or rate. A
+snapshots-on launch was then skipped by preflight because Ollama's
+`qwen3.5:9b-local` model was using 6,113,858,682 bytes of VRAM; it provides no
+snapshot result. Neither attempt establishes an improvement or regression.
+[Budget-snapshot run](../../validation/internlm-bp16-cold26-raw19-budget-snapshot/README.md) ·
+[untouched-binary control](../../validation/internlm-untouched-installed-cold26-raw19-control/README.md) ·
+[snapshots-off load failure](../../validation/internlm-current-cold26-raw19-reserve1536-nosnapshot/README.md) ·
+[snapshots-on preflight skip](../../validation/internlm-current-cold26-raw19-reserve1536-snapshot/README.md).

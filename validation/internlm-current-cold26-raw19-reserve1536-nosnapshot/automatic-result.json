@@ -1,0 +1,14 @@
+{
+  "scope": "Currentbinary budgetsnapshotOFF,26GiB cold/owner19GiB rawhardcap,1536MiB headroom;  Clean-first resident victim ranking plus synchronous GPU BP16 encoding; bothpasses fenced, finalcanonicalownedframe; Immutable-owner validation cache plus26GiB cold/owner ceiling (samequota); restored knownsafe19GiB resident hardcap and1.5GiB reserve;LFU;32encoder/8upload;fixed128KiB childallocator;16GiB availableRAMguard;sequential unlocked clocks;not isolated attribution",
+  "prompt_utf8": "Write a 300-word story about a fox exploring a forest. Continue the story until you have written at least 300 words.\n",
+  "source_sha256": {
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "bp16_codec.hpp": "703bc061cb460926f83c88194668b6412408a00c94b4d107deb3a6784f6a97c4",
+    "layer.cpp": "76c9fc56efc2b954c5fc00dd80a3540b0a4b40f03abb5535a3f1e4cd861526bf",
+    "gdeflate_gpu.hpp": "39a1d9c188b907a65926940fc95b9912a5f52193e2bc23dd24f8fdd60ffd492e",
+    "submission_hooks.inc": "ee8269ce8bc78300954fbab6e532de9ce9e89ad7cbba7831fab9e70216d78b57",
+    "check_vulkan_idle_model.py": "7063006f7e4243728f79ee8a0383408ee04ca75ee727ec6f637bc4be6b8d0f2e"
+  },
+  "runs": {},
+  "error": "automatic exited before input (status 1)"
+}
