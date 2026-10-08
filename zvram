@@ -6,6 +6,17 @@ import os
 from pathlib import Path
 import sys
 
+if len(sys.argv) > 1 and sys.argv[1] in ("gui", "tui", "manage", "model", "run"):
+    if sys.argv[1] == "model":
+        import zvram_model
+        sys.argv = [str(Path(__file__).resolve().parent / "zvram_model.py"), *sys.argv[2:]]
+        sys.exit(zvram_model.main())
+    import zvram_manager
+    try:
+        sys.exit(zvram_manager.main(sys.argv[1:] if sys.argv[1] in ("gui", "tui", "run") else sys.argv[2:]))
+    except (OSError, ValueError, KeyError, RuntimeError) as exc:
+        sys.exit("zVram manager: " + str(exc))
+
 parser = argparse.ArgumentParser(description="zVram experimental GPU memory launcher")
 parser.add_argument("--build-dir", type=Path, help="use backend files from this CMake build directory (default: local build/)")
 parser.add_argument("--hip", action="store_true", help="use the HIP allocation spillover backend instead of the Vulkan layer")

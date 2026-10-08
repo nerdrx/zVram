@@ -8,6 +8,19 @@ zVram tests GPU memory beyond local VRAM: segmented Vulkan allocations, lossless
 
 ## What works today
 
+### Userspace manager and Novum Xenium bridge
+
+`zvram gui` opens the NX-themed manager; `zvram tui` opens its terminal interface.
+Manage foreground launch profiles, launch-time VRAM cap presets, process logs,
+and physical GPU/system memory telemetry. Only managed zVram launches are
+affected. Other apps keep normal driver behavior; no root service is needed.
+See [manager usage and limits](docs/manager.md).
+
+`zvram model list` discovers existing local GGUF models. The bridge serves one
+through a separate loopback Vulkan llama-server and registers a dedicated
+Novum Xenium provider. It does not wrap an already-running Ollama process.
+See the [Novum integration handoff](docs/novum-xenium-integration.md).
+
 | Component | Behavior |
 |---|---|
 | Vulkan launcher and layer | Opt-in allocation telemetry; requests AMD `ALLOWED` overallocation when available and preserves an explicit application policy. |

@@ -1,0 +1,13 @@
+{
+  "model": "zvram-smollm2-135m",
+  "server_health": {
+    "status": "ok"
+  },
+  "novum_picker_visible": true,
+  "live_reply": "Hello!",
+  "completion_tokens": 3,
+  "configured_resident_mib": 256,
+  "configured_cold_mib": 1024,
+  "checks": "6 CPU unit checks plus field/TUI and headless gamescope Tk checks passed",
+  "limits": "One tiny model smoke, not a large-model server or game validation. Cap applies on launch, not a global reservation."
+}
