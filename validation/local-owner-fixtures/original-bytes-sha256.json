@@ -1,0 +1,21 @@
+{
+  "local-owner-fixture.log": {
+    "bytes": 22475,
+    "sha256": "973fb15132ea8eebd9bf86556b8866e10af48f90708874723badf0c31a251f59"
+  },
+  "local-owner-native-fixture.log": {
+    "bytes": 22506,
+    "sha256": "0904b822bcc6afaccadc10ae7742924aee010b3491de94ed4f39e0d25de74527"
+  },
+  "decode_fused4.hlsl": {
+    "bytes": 5398,
+    "sha256": "857aa3aca249792e6d721246b9a5bcec772d80f8dbb9706dd608d621447454d0",
+    "source_commit": "c3f8850"
+  },
+  "fused4-research.patch.gz": {
+    "bytes": 31345,
+    "sha256": "dfc237be0ee93c6b5c67cd6b05ab22404012f5d74bf66e1af22b9e26de5ca5f1",
+    "compressed": true,
+    "source_commit": "c3f8850"
+  }
+}
