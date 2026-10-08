@@ -408,9 +408,13 @@ void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
                 logf("GPU BP16 encoded input bytes=%llu%s",
                      static_cast<unsigned long long>(profile.bp16InputBytes),suffix);
             if(d.gpuDecoder->localOwnerLimitBytes())
-                logf("GPU BP16 encoded input domains local-owner-bytes=%llu other-bytes=%llu%s",
+                logf("GPU BP16 encoded input domains local-owner-bytes=%llu other-bytes=%llu local-decode-ns=%llu other-decode-ns=%llu local-samples=%llu other-samples=%llu%s",
                      static_cast<unsigned long long>(profile.bp16LocalOwnerInputBytes),
-                     static_cast<unsigned long long>(profile.bp16OtherInputBytes),suffix);
+                     static_cast<unsigned long long>(profile.bp16OtherInputBytes),
+                     static_cast<unsigned long long>(profile.bp16LocalOwnerDecodeNs),
+                     static_cast<unsigned long long>(profile.bp16OtherDecodeNs),
+                     static_cast<unsigned long long>(profile.bp16LocalOwnerSamples),
+                     static_cast<unsigned long long>(profile.bp16OtherSamples),suffix);
             logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu%s",
                  static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
                  static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs),suffix);

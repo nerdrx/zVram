@@ -237,6 +237,10 @@ public:
         std::uint64_t bp16InputBytes{};
         std::uint64_t bp16LocalOwnerInputBytes{};
         std::uint64_t bp16OtherInputBytes{};
+        std::uint64_t bp16LocalOwnerDecodeNs{};
+        std::uint64_t bp16OtherDecodeNs{};
+        std::uint64_t bp16LocalOwnerSamples{};
+        std::uint64_t bp16OtherSamples{};
     };
 
     Decoder() = default;
@@ -923,9 +927,19 @@ public:
             if (result == VK_ERROR_DEVICE_LOST) return checked(result);
             if (result == VK_SUCCESS) {
                 profile_.gpuTransferNs += timestampNs(timestampDelta(timestamps[0], timestamps[1]));
-                profile_.gpuDecodeNs += timestampNs(timestampDelta(timestamps[1], timestamps[2]));
+                const auto decodeNs=timestampNs(timestampDelta(timestamps[1], timestamps[2]));
+                profile_.gpuDecodeNs += decodeNs;
                 profile_.gpuFinishNs += timestampNs(timestampDelta(timestamps[2], timestamps[3]));
                 ++profile_.gpuSamples;
+                if (format_ == Format::BP16) {
+                    if (imported && imported->deviceLocal_) {
+                        profile_.bp16LocalOwnerDecodeNs += decodeNs;
+                        ++profile_.bp16LocalOwnerSamples;
+                    } else {
+                        profile_.bp16OtherDecodeNs += decodeNs;
+                        ++profile_.bp16OtherSamples;
+                    }
+                }
             } else {
                 disableGpuProfiling();
             }
