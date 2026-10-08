@@ -7,16 +7,21 @@ import json
 import os
 from pathlib import Path
 import re
+import resource
 import select
 import signal
 import subprocess
 import time
+from urllib.error import URLError
+from urllib.request import urlopen
 
 from check_idle_model import performance
 from check_model import clean_environment, common_app_args
 
 
 MiB = 1024 * 1024
+OllamaPsUrl = "http://127.0.0.1:11434/api/ps"
+OllamaPsMaxBytes = 256 * 1024
 Prompt = b"Tell me a very short story about a fox.\n"
 ColdPattern = re.compile(r"snapshot cold bytes=(\d+) stored=(\d+)")
 StatePattern = re.compile(
@@ -28,6 +33,36 @@ StateEventPattern = re.compile(
 VulkanBufferPattern = re.compile(
     r"\bVulkan\d+\s+model buffer size\s*=\s*([\d,]+(?:\.\d+)?)\s*MiB\b", re.I)
 OffloadPattern = re.compile(r"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers?\s+to GPU", re.I)
+
+
+def _disable_child_core_dumps():
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+
+def active_ollama_gpu_models():
+    """Best-effort read-only Ollama check with a strict response bound."""
+    try:
+        with urlopen(OllamaPsUrl, timeout=0.5) as response:
+            body = response.read(OllamaPsMaxBytes + 1)
+    except (OSError, URLError):
+        return []
+    if len(body) > OllamaPsMaxBytes:
+        raise RuntimeError("Ollama /api/ps response exceeds 256 KiB limit")
+    try:
+        models = json.loads(body).get("models", [])
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        return []
+    if not isinstance(models, list):
+        return []
+    active = []
+    for model in models:
+        if not isinstance(model, dict):
+            continue
+        size = model.get("size_vram", 0)
+        if isinstance(size, (int, float)) and not isinstance(size, bool) and size > 0:
+            active.append({"name": str(model.get("name") or model.get("model") or "<unknown>"),
+                           "size_vram": size})
+    return active
 
 
 def has_decode_tokens(metrics):
@@ -137,7 +172,7 @@ def capture_backing(pid, path):
 
 def run_interactive(label, command, env, output_dir, timeout, automatic,
                     min_available_mib=None, pressure_on_first_submit=False,
-                    max_swap_growth_mib=None):
+                    max_swap_growth_mib=None, reject_ollama_gpu=False):
     out_path = output_dir / f"{label}.stdout.txt"
     err_path = output_dir / f"{label}.stderr.txt"
     stdout = bytearray()
@@ -152,7 +187,7 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
     swap_peak_mib = swap_baseline_mib
     proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, env=env, start_new_session=True,
-                            bufsize=0)
+                            bufsize=0, preexec_fn=_disable_child_core_dumps)
     started = time.monotonic()
     deadline = started + timeout
     ready = False
@@ -160,9 +195,20 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
     pre_prompt_cold_state = None
     pre_prompt_state = None
     minimum_available_mib = None
+    last_ollama_check = None
+    ollama_gpu_detected = []
 
     def sample_resources():
-        nonlocal minimum_available_mib, swap_peak_mib
+        nonlocal minimum_available_mib, swap_peak_mib, last_ollama_check
+        if (reject_ollama_gpu and
+                (last_ollama_check is None or time.monotonic() - last_ollama_check >= 1.0)):
+            last_ollama_check = time.monotonic()
+            models = active_ollama_gpu_models()
+            if models:
+                ollama_gpu_detected.extend(models)
+                detail = ", ".join(f"{model['name']} ({model['size_vram']} bytes VRAM)"
+                                    for model in models)
+                raise RuntimeError(f"{label}: Ollama GPU model active: {detail}")
         if min_available_mib is not None:
             available = available_memory_mib()
             minimum_available_mib = (available if minimum_available_mib is None
@@ -289,6 +335,8 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
             "swap_used_peak_mib": swap_peak_mib,
             "swap_growth_mib": swap_peak_mib - swap_baseline_mib,
             "max_swap_growth_mib": max_swap_growth_mib,
+            "reject_ollama_gpu": reject_ollama_gpu,
+            "ollama_gpu_detected": ollama_gpu_detected,
         }, indent=2) + "\n")
     text = stderr.decode("utf-8", errors="replace")
     states = [tuple(map(int, x)) for x in StatePattern.findall(text)]

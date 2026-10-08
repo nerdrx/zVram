@@ -2,17 +2,82 @@
 """CPU-only checks for token budget and decode evidence validation."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from unittest import mock
 
 
 MODULE = Path(__file__).with_name("check_vulkan_idle_model.py")
 spec = importlib.util.spec_from_file_location("idle_model", MODULE)
 idle_model = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(idle_model)
+
+
+def check_ollama_guard_and_child_core_limit():
+    child = """
+import resource,sys
+print('Vulkan0 model buffer size = 1 MiB', file=sys.stderr, flush=True)
+print('== Running in interactive mode. ==', file=sys.stderr, flush=True)
+print('core-limit=' + str(resource.getrlimit(resource.RLIMIT_CORE)[0]), file=sys.stderr, flush=True)
+sys.stdin.readline()
+print('done', flush=True)
+"""
+
+    def fake_capture(pid, path):
+        path.write_text("CPU fixture")
+        return {"resident_vram_present": True}
+
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        with mock.patch.object(idle_model, "capture_backing", fake_capture), \
+                mock.patch.object(idle_model, "urlopen", side_effect=AssertionError("default guard ran")):
+            result = idle_model.run_interactive(
+                "default", [sys.executable, "-c", child], os.environ.copy(), root, 2, False)
+        assert "core-limit=0" in result["stderr"]
+        assert json.loads((root / "default.resources.json").read_text())["reject_ollama_gpu"] is False
+
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        with mock.patch.object(idle_model, "capture_backing", fake_capture), \
+                mock.patch.object(idle_model, "urlopen", side_effect=OSError("Ollama unavailable")) as check:
+            result = idle_model.run_interactive(
+                "offline", [sys.executable, "-c", child], os.environ.copy(), root, 2,
+                False, reject_ollama_gpu=True)
+        assert check.call_count == 1
+        assert result["stdout"] == b"done\n"
+        resources = json.loads((root / "offline.resources.json").read_text())
+        assert resources["reject_ollama_gpu"] is True
+        assert resources["ollama_gpu_detected"] == []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            assert size == idle_model.OllamaPsMaxBytes + 1
+            return b'{"models":[{"name":"qwen3.5:9b-local","size_vram":1234}]}'
+
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        with mock.patch.object(idle_model, "urlopen", return_value=FakeResponse()):
+            try:
+                idle_model.run_interactive(
+                    "busy", [sys.executable, "-c", child], os.environ.copy(), root, 2,
+                    False, reject_ollama_gpu=True)
+            except RuntimeError as error:
+                assert "qwen3.5:9b-local" in str(error) and "1234 bytes VRAM" in str(error), error
+            else:
+                raise AssertionError("active Ollama GPU model was not rejected")
+        resources = json.loads((root / "busy.resources.json").read_text())
+        assert resources["ollama_gpu_detected"] == [
+            {"name": "qwen3.5:9b-local", "size_vram": 1234}]
 
 
 def check_prompt_gate(pressure):
@@ -163,6 +228,7 @@ def check_gpu_restore_evidence():
 
 
 def main():
+    check_ollama_guard_and_child_core_limit()
     check_launch_forwarding()
     check_bp16_launch_forwarding()
     check_gpu_restore_evidence()
