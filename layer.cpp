@@ -255,6 +255,7 @@ struct Device {
     bool activeEviction{};
     VkDeviceSize rangeChunkBytes{};
     VkDeviceSize residentLimitBytes{};
+    std::uint64_t gpuLocalOwnerCombinedLimitBytes{};
     PFN_vkGetPhysicalDeviceMemoryProperties2 budgetProperties{};
     std::uint32_t budgetHeap{UINT32_MAX};
     VkDeviceSize budgetReserveBytes{};
@@ -393,6 +394,12 @@ void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
             logf("GPU restore host split queue-submit-ns=%llu fence-wait-ns=%llu%s",
                  static_cast<unsigned long long>(profile.queueSubmitNs),
                  static_cast<unsigned long long>(profile.fenceWaitNs),suffix);
+            if(d.gpuDecoder->localOwnerLimitBytes())
+                logf("GPU BP16 local owners used-bytes=%llu limit-bytes=%llu raw-resident=%llu shared-limit=%llu%s",
+                     static_cast<unsigned long long>(d.gpuDecoder->localOwnerUsedBytes()),
+                     static_cast<unsigned long long>(d.gpuDecoder->localOwnerLimitBytes()),
+                     static_cast<unsigned long long>(d.residentBytes),
+                     static_cast<unsigned long long>(d.gpuLocalOwnerCombinedLimitBytes),suffix);
             if(d.snapshotCodec==zvram::snapshot::Codec::BP16)
                 logf("GPU BP16 upload profile buffer-prepare-ns=%llu direct-copy-ns=%llu%s",
                      static_cast<unsigned long long>(profile.bp16BufferPrepareNs),
@@ -400,6 +407,10 @@ void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
             if(d.snapshotCodec==zvram::snapshot::Codec::BP16)
                 logf("GPU BP16 encoded input bytes=%llu%s",
                      static_cast<unsigned long long>(profile.bp16InputBytes),suffix);
+            if(d.gpuDecoder->localOwnerLimitBytes())
+                logf("GPU BP16 encoded input domains local-owner-bytes=%llu other-bytes=%llu%s",
+                     static_cast<unsigned long long>(profile.bp16LocalOwnerInputBytes),
+                     static_cast<unsigned long long>(profile.bp16OtherInputBytes),suffix);
             logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu%s",
                  static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
                  static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs),suffix);
@@ -1666,6 +1677,14 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
     logf("Vulkan snapshot transfer staging bytes=%llu",static_cast<unsigned long long>(s.stagingSize));
     logf("Vulkan snapshot decode max-workers=%u",s.stagingSize>s.chunkSize?4u:1u);
     if(s.lookaheadMapped) logf("Vulkan snapshot lookahead staging bytes=%llu",static_cast<unsigned long long>(s.stagingSize));
+    std::uint64_t localOwnerBudget=0;
+    const auto* localOwnerEnv=std::getenv("ZVRAM_VULKAN_BP16_LOCAL_OWNER_MIB");
+    if(localOwnerEnv && !zvram::gdeflate::gpu::Decoder::parseLocalOwnerBudgetMiB(localOwnerEnv,localOwnerBudget)) {
+        logf("invalid BP16 local owner budget"); return false;
+    }
+    if(localOwnerBudget && !d.gpuRestoreEnabled) {
+        logf("BP16 local owners unavailable: GPU restore required"); return false;
+    }
     if(d.gpuRestoreEnabled) {
         const bool bp16=d.snapshotCodec==zvram::snapshot::Codec::BP16;
         const char* codecName=bp16?"BP16":"GDeflate";
@@ -1674,16 +1693,33 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
         const auto* path=std::getenv(bp16?"ZVRAM_BP16_SHADER_PATH":"ZVRAM_GDEFLATE_SHADER_PATH");
         const auto* encodeRequested=std::getenv("ZVRAM_VULKAN_BP16_GPU_ENCODE");
         const bool gpuEncode=bp16 && encodeRequested && std::strcmp(encodeRequested,"1")==0;
+        std::uint64_t combinedLocalBudget=0;
+        if(localOwnerBudget) {
+            const auto* combinedEnv=std::getenv("ZVRAM_VULKAN_BP16_LOCAL_TOTAL_MIB");
+            if(!bp16 || !gpuEncode || !d.gpuAllocatedHostInput || !d.residentLimitBytes || !d.budgetReserveBytes || !d.budgetProperties ||
+               d.budgetHeap>=d.memory.memoryHeapCount || !combinedEnv ||
+               !zvram::gdeflate::gpu::Decoder::parseLocalOwnerBudgetMiB(combinedEnv,combinedLocalBudget) ||
+               localOwnerBudget>combinedLocalBudget || d.residentLimitBytes>combinedLocalBudget-localOwnerBudget ||
+               localOwnerBudget>d.gpuAllocatedHostBudgetBytes ||
+               d.budgetReserveBytes>d.memory.memoryHeaps[d.budgetHeap].size ||
+               combinedLocalBudget>d.memory.memoryHeaps[d.budgetHeap].size-d.budgetReserveBytes) {
+                logf("BP16 local owners require GPU encoding, allocated input, native headroom and explicit shared raw/owner cap");
+                return false;
+            }
+            d.gpuLocalOwnerCombinedLimitBytes=combinedLocalBudget;
+        }
         const auto format=bp16?zvram::gdeflate::gpu::Format::BP16:zvram::gdeflate::gpu::Format::GDeflate;
         const auto result=d.gpuDecoder && path?d.gpuDecoder->initialize(d.handle,d.gdpa,d.memory,d.copyQueue,family,
             d.setDeviceLoaderData,path,&d.gpuProperties,format,d.gpuTimestampBits,
             bp16 && d.gpuImportHostInput,d.gpuImportHostAlignment,
             bp16 && d.gpuAllocatedHostInput,d.gpuAllocatedHostBudgetBytes,
             gpuEncode?std::getenv("ZVRAM_BP16_ENCODE_ANALYZE_SHADER_PATH"):nullptr,
-            gpuEncode?std::getenv("ZVRAM_BP16_ENCODE_PACK_SHADER_PATH"):nullptr):VK_ERROR_INITIALIZATION_FAILED;
+            gpuEncode?std::getenv("ZVRAM_BP16_ENCODE_PACK_SHADER_PATH"):nullptr,
+            localOwnerBudget,d.budgetHeap):VK_ERROR_INITIALIZATION_FAILED;
         if(result!=VK_SUCCESS) {
             d.gpuRestoreEnabled=false; d.gpuDecoder.reset();
             logf("GPU %s restore unavailable result=%d; retaining CPU codec",codecName,result);
+            if(localOwnerBudget) return false;
             if(result==VK_ERROR_DEVICE_LOST) { d.gpuGateError=result; return false; }
         } else {
             logf("GPU %s restore enabled: %s, %s, direct backing output",codecName,bp16?"256-thread":"wave32",
@@ -1691,6 +1727,15 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
                 d.gpuDecoder->allocatedHostInputEnabled()?"cached allocated host input":
                 d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
             if(bp16) logf("GPU BP16 upload workers=%u",d.gpuDecoder->uploadWorkers());
+            if(localOwnerBudget) {
+                if(!d.gpuDecoder->bp16EncoderEnabled()) {
+                    logf("BP16 local owners unavailable: GPU encoder required"); return false;
+                }
+                logf("GPU BP16 local owner tier configured heap=%u owner-limit=%llu raw-limit=%llu shared-limit=%llu",
+                     d.budgetHeap,static_cast<unsigned long long>(localOwnerBudget),
+                     static_cast<unsigned long long>(d.residentLimitBytes),
+                     static_cast<unsigned long long>(combinedLocalBudget));
+            }
             if(d.gpuDecoder->bp16EncoderEnabled()) {
                 // The first GPU encoder uses the existing synchronous freeze transaction.
                 d.asyncCompression=false;
@@ -2155,8 +2200,10 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
                     ?d.coldBudget-d.coldBytes-prefix:0;
                 zvram::gdeflate::gpu::Decoder::ImportedHostInputPtr owner;
                 const auto started=std::chrono::steady_clock::now();
+                const auto localLiveLimit=d.gpuLocalOwnerCombinedLimitBytes>d.residentBytes
+                    ?d.gpuLocalOwnerCombinedLimitBytes-d.residentBytes:0;
                 const auto result=d.gpuDecoder->encodeBP16(memory.poolViews[i],offset,
-                    static_cast<std::size_t>(amount),static_cast<std::size_t>(available),owner);
+                    static_cast<std::size_t>(amount),static_cast<std::size_t>(available),owner,localLiveLimit);
                 d.gpuEncodeNanoseconds+=std::chrono::duration_cast<std::chrono::nanoseconds>(
                     std::chrono::steady_clock::now()-started).count();
                 if(d.gpuDecoder->unsafe() || result==VK_TIMEOUT || result==VK_ERROR_DEVICE_LOST) {

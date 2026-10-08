@@ -637,7 +637,8 @@ private:
             if ((flags & localRequired) == localRequired && !(flags & localForbidden) &&
                 memory_.memoryTypes[i].heapIndex == localOwnerHeapIndex_)
                 localType = i;
-            if ((flags & gttRequired) == gttRequired && !(flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
+            if (gttType == UINT32_MAX && (flags & gttRequired) == gttRequired &&
+                !(flags & (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | localForbidden)))
                 gttType = i;
         }
         const bool useLocal = preferLocal && localOwnerBudget_ && localType != UINT32_MAX &&
