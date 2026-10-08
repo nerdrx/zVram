@@ -262,7 +262,7 @@ struct Device {
     bool residentAdmissionArmed{true};
     bool restoreBudgetRefused{};
     bool cleanCache{};
-                    zvram::clean_cache::Policy cleanCachePolicy{zvram::clean_cache::Policy::First};
+    zvram::clean_cache::Policy cleanCachePolicy{zvram::clean_cache::Policy::First};
     bool mruEviction{};
     unsigned minSavingsPercent{};
     unsigned byteShuffle{};
