@@ -1,0 +1,21 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+    Start 113: vulkan-bp16-gpu-idle-integrity
+1/8 Test #113: vulkan-bp16-gpu-idle-integrity .......   Passed    1.94 sec
+    Start 114: vulkan-bp16-gpu-native-two-queues
+2/8 Test #114: vulkan-bp16-gpu-native-two-queues ....   Passed    2.28 sec
+    Start 115: vulkan-bp16-gpu-partial-restore
+3/8 Test #115: vulkan-bp16-gpu-partial-restore ......   Passed    0.68 sec
+    Start 116: vulkan-bp16-gpu-range-synthetic
+4/8 Test #116: vulkan-bp16-gpu-range-synthetic ......   Passed    0.41 sec
+    Start 117: vulkan-bp16-gpu-range-native
+5/8 Test #117: vulkan-bp16-gpu-range-native .........   Passed    0.41 sec
+    Start 118: vulkan-bp16-gpu-zero-pattern
+6/8 Test #118: vulkan-bp16-gpu-zero-pattern .........   Passed    0.39 sec
+    Start 119: vulkan-bp16-gpu-pressure-synthetic
+7/8 Test #119: vulkan-bp16-gpu-pressure-synthetic ...   Passed    0.53 sec
+    Start 120: vulkan-bp16-gpu-pressure-native
+8/8 Test #120: vulkan-bp16-gpu-pressure-native ......   Passed    0.53 sec
+
+100% tests passed out of 8
+
+Total Test time (real) =   7.17 sec

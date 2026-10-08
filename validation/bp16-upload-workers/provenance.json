@@ -1,0 +1,36 @@
+{
+  "source_commit": "736ef60bc57304848810de1b598702badbe08d30",
+  "source_sha256": {
+    "layer.cpp": "5171f3b584010abab38b39b639e21af3a21937d108fba7c0eedd155023ebbba8",
+    "gdeflate_gpu.hpp": "62f5fe1b408f043e0071ccd3a7cb761179acd41ce3a80d706aeef7e9147c9949",
+    "bp16_codec.hpp": "75454520090fd72b8b7a09548e9e43e37cd03cbaa02e4322ba971cc3e1e73b87"
+  },
+  "binary_sha256": {
+    "libzvram_layer.so": "d745d704135f7af4e3a57c3df1180c5bee9af3ff42d2343dedc9b191981829f8",
+    "zvram-bp16-codec-check": "8edaef4da324667f02fd1b08ed5299ea5335afe0eccff26dd94856e9f68c0f80"
+  },
+  "test_logs_sha256": {
+    "full-120-workers8.log": "3f22715006f8342cdc4891bdb613581c3c97f91e7215364c480b5cdfa7893d1b",
+    "gpu-8-workers8.log": "20a3f8c6fc5f8995929825cf2e364dcd63d512c6dd87f0bc8ac02668618a0f80",
+    "gpu-8-direct-workers8.log": "4aa36afc6658e7d9c999dc53f0f81340c4b2fa26a643a271076a62d85f50caa3",
+    "gpu-8-import-workers8.log": "0d6d73ce6479e2deb8735ba8e0423924fddefce575d6d409bf51b3bfc4d4f136"
+  },
+  "full_ctest": {
+    "passed": 120,
+    "elapsed_seconds": 85.30,
+    "environment": {
+      "ZVRAM_VULKAN_BP16_UPLOAD_WORKERS": "8",
+      "ZVRAM_VULKAN_GPU_PROFILE": "1"
+    }
+  },
+  "focused_bp16_gpu_ctests": {
+    "passed_each": 8,
+    "worker_count": 8,
+    "modes": [
+      {"name": "device-input", "additional_environment": {}},
+      {"name": "direct-host-input", "additional_environment": {"ZVRAM_VULKAN_BP16_HOST_INPUT": "1"}},
+      {"name": "imported-host-input", "additional_environment": {"ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT": "1"}},
+      {"name": "allocated-host-input", "additional_environment": {"ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT": "1"}}
+    ]
+  }
+}

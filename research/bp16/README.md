@@ -288,3 +288,10 @@ The later 24 GiB cold/cache quota run measured **0.5275435 tokens/s**, with
 exact output and zero fallback. It is one sequential, uncontrolled result; the
 run does not establish that the quota change caused the rate difference. It is
 the current observed best. [Run details](../../validation/internlm-bp16-cold-cache24g/README.md).
+
+`ZVRAM_VULKAN_BP16_UPLOAD_WORKERS` is an experimental, default-one setting for
+copying encoded BP16 input into the upload buffer. It accepts 1–8 workers;
+GDeflate ignores it, and allocation/thread-launch failures return to serial
+copy after joining any started threads. The full suite and all four focused
+BP16 input-mode suites passed at eight workers. This verifies regression
+coverage only; no speed claim is made. [Logs and provenance](../../validation/bp16-upload-workers/README.md).

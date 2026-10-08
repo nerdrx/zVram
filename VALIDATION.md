@@ -1472,3 +1472,18 @@ cached input. The allocated range is noisy and these component copies do not
 show a full-model speedup. The captured source and binary hashes are in the
 [matrix summary](validation/bp16-host-copy-matrix/summary.json), alongside all
 six logs and the compressed helper source.
+
+### Opt-in BP16 upload-copy workers
+
+`ZVRAM_VULKAN_BP16_UPLOAD_WORKERS` selects **1–8** workers for BP16 encoded
+input copies; it defaults to 1, skips parallel work below 1 MiB, and is ignored
+by GDeflate. Thread allocation or launch failure joins any started workers and
+retries the copy serially. The full CTest suite passed **120/120** with eight
+workers and GPU profiling enabled. Focused GPU checks passed **8/8** in each of
+the device-input, direct-host, imported-host, and allocated-host BP16 modes.
+These are regression checks, not evidence of a speed improvement.
+
+The tested source was commit `736ef60bc57304848810de1b598702badbe08d30`;
+the runtime library SHA-256 was
+`d745d704135f7af4e3a57c3df1180c5bee9af3ff42d2343dedc9b191981829f8`.
+[Raw CTest logs and provenance](validation/bp16-upload-workers/README.md).
