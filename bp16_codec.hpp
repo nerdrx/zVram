@@ -152,36 +152,48 @@ struct JoinThreads {
 
 } // namespace detail
 
-inline bool inspect(const std::uint8_t* encoded, std::size_t encodedBytes,
-                    FrameInfo* info = nullptr) noexcept {
-    if (!encoded || encodedBytes < HeaderBytes || load32(encoded) != Magic ||
-        load32(encoded + 4) != Version) {
+inline bool inspectMetadata(const std::uint8_t* metadata, std::size_t metadataBytes,
+                            std::size_t encodedBytes, FrameInfo* info = nullptr) noexcept {
+    if (!metadata || metadataBytes < HeaderBytes || encodedBytes < metadataBytes ||
+        load32(metadata) != Magic || load32(metadata + 4) != Version) {
         return false;
     }
-    const auto rawBytes = load32(encoded + 8);
-    const auto blockCount = load32(encoded + 12);
+    const auto rawBytes = load32(metadata + 8);
+    const auto blockCount = load32(metadata + 12);
     if (!rawBytes || rawBytes > MaxRawBytes || rawBytes % RawBytesPerBlock ||
         blockCount != rawBytes / RawBytesPerBlock) {
         return false;
     }
     const std::size_t tableBytes = std::size_t(blockCount) * DescriptorBytes;
-    if (tableBytes > encodedBytes - HeaderBytes) return false;
+    if (tableBytes > metadataBytes - HeaderBytes) return false;
     const std::size_t payloadBegin = HeaderBytes + tableBytes;
+    if (metadataBytes != payloadBegin || encodedBytes < payloadBegin) return false;
     std::size_t expectedOffset = payloadBegin;
     for (std::uint32_t i = 0; i < blockCount; ++i) {
-        const auto* descriptor = encoded + HeaderBytes + std::size_t(i) * DescriptorBytes;
+        const auto* descriptor = metadata + HeaderBytes + std::size_t(i) * DescriptorBytes;
         const auto offset = load32(descriptor);
         const auto packed = load32(descriptor + 4);
         const auto base = static_cast<std::uint16_t>(packed);
         const auto mask = static_cast<std::uint16_t>(packed >> 16);
         if ((base & mask) || offset != expectedOffset) return false;
         const std::size_t payloadBytes = WordsPerBlock * popcount16(mask) / 8;
+        if (expectedOffset > encodedBytes) return false;
         if (payloadBytes > encodedBytes - expectedOffset) return false;
         expectedOffset += payloadBytes;
     }
     if (expectedOffset != encodedBytes) return false;
     if (info) *info = {rawBytes, blockCount, static_cast<std::uint32_t>(payloadBegin)};
     return true;
+}
+
+inline bool inspect(const std::uint8_t* encoded, std::size_t encodedBytes,
+                    FrameInfo* info = nullptr) noexcept {
+    if (!encoded || encodedBytes < HeaderBytes) return false;
+    const auto blockCount = load32(encoded + 12);
+    if (!blockCount || blockCount > MaxRawBytes / RawBytesPerBlock) return false;
+    const std::size_t metadataBytes = HeaderBytes + std::size_t(blockCount) * DescriptorBytes;
+    if (metadataBytes > encodedBytes) return false;
+    return inspectMetadata(encoded, metadataBytes, encodedBytes, info);
 }
 
 inline bool validate(const std::uint8_t* encoded, std::size_t encodedBytes,

@@ -317,6 +317,10 @@ void roundTrip(const Bytes& raw) {
     require(encodeFast(raw.data(), raw.size(), fast), "fast encode failed");
     require(ref == portable && ref == fast, "frame differs from reference bytes");
     require(validate(fast.data(), fast.size(), raw.size()), "frame validation failed");
+    FrameInfo metadataInfo{};
+    const auto metadataBytes = HeaderBytes + (raw.size() / RawBytesPerBlock) * DescriptorBytes;
+    require(inspectMetadata(fast.data(), metadataBytes, fast.size(), &metadataInfo) &&
+            metadataInfo.rawBytes == raw.size(), "metadata-only frame validation failed");
     require(decode(fast.data(), fast.size(), decoded.data(), raw.size()), "pointer decode failed");
     require(decoded == raw, "decoded bytes differ");
     Bytes decodedVector;
@@ -358,6 +362,28 @@ void testPatterns() {
 void testMalformed() {
     Bytes encoded;
     require(encodeFast(pattern(7), encoded), "fixture encode failed");
+    const auto metadataBytes = HeaderBytes + DescriptorBytes;
+    FrameInfo fullInfo{}, metadataInfo{};
+    require(inspect(encoded.data(), encoded.size(), &fullInfo) &&
+            inspectMetadata(encoded.data(), metadataBytes, encoded.size(), &metadataInfo) &&
+            fullInfo.rawBytes == metadataInfo.rawBytes &&
+            fullInfo.blockCount == metadataInfo.blockCount &&
+            fullInfo.payloadBegin == metadataInfo.payloadBegin,
+            "metadata-only inspection disagrees with full inspection");
+    require(!inspectMetadata(encoded.data(), metadataBytes - 1, encoded.size()) &&
+            !inspectMetadata(encoded.data(), metadataBytes + 1, encoded.size()) &&
+            !inspectMetadata(encoded.data(), metadataBytes, encoded.size() - 1) &&
+            !inspectMetadata(encoded.data(), metadataBytes, encoded.size() + 1),
+            "metadata-only inspection accepted truncated or trailing ranges");
+    auto badMetadata = encoded;
+    put32(badMetadata, HeaderBytes, get32(encoded, HeaderBytes) + 1);
+    require(!inspectMetadata(badMetadata.data(), metadataBytes, badMetadata.size()),
+            "metadata-only inspection accepted a noncanonical descriptor offset");
+    badMetadata = encoded;
+    put32(badMetadata, HeaderBytes + 4,
+          load32(badMetadata.data() + HeaderBytes + 4) | 0x00010001u);
+    require(!inspectMetadata(badMetadata.data(), metadataBytes, badMetadata.size()),
+            "metadata-only inspection accepted overlapping base and mask bits");
     auto reject = [&](Bytes bad) {
         Bytes out(RawBytesPerBlock, 0x5a);
         require(!validate(bad.data(), bad.size(), RawBytesPerBlock), "accepted malformed frame");

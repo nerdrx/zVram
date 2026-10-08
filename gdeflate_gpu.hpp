@@ -554,7 +554,7 @@ public:
         result = recordAndSubmitBP16Encode(rawBuffer, rawOffset, rawBytes,
             owner->buffer_, static_cast<VkDeviceSize>(nextPayload), packGroups, false);
         if (result != VK_SUCCESS) return result;
-        if (!bp16::inspect(owner->data(), nextPayload, &owner->bp16Info_))
+        if (!bp16::inspectMetadata(prefix.data(), prefix.size(), nextPayload, &owner->bp16Info_))
             return VK_ERROR_UNKNOWN;
         out = std::move(owner);
         return VK_SUCCESS;
