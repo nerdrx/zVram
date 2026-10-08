@@ -15,6 +15,56 @@
 #include <type_traits>
 #include <vector>
 
+namespace zvram::gdeflate::gpu {
+struct ImportedHostInputTestAccess {
+    using Decoder = zvram::gdeflate::gpu::Decoder;
+    using Owner = Decoder::ImportedHostInput;
+    using Budget = Decoder::AllocatedHostBudget;
+
+    static std::shared_ptr<Owner> makeBP16Frame(const std::uint8_t* frame, std::size_t size) {
+        if (!frame || !size) return {};
+        auto* copy = static_cast<std::uint8_t*>(std::malloc(size));
+        if (!copy) return {};
+        std::memcpy(copy, frame, size);
+        auto owner = std::shared_ptr<Owner>(new Owner());
+        owner->allocation_ = copy;
+        owner->encodedBytes_ = size;
+        if (!zvram::bp16::inspect(copy, size, &owner->bp16Info_)) return {};
+        return owner;
+    }
+
+    static std::shared_ptr<Owner> makeEmpty() {
+        return std::shared_ptr<Owner>(new Owner());
+    }
+
+    static bool matchesBP16Frame(const Owner& owner, const std::uint8_t* input,
+                                 std::size_t encodedSize, std::size_t rawSize) {
+        return owner.matchesBP16Frame(input, encodedSize, rawSize);
+    }
+
+    static std::shared_ptr<Owner> make(VkDevice device, VkBuffer buffer,
+            VkDeviceMemory memory, void* allocation, bool driverAllocated,
+            PFN_vkDestroyBuffer destroyBuffer, PFN_vkFreeMemory freeMemory,
+            PFN_vkUnmapMemory unmapMemory = nullptr,
+            std::shared_ptr<Budget> budget = {}, std::uint64_t reservedBytes = 0,
+            std::shared_ptr<std::atomic<bool>> poisoned = {}) {
+        auto owner = std::shared_ptr<Owner>(new Owner());
+        owner->device_ = device;
+        owner->buffer_ = buffer;
+        owner->memory_ = memory;
+        owner->allocation_ = allocation;
+        owner->destroyBuffer_ = destroyBuffer;
+        owner->freeMemory_ = freeMemory;
+        owner->unmapMemory_ = unmapMemory;
+        owner->driverAllocatedHostMemory_ = driverAllocated;
+        owner->budget_ = std::move(budget);
+        owner->reservedBudgetBytes_ = reservedBytes;
+        owner->poisoned_ = std::move(poisoned);
+        return owner;
+    }
+};
+} // namespace zvram::gdeflate::gpu
+
 namespace {
 
 using Bytes = std::vector<std::uint8_t>;
@@ -111,10 +161,9 @@ void testImportedHostOwnerAccounting() {
     destroyedImportBuffers = freedImportMemory = unmappedAllocatedMemory = 0;
     void* host{};
     require(posix_memalign(&host, 4096, 4096) == 0, "aligned host owner allocation failed");
-    auto owner = std::make_shared<ImportedInput>();
-    owner->device = fakeHandle<VkDevice>(1); owner->buffer = fakeHandle<VkBuffer>(2);
-    owner->memory = fakeHandle<VkDeviceMemory>(3); owner->allocation = host;
-    owner->destroyBuffer = fakeDestroyImportBuffer; owner->freeMemory = fakeFreeImportMemory;
+    auto owner = zvram::gdeflate::gpu::ImportedHostInputTestAccess::make(
+        fakeHandle<VkDevice>(1), fakeHandle<VkBuffer>(2), fakeHandle<VkDeviceMemory>(3),
+        host, false, fakeDestroyImportBuffer, fakeFreeImportMemory);
     auto moved = std::move(owner);
     require(!owner && moved->data() == host && reinterpret_cast<std::uintptr_t>(host) % 4096 == 0,
             "owner move/alignment failed");
@@ -122,19 +171,12 @@ void testImportedHostOwnerAccounting() {
     require(destroyedImportBuffers == 1 && freedImportMemory == 1,
             "owned Vulkan import handles were not released exactly once");
 
-    auto allocated = std::make_shared<ImportedInput>();
-    allocated->device = fakeHandle<VkDevice>(7);
-    allocated->buffer = fakeHandle<VkBuffer>(8);
-    allocated->memory = fakeHandle<VkDeviceMemory>(9);
-    allocated->allocation = reinterpret_cast<void*>(10);
-    allocated->destroyBuffer = fakeDestroyImportBuffer;
-    allocated->freeMemory = fakeFreeImportMemory;
-    allocated->unmapMemory = fakeUnmapAllocatedMemory;
-    allocated->driverAllocatedHostMemory = true;
-    allocated->budget = std::make_shared<Budget>(4096);
-    require(allocated->budget->reserve(4096), "allocated-host owner budget reserve failed");
-    allocated->reservedBudgetBytes = 4096;
-    auto allocatedBudget = allocated->budget;
+    auto allocatedBudget = std::make_shared<Budget>(4096);
+    require(allocatedBudget->reserve(4096), "allocated-host owner budget reserve failed");
+    auto allocated = zvram::gdeflate::gpu::ImportedHostInputTestAccess::make(
+        fakeHandle<VkDevice>(7), fakeHandle<VkBuffer>(8), fakeHandle<VkDeviceMemory>(9),
+        reinterpret_cast<void*>(10), true, fakeDestroyImportBuffer, fakeFreeImportMemory,
+        fakeUnmapAllocatedMemory, allocatedBudget, 4096);
     allocated.reset();
     require(unmappedAllocatedMemory == 1 && destroyedImportBuffers == 2 && freedImportMemory == 2,
             "allocated cached host memory was not unmapped and released exactly once");
@@ -143,23 +185,40 @@ void testImportedHostOwnerAccounting() {
     void* poisonedHost{};
     require(posix_memalign(&poisonedHost, 4096, 4096) == 0, "poison owner allocation failed");
     auto poison = std::make_shared<std::atomic<bool>>(true);
-    auto retained = std::make_shared<ImportedInput>();
-    retained->device = fakeHandle<VkDevice>(4); retained->buffer = fakeHandle<VkBuffer>(5);
-    retained->memory = fakeHandle<VkDeviceMemory>(6); retained->allocation = poisonedHost;
-    retained->destroyBuffer = fakeDestroyImportBuffer; retained->freeMemory = fakeFreeImportMemory;
-    retained->unmapMemory = fakeUnmapAllocatedMemory;
-    retained->driverAllocatedHostMemory = true;
-    retained->budget = std::make_shared<Budget>(4096);
-    require(retained->budget->reserve(4096), "poisoned allocated-host budget reserve failed");
-    retained->reservedBudgetBytes = 4096;
-    auto poisonedBudget = retained->budget;
-    retained->poisoned = poison;
+    auto poisonedBudget = std::make_shared<Budget>(4096);
+    require(poisonedBudget->reserve(4096), "poisoned allocated-host budget reserve failed");
+    auto retained = zvram::gdeflate::gpu::ImportedHostInputTestAccess::make(
+        fakeHandle<VkDevice>(4), fakeHandle<VkBuffer>(5), fakeHandle<VkDeviceMemory>(6),
+        poisonedHost, true, fakeDestroyImportBuffer, fakeFreeImportMemory,
+        fakeUnmapAllocatedMemory, poisonedBudget, 4096, poison);
     retained.reset();
     require(destroyedImportBuffers == 2 && freedImportMemory == 2 && unmappedAllocatedMemory == 1,
             "poisoned import owner freed potentially in-flight handles");
     require(poisonedBudget->usedBytes() == 4096,
             "poisoned allocated-host owner released its budget reservation");
     std::free(poisonedHost); // The poisoned owner intentionally leaked this in production.
+
+    Bytes raw(RawBytesPerBlock, 0), encoded;
+    require(encodeFast(raw.data(), raw.size(), encoded), "tiny BP16 owner frame encode failed");
+    auto frame = zvram::gdeflate::gpu::ImportedHostInputTestAccess::makeBP16Frame(
+        encoded.data(), encoded.size());
+    require(frame && zvram::gdeflate::gpu::ImportedHostInputTestAccess::matchesBP16Frame(
+                *frame, frame->data(), encoded.size(), raw.size()),
+            "cached BP16 owner frame rejected its exact tuple");
+    Bytes otherPointer = encoded;
+    require(!zvram::gdeflate::gpu::ImportedHostInputTestAccess::matchesBP16Frame(
+                *frame, frame->data(), encoded.size(), raw.size() + RawBytesPerBlock),
+            "cached BP16 owner accepted a wrong aligned raw size");
+    require(!zvram::gdeflate::gpu::ImportedHostInputTestAccess::matchesBP16Frame(
+                *frame, frame->data(), encoded.size() - 1, raw.size()),
+            "cached BP16 owner accepted a wrong encoded size");
+    require(!zvram::gdeflate::gpu::ImportedHostInputTestAccess::matchesBP16Frame(
+                *frame, otherPointer.data(), encoded.size(), raw.size()),
+            "cached BP16 owner accepted a different input pointer");
+    auto empty = zvram::gdeflate::gpu::ImportedHostInputTestAccess::makeEmpty();
+    require(!zvram::gdeflate::gpu::ImportedHostInputTestAccess::matchesBP16Frame(
+                *empty, encoded.data(), encoded.size(), raw.size()),
+            "empty BP16 owner matched a valid frame tuple");
 }
 
 void require(bool condition, const char* message) {

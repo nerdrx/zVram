@@ -151,36 +151,49 @@ public:
         std::atomic<std::uint64_t> usedBytes_{};
     };
 
-    struct ImportedHostInput {
-        ImportedHostInput() = default;
+    class ImportedHostInput {
+        friend class Decoder;
+        friend class ImportedHostInputTestAccess;
+    public:
         ImportedHostInput(const ImportedHostInput&) = delete;
         ImportedHostInput& operator=(const ImportedHostInput&) = delete;
-        VkDevice device{};
-        VkBuffer buffer{};
-        VkDeviceMemory memory{};
-        void* allocation{};
-        std::size_t encodedBytes{};
-        VkDeviceSize allocationBytes{};
-        PFN_vkDestroyBuffer destroyBuffer{};
-        PFN_vkFreeMemory freeMemory{};
-        PFN_vkUnmapMemory unmapMemory{};
-        bool driverAllocatedHostMemory{};
-        std::shared_ptr<AllocatedHostBudget> budget;
-        std::uint64_t reservedBudgetBytes{};
-        std::shared_ptr<std::atomic<bool>> poisoned;
+        std::size_t encodedBytes() const noexcept { return encodedBytes_; }
+        VkDeviceSize allocationBytes() const noexcept { return allocationBytes_; }
+        const std::uint8_t* data() const noexcept {
+            return static_cast<const std::uint8_t*>(allocation_);
+        }
 
         ~ImportedHostInput() {
-            if (poisoned && poisoned->load(std::memory_order_acquire)) return;
-            if (driverAllocatedHostMemory && device && memory && allocation && unmapMemory)
-                unmapMemory(device, memory);
-            if (device && buffer && destroyBuffer) destroyBuffer(device, buffer, nullptr);
-            if (device && memory && freeMemory) freeMemory(device, memory, nullptr);
-            if (!driverAllocatedHostMemory) std::free(allocation);
-            if (budget && reservedBudgetBytes) budget->release(reservedBudgetBytes);
+            if (poisoned_ && poisoned_->load(std::memory_order_acquire)) return;
+            if (driverAllocatedHostMemory_ && device_ && memory_ && allocation_ && unmapMemory_)
+                unmapMemory_(device_, memory_);
+            if (device_ && buffer_ && destroyBuffer_) destroyBuffer_(device_, buffer_, nullptr);
+            if (device_ && memory_ && freeMemory_) freeMemory_(device_, memory_, nullptr);
+            if (!driverAllocatedHostMemory_) std::free(allocation_);
+            if (budget_ && reservedBudgetBytes_) budget_->release(reservedBudgetBytes_);
         }
-        const std::uint8_t* data() const noexcept {
-            return static_cast<const std::uint8_t*>(allocation);
+
+    private:
+        ImportedHostInput() = default;
+        bool matchesBP16Frame(const std::uint8_t* input, std::size_t encodedSize,
+                              std::size_t rawSize) const noexcept {
+            return input && encodedSize && rawSize && input == data() &&
+                   encodedSize == encodedBytes_ && bp16Info_.rawBytes == rawSize;
         }
+        VkDevice device_{};
+        VkBuffer buffer_{};
+        VkDeviceMemory memory_{};
+        void* allocation_{};
+        std::size_t encodedBytes_{};
+        VkDeviceSize allocationBytes_{};
+        bp16::FrameInfo bp16Info_{};
+        PFN_vkDestroyBuffer destroyBuffer_{};
+        PFN_vkFreeMemory freeMemory_{};
+        PFN_vkUnmapMemory unmapMemory_{};
+        bool driverAllocatedHostMemory_{};
+        std::shared_ptr<AllocatedHostBudget> budget_;
+        std::uint64_t reservedBudgetBytes_{};
+        std::shared_ptr<std::atomic<bool>> poisoned_;
     };
     using ImportedHostInputPtr = std::shared_ptr<ImportedHostInput>;
 
@@ -344,7 +357,6 @@ public:
         out.reset();
         if (!initialized_ || poisoned_ || !bp16ImportHostInput_ || !encoded || !encodedSize ||
             encodedSize > MaxBP16InputBytes) return VK_ERROR_FEATURE_NOT_PRESENT;
-        if (!bp16::inspect(encoded, encodedSize)) return VK_ERROR_VALIDATION_FAILED_EXT;
         std::size_t hostBytes{};
         if (!importedHostAllocationSize(encodedSize, importHostAlignment_, hostBytes))
             return VK_ERROR_VALIDATION_FAILED_EXT;
@@ -354,21 +366,27 @@ public:
         copyBP16UploadBytes(static_cast<std::uint8_t*>(allocation), encoded,
                             encodedSize, bp16UploadWorkers_);
         std::memset(static_cast<std::uint8_t*>(allocation) + encodedSize, 0, hostBytes - encodedSize);
+        bp16::FrameInfo bp16Info{};
+        if (!bp16::inspect(static_cast<const std::uint8_t*>(allocation), encodedSize, &bp16Info)) {
+            std::free(allocation);
+            return VK_ERROR_VALIDATION_FAILED_EXT;
+        }
         ImportedHostInputPtr owner;
-        try { owner = std::make_shared<ImportedHostInput>(); }
+        try { owner.reset(new ImportedHostInput()); }
         catch (const std::bad_alloc&) { std::free(allocation); return VK_ERROR_OUT_OF_HOST_MEMORY; }
-        owner->device = device_; owner->allocation = allocation;
-        owner->encodedBytes = encodedSize; owner->allocationBytes = hostBytes;
-        owner->destroyBuffer = api_.destroyBuffer; owner->freeMemory = api_.freeMemory;
-        owner->poisoned = poisonState_;
+        owner->device_ = device_; owner->allocation_ = allocation;
+        owner->encodedBytes_ = encodedSize; owner->allocationBytes_ = hostBytes;
+        owner->bp16Info_ = bp16Info;
+        owner->destroyBuffer_ = api_.destroyBuffer; owner->freeMemory_ = api_.freeMemory;
+        owner->poisoned_ = poisonState_;
         VkExternalMemoryBufferCreateInfo external{VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO};
         external.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
         VkBufferCreateInfo create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         create.pNext = &external; create.size = hostBytes; create.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-        VkResult result = api_.createBuffer(device_, &create, nullptr, &owner->buffer);
+        VkResult result = api_.createBuffer(device_, &create, nullptr, &owner->buffer_);
         if (result != VK_SUCCESS) return checked(result);
         VkBufferMemoryRequirementsInfo2 reqInfo{VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
-        reqInfo.buffer = owner->buffer;
+        reqInfo.buffer = owner->buffer_;
         VkMemoryDedicatedRequirements dedicated{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
         VkMemoryRequirements2 requirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
         requirements.pNext = &dedicated;
@@ -376,7 +394,7 @@ public:
         if (dedicated.requiresDedicatedAllocation) return VK_ERROR_FEATURE_NOT_PRESENT;
         VkMemoryHostPointerPropertiesEXT pointerProperties{VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT};
         result = api_.getMemoryHostPointerProperties(device_, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
-                                                      allocation, &pointerProperties);
+                                                      owner->allocation_, &pointerProperties);
         if (result != VK_SUCCESS) return checked(result);
         std::uint32_t type = UINT32_MAX;
         const auto bits = requirements.memoryRequirements.memoryTypeBits & pointerProperties.memoryTypeBits;
@@ -391,13 +409,13 @@ public:
             return VK_ERROR_FEATURE_NOT_PRESENT;
         VkImportMemoryHostPointerInfoEXT import{VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT};
         import.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
-        import.pHostPointer = allocation;
+        import.pHostPointer = owner->allocation_;
         VkMemoryAllocateInfo allocate{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
         allocate.pNext = &import; allocate.allocationSize = hostBytes;
         allocate.memoryTypeIndex = type;
-        result = api_.allocateMemory(device_, &allocate, nullptr, &owner->memory);
+        result = api_.allocateMemory(device_, &allocate, nullptr, &owner->memory_);
         if (result != VK_SUCCESS) return checked(result);
-        result = api_.bindBufferMemory(device_, owner->buffer, owner->memory, 0);
+        result = api_.bindBufferMemory(device_, owner->buffer_, owner->memory_, 0);
         if (result != VK_SUCCESS) return checked(result);
         out = std::move(owner);
         return VK_SUCCESS;
@@ -408,7 +426,6 @@ public:
         out.reset();
         if (!initialized_ || poisoned_ || !bp16AllocatedHostInput_ || !encoded || !encodedSize ||
             encodedSize > MaxBP16InputBytes) return VK_ERROR_FEATURE_NOT_PRESENT;
-        if (!bp16::inspect(encoded, encodedSize)) return VK_ERROR_VALIDATION_FAILED_EXT;
         if (!allocatedHostBudget_ || !allocatedHostBudget_->limitBytes())
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         if (!api_.getBufferMemoryRequirements2) return VK_ERROR_FEATURE_NOT_PRESENT;
@@ -416,26 +433,26 @@ public:
         if (bufferBytes > maxStorageBufferRange_ || bufferBytes < encodedSize)
             return VK_ERROR_VALIDATION_FAILED_EXT;
         ImportedHostInputPtr owner;
-        try { owner = std::make_shared<ImportedHostInput>(); }
+        try { owner.reset(new ImportedHostInput()); }
         catch (const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
-        owner->device = device_;
-        owner->encodedBytes = encodedSize;
-        owner->destroyBuffer = api_.destroyBuffer;
-        owner->freeMemory = api_.freeMemory;
-        owner->unmapMemory = api_.unmapMemory;
-        owner->driverAllocatedHostMemory = true;
-        owner->budget = allocatedHostBudget_;
-        owner->poisoned = poisonState_;
+        owner->device_ = device_;
+        owner->encodedBytes_ = encodedSize;
+        owner->destroyBuffer_ = api_.destroyBuffer;
+        owner->freeMemory_ = api_.freeMemory;
+        owner->unmapMemory_ = api_.unmapMemory;
+        owner->driverAllocatedHostMemory_ = true;
+        owner->budget_ = allocatedHostBudget_;
+        owner->poisoned_ = poisonState_;
 
         VkBufferCreateInfo create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         create.size = static_cast<VkDeviceSize>(bufferBytes);
         create.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
         create.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VkResult result = checked(api_.createBuffer(device_, &create, nullptr, &owner->buffer));
+        VkResult result = checked(api_.createBuffer(device_, &create, nullptr, &owner->buffer_));
         if (result != VK_SUCCESS) return result;
 
         VkBufferMemoryRequirementsInfo2 reqInfo{VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
-        reqInfo.buffer = owner->buffer;
+        reqInfo.buffer = owner->buffer_;
         VkMemoryDedicatedRequirements dedicated{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
         VkMemoryRequirements2 requirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
         requirements.pNext = &dedicated;
@@ -459,27 +476,29 @@ public:
         if (memoryType == UINT32_MAX) return VK_ERROR_FEATURE_NOT_PRESENT;
         if (!allocatedHostBudget_ || !allocatedHostBudget_->reserve(memoryRequirements.size))
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
-        owner->reservedBudgetBytes = memoryRequirements.size;
+        owner->reservedBudgetBytes_ = memoryRequirements.size;
 
         VkMemoryDedicatedAllocateInfo dedicatedAllocate{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO};
-        dedicatedAllocate.buffer = owner->buffer;
+        dedicatedAllocate.buffer = owner->buffer_;
         VkMemoryAllocateInfo allocate{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
         allocate.pNext = dedicated.requiresDedicatedAllocation ? &dedicatedAllocate : nullptr;
         allocate.allocationSize = memoryRequirements.size;
         allocate.memoryTypeIndex = memoryType;
-        result = checked(api_.allocateMemory(device_, &allocate, nullptr, &owner->memory));
+        result = checked(api_.allocateMemory(device_, &allocate, nullptr, &owner->memory_));
         if (result != VK_SUCCESS) return result;
-        owner->allocationBytes = memoryRequirements.size;
-        result = checked(api_.bindBufferMemory(device_, owner->buffer, owner->memory, 0));
+        owner->allocationBytes_ = memoryRequirements.size;
+        result = checked(api_.bindBufferMemory(device_, owner->buffer_, owner->memory_, 0));
         if (result != VK_SUCCESS) return result;
-        result = checked(api_.mapMemory(device_, owner->memory, 0, owner->allocationBytes, 0,
-                                       &owner->allocation));
+        result = checked(api_.mapMemory(device_, owner->memory_, 0, owner->allocationBytes_, 0,
+                                       &owner->allocation_));
         if (result != VK_SUCCESS) return result;
-        if (!owner->allocation) return VK_ERROR_MEMORY_MAP_FAILED;
-        copyBP16UploadBytes(static_cast<std::uint8_t*>(owner->allocation), encoded,
+        if (!owner->allocation_) return VK_ERROR_MEMORY_MAP_FAILED;
+        copyBP16UploadBytes(static_cast<std::uint8_t*>(owner->allocation_), encoded,
                             encodedSize, bp16UploadWorkers_);
-        std::memset(static_cast<std::uint8_t*>(owner->allocation) + encodedSize, 0,
-                    static_cast<std::size_t>(owner->allocationBytes) - encodedSize);
+        std::memset(static_cast<std::uint8_t*>(owner->allocation_) + encodedSize, 0,
+                    static_cast<std::size_t>(owner->allocationBytes_) - encodedSize);
+        if (!bp16::inspect(owner->data(), encodedSize, &owner->bp16Info_))
+            return VK_ERROR_VALIDATION_FAILED_EXT;
         out = std::move(owner);
         return VK_SUCCESS;
     }
@@ -504,12 +523,12 @@ public:
         if (!initialized_ || poisoned_) return finishValidation(VK_ERROR_DEVICE_LOST);
         if (imported) {
             if ((!bp16ImportHostInput_ && !bp16AllocatedHostInput_) ||
-                imported->driverAllocatedHostMemory != bp16AllocatedHostInput_ ||
-                imported->device != device_ ||
-                imported->buffer == VK_NULL_HANDLE || imported->memory == VK_NULL_HANDLE ||
-                !imported->allocation ||
-                imported->poisoned != poisonState_ ||
-                imported->encodedBytes != encodedSize || imported->data() != encoded)
+                imported->driverAllocatedHostMemory_ != bp16AllocatedHostInput_ ||
+                imported->device_ != device_ ||
+                imported->buffer_ == VK_NULL_HANDLE || imported->memory_ == VK_NULL_HANDLE ||
+                !imported->allocation_ ||
+                imported->poisoned_ != poisonState_ ||
+                imported->encodedBytes_ != encodedSize || imported->data() != encoded)
                 return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
         }
         const auto maxInputBytes = format_ == Format::BP16 ? MaxBP16InputBytes : MaxInputBytes;
@@ -522,7 +541,10 @@ public:
             return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
         std::uint32_t dispatchGroups{};
         if (format_ == Format::BP16) {
-            if (!bp16::validate(encoded, encodedSize, static_cast<std::uint32_t>(rawSize)))
+            if (imported) {
+                if (!imported->matchesBP16Frame(encoded, encodedSize, rawSize))
+                    return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
+            } else if (!bp16::validate(encoded, encodedSize, static_cast<std::uint32_t>(rawSize)))
                 return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
             if (paddedRaw > maxStorageBufferRange_)
                 return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
@@ -539,7 +561,7 @@ public:
         const auto inputBytes = (encodedSize + 3u) & ~std::size_t(3u);
         if (format_ == Format::BP16 && inputBytes > maxStorageBufferRange_)
             return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
-        if (imported && inputBytes > imported->allocationBytes)
+        if (imported && inputBytes > imported->allocationBytes_)
             return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
         (void)finishValidation(VK_SUCCESS);
 
@@ -548,7 +570,7 @@ public:
         const auto bufferPrepareStarted = profileBP16Input ? Clock::now() : Clock::time_point{};
         VkResult result = imported
             ? updateDescriptors(output, offset, static_cast<VkDeviceSize>(inputBytes),
-                                static_cast<VkDeviceSize>(paddedRaw), imported->buffer)
+                static_cast<VkDeviceSize>(paddedRaw), imported->buffer_)
             : checked(ensureInputBuffers(inputBytes, output, offset,
                                          static_cast<VkDeviceSize>(paddedRaw)));
         if (profileBP16Input)

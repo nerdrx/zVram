@@ -117,7 +117,7 @@ struct VirtualMemory {
         unsigned byteShuffle{};
         zvram::snapshot::Codec codec{zvram::snapshot::Codec::Zstd};
         const std::uint8_t* data() const noexcept { return imported ? imported->data() : bytes.data(); }
-        std::size_t size() const noexcept { return imported ? imported->encodedBytes : bytes.size(); }
+        std::size_t size() const noexcept { return imported ? imported->encodedBytes() : bytes.size(); }
     };
     struct ColdGroup {
         std::vector<ColdChunk> chunks;
@@ -1926,7 +1926,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                             ?d.gpuDecoder->importHostInput(gpuChunk.data(),gpuChunk.size(),imported)
                             :d.gpuDecoder->allocateHostInput(gpuChunk.data(),gpuChunk.size(),imported);
                         if(importResult==VK_SUCCESS && imported) {
-                            const auto padding=imported->allocationBytes-gpuChunk.size();
+                            const auto padding=imported->allocationBytes()-gpuChunk.size();
                             const auto charged=gpuChunk.size()<=std::numeric_limits<std::uint64_t>::max()-padding
                                 ?gpuChunk.size()+padding:std::numeric_limits<std::uint64_t>::max();
                             if(zvram::gdeflate::gpu::Decoder::importedHostFitsBudget(
@@ -1951,12 +1951,12 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                                 if(gpuChunk.hostInputUsed) ++d.gpuAllocatedHostReuses;
                                 else {
                                     ++d.gpuAllocatedHostAllocations;
-                                    d.gpuAllocatedHostBytes+=gpuChunk.imported->allocationBytes;
+                                    d.gpuAllocatedHostBytes+=gpuChunk.imported->allocationBytes();
                                 }
                             } else if(gpuChunk.hostInputUsed) ++d.gpuImportedReuses;
                             else {
                                 ++d.gpuImportedFrames;
-                                d.gpuImportedBytes+=gpuChunk.imported->allocationBytes;
+                                d.gpuImportedBytes+=gpuChunk.imported->allocationBytes();
                             }
                             gpuChunk.hostInputUsed=true;
                         }
