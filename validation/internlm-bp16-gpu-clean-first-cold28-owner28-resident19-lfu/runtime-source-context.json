@@ -1,0 +1,13 @@
+{
+  "runtime_code_commit": "ceabc25015a6b18e00977474b24b26cd5b0ecbf8",
+  "note": "Lean clean-first GPU encoder; 28GiB shared cold/owner ceiling, unchanged19GiB residency and2.5GiB reserve. Sequential unlocked clocks.16GiB RAMguard.",
+  "sources": {
+    "layer.cpp": "c254ef60627205152db0b0ac8b226a3706dfeb129342766e986fe70b34b56cbb",
+    "gdeflate_gpu.hpp": "bb21941d5cd2c7e6e679e7f69c7071fc5d8eeed7eb65650a0798a6697402f0f8",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "submission_hooks.inc": "846ce6984b8612cd83c2b4909d59819012d3810b39250dc968e8ec16e9309efc",
+    "zvram": "7e2b177eb6cecdcbbcd48cccc419e78d460f6fec28b6e2c98e43394053958a49",
+    "CMakeLists.txt": "c544ea4cd0853609607c6f83145c4e78b0a8d5ecd8851dcbd14de540400a9cf9"
+  }
+}

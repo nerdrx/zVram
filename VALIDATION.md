@@ -1775,8 +1775,13 @@ about **27.55 GB/s logical encoded payload per decode second**, not measured PCI
 wire throughput. The prior repeated GPU-encoder run measured **1.10252711
 tokens/s**, making the clean-first pair about **6.1–6.2% higher** by rate.
 Clocks/background activity were uncontrolled, so the pair does not establish a
-causal improvement. Runtime/source metadata is from compiled commits `3c76d7d`
-and `a19bd5d`, respectively. [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [clean-first correctness evidence](validation/clean-first-eviction/README.md).
+causal improvement. A separate **28 GiB shared cold/owner-ceiling** trial with
+the same 19 GiB resident cap measured **1.17434700 tokens/s**, only **0.31%**
+above the 26 GiB repeat; this is no meaningful observed gain, so keep 26 GiB as
+the recommendation. That run's minimum available RAM was **29,057 MiB
+(28.38 GiB)** and swap growth was **100 MiB**. Runtime/source metadata for the
+paired clean-first runs is from compiled commits `3c76d7d` and `a19bd5d`,
+respectively; the 28 GiB trial used `ceabc25`. [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [28 GiB cap trial](validation/internlm-bp16-gpu-clean-first-cold28-owner28-resident19-lfu/README.md) · [clean-first correctness evidence](validation/clean-first-eviction/README.md).
 
 ### Discarded BP16 fence-polling prototype
 

@@ -334,8 +334,11 @@ sequential runs had uncontrolled clocks/background activity, so they do not
 establish clean-first as the cause. A fresh same-prompt native reference measured
 **1.6991 tokens/s**; these clean-first runs are about **31% slower by rate**
 (about **45% more time per token**), but this sequential comparison is not
-controlled. The policy remains experimental; a 20 GiB resident-cap attempt hit
-Vulkan out-of-device-memory, so retain the validated 19 GiB profile. [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [20 GiB failure](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
+controlled. A separate 28 GiB shared cold/owner-cap trial measured 1.174347 tokens/s, only
+0.31% above the 26 GiB clean-first repeat and not a meaningful observed gain;
+keep 26 GiB as the recommendation. The policy remains experimental; a 20 GiB
+resident-cap attempt hit Vulkan out-of-device-memory, so retain the validated
+19 GiB resident limit. [28 GiB trial](validation/internlm-bp16-gpu-clean-first-cold28-owner28-resident19-lfu/README.md) · [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [20 GiB failure](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
 
 A bounded fence-polling prototype was also tested and discarded: its 92-token run
 measured 1.16783681 tokens/s versus 1.17068766 for the clean-first repeat, with
