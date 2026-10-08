@@ -1,0 +1,26 @@
+{
+  "scope": "Bounded BP16 upload subphase profiling validation; no full-model or throughput claim",
+  "source_commit": "4d1b704827535061e9c686b62513edaa01343c73",
+  "result": "Focused GPU CTest 8/8 passed in 7.22 seconds; parent reports CPU CTest 11/11 passed in 4.61 seconds.",
+  "profile_fields": [
+    "bp16BufferPrepareNs",
+    "bp16DirectCopyNs"
+  ],
+  "observed_log_marker": "GPU BP16 upload profile buffer-prepare-ns=... direct-copy-ns=...",
+  "test_log": "ctest.log",
+  "full_ctest_output": "LastTest.log",
+  "runtime_sha256": {
+    "gdeflate_gpu.hpp": "7c643f6af6f2630858ae277fcfaedd4d9b7889d0567a8962c6f46b149b070294",
+    "layer.cpp": "e9e80c102b21cca672374f77b9a41878b2d4636d9c6efaf9535969824ad75036",
+    "bp16_codec_check.cpp": "4f84f24620027fcf93a28ad6b036ad48cf74d62854cf79224a3503d6bfc79170",
+    "build/bp16-codec/libzvram_layer.so": "dc3fb518c5df65cc4b302abf89f2a8d502fb96d5b122ee2e4485ec0b68b1f46f",
+    "build/bp16-codec/zvram-bp16-codec-check": "8edaef4da324667f02fd1b08ed5299ea5335afe0eccff26dd94856e9f68c0f80",
+    "build/bp16-codec/zvram-vulkan-auto-check": "d9a6a92dc06b08095a892c40213ffe5c2c60171e778cee4b954f6ac6385940c6",
+    "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854"
+  },
+  "limits": [
+    "Focused tests exercised the BP16 allocated-host-input path, where direct-copy-ns is expected to be zero.",
+    "Counters are opt-in under ZVRAM_VULKAN_GPU_PROFILE=1 and report cumulative time.",
+    "Long combined cold-cache/upload benchmark was still running; no result is included."
+  ]
+}
