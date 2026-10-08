@@ -142,7 +142,7 @@ native inference speed. [Layer checks](../../VALIDATION.md#cached-bp16-imported-
 
 A full InternLM2.5-20B F16 run with this mode preserved exact output and all
 49/49 layers, but took **166,980.73 ms** for 12 decode runs (**0.0718646
-tokens/s**). That is far slower than both the earlier **0.40653** and latest
+tokens/s**). That is far slower than both the earlier **0.40653** and prior-best
 **0.4626948 tokens/s** non-import BP16 runs; this experiment is correct-output
 evidence, not a speed path. It recorded
 2,120 imports and 6,495 reuses covering **43,318,460,416 cumulative bytes**;
@@ -203,21 +203,21 @@ owners keep their reservation. The shutdown marker's allocation/reuse/byte
 counters are cumulative accepted-use values, while `live-bytes` and
 `limit-bytes` show current charge and cap.
 
-The latest completed full InternLM2.5-20B F16 run under this 8 GiB cache completed 12
+An earlier full InternLM2.5-20B F16 run under this 8 GiB cache completed 12
 decode runs at **0.4626948 tokens/s** (reported as 0.46), with 49/49 layers,
 exact output and zero fallback. Sampled live cache stayed within its byte cap;
 14.19 GB is cumulative accepted-use traffic, not resident memory. This is
 numerically 13.8% above the prior 0.40653 run, but those sequential runs had
 unlocked clocks and different RAM conditions; it is not a controlled
-improvement claim. [Run summary and limits](../../VALIDATION.md#latest-completed-bp16-run-bounded-allocated-host-cache-32-workers).
+improvement claim. [Run summary and limits](../../VALIDATION.md#earlier-best-bp16-run-bounded-allocated-host-cache-32-workers).
 
 A separate same-prompt 92-token native/allocated-host comparison produced
 identical stdout and 49/49 layers: native **1.6993468 tokens/s**, allocated
 host **0.4397801 tokens/s**. The latter stayed within the 8 GiB live-cache
 limit; the cumulative byte counter is not resident memory. Runs were sequential
 with unlocked clocks and different RAM conditions, so this is not a controlled
-comparison. It is a long-run result, not a replacement for the short-run
-**0.4626948 tokens/s** measured above. [Comparison and archive](../../VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
+comparison. It is a long-run result, not a replacement for the best measured
+**0.5275435 tokens/s** result. [Comparison and archive](../../VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
 
 At source `23c05842cebf2fe3c7093191ba7f448626505d6e`, focused GPU checks passed
 8/8 in 7.30 s with the default budget and 8/8 in 7.08 s with the cache
@@ -251,14 +251,14 @@ The opt-in `ZVRAM_VULKAN_BP16_CACHED_UPLOAD=1` prefers coherent, host-visible
 compatible non-device-local type. It is off by default and has no effect unless
 BP16 host input is enabled. The full-model trial preserved exact output with no
 GPU fallback, but measured **0.3941293 tokens/s**, below the separate best
-**0.4626948 tokens/s** result. These sequential, uncontrolled runs do not show
+**0.5275435 tokens/s** result. These sequential, uncontrolled runs do not show
 a speed improvement. [Run and correctness evidence](../../VALIDATION.md#bp16-cached-direct-host-upload-preference).
 
 A later allocated-host run with sampled profiling completed at **0.3967118
 tokens/s**, with the same exact output, 49/49 layers and zero fallback. The
 last sampled profile covered 8,304 calls, short of the final snapshot's 8,363
 GPU restores, so its phase totals are partial. It does not replace the best
-**0.4626948 tokens/s** result or prove a speed gain. [Run limits and archive](../../VALIDATION.md#bp16-allocated-host-run-with-sampled-profiling).
+**0.5275435 tokens/s** result or prove a speed gain. [Run limits and archive](../../VALIDATION.md#bp16-allocated-host-run-with-sampled-profiling).
 
 The allocation-free profiling change passed the focused **8/8 GPU CTests**
 with GPU profiling and allocated-host input enabled. The logs show the marker
@@ -268,18 +268,23 @@ performance. [Test log and binary provenance](../../validation/bp16-allocation-f
 The deposit-fastpath full-model candidate produced exact output at **0.4388061
 tokens/s**, but this was not a controlled improvement over the prior sampled
 run; GPU decode durations were similar and profile state differed. It remains
-unadopted, and the measured best remains **0.4626948 tokens/s**. [Candidate
+unadopted, and the measured best remains **0.5275435 tokens/s**. [Candidate
 run and limits](../../validation/internlm-bp16-deposit-fastpath/README.md).
 An exact 16 MiB all-mask device-input component fixture was 33.6% slower with
 the candidate shader. [Component archive](../../validation/bp16-deposit-fastpath/README.md).
 
 A full run with a 10 GiB allocated-host cache peaked at 10,736,501,008 bytes
 under its 10 GiB bound and measured **0.4063374 tokens/s**. This was slower
-than the best 8 GiB result and does not support increasing the cache for speed.
+than the best measured result and does not support increasing the cache for speed.
 [Run archive](../../validation/internlm-bp16-host-cache10g/README.md).
 
 A 22 GiB cold/cache quota run kept the 8 GiB host-input cache unchanged and
 measured **0.4384097 tokens/s** with exact output and no fallback; it remains
-below the best 8 GiB result and is not a controlled speed improvement. The
+below the best measured result and is not a controlled speed improvement. The
 12-case host-copy matrix passed exact bytes but showed noisy, non-monotonic
 rates and is not model-performance evidence. [Cold-quota run](../../validation/internlm-bp16-cold-cache22g/README.md) · [copy matrix](../../validation/bp16-host-copy-workers/README.md).
+
+The later 24 GiB cold/cache quota run measured **0.5275435 tokens/s**, with
+exact output and zero fallback. It is one sequential, uncontrolled result; the
+run does not establish that the quota change caused the rate difference. It is
+the current observed best. [Run details](../../validation/internlm-bp16-cold-cache24g/README.md).

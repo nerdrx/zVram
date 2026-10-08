@@ -279,26 +279,24 @@ and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored
 87.0% of raw bytes versus GDeflate's 81.1% on that slice. These are decoder-only
 measurements, not a model speedup. [Component evidence](validation/bp16-component).
 
-The latest completed full InternLM2.5-20B F16 BP16 run used 32 CPU workers and the
-8 GiB-bounded allocated-host cache. It completed 12 decode runs at
-**0.4626948 tokens/s** (reported as 0.46), with exact output, 49/49 layers, and
-zero GPU fallback. Sampled live cache use remained below its 8 GiB limit; its
-14.19 GB cumulative-use counter is not resident memory. The earlier 0.40653
-direct-host run is numerically 13.8% lower, but the sequential runs had unlocked
-clocks and different RAM conditions, so this is not a controlled improvement
-comparison or cache-effect attribution. A separate fresh native reference
-measured 1.6995 tokens/s (about 3.67x this BP16 rate), using a different
-VRAM/GTT path and uncontrolled conditions. The default worker count remains 1.
-[Latest completed BP16 run](VALIDATION.md#latest-completed-bp16-run-bounded-allocated-host-cache-32-workers);
-[earlier direct-host run](VALIDATION.md#nineteen-gibibyte-direct-host-input-run-32-workers);
-[fresh native reference and limits](VALIDATION.md#fresh-native-nodes4-reference).
+The latest full InternLM2.5-20B F16 BP16 run completed 12 decode runs at
+**0.5275435 tokens/s** (reported as 0.53), with exact output, 49/49 layers, and
+zero GPU fallback. It used 32 workers, an 8 GiB allocated-host cache, a 19 GiB
+tracked-residency cap, and a 24 GiB cold/cache quota. Sampled live input-cache
+use stayed below its 8 GiB limit. This is one sequential result with unlocked
+clocks and uncontrolled background activity; it does not establish that the
+quota change caused the rate difference. The previous 8 GiB-cache run measured
+0.4626948 tokens/s; its counters and profile remain archived separately. The
+default worker count remains 1. [Current run and limits](VALIDATION.md#best-observed-bp16-run-24-gib-coldcache-quota);
+[previous 8 GiB-cache run](VALIDATION.md#earlier-best-bp16-run-bounded-allocated-host-cache-32-workers);
+[fresh native reference](VALIDATION.md#fresh-native-nodes4-reference).
 
 A separate same-prompt 92-token native/allocated-host comparison produced
 identical output across 49/49 layers: **1.69935 tokens/s** native and
 **0.43978 tokens/s** allocated-host. It stayed within the 8 GiB live cache
 limit, but the sequential runs had unlocked clocks and different RAM conditions;
 this is not a controlled speed comparison. It does not replace the short-run
-0.46269 BP16 result above. [Long-run details and archive](VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
+0.52754 BP16 result above. [Long-run details and archive](VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
 
 A separate zVram virtual-native-spill run, without automatic snapshots or
 compression, measured 1.69936 tokens/s. It matches the fresh native rate, but
@@ -308,5 +306,5 @@ uncontrolled result is not a fair codec comparison. [Virtual-spill evidence](VAL
 The optional cached imported-host-input experiment completed the same full-model
 correctness check, but throughput fell to **0.0718646 tokens/s** despite 2,120
 imports and 6,495 reuses. It is experimental and not a speed improvement; the
-best measured compressed result above is **0.4626948 tokens/s**. [Import evidence and
+best measured compressed result above is **0.5275435 tokens/s**. [Import evidence and
 limits](VALIDATION.md#cached-bp16-imported-host-input).

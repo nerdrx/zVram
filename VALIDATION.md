@@ -1088,7 +1088,7 @@ failure does not establish a host-input defect or native GPU fault. See the
 [command](validation/internlm-bp16-workers32-20g-host-input-failed/command.json),
 and [full stderr](validation/internlm-bp16-workers32-20g-host-input-failed/automatic.stderr.txt.gz).
 
-### Latest completed BP16 run: bounded allocated-host cache, 32 workers
+### Earlier best BP16 run: bounded allocated-host cache, 32 workers
 
 The full InternLM2.5-20B F16 run used the 8 GiB allocated-host cache, a 19 GiB
 tracked-residency cap, 2.5 GiB reserve, and 32 BP16 encoding workers. It completed
@@ -1134,7 +1134,7 @@ host input, 32 BP16 workers, MRU, async compression, a 19 GiB tracked cap and
 was **21,700 MiB** and swap grew by **711 MiB**. The run used cached direct-host
 input, not the allocated-host cache.
 
-This result does not improve the best measured **0.4626948 tokens/s** BP16
+This result does not improve the then-current **0.4626948 tokens/s** BP16
 result above; runs were sequential and clocks/background load were not
 controlled. It shows correctness for the opt-in preference, not a speed win.
 The captured source hashes match commit `1161e7dfb7cf516cf04382f99e993cabae35ea16`;
@@ -1167,7 +1167,7 @@ The last sampled profile covered **8,304** calls, while the final snapshot
 recorded **8,363** GPU restores. The application exited without a device
 destruction profile record, so these sampled phase totals are partial and are
 not presented as final totals. This sequential run does not replace the best
-measured **0.4626948 tokens/s** result or establish a speed improvement.
+measured **0.5275435 tokens/s** result below or establish a speed improvement.
 
 [Sampled-run archive](validation/internlm-bp16-cache8g-sampled-profile/README.md),
 [result](validation/internlm-bp16-cache8g-sampled-profile/result.json.gz), and
@@ -1198,7 +1198,7 @@ This does not establish a speed improvement over the prior sampled-profile run
 at **0.3967118 tokens/s**: profile sampling/software-pipeline state and RAM
 conditions differed, while measured GPU decode duration was similar at about
 **7.75 s** versus **7.74 s**. The candidate remains unadopted, and the best
-measured rate remains **0.4626948 tokens/s**. The final profile call count
+measured rate remains **0.5275435 tokens/s**. The final profile call count
 matched the final snapshot at **8,409**; this is profile consistency evidence,
 not an end-to-end speed claim. The isolated shader had a **33.6% slower**
 device-input result on an exact 16 MiB all-mask component fixture; see the
@@ -1215,7 +1215,7 @@ and completed 12 decode runs at **0.4063374 tokens/s**, with exact output,
 49/49 layers and zero GPU fallback. Sampled live cache usage peaked at
 **10,736,501,008 bytes** of the **10,737,418,240-byte** limit; minimum available
 RAM was **19,199 MiB**, with **1,976 MiB** swap growth. This sequential,
-uncontrolled run was slower than the best 8 GiB result at **0.4626948 tokens/s**;
+uncontrolled run was slower than the best measured result at **0.5275435 tokens/s**;
 the larger cache is not a demonstrated speed improvement.
 
 [Run archive and limits](validation/internlm-bp16-host-cache10g/README.md).
@@ -1228,9 +1228,30 @@ completed 12 decode runs at **0.4384097 tokens/s**, with exact output, 49/49
 layers and zero GPU fallback. Final counters recorded 1,269 invalidations,
 6,884 clean reuses and 70,919,913,472 copied bytes. Minimum available RAM was
 19,104 MiB and swap grew by 2,104 MiB. This sequential run does not establish a
-speed gain and remains below the best **0.4626948 tokens/s** result.
+speed gain and remains below the best measured **0.5275435 tokens/s** result.
 
 [Run archive](validation/internlm-bp16-cold-cache22g/README.md).
+
+### Best observed BP16 run: 24 GiB cold/cache quota
+
+The full InternLM2.5-20B F16 run used a **24 GiB** cold/clean-cache quota with
+the 8 GiB allocated-host cache, 19 GiB tracked-residency cap, 2.5 GiB headroom
+reserve, and 32 BP16 workers unchanged. It completed 12 decode runs in
+**22,746.94 ms** (**0.5275435 tokens/s**), with exact output, **49/49** layers,
+and zero GPU fallback. Minimum available RAM was **18,578 MiB** and swap grew
+by **1,232 MiB**. Sampled live cache peaked at **8,589,891,104 bytes** of the
+**8,589,934,592-byte** limit. Final counters recorded 735 invalidations, 7,309
+clean reuses, and 56,357,421,056 copied bytes; final GPU profile calls matched
+the final snapshot at 8,458.
+
+This is a single sequential result with unlocked clocks and uncontrolled
+background activity. It is the best observed rate in the recorded runs, not
+evidence that changing the cold quota caused the speed difference. The runtime
+layer binary matches the earlier a8d113b build; the contemporaneously captured
+`gdeflate_gpu.hpp` source hash differs from the tracked header due to concurrent
+source editing, so the archive does not claim an exact source/binary match.
+
+[Run archive and provenance](validation/internlm-bp16-cold-cache24g/README.md).
 
 ### BP16 host-copy worker component matrix
 
@@ -1260,7 +1281,7 @@ swap grew by 245 MiB and 3,248 MiB respectively, and the Ollama GPU guard found
 no process in either run. These runs were sequential
 with unlocked clocks and different RAM conditions, so this is not a controlled
 performance comparison. Its longer-run BP16 rate is below the separate short-run
-**0.4626948 tokens/s** result above and does not replace that as the best
+**0.5275435 tokens/s** result above and does not replace that as the best
 measured short-run rate.
 
 [Comparison summary](validation/internlm-bp16-allocated-long128/comparison-summary.json),
@@ -1321,7 +1342,7 @@ F16 check with **49/49** layers and the same output SHA-256 as other BP16 runs,
 but took **166,980.73 ms** for 12 decode runs:
 `12 * 1000 / 166980.73 = 0.0718646 tokens/s`. There were zero GPU fallbacks.
 This is correctness evidence with a substantial slowdown, not a faster mode;
-the latest measured compressed result is **0.4626948 tokens/s** in the
+the latest measured compressed result is **0.5275435 tokens/s** in the
 separate bounded allocated-host-cache run above. The earlier **0.40653** run
 remains a historical direct-host result.
 
