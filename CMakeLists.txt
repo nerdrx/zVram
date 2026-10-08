@@ -680,6 +680,14 @@ if(ZVRAM_ENABLE_BP16_GPU_TESTS)
             --vulkan-resident-mib 32 --vulkan-auto-idle-ms 60000 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${bp16_pressure_flags})
         set_tests_properties(${bp16_test} PROPERTIES TIMEOUT 60
             ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+        set(local_owner_test vulkan-bp16-local-owner-${bp16_pressure_mode})
+        add_test(NAME ${local_owner_test} COMMAND ${bp16_gpu_launch}
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 32 --vulkan-auto-idle-ms 60000
+            --vulkan-lazy-backing --vulkan-headroom-mib 64 --vulkan-strict-robustness
+            -- $<TARGET_FILE:zvram-vulkan-auto-check> ${bp16_pressure_flags})
+        set_tests_properties(${local_owner_test} PROPERTIES TIMEOUT 60
+            ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;ZVRAM_VULKAN_BP16_LOCAL_OWNER_MIB=64;ZVRAM_VULKAN_BP16_LOCAL_TOTAL_MIB=96;ZVRAM_VULKAN_BP16_GPU_ENCODE=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=512;ZVRAM_VULKAN_GPU_PROFILE=1")
     endforeach()
 endif()
 get_property(ZVRAM_TESTS DIRECTORY PROPERTY TESTS)
