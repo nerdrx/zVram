@@ -52,4 +52,8 @@ if os.environ.get("ZVRAM_TEST_REQUIRE_BP16_BATCH") == "1":
     batches = re.findall(r"GPU BP16 restore batch submissions=(\d+) items=(\d+)", result.stdout)
     if not batches or int(batches[-1][0]) <= 0 or int(batches[-1][1]) < 2 * int(batches[-1][0]):
         raise SystemExit("FAIL: application did not observe multi-frame BP16 restore submissions")
+if os.environ.get("ZVRAM_TEST_REQUIRE_BP16_REMAP") == "1":
+    remaps = re.findall(r"GPU BP16 batch remap calls=(\d+) children=(\d+) buffers=(\d+)", result.stdout)
+    if not remaps or tuple(map(int, remaps[-1][:2])) != (1, 4):
+        raise SystemExit("FAIL: four-child restore did not use exactly one batch remap")
 print("PASS: application byte checks, observed GPU decoding, zero fallback and validation diagnostics")
