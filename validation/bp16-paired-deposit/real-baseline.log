@@ -1,0 +1,15 @@
+preflight codec=BP16 blocks=131072 decoded-bytes=33554432 payload-bytes=28154224
+validation=on debug-utils=on
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=0x1002 type=2 queue-family=0 shaderInt64=not-required robustness2=disabled bufferDeviceAddress=disabled execution=GPU-compute default-subgroup=64 supported-stages=0x3fff supported-operations=0x6ff subgroup-range=32-64
+buffer bytes=29202816 allocation-bytes=29202816 memory-type=5 flags=0xe host-visible=yes device-local=no
+buffer bytes=12 allocation-bytes=16 memory-type=2 flags=0x6 host-visible=yes device-local=no
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=4 allocation-bytes=16 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=33554436 allocation-bytes=33554448 memory-type=2 flags=0x6 host-visible=yes device-local=no
+allocated-host-input bytes=29202816 allocation-bytes=29202816 memory-type=5 flags=0xe
+host-submit-wait-ns mode=reused-output iterations=16 values=2827092,2999782,2988853,2988093,2956982,3014703,2978793,3019073,2979413,2970523,2968683,2976193,2963593,2954383,2996543,2990403
+host-submit-ns iterations=16 values=376281,73070,51840,60710,42290,71751,36080,72560,49771,44240,44330,41430,30951,31040,67081,68991
+fence-wait-ns iterations=16 values=2450521,2926672,2936993,2927363,2914672,2942922,2942693,2946483,2929622,2926183,2924333,2934753,2932622,2923323,2929432,2921382
+gpu-timing input-mode=direct-host-visible upload-gpu-copy-ns=0 decode-includes-host-memory-reads iterations=16 decode-ns-median=1068160 readback-copy-ns-median=1124880
+PASS: decoded 33554432 exact bytes in 32768 BP16 workgroups across 16 iterations
+validation-errors=0 validation-vuids=0

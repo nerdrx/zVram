@@ -1,0 +1,10 @@
+[
+  "build/bp16-codec/zvram-gdeflate-research",
+  "--codec",
+  "bp16",
+  "--allocated-host-input",
+  "--gpu-bounded-smoke",
+  "build/bp16-paired-deposit/decode_pair.spv",
+  "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.bp16",
+  "build/bp16-research/internlm2_5-20b-chat-fp16-64MiB.raw"
+]

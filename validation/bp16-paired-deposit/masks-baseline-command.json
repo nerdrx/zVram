@@ -1,0 +1,10 @@
+[
+  "build/bp16-codec/zvram-gdeflate-research",
+  "--codec",
+  "bp16",
+  "--allocated-host-input",
+  "--gpu-bounded-smoke",
+  "build/bp16-paired-deposit/baseline.spv",
+  "build/bp16-fastpath-research/all-masks.bp16",
+  "build/bp16-fastpath-research/all-masks.raw"
+]
