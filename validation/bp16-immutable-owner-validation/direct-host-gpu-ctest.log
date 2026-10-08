@@ -1,0 +1,5 @@
+ctest: 8/8 passed (6.68 sec)
+slowest:
+  vulkan-bp16-gpu-native-two-queues 2.13 sec
+  vulkan-bp16-gpu-idle-integrity 1.84 sec
+  vulkan-bp16-gpu-partial-restore 0.56 sec

@@ -337,6 +337,12 @@ also contained exact-storage ownership transfer. Runs were sequential and
 uncontrolled, so this does not isolate either change or justify changing the
 default. [Run archive and counters](validation/internlm-bp16-cold24-upload8-long128-bmi2-lfu/README.md).
 
+Immutable BP16 owner-frame validation passed **12/12 CPU** tests and focused
+GPU suites **8/8** each for allocated-host, direct-host, and imported-host
+input. Exact owner-tuple mismatch checks and GPU readback integrity passed
+with zero fallback or Vulkan validation diagnostics. This correctness change
+has no model performance result yet. [Tests and hashes](validation/bp16-immutable-owner-validation/README.md).
+
 ## Vulkan range eviction policy
 
 `--vulkan-eviction-policy lru|mru` requires `--vulkan-resident-mib`; the default is `lru`. LRU evicts the least-recently-used eligible completed chunk first. MRU evicts the newest eligible completed, unselected chunk first. Both policies retain the existing protection for selected or in-flight chunks and the same unknown-access fallback.
