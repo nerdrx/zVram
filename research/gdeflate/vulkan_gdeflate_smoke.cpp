@@ -436,6 +436,65 @@ struct Runtime {
         }
     }
 
+    void initFused4Pipeline(const std::vector<std::uint8_t>& code,
+                            std::uint32_t iterations) {
+        if (code.size() % sizeof(std::uint32_t))
+            throw std::runtime_error("fused BP16 SPIR-V size is not word aligned");
+        if (properties.limits.maxPerStageDescriptorStorageBuffers < 9 ||
+            properties.limits.maxDescriptorSetStorageBuffers < 9)
+            throw std::runtime_error("fused BP16 requires nine storage-buffer descriptors");
+        VkDescriptorSetLayoutBinding bindings[9]{};
+        for (std::uint32_t i = 0; i < 9; ++i) {
+            bindings[i].binding = i;
+            bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            bindings[i].descriptorCount = 1;
+            bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        }
+        VkDescriptorSetLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        layoutInfo.bindingCount = 9;
+        layoutInfo.pBindings = bindings;
+        check(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &setLayout),
+              "create fused BP16 descriptor layout");
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &setLayout;
+        check(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout),
+              "create fused BP16 pipeline layout");
+        VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        shaderInfo.codeSize = code.size();
+        shaderInfo.pCode = reinterpret_cast<const std::uint32_t*>(code.data());
+        check(vkCreateShaderModule(device, &shaderInfo, nullptr, &shader),
+              "create fused BP16 shader module");
+        VkComputePipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        pipelineInfo.stage.module = shader;
+        pipelineInfo.stage.pName = "CSMain";
+        pipelineInfo.layout = pipelineLayout;
+        check(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline),
+              "create fused BP16 compute pipeline");
+        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9};
+        VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        poolInfo.maxSets = 1;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &size;
+        check(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool),
+              "create fused BP16 descriptor pool");
+        VkCommandPoolCreateInfo commandInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+        commandInfo.queueFamilyIndex = queueFamily;
+        check(vkCreateCommandPool(device, &commandInfo, nullptr, &commandPool),
+              "create fused BP16 command pool");
+        VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        check(vkCreateFence(device, &fenceInfo, nullptr, &fence), "create fused BP16 fence");
+        if (timestampValidBits) {
+            VkQueryPoolCreateInfo queryInfo{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+            queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            queryInfo.queryCount = iterations * 5;
+            check(vkCreateQueryPool(device, &queryInfo, nullptr, &timestampPool),
+                  "create fused BP16 timestamp pool");
+        }
+    }
+
     void initEncoderPipelines(const std::vector<std::uint8_t>& analyze,
                               const std::vector<std::uint8_t>& pack) {
         if (analyze.size() % 4 || pack.size() % 4)
@@ -1142,6 +1201,275 @@ void run(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
               << " across " << iterations << " iterations\n";
 }
 
+void runFused4(Runtime& runtime, const std::vector<std::uint8_t>& encoded,
+               const std::vector<std::uint8_t>& expected, std::uint32_t iterations) {
+    zvram::bp16::FrameInfo frame{};
+    if (!zvram::bp16::validate(encoded.data(), encoded.size(),
+                               static_cast<std::uint32_t>(expected.size()), &frame))
+        throw std::runtime_error("fused BP16 input failed canonical frame validation");
+    if (runtime.properties.limits.maxComputeWorkGroupCount[1] < 4)
+        throw std::runtime_error("fused BP16 dispatch requires four y workgroups");
+    const auto rawSize = expected.size();
+    const auto inputSize = (encoded.size() + 3u) & ~std::size_t(3u);
+    const auto outputSize = (rawSize + 3u) & ~std::size_t(3u);
+    const auto groups = static_cast<std::uint32_t>((rawSize / 4u + 255u) / 256u);
+    if (!groups || groups > runtime.properties.limits.maxComputeWorkGroupCount[0] ||
+        inputSize > runtime.properties.limits.maxStorageBufferRange ||
+        outputSize > runtime.properties.limits.maxStorageBufferRange ||
+        outputSize > (std::numeric_limits<VkDeviceSize>::max() - 4u) / 4u)
+        throw std::runtime_error("fused BP16 input/output exceeds Vulkan dispatch bounds");
+
+    const std::array<std::uint8_t, 4> xorBytes{0x00, 0x55, 0xaa, 0xff};
+    std::array<std::vector<std::uint8_t>, 4> encodedFrames;
+    encodedFrames[0] = encoded;
+    for (std::size_t i = 1; i < encodedFrames.size(); ++i) {
+        std::vector<std::uint8_t> rawVariant = expected;
+        for (auto& byte : rawVariant) byte ^= xorBytes[i];
+        if (!zvram::bp16::encodeFast(rawVariant.data(), rawVariant.size(), encodedFrames[i], 32) ||
+            encodedFrames[i].size() != encoded.size())
+            throw std::runtime_error("fused BP16 XOR fixture changed canonical frame size");
+        zvram::bp16::FrameInfo variantInfo{};
+        if (!zvram::bp16::validate(encodedFrames[i].data(), encodedFrames[i].size(),
+                                   static_cast<std::uint32_t>(rawSize), &variantInfo) ||
+            variantInfo.blockCount != frame.blockCount)
+            throw std::runtime_error("fused BP16 XOR fixture failed canonical validation");
+    }
+
+    const auto hostCoherent = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    const auto cachedCoherent = hostCoherent | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+    const auto deviceLocal = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    std::array<Buffer, 4> inputs, outputs;
+    VkDeviceSize ownerBytes = 0;
+    for (std::size_t i = 0; i < 4; ++i) {
+        inputs[i].init(runtime, inputSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                       cachedCoherent, VK_MEMORY_PROPERTY_HOST_CACHED_BIT, deviceLocal);
+        const auto flags = inputs[i].memoryFlags;
+        if ((flags & cachedCoherent) != cachedCoherent || (flags & deviceLocal))
+            throw std::runtime_error("fused BP16 requires four cached coherent nonlocal input owners");
+        for (std::size_t prior = 0; prior < i; ++prior)
+            if (inputs[prior].memory == inputs[i].memory)
+                throw std::runtime_error("fused BP16 inputs did not receive distinct VkDeviceMemory owners");
+        std::memcpy(inputs[i].mapped, encodedFrames[i].data(), encodedFrames[i].size());
+        if (inputSize > encodedFrames[i].size())
+            std::memset(static_cast<std::uint8_t*>(inputs[i].mapped) + encodedFrames[i].size(), 0,
+                        inputSize - encodedFrames[i].size());
+        ownerBytes += inputs[i].allocationSize;
+        outputs[i].init(runtime, outputSize,
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        deviceLocal, deviceLocal);
+        for (std::size_t prior = 0; prior < i; ++prior)
+            if (outputs[prior].buffer == outputs[i].buffer ||
+                outputs[prior].memory == outputs[i].memory)
+                throw std::runtime_error("fused BP16 outputs did not receive distinct VkBuffer/memory owners");
+    }
+    Buffer scratch, readback;
+    scratch.init(runtime, 4, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 deviceLocal, deviceLocal);
+    const auto allOutputsSize = static_cast<VkDeviceSize>(outputSize) * 4u;
+    readback.init(runtime, allOutputsSize + 4u, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                  cachedCoherent, VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+
+    VkDescriptorSetAllocateInfo setInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    setInfo.descriptorPool = runtime.descriptorPool;
+    setInfo.descriptorSetCount = 1;
+    setInfo.pSetLayouts = &runtime.setLayout;
+    VkDescriptorSet set{};
+    check(vkAllocateDescriptorSets(runtime.device, &setInfo, &set),
+          "allocate fused BP16 descriptor set");
+    VkDescriptorBufferInfo infos[9]{};
+    VkWriteDescriptorSet writes[9]{};
+    for (std::uint32_t i = 0; i < 4; ++i) {
+        infos[i] = {inputs[i].buffer, 0, inputSize};
+        infos[4u + i] = {outputs[i].buffer, 0, outputSize};
+    }
+    infos[8] = {scratch.buffer, 0, 4};
+    for (std::uint32_t i = 0; i < 9; ++i) {
+        writes[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        writes[i].dstSet = set;
+        writes[i].dstBinding = i;
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[i].pBufferInfo = &infos[i];
+    }
+    vkUpdateDescriptorSets(runtime.device, 9, writes, 0, nullptr);
+
+    std::vector<std::uint64_t> hostSubmitWaitNs(iterations), hostSubmitNs(iterations),
+                               fenceWaitNs(iterations);
+    VkCommandBufferAllocateInfo commandAllocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    commandAllocation.commandPool = runtime.commandPool;
+    commandAllocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+        VkCommandBuffer command{};
+        commandAllocation.commandBufferCount = 1;
+        check(vkAllocateCommandBuffers(runtime.device, &commandAllocation, &command),
+              "allocate fused BP16 command buffer");
+        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        check(vkBeginCommandBuffer(command, &begin), "begin fused BP16 command buffer");
+        const auto queryBase = iteration * 5;
+        VkMemoryBarrier reuseReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        reuseReady.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                                   VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+        reuseReady.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             0, 1, &reuseReady, 0, nullptr, 0, nullptr);
+        if (runtime.timestampPool)
+            vkCmdResetQueryPool(command, runtime.timestampPool, queryBase, 5);
+        if (runtime.timestampPool)
+            vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                runtime.timestampPool, queryBase);
+        vkCmdFillBuffer(command, scratch.buffer, 0, 4, 0);
+        if (runtime.timestampPool)
+            vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                runtime.timestampPool, queryBase + 1);
+        VkBufferMemoryBarrier inputReady[5]{};
+        for (std::uint32_t i = 0; i < 4; ++i) {
+            inputReady[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            inputReady[i].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+            inputReady[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            inputReady[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            inputReady[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            inputReady[i].buffer = inputs[i].buffer;
+            inputReady[i].offset = 0;
+            inputReady[i].size = inputSize;
+        }
+        inputReady[4].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        inputReady[4].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        inputReady[4].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        inputReady[4].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        inputReady[4].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        inputReady[4].buffer = scratch.buffer;
+        inputReady[4].offset = 0;
+        inputReady[4].size = 4;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr,
+                             5, inputReady, 0, nullptr);
+        if (runtime.timestampPool)
+            vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                runtime.timestampPool, queryBase + 2);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.pipeline);
+        vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, runtime.pipelineLayout,
+                                0, 1, &set, 0, nullptr);
+        vkCmdDispatch(command, groups, 4, 1);
+        if (runtime.timestampPool)
+            vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                runtime.timestampPool, queryBase + 3);
+        VkBufferMemoryBarrier outputReady[5]{};
+        for (std::uint32_t i = 0; i < 4; ++i) {
+            outputReady[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            outputReady[i].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            outputReady[i].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            outputReady[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            outputReady[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            outputReady[i].buffer = outputs[i].buffer;
+            outputReady[i].offset = 0;
+            outputReady[i].size = outputSize;
+        }
+        outputReady[4].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        outputReady[4].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        outputReady[4].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        outputReady[4].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        outputReady[4].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        outputReady[4].buffer = scratch.buffer;
+        outputReady[4].offset = 0;
+        outputReady[4].size = 4;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+                             5, outputReady, 0, nullptr);
+        for (std::uint32_t i = 0; i < 4; ++i) {
+            const VkBufferCopy copy{0, static_cast<VkDeviceSize>(i) * outputSize, outputSize};
+            vkCmdCopyBuffer(command, outputs[i].buffer, readback.buffer, 1, &copy);
+        }
+        const VkBufferCopy errorCopy{0, allOutputsSize, 4};
+        vkCmdCopyBuffer(command, scratch.buffer, readback.buffer, 1, &errorCopy);
+        if (runtime.timestampPool)
+            vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                runtime.timestampPool, queryBase + 4);
+        VkBufferMemoryBarrier hostReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        hostReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        hostReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        hostReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostReady.buffer = readback.buffer;
+        hostReady.offset = 0;
+        hostReady.size = allOutputsSize + 4u;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                             0, 0, nullptr, 1, &hostReady, 0, nullptr);
+        check(vkEndCommandBuffer(command), "end fused BP16 command buffer");
+        if (iteration) check(vkResetFences(runtime.device, 1, &runtime.fence), "reset fused BP16 fence");
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &command;
+        const auto submitStart = std::chrono::steady_clock::now();
+        const auto submitResult = vkQueueSubmit(runtime.queue, 1, &submit, runtime.fence);
+        const auto submittedAt = std::chrono::steady_clock::now();
+        if (submitResult != VK_SUCCESS) runtime.abandonOnExit = true;
+        check(submitResult, "submit fused BP16 compute");
+        const auto waitStart = std::chrono::steady_clock::now();
+        const auto waitResult = vkWaitForFences(runtime.device, 1, &runtime.fence, VK_TRUE,
+                                                WaitNanoseconds);
+        const auto waitedAt = std::chrono::steady_clock::now();
+        if (waitResult != VK_SUCCESS) runtime.abandonOnExit = true;
+        check(waitResult, "wait fused BP16 compute fence");
+        hostSubmitNs[iteration] = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(submittedAt - submitStart).count());
+        fenceWaitNs[iteration] = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(waitedAt - waitStart).count());
+        hostSubmitWaitNs[iteration] = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(waitedAt - submitStart).count());
+        const auto* actual = static_cast<const std::uint8_t*>(readback.mapped);
+        std::uint32_t errorMask{};
+        std::memcpy(&errorMask, actual + allOutputsSize, sizeof(errorMask));
+        if (errorMask) throw std::runtime_error("fused BP16 shader error mask=" +
+                                                std::to_string(errorMask));
+        for (std::uint32_t i = 0; i < 4; ++i) {
+            const auto* outputBytes = actual + static_cast<std::size_t>(i) * outputSize;
+            for (std::size_t byte = 0; byte < rawSize; ++byte)
+                if (outputBytes[byte] != static_cast<std::uint8_t>(expected[byte] ^ xorBytes[i]))
+                    throw std::runtime_error("fused BP16 output mismatch for frame " + std::to_string(i) +
+                                             " at byte " + std::to_string(byte));
+        }
+        vkFreeCommandBuffers(runtime.device, runtime.commandPool, 1, &command);
+    }
+    std::cout << "fused4-input-owners=4 distinct-vkdevice-memory=4 total-allocation-bytes="
+              << ownerBytes << " groups-per-frame=" << groups << '\n';
+    auto printValues = [](const char* label, const std::vector<std::uint64_t>& values) {
+        std::cout << label << " iterations=" << values.size() << " values=";
+        for (std::size_t i = 0; i < values.size(); ++i) std::cout << (i ? "," : "") << values[i];
+        std::cout << '\n';
+    };
+    printValues("fused4-host-submit-wait-ns-one-submit-four-frames-includes-full-four-frame-raw-readback",
+                hostSubmitWaitNs);
+    printValues("fused4-host-submit-ns", hostSubmitNs);
+    printValues("fused4-fence-wait-ns", fenceWaitNs);
+    if (runtime.timestampPool) {
+        std::vector<std::uint64_t> values(iterations * 5);
+        check(vkGetQueryPoolResults(runtime.device, runtime.timestampPool, 0,
+                                    static_cast<std::uint32_t>(values.size()),
+                                    values.size() * sizeof(values[0]), values.data(),
+                                    sizeof(values[0]), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
+              "read fused BP16 timestamps");
+        const auto mask = runtime.timestampValidBits == 64 ? UINT64_MAX :
+                          ((std::uint64_t{1} << runtime.timestampValidBits) - 1);
+        std::vector<std::uint64_t> decodeNs;
+        for (std::uint32_t i = 0; i < iterations; ++i) {
+            const auto base = i * 5;
+            decodeNs.push_back(static_cast<std::uint64_t>(
+                (((values[base + 3] - values[base + 2]) & mask) *
+                 runtime.properties.limits.timestampPeriod)));
+        }
+        std::sort(decodeNs.begin(), decodeNs.end());
+        std::cout << "fused4-gpu-decode-ns-median=" << decodeNs[decodeNs.size() / 2]
+                  << " four-frames-per-dispatch=1\n";
+    } else {
+        std::cout << "fused4-gpu-timing unavailable: queue has no timestamp bits\n";
+    }
+    std::cout << "PASS: one dispatch decoded four independent canonical BP16 frames exactly\n";
+}
+
 std::uint64_t submitAndWait(Runtime& runtime, VkCommandBuffer command, const char* label) {
     check(vkEndCommandBuffer(command), "end BP16 encoder command buffer");
     check(vkResetFences(runtime.device, 1, &runtime.fence), "reset BP16 encoder fence");
@@ -1568,9 +1896,11 @@ int main(int argc, char** argv) {
     const bool bp16Encode = bp16 && argc == arg + 5 &&
         (std::strcmp(argv[arg], "--encode-preflight-only") == 0 ||
          std::strcmp(argv[arg], "--gpu-encode-bounded-smoke") == 0);
+    const bool fused4 = bp16 && argc == arg + 4 &&
+        std::strcmp(argv[arg], "--gpu-fused4-smoke") == 0;
     const bool bp16Args = bp16 && ((argc == arg + 4 &&
         (std::strcmp(argv[arg], "--preflight-only") == 0 ||
-         std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0)) || bp16Encode);
+         std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0)) || bp16Encode || fused4);
     const bool regular = argc == 5 &&
                          (std::strcmp(argv[1], "--preflight-only") == 0 ||
                           std::strcmp(argv[1], "--gpu-smoke") == 0 ||
@@ -1579,6 +1909,7 @@ int main(int argc, char** argv) {
     if ((!bp16 && !regular) || (bp16 && !bp16Args)) {
         std::cerr << "usage: vulkan_gdeflate_smoke --preflight-only|--gpu-smoke|--gpu-bounded-smoke|--software-smoke SHADER.spv ENCODED.bin EXPECTED.raw\n"
                      "       vulkan_gdeflate_smoke --codec bp16 [--host-input|--import-host-input|--allocated-host-input] [--resident-imports 0..1024] [--resident-import-bytes 4096..33554432] [--host-copy-iterations 1..256] [--host-copy-workers 1..8] [--device-address] [--fresh-output] [--robust-access2] --preflight-only|--gpu-bounded-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n"
+                     "       vulkan_gdeflate_smoke --codec bp16 --gpu-fused4-smoke SHADER.spv FRAME.bp16 EXPECTED.raw\n"
                      "       vulkan_gdeflate_smoke --codec bp16 --encode-preflight-only|--gpu-encode-bounded-smoke ANALYZE.spv PACK.spv RAW.bin EXPECTED.bp16\n";
         return 2;
     }
@@ -1593,7 +1924,7 @@ int main(int argc, char** argv) {
             std::strcmp(argv[arg], "--gpu-encode-bounded-smoke") == 0);
     }
     const bool singleTile = !bp16 && std::strcmp(argv[arg], "--gpu-smoke") == 0;
-    const bool gpu = singleTile || std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0;
+    const bool gpu = singleTile || std::strcmp(argv[arg], "--gpu-bounded-smoke") == 0 || fused4;
     const bool software = !bp16 && std::strcmp(argv[arg], "--software-smoke") == 0;
     ValidationCounts validation;
     int status = 1;
@@ -1660,12 +1991,22 @@ int main(int argc, char** argv) {
         const auto iterations = researchIterations();
         Runtime runtime(validation, software);
         runtime.initInstance();
-        runtime.pickDevice(bp16, robustness2, importHostInput, deviceAddress);
-        runtime.initPipeline(shader, iterations, bp16);
-        run(runtime, encoded, expected, iterations, bp16, hostInput, freshOutput,
-            importHostInput, residentImports, residentImportBytes,
-            residentImportBytesSpecified, allocatedHostInput, hostCopyIterations,
-            hostCopyWorkers);
+        if (fused4) {
+            if (hostInput || importHostInput || allocatedHostInput || freshOutput || robustness2 ||
+                deviceAddress || residentImportsSpecified || residentImportBytesSpecified ||
+                hostCopyIterationsSpecified || hostCopyWorkersSpecified)
+                throw std::runtime_error("fused4 mode owns four distinct cached host inputs; other input options do not apply");
+            runtime.pickDevice(true);
+            runtime.initFused4Pipeline(shader, iterations);
+            runFused4(runtime, encoded, expected, iterations);
+        } else {
+            runtime.pickDevice(bp16, robustness2, importHostInput, deviceAddress);
+            runtime.initPipeline(shader, iterations, bp16);
+            run(runtime, encoded, expected, iterations, bp16, hostInput, freshOutput,
+                importHostInput, residentImports, residentImportBytes,
+                residentImportBytesSpecified, allocatedHostInput, hostCopyIterations,
+                hostCopyWorkers);
+        }
         status = 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
