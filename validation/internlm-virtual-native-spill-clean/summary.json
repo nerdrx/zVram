@@ -1,0 +1,55 @@
+{
+  "scope": "zVram virtual heap with native driver VRAM/GTT spill; snapshots and automatic compression not enabled",
+  "source_commit": "aec5330eb6dec41728b36f4ea70b9ffaf1ccb665",
+  "performance": {
+    "decode_ms": 7061.47,
+    "decode_runs": 12,
+    "tokens_per_second": 1.7,
+    "prompt_ms": 1335.5,
+    "restore_ms": []
+  },
+  "rate_calculation": "12 * 1000 / 7061.47 = 1.69936 tokens/s",
+  "returncode": 0,
+  "offload": [
+    49,
+    49
+  ],
+  "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "diagnostics": [],
+  "model_buffer_mib": [
+    36798.77
+  ],
+  "native_vulkan_memory": {
+    "resident-vram": 23160541184,
+    "memory-vram": 23160541184,
+    "resident-gtt": 16758128640,
+    "memory-gtt": 16758128640,
+    "unique_drm_clients": 1,
+    "resident_vram_present": true
+  },
+  "minimum_available_mib": 27289,
+  "swap_used_baseline_mib": 12612,
+  "swap_used_peak_mib": 13435,
+  "swap_growth_mib": 823,
+  "guards": {
+    "min_available_guard_mib": 16384,
+    "max_swap_growth_mib": 16384,
+    "reject_ollama_gpu": true,
+    "ollama_gpu_detected": []
+  },
+  "source_sha256": {
+    "layer.cpp": "dc976b8c422fa077009d6d435937d7d0243c37490ee879599e38d2ee18c3ce96",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf"
+  },
+  "binary_sha256": {
+    "build/libzvram_layer.so": "248c781186fc17091ddfc84c362ce418472eae1f19fa3b8364a9ee57b7891f2c",
+    "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+  },
+  "limits": [
+    "Sequential reference with GPU clocks and desktop activity uncontrolled.",
+    "This mode used native driver VRAM/GTT spillover and did not run automatic snapshots or compression; it is not a matched comparison to BP16 compressed restore.",
+    "The RAM floor and output hash apply only to this run and do not establish universal compatibility."
+  ]
+}

@@ -1007,6 +1007,31 @@ Ollama GPU guard detected no process.
 [full result](validation/internlm-native-nodes4-clean/native-result.json.gz), and
 [full stderr](validation/internlm-native-nodes4-clean/native.stderr.txt.gz).
 
+### Fresh virtual-native-spill reference
+
+A separate run used zVram's **96 GiB virtual heap** without automatic snapshots
+or compression, allowing the native Vulkan driver to place backing across VRAM
+and GTT. It completed 12 decode runs in **7,061.47 ms**:
+`12 * 1000 / 7061.47 = 1.69936 tokens/s` (reported as **1.70**). All **49/49**
+layers were offloaded and output matched the other runs (SHA-256
+`8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`). Minimum
+available RAM was **27,289 MiB**; swap grew by **823 MiB**; the Ollama GPU guard
+detected no process.
+
+The rate is nearly identical to the fresh native **1.6995 tokens/s** reference.
+Compared numerically with compressed BP16 at **0.40653 tokens/s**, it is about
+**4.18x higher**, but these were sequential runs with unlocked clocks and
+different backing paths. This is not a controlled codec comparison, proof of
+compression behavior, or universal RAM/driver-placement guarantee. This mode
+recorded no cold snapshots.
+
+Source commit was `aec5330`. [Summary](validation/internlm-virtual-native-spill-clean/summary.json),
+[command](validation/internlm-virtual-native-spill-clean/command.json),
+[resource samples](validation/internlm-virtual-native-spill-clean/virtual.resources.json.gz),
+[runtime hashes](validation/internlm-virtual-native-spill-clean/runtime-binary-sha256.json),
+[full result](validation/internlm-virtual-native-spill-clean/result.json.gz), and
+[full stderr](validation/internlm-virtual-native-spill-clean/virtual.stderr.txt.gz).
+
 ### Nineteen-gibibyte direct host-input run: 32 workers
 
 This later run kept the same model, **19 GiB** tracked cap, **2.5 GiB** reserve,

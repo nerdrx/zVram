@@ -288,3 +288,8 @@ fresh native reference measured 1.6995 tokens/s (4.18x the BP16 rate), but uses
 a different VRAM/GTT path and was not a controlled comparison. The default
 worker count remains 1. [Latest BP16 run](VALIDATION.md#nineteen-gibibyte-direct-host-input-run-32-workers);
 [fresh native reference and limits](VALIDATION.md#fresh-native-nodes4-reference).
+
+A separate zVram virtual-native-spill run, without automatic snapshots or
+compression, measured 1.69936 tokens/s. It matches the fresh native rate, but
+uses driver VRAM/GTT spillover rather than compressed restore; this sequential,
+uncontrolled result is not a fair codec comparison. [Virtual-spill evidence](VALIDATION.md#fresh-virtual-native-spill-reference).
