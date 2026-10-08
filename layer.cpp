@@ -51,7 +51,7 @@ template<class H> std::uintptr_t handleToken(H value) {
 }
 bool verbose() { const char* p=std::getenv("ZVRAM_VERBOSE"); return p && std::strcmp(p,"1")==0; }
 void logf(const char* fmt,...) { std::fputs("[zvram] ",stderr); va_list ap; va_start(ap,fmt); std::vfprintf(stderr,fmt,ap); va_end(ap); std::fputc('\n',stderr); }
-void logSnapshotState(const char* event,const Device& d);
+void logSnapshotState(const char* event,Device& d);
 
 struct PhysicalMemoryView {
     VkPhysicalDeviceMemoryProperties native{};
@@ -278,6 +278,7 @@ struct Device {
     VkDeviceSize gpuImportHostAlignment{};
     std::uint64_t gpuImportedFrames{}, gpuImportedReuses{}, gpuImportedBytes{};
     std::uint64_t gpuAllocatedHostAllocations{}, gpuAllocatedHostReuses{}, gpuAllocatedHostBytes{};
+    std::uint64_t gpuProfileLogRestoreCount{};
     VkDeviceSize gpuStorageAlignment{1};
     VkDeviceSize gpuStorageRange{};
     std::uint64_t gpuDecodeCalls{}, gpuDecodeBytes{}, gpuDecodeNanoseconds{}, gpuDecodeFallbacks{};
@@ -365,7 +366,7 @@ void runAsyncEncoderUnlocked(std::unique_lock<std::mutex>& deviceLock,
     catch(...) { deviceLock.lock(); queueLock.lock(); throw; }
     deviceLock.lock(); queueLock.lock();
 }
-void logSnapshotState(const char* event,const Device& d) {
+void logSnapshotState(const char* event,Device& d) {
     logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu cache-stored=%llu clean-reuses=%llu cache-invalidations=%llu copy-calls=%llu copy-bytes=%llu copy-ns=%llu decode-bytes=%llu decode-ns=%llu pipeline-prefetches=%llu pipeline-restores=%llu pipeline-wait-ns=%llu gpu-decode-calls=%llu gpu-decode-bytes=%llu gpu-decode-ns=%llu gpu-decode-fallbacks=%llu",
          event,static_cast<unsigned long long>(d.residentBytes),static_cast<unsigned long long>(d.coldLogicalBytes),
          static_cast<unsigned long long>(d.coldBytes),static_cast<unsigned long long>(d.freezeCount),
@@ -378,7 +379,12 @@ void logSnapshotState(const char* event,const Device& d) {
          static_cast<unsigned long long>(d.snapshot.prefetchWaitNanoseconds),
          static_cast<unsigned long long>(d.gpuDecodeCalls),static_cast<unsigned long long>(d.gpuDecodeBytes),
          static_cast<unsigned long long>(d.gpuDecodeNanoseconds),static_cast<unsigned long long>(d.gpuDecodeFallbacks));
-    if(d.gpuDecoder && d.gpuDecoder->profilingEnabled() && std::strcmp(event,"restore")==0) {
+    bool logGpuDiagnostics=false;
+    if(std::strcmp(event,"restore")==0) {
+        const auto sample=++d.gpuProfileLogRestoreCount;
+        logGpuDiagnostics=sample==1 || sample%256==0;
+    }
+    if(d.gpuDecoder && d.gpuDecoder->profilingEnabled() && logGpuDiagnostics) {
         const auto profile=d.gpuDecoder->profile();
         logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu",
              static_cast<unsigned long long>(profile.calls),static_cast<unsigned long long>(profile.validationNs),
@@ -387,19 +393,19 @@ void logSnapshotState(const char* event,const Device& d) {
              static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
              static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs));
     }
-    if(d.gpuImportHostInput && std::strcmp(event,"restore")==0)
+    if(d.gpuImportHostInput && logGpuDiagnostics)
         logf("GPU BP16 imported input imports=%llu reuses=%llu bytes=%llu",
              static_cast<unsigned long long>(d.gpuImportedFrames),
              static_cast<unsigned long long>(d.gpuImportedReuses),
              static_cast<unsigned long long>(d.gpuImportedBytes));
-    if(d.gpuAllocatedHostInput && std::strcmp(event,"restore")==0)
+    if(d.gpuAllocatedHostInput && logGpuDiagnostics)
         logf("GPU BP16 allocated input allocations=%llu reuses=%llu bytes=%llu live-bytes=%llu limit-bytes=%llu",
              static_cast<unsigned long long>(d.gpuAllocatedHostAllocations),
              static_cast<unsigned long long>(d.gpuAllocatedHostReuses),
              static_cast<unsigned long long>(d.gpuAllocatedHostBytes),
              static_cast<unsigned long long>(d.gpuDecoder?d.gpuDecoder->allocatedHostInputUsedBytes():0),
              static_cast<unsigned long long>(d.gpuDecoder?d.gpuDecoder->allocatedHostInputLimitBytes():0));
-    if(d.gpuProfileEnabled && std::strcmp(event,"restore")==0)
+    if(d.gpuProfileEnabled && logGpuDiagnostics)
         logf("GPU restore backing profile alloc-calls=%llu alloc-ok=%llu alloc-fail=%llu alloc-ns=%llu free-calls=%llu free-ns=%llu sparse-calls=%llu sparse-ok=%llu sparse-fail=%llu sparse-ns=%llu",
              static_cast<unsigned long long>(d.gpuProfileAllocCalls.load(std::memory_order_relaxed)),
              static_cast<unsigned long long>(d.gpuProfileAllocSuccess.load(std::memory_order_relaxed)),
@@ -1637,6 +1643,27 @@ void releaseSnapshotResources(Device& d) {
         ?d.gpuDecoder->allocatedHostInputUsedBytes():0;
     const auto allocatedHostLimitBytes=d.gpuDecoder
         ?d.gpuDecoder->allocatedHostInputLimitBytes():0;
+    if(d.gpuDecoder && d.gpuDecoder->profilingEnabled()) {
+        const auto profile=d.gpuDecoder->profile();
+        logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu final=1",
+             static_cast<unsigned long long>(profile.calls),static_cast<unsigned long long>(profile.validationNs),
+             static_cast<unsigned long long>(profile.inputPrepareNs),static_cast<unsigned long long>(profile.submitWaitNs));
+        logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu final=1",
+             static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
+             static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs));
+    }
+    if(d.gpuProfileEnabled)
+        logf("GPU restore backing profile alloc-calls=%llu alloc-ok=%llu alloc-fail=%llu alloc-ns=%llu free-calls=%llu free-ns=%llu sparse-calls=%llu sparse-ok=%llu sparse-fail=%llu sparse-ns=%llu final=1",
+             static_cast<unsigned long long>(d.gpuProfileAllocCalls.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileAllocSuccess.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileAllocFailures.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileAllocNs.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileFreeCalls.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileFreeNs.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseCalls.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseSuccess.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseFailures.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseNs.load(std::memory_order_relaxed)));
     d.gpuDecoder.reset();
     if(d.gpuImportHostInput)
         logf("GPU BP16 imported input imports=%llu reuses=%llu bytes=%llu",
