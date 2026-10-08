@@ -1,0 +1,8 @@
+[ 50%] Building CXX object CMakeFiles/zvram_layer.dir/layer.cpp.o
+[100%] Linking CXX shared library libzvram_layer.so
+[100%] Built target zvram_layer
+[ 50%] Building CXX object CMakeFiles/zvram-clean-cache-policy-check.dir/clean_cache_policy_check.cpp.o
+[100%] Linking CXX executable zvram-clean-cache-policy-check
+[100%] Built target zvram-clean-cache-policy-check
+[100%] Built target zvram-bp16-codec-check
+[100%] Built target zvram-vulkan-auto-check

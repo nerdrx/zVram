@@ -323,6 +323,13 @@ unlocked clocks and uncontrolled background activity; they do not isolate a
 policy performance effect. The default remains `first`. [Run comparison and
 archives](validation/bp16-clean-cache-policy-long/README.md).
 
+LFU is now another opt-in clean-snapshot policy. Its CPU tests passed **12/12**
+in **3.03 seconds**, and focused BP16 GPU tests passed **8/8** in **6.86
+seconds**. In a 64 MiB resident/cold-quota fixture, three readback passes
+verified exact bytes and the complete log recorded 14 cache trims of 32 MiB
+each, with zero GPU fallback. This is correctness evidence only; the default
+remains `first`, and no LFU speed claim is made. [Logs and hashes](validation/bp16-clean-cache-lfu/README.md).
+
 ## Vulkan range eviction policy
 
 `--vulkan-eviction-policy lru|mru` requires `--vulkan-resident-mib`; the default is `lru`. LRU evicts the least-recently-used eligible completed chunk first. MRU evicts the newest eligible completed, unselected chunk first. Both policies retain the existing protection for selected or in-flight chunks and the same unknown-access fallback.
