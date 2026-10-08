@@ -375,9 +375,11 @@ run](../../validation/internlm-bp16-local-owner3-raw16-total19-budget-snapshot-r
 [preflight abort](../../validation/internlm-bp16-local-owner3-raw16-total19-budget-snapshot-preflight-abort/README.md).
 
 A later 26 GiB cold/owner, 19 GiB resident run with the same optional budget
-snapshot completed exact output at **0.743201 tokens/s**, but a nearby attempt
-using the untouched installed binary and the same headroom settings also failed
-during load with Vulkan out-of-device-memory after machine-budget conditions
-changed. This makes the slower rate uninterpretable as a code effect; no speed
-claim follows. [Budget-snapshot run](../../validation/internlm-bp16-cold26-raw19-budget-snapshot/README.md) ·
+snapshot completed exact output and 49/49 layers at **0.743201 tokens/s**, with
+zero GPU restore fallback. The previously validated installed binary, run with
+the same limits, failed during loading with Vulkan out-of-device-memory while
+machine budget conditions had changed. This cannot attribute the result to the
+snapshot option or establish a performance regression or improvement. The next
+planned run uses 19 GiB raw, a 1.5 GiB reserve, and admission snapshots
+disabled; it has no result yet. [Budget-snapshot run](../../validation/internlm-bp16-cold26-raw19-budget-snapshot/README.md) ·
 [untouched-binary control](../../validation/internlm-untouched-installed-cold26-raw19-control/README.md).
