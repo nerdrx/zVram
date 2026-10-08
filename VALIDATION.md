@@ -1717,7 +1717,16 @@ immutable owned BP16 frames during known selective restores. It is off by
 default and requires BP16 GPU restore; it does not widen restore selection. The
 focused GPU batch fixtures pass with full-byte checks. Unsafe/device errors keep
 the backing owners and stop GPU paging; recoverable decode errors retain the
-existing CPU fallback. No model speed result is available yet.
+existing CPU fallback. One 92-token InternLM2.5-20B F16 run completed at
+**1.09282503 tokens/s** with exact output, 49/49 layers, zero GPU restore
+fallback, and **15,074 batch submissions / 51,174 frame items**. The synchronous
+GPU-encoder repeat without restore batching measured **1.10252711 tokens/s**;
+reported device restore time and host restore time were both unchanged at 52.10 s
+and 70.20 s, respectively. This is no observed speed gain from batching. These
+sequential runs had uncontrolled clocks/background activity, so the comparison
+is not causal; batching remains opt-in and defaults off. [Run archive and
+provenance](validation/internlm-bp16-gpu-batch-cold26-owner26-resident19-lfu/README.md)
+· [Ollama preflight abort](validation/internlm-bp16-gpu-batch-cold26-owner26-resident19-lfu-preflight-abort/README.md).
 
 ### Latest BP16 GPU-encoder full-model repeat: 26 GiB cold/owner ceilings
 

@@ -1,0 +1,13 @@
+{
+  "runtime_code_commit": "9565d860ae839a273373e7359bdcab1d21badacd",
+  "note": "Opt-in BP16 restore batching plus synchronous GPU encoder; same quotas as encoder repeat. All source compiled before test. Sequential unlocked clocks.",
+  "sources": {
+    "layer.cpp": "9fd54a23a90b82b43caf51c1fd5b3d0aaae98b4b0f6f4d967eeebd87cf5403d3",
+    "gdeflate_gpu.hpp": "0251614b9b0a4e2e4f24fd586ba30a6199efe43429c1e51e49171716c6a1c0b6",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "submission_hooks.inc": "c918a73d9c310ef23741b5faa3091f1b848b067b2bdfa6ee95ba65cc08ad67db",
+    "zvram": "7e2b177eb6cecdcbbcd48cccc419e78d460f6fec28b6e2c98e43394053958a49",
+    "CMakeLists.txt": "8779691c7748c7c899b28f59406b2cb4f7550815a4bdc253b795f30eb89c9afc"
+  }
+}
