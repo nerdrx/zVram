@@ -1,0 +1,104 @@
+{
+  "status": "full-model output-correct run; severe slowdown; experimental mode not recommended for speed",
+  "scope": "BP16 direct cached imported host input, 32 CPU workers, full InternLM2.5-20B F16, 19 GiB tracked cap and 2.5 GiB reserve",
+  "source_commit": "2502f05f4ad7195efa2374a8e02acf1498021b82",
+  "performance": {
+    "decode_ms": 166980.73,
+    "decode_runs": 12,
+    "tokens_per_second": 0.07,
+    "prompt_ms": 24417.2,
+    "restore_ms": []
+  },
+  "rate_calculation": "12 * 1000 / 166980.73 = 0.0718646 tokens/s",
+  "returncode": 0,
+  "offload": [
+    49,
+    49
+  ],
+  "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "diagnostics": [],
+  "imports": {
+    "imports": 2120,
+    "reuses": 6495,
+    "bytes": 43318460416
+  },
+  "minimum_available_mib": 19999,
+  "swap_used_baseline_mib": 11304,
+  "swap_used_peak_mib": 13267,
+  "swap_growth_mib": 1963,
+  "guards": {
+    "min_available_guard_mib": 16384,
+    "max_swap_growth_mib": 16384,
+    "reject_ollama_gpu": true,
+    "ollama_gpu_detected": [],
+    "child_core_limit": "RLIMIT_CORE=0"
+  },
+  "device_profile_ns": {
+    "samples": 8615,
+    "transfer-ns": 42780320,
+    "decode-ns": 7801049960,
+    "finish-ns": 85661280
+  },
+  "host_profile_ns": {
+    "calls": 8615,
+    "validation-ns": 1274313470,
+    "input-prepare-ns": 9620774,
+    "submit-wait-ns": 121591550155
+  },
+  "backing_profile_ns": {
+    "alloc-calls": 9783,
+    "alloc-ok": 9783,
+    "alloc-fail": 0,
+    "alloc-ns": 685050056,
+    "free-calls": 9169,
+    "free-ns": 354285719,
+    "sparse-calls": 12969,
+    "sparse-ok": 12969,
+    "sparse-fail": 0,
+    "sparse-ns": 263321430
+  },
+  "final_snapshot_state": {
+    "resident": 20390543360,
+    "cold-logical": 18359255040,
+    "cold-stored": 14678309360,
+    "freezes": 9169,
+    "restores": 9783,
+    "failures": 0,
+    "gpu-decode-calls": 8615,
+    "gpu-decode-bytes": 285244129280,
+    "gpu-decode-fallbacks": 0
+  },
+  "initial_guard_attempt": {
+    "stopped_before_prompt": true,
+    "error": "automatic: Ollama GPU model active: qwen3.5:9b-local (6113858682 bytes VRAM)",
+    "detected_ollama_gpu": [
+      {
+        "name": "qwen3.5:9b-local",
+        "size_vram": 6113858682
+      }
+    ],
+    "unloaded_by_parent_before_retry": true,
+    "files_deleted": false
+  },
+  "source_sha256": {
+    "layer.cpp": "fede76d6bafcb1eb2fc7cb98d0c2e884ed43d55bbddd713b19b8aff1e07586dd",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf"
+  },
+  "binary_sha256": {
+    "layer.cpp": "fede76d6bafcb1eb2fc7cb98d0c2e884ed43d55bbddd713b19b8aff1e07586dd",
+    "gdeflate_gpu.hpp": "e0fdeaeeac89585d6bc2c4ca1bbbe21e52f2bafb81a845e13f0496c90f92f8e7",
+    "submission_hooks.inc": "fb1bf489cf9ab8ee9756d42635ed0b299f27306f77a6ed332b1ca2a7f3af6546",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf",
+    "build/bp16-codec/libzvram_layer.so": "5d44c0b7f9f21b126b983db4656ccd56ed631a212da8f193e076d4519e3f9fd0",
+    "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+    "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+  },
+  "limits": [
+    "This correct-output full-model import experiment was extremely slow: about 0.0719 tokens/s, below the non-import compressed result near 0.41 tokens/s.",
+    "Host input preparation fell to about 0.0096 s, but submit/wait was about 121.59 s; the cause of that overhead is not established. Driver BO overhead is only a hypothesis.",
+    "Imported input/reuse byte counters are cumulative successful-use values, not current resident memory.",
+    "No matched, controlled performance comparison; clocks and desktop activity were not controlled."
+  ]
+}

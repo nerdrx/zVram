@@ -1,0 +1,11 @@
+{
+  "scope": "full wrapped large-model trial; GPU BP16 MRU19GiB,2.5GiB reserve,32 encoding workers,host+device phase profiling,BP16 no output prefill,cached imported aligned host input; hashes retained",
+  "source_sha256": {
+    "layer.cpp": "fede76d6bafcb1eb2fc7cb98d0c2e884ed43d55bbddd713b19b8aff1e07586dd",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf"
+  },
+  "error": "automatic: Ollama GPU model active: qwen3.5:9b-local (6113858682 bytes VRAM)",
+  "diagnostics": []
+}

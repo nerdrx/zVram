@@ -1,0 +1,7 @@
+{
+  "error": "automatic: Ollama GPU model active: qwen3.5:9b-local (6113858682 bytes VRAM)",
+  "performance": null,
+  "offload": null,
+  "stdout_sha256": null,
+  "diagnostics": []
+}

@@ -1,0 +1,31 @@
+{
+  "scope": "Opt-in cached BP16 imported host input layer correctness and lifetime/accounting gates; full-model speed recorded separately",
+  "source_commit": "2502f05f4ad7195efa2374a8e02acf1498021b82",
+  "gpu_cases_passed": 8,
+  "full_ctest_passed": 120,
+  "cpu_checks_passed": 12,
+  "native_cache_cases_passed": 2,
+  "hidden_presented_frames": 3,
+  "gpu_environment": {
+    "ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT": "1",
+    "ZVRAM_VULKAN_GPU_PROFILE": "1",
+    "VK_DRIVER_FILES": "/usr/share/vulkan/icd.d/radeon_icd.json"
+  },
+  "sha256": {
+    "gdeflate_gpu.hpp": "e0fdeaeeac89585d6bc2c4ca1bbbe21e52f2bafb81a845e13f0496c90f92f8e7",
+    "layer.cpp": "fede76d6bafcb1eb2fc7cb98d0c2e884ed43d55bbddd713b19b8aff1e07586dd",
+    "submission_hooks.inc": "fb1bf489cf9ab8ee9756d42635ed0b299f27306f77a6ed332b1ca2a7f3af6546",
+    "bp16_codec_check.cpp": "5748e5e5283a0e5af733ecb904e7d387445c587a028f7907cfb4c12a440eff1c",
+    "test_gdeflate_gpu_layer.py": "ce978ebad4dc975137a5ddad60f921cad6d4c42f00d6083a12215f3103eb75b9",
+    "test_graphics_presentation.py": "602335318c1ea934bccc97b21538f7b66cfc8a6d270efb153b9dae5b369aec01",
+    "build/bp16-codec/libzvram_layer.so": "5d44c0b7f9f21b126b983db4656ccd56ed631a212da8f193e076d4519e3f9fd0"
+  },
+  "limits": [
+    "Full120 run preceded final rejection guards for nonconforming driver host/page alignment; focused8 repeated after those guards.",
+    "Presentation and native cache checks preceded final nonconforming-driver guard; presentation binary hash retained in result.",
+    "Native-cache fixtures observed successful imports but zero imported GPU reuses because subsequent patterns became RAW or cache invalidation occurred; they verify accounting/integrity, not repeated GPU reuse.",
+    "Repeated imported GPU reuse and inference speed require the separate model run.",
+    "Three hidden headless Gamescope frames are not a game/framerate test.",
+    "Owner tests use fake handles for exactly-once cleanup and poison retention; no real device loss was induced."
+  ]
+}

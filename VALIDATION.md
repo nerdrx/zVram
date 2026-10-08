@@ -1105,3 +1105,63 @@ command fixtures used an event that is now classified as resource-free; they now
 use a native image clear to exercise conservative restore. After a final
 exception-path image-lifetime guard, the four affected checks passed again. The
 default build CPU checks passed **12/12**. Archived logs are linked above.
+
+### Cached BP16 imported host input
+
+The production layer has an opt-in `ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT=1`
+path with `--vulkan-codec bp16 --vulkan-bp16-gpu`. Vulkan 1.1+ and suitable
+`VK_EXT_external_memory_host` support are required. It copies a frame once into
+owned aligned immutable memory, imports that allocation, and can reuse the
+import when the clean snapshot cache retains it. The original vector is released
+only after quota and savings checks accept the import. Alignment padding is
+charged throughout cold/cache transitions. Unsupported imports and quota
+pressure retain the existing upload path; default settings are unchanged.
+
+Eight focused GPU checks passed with actual import counters, exact bytes, no
+GPU fallback, and no validation diagnostics. The full suite passed **120/120**
+with imported mode enabled, and CPU checks passed **12/12**. Two native cache
+fixtures preserved bytes and quota cleanup, but did not observe repeated imported
+GPU use after their writes/RAW transitions. Three hidden Gamescope frames passed
+exact pixel and full-buffer checks with synchronization validation and observed
+imports. This is not a game or inference speed claim. A final guard rejecting
+invalid driver host/page alignments was followed by another **8/8** focused pass.
+
+Imported owners cannot be copied by value. Completed operations release Vulkan
+resources before host memory; uncertain queue submission/completion poisons the
+decoder and retains potentially in-flight owners. CPU checks exercise aligned
+size bounds, quota overflow/exact fit, owner moves, exactly-once handle cleanup,
+and poison retention with fake handles. No real device loss was induced.
+[Logs, hashes and limits](validation/bp16-import-host-layer/summary.json);
+[hidden presentation result](validation/bp16-import-host-layer/presentation-result.json).
+
+#### Full-model cached-import experiment: correct but slow
+
+The opt-in cached imported-host-input mode completed the full InternLM2.5-20B
+F16 check with **49/49** layers and the same output SHA-256 as other BP16 runs,
+but took **166,980.73 ms** for 12 decode runs:
+`12 * 1000 / 166980.73 = 0.0718646 tokens/s`. There were zero GPU fallbacks.
+This is correctness evidence with a substantial slowdown, not a faster mode;
+the best compressed result remains **0.40653 tokens/s**.
+
+The run recorded **2,120 imports**, **6,495 reuses**, and **43,318,460,416
+cumulative imported bytes**. These counters are cumulative use, not current
+resident memory. Device profiling recorded **7.801 s compute** (including
+coherent host-input reads). Host profiling recorded **1.274 s validation**,
+**9.62 ms input preparation**, and **121.592 s submit/wait**. Compared with the
+non-import host-input run, input preparation fell from **13.773 s**, while
+submit/wait rose from **9.482 s**. A driver buffer-object overhead explanation
+is only a hypothesis; causality is unproven.
+
+Minimum available RAM was **19,999 MiB**; swap grew by **1,963 MiB**; the Ollama
+GPU guard detected no process. The initial invocation was stopped before loading
+because the guard found `qwen3.5:9b-local` using **6,113,858,682 VRAM bytes**.
+The parent unloaded it through the API before retrying; no files were deleted.
+Source commit was `2502f05`.
+
+[Run summary](validation/internlm-bp16-workers32-19g-import-host-input/summary.json),
+[command](validation/internlm-bp16-workers32-19g-import-host-input/command.json),
+[run harness](validation/internlm-bp16-workers32-19g-import-host-input/run.py),
+[runtime hashes](validation/internlm-bp16-workers32-19g-import-host-input/runtime-binary-sha256.json),
+[full result](validation/internlm-bp16-workers32-19g-import-host-input/result.json.gz), and
+[full stderr](validation/internlm-bp16-workers32-19g-import-host-input/automatic.stderr.txt.gz).
+Initial guard evidence is in the [separate attempt record](validation/internlm-bp16-workers32-19g-import-host-input/initial-guard/result.json).

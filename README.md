@@ -293,3 +293,9 @@ A separate zVram virtual-native-spill run, without automatic snapshots or
 compression, measured 1.69936 tokens/s. It matches the fresh native rate, but
 uses driver VRAM/GTT spillover rather than compressed restore; this sequential,
 uncontrolled result is not a fair codec comparison. [Virtual-spill evidence](VALIDATION.md#fresh-virtual-native-spill-reference).
+
+The optional cached imported-host-input experiment completed the same full-model
+correctness check, but throughput fell to **0.0718646 tokens/s** despite 2,120
+imports and 6,495 reuses. It is experimental and not a speed improvement; the
+best compressed result above remains **0.40653 tokens/s**. [Import evidence and
+limits](VALIDATION.md#cached-bp16-imported-host-input).

@@ -122,3 +122,29 @@ bounded smoke command:
   build/bp16-research/gpu-mixed-pattern.bp16 \
   build/bp16-research/gpu-mixed-pattern.raw
 ```
+
+## Experimental cached imports in the layer
+
+Set `ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT=1` alongside `--vulkan-codec bp16`
+and `--vulkan-bp16-gpu` to try imported input in the production layer. The
+application must use Vulkan 1.1 or later and the device must support suitable
+`VK_EXT_external_memory_host` storage buffers. The first restore copies a
+compressed frame into an owned aligned allocation; later restores can reuse
+that import when `--vulkan-clean-cache` retains the immutable snapshot. Alignment
+padding is charged to the shared cold/cache quota. Unsupported imports or quota
+pressure use the existing upload path; default settings stay unchanged.
+
+The layer reports `GPU BP16 imported input imports=N reuses=N bytes=N`; these
+are cumulative successful-use counters, not current RAM usage. GPU completion
+errors retain potentially in-flight owners and disable further restoration.
+This path does not guarantee driver pinning, universal Vulkan compatibility, or
+native inference speed. [Layer checks](../../VALIDATION.md#cached-bp16-imported-host-input).
+
+A full InternLM2.5-20B F16 run with this mode preserved exact output and all
+49/49 layers, but took **166,980.73 ms** for 12 decode runs (**0.0718646
+tokens/s**). That is far slower than the **0.40653 tokens/s** non-import BP16
+run; this experiment is correct-output evidence, not a speed path. It recorded
+2,120 imports and 6,495 reuses covering **43,318,460,416 cumulative bytes**;
+those counts do not describe resident memory. Host input preparation was
+**9.62 ms**, while submit/wait was **121.59 s**. A possible driver BO-overhead
+explanation remains unproven. [Full-model result and limits](../../VALIDATION.md#cached-bp16-imported-host-input).

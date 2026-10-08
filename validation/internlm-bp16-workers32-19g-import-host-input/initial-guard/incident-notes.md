@@ -1,0 +1,1 @@
+The first invocation was rejected before the prompt because the Ollama guard detected `qwen3.5:9b-local` using 6,113,858,682 VRAM bytes. The parent unloaded that model through its API before retrying. No model files were deleted. This attempt has no inference result; see its controller, result, and resource JSON.
