@@ -1710,15 +1710,23 @@ GPU encoding. These are correctness checks, not a model speed result. The
 production decoder SPIR-V is unchanged. [Commands, logs, runtime/source hashes](validation/bp16-gpu-encoder/README.md).
 
 
-### Experimental staged BP16 owned input
+### Experimental BP16 owned-input staging prototype (removed)
 
-`ZVRAM_VULKAN_BP16_STAGE_OWNED_INPUT=1` stages encoded BP16 frames from
-allocated host owners into VRAM before decoding. It is opt-in and defaults off;
-only allocated-host owners use it, and serial GPU restore batching is disabled
-while active. CPU12, two staged GPU fixtures, the full **125/125** CTest suite
-(in **86.64 s**), and the focused opt-in staged GPU suite (**8/8**, **6.39 s**)
-passed. The CPU encoder stage checks passed **2/2**. These are correctness gates;
-there is no model speed result yet.
+The owned-input staging prototype copied encoded frames from allocated host
+owners into a device-local VRAM buffer before decode. Correctness checks passed:
+CPU12, two full-byte staged fixtures, full CTest **125/125** (**86.64 s**), and
+focused staged GPU **8/8** (**6.39 s**); CPU encoder stage checks passed **2/2**.
+Its 92-token model run measured **0.50780308 tokens/s**, with exact output,
+49/49 layers, and zero restore fallback. Staging telemetry recorded **55,328
+calls / 1,430,646,733,584 bytes**, **147.43346 s** transfer, **7.26184 s** decode,
+and **170.88023 s** host restore. A sequential GPU-encoder repeat measured
+**1.10252711 tokens/s**; clocks and background activity were uncontrolled, so
+this does not isolate cause. The slower observed result led to removal from the
+current runtime; the prototype is not a supported CLI mode. [Model archive and
+provenance](validation/internlm-bp16-gpu-stage-cold26-owner26-resident19-lfu/README.md)
+· [Prototype correctness logs and patch](validation/bp16-owned-input-staging/README.md).
+
+
 
 ### Experimental BP16 batched GPU restore
 

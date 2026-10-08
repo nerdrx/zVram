@@ -281,11 +281,11 @@ and automatic snapshots, defaults to 1, and is ignored by GDeflate.
 BP16-owned frames for known selective restores; it defaults off. Unsafe decode
 or device errors retain backing and stop GPU paging. Full-model runs preserved
 exact output but showed no observed speed gain; see the batching evidence below.
-`ZVRAM_VULKAN_BP16_STAGE_OWNED_INPUT=1` optionally copies encoded allocated-host
-BP16 frames into VRAM before decode. This experimental path defaults off, is
-limited to allocated owners, and disables serial restore batching. CPU12, two
-staged GPU fixtures, full CTest125, and focused stage GPU8 checks passed; there
-is no model speed result yet. Byte shuffle is restricted to Zstd.
+An owned-input staging prototype passed CPU/GPU correctness checks but was
+removed from the current runtime after a full-model experiment measured
+0.5078 tokens/s versus 1.1025 for the encoder repeat. It is research-only, not a
+supported current CLI mode; see [the archived result and limits](VALIDATION.md#experimental-bp16-owned-input-staging-prototype).
+Byte shuffle is restricted to Zstd.
 
 The paired 32 MiB component check measured median GPU decode at 0.118 ms for BP16
 and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored

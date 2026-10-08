@@ -1,0 +1,13 @@
+{
+  "runtime_code_commit": "2ddefdbe01d0601d50b1a7eab6701bd812e3e1af",
+  "note": "GPU-only owned input staging; serial restores, batching disabled. Same fixed quotas as encoder repeat. Sequential unlocked clocks.",
+  "sources": {
+    "layer.cpp": "1e4ea6f7d9b6e7ff7b0a74ecdf3c5e15f915b4a277c08b361baf3fdee85a1791",
+    "gdeflate_gpu.hpp": "653df28299e29493f36958166d6f98bd8d7c01e4c51c1b7a7e7849995876344a",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "submission_hooks.inc": "c918a73d9c310ef23741b5faa3091f1b848b067b2bdfa6ee95ba65cc08ad67db",
+    "zvram": "7e2b177eb6cecdcbbcd48cccc419e78d460f6fec28b6e2c98e43394053958a49",
+    "CMakeLists.txt": "10b77223fbd7c50492dd0daa1b01c5b2c71557ab1e210ec8358cbbdfaf27fbd8"
+  }
+}
