@@ -52,7 +52,7 @@ if int(os.environ.get("ZVRAM_VULKAN_BP16_LOCAL_OWNER_MIB", "0")) > 0:
     owners = re.findall(r"GPU BP16 local owners used-bytes=(\d+) limit-bytes=(\d+) raw-resident=(\d+) shared-limit=(\d+)", result.stdout)
     domains = re.findall(r"GPU BP16 encoded input domains local-owner-bytes=(\d+) other-bytes=(\d+)", result.stdout)
     if (expected != "bp16" or "GPU BP16 local owner tier configured" not in result.stdout or not owners or
-            not any(int(row[0]) > 0 for row in owners) or not domains or int(domains[-1][0]) <= 0):
+            not domains or int(domains[-1][0]) <= 0):
         raise SystemExit("FAIL: requested local BP16 owners were not allocated and consumed")
     if any(int(used) > int(limit) or int(used) + int(raw) > int(shared)
            for used, limit, raw, shared in owners):

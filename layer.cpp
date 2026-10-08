@@ -2200,8 +2200,17 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
                     ?d.coldBudget-d.coldBytes-prefix:0;
                 zvram::gdeflate::gpu::Decoder::ImportedHostInputPtr owner;
                 const auto started=std::chrono::steady_clock::now();
-                const auto localLiveLimit=d.gpuLocalOwnerCombinedLimitBytes>d.residentBytes
+                auto localLiveLimit=d.gpuLocalOwnerCombinedLimitBytes>d.residentBytes
                     ?d.gpuLocalOwnerCombinedLimitBytes-d.residentBytes:0;
+                if(localLiveLimit) {
+                    VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
+                    VkPhysicalDeviceMemoryProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
+                    properties.pNext=&budget;
+                    d.budgetProperties(d.physical,&properties);
+                    const auto total=std::min(budget.heapBudget[d.budgetHeap],d.memory.memoryHeaps[d.budgetHeap].size);
+                    localLiveLimit=zvram::residentBudgetLimit(localLiveLimit,total,budget.heapUsage[d.budgetHeap],
+                        d.gpuDecoder->localOwnerUsedBytes(),d.budgetReserveBytes);
+                }
                 const auto result=d.gpuDecoder->encodeBP16(memory.poolViews[i],offset,
                     static_cast<std::size_t>(amount),static_cast<std::size_t>(available),owner,localLiveLimit);
                 d.gpuEncodeNanoseconds+=std::chrono::duration_cast<std::chrono::nanoseconds>(
