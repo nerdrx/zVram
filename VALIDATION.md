@@ -1691,3 +1691,19 @@ in **1.90 seconds**. Async test logs contain real `async-freeze` events. The
 change moves exact-sized BP16 storage into the snapshot and keeps the copy path
 when vector capacity exceeds encoded size, preserving quota accounting. These
 checks do not establish a model-level speedup. [Logs, hashes, and source](validation/bp16-exact-storage-move/README.md).
+
+### Experimental BP16 GPU snapshot encoding
+
+The two-pass BP16 compute encoder is opt-in with
+`ZVRAM_VULKAN_BP16_GPU_ENCODE=1`; it requires BP16 GPU restore and allocated-host
+input. It defaults off. While active, snapshot freezing is synchronous and
+async compression is disabled for this mode. CPU fallback remains available.
+On the RX 7900 XTX, the encoder change passed **12/12 CPU tests**, the full
+**121/121 CTest suite** in **85.43 s**, and focused GPU checks **8/8** in
+**6.45 s**, with exact-byte checks. The initial GPU helper failure was a test
+classification bug for intentional RAW snapshots; the later final suite passed
+after telemetry separated successful encodes from RAW outputs. Budget-edge
+fixtures also preserved bytes: a 64 MiB quota exercised CPU fallback, a zero
+allocated-owner budget expected fallback, and the 100% savings cutoff bypassed
+GPU encoding. These are correctness checks, not a model speed result. The
+production decoder SPIR-V is unchanged. [Commands, logs, runtime/source hashes](validation/bp16-gpu-encoder/README.md).

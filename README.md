@@ -347,3 +347,9 @@ correctness check, but throughput fell to **0.0718646 tokens/s** despite 2,120
 imports and 6,495 reuses. It is experimental and not a speed improvement; the
 best measured compressed result above is **0.61020197 tokens/s**. [Import evidence and
 limits](VALIDATION.md#cached-bp16-imported-host-input).
+
+An experimental BP16 GPU snapshot encoder is also available behind
+`ZVRAM_VULKAN_BP16_GPU_ENCODE=1`; it requires BP16 GPU restore and allocated-host
+input. When enabled, freezing is synchronous and disables async compression for
+that mode. It defaults off, keeps CPU fallback, and has correctness checks only;
+no model speedup has been measured. [Encoder tests, budget cases, and hashes](validation/bp16-gpu-encoder/README.md).
