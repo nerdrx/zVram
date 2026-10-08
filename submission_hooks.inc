@@ -433,18 +433,25 @@ VkResult admitTrackedSubmit(Device& d,const char* name,std::uint32_t count,const
             d.gpuGateError=ready; d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
             return ready;
         }
-        struct Victim { VkDeviceMemory memory; std::size_t child; std::chrono::steady_clock::time_point used; };
+        struct Victim {
+            VkDeviceMemory memory;
+            std::size_t child;
+            std::chrono::steady_clock::time_point used;
+            bool cleanSnapshot;
+        };
         std::vector<Victim> victims;
         for(const auto& pair:d.virtualMemory) {
             const auto& memory=pair.second;
             for(std::size_t i=0;i<memory.children.size();++i) {
-                if(!memory.children[i] || memory.coldGroups[i].cold || d.activeRefs.busy(pair.first,i)) continue;
+                const auto& group=memory.coldGroups[i];
+                if(!memory.children[i] || group.cold || d.activeRefs.busy(pair.first,i)) continue;
                 const ActiveRefs::Use use{pair.first,i};
                 if(std::find(selected.begin(),selected.end(),use)==selected.end())
-                    victims.push_back({pair.first,i,memory.coldGroups[i].lastUse});
+                    victims.push_back({pair.first,i,group.lastUse,d.cleanCache && !group.chunks.empty()});
             }
         }
         std::sort(victims.begin(),victims.end(),[&](const auto& a,const auto& b){
+            if(d.cleanFirstEviction && a.cleanSnapshot!=b.cleanSnapshot) return a.cleanSnapshot;
             return d.mruEviction?a.used>b.used:a.used<b.used;
         });
         std::size_t evicted=0;

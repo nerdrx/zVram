@@ -217,8 +217,6 @@ public:
         std::uint64_t gpuSamples{};
         std::uint64_t batchSubmissions{};
         std::uint64_t batchItems{};
-        std::uint64_t gpuStageCalls{};
-        std::uint64_t gpuStageBytes{};
     };
 
     Decoder() = default;
@@ -234,7 +232,6 @@ public:
     bool importedHostInputEnabled() const noexcept { return bp16ImportHostInput_; }
     bool allocatedHostInputEnabled() const noexcept { return bp16AllocatedHostInput_; }
     bool bp16EncoderEnabled() const noexcept { return bp16EncoderEnabled_; }
-    bool stageOwnedInputEnabled() const noexcept { return bp16StageOwnedInput_; }
     unsigned uploadWorkers() const noexcept { return bp16UploadWorkers_; }
     std::uint64_t allocatedHostInputUsedBytes() const noexcept {
         return allocatedHostBudget_ ? allocatedHostBudget_->usedBytes() : 0;
@@ -260,8 +257,7 @@ public:
                         bool allocatedHostInput = false,
                         std::uint64_t allocatedHostBudgetBytes = DefaultAllocatedHostBudgetBytes,
                         const char* bp16EncodeAnalyzeShaderPath = nullptr,
-                        const char* bp16EncodePackShaderPath = nullptr,
-                        bool bp16StageOwnedInput = false) {
+                        const char* bp16EncodePackShaderPath = nullptr) {
         const char* profileEnv = std::getenv("ZVRAM_VULKAN_GPU_PROFILE");
         profileEnabled_ = profileEnv && std::strcmp(profileEnv, "1") == 0;
         profile_ = {};
@@ -277,8 +273,6 @@ public:
         }
         bp16ImportHostInput_ = format == Format::BP16 && importHostInput;
         bp16AllocatedHostInput_ = format == Format::BP16 && allocatedHostInput;
-        bp16StageOwnedInput_ = format == Format::BP16 && bp16AllocatedHostInput_ &&
-                               bp16StageOwnedInput;
         if (bp16ImportHostInput_ && bp16AllocatedHostInput_)
             return VK_ERROR_VALIDATION_FAILED_EXT;
         const char* hostInputEnv = std::getenv("ZVRAM_VULKAN_BP16_HOST_INPUT");
@@ -346,7 +340,7 @@ public:
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             uploadForbidden, upload_, bp16CachedUploadPreference_
                 ? VK_MEMORY_PROPERTY_HOST_CACHED_BIT : 0);
-        if (result == VK_SUCCESS && (!bp16HostInput_ || bp16StageOwnedInput_)) result = createBuffer(4,
+        if (result == VK_SUCCESS && !bp16HostInput_) result = createBuffer(4,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, input_);
         if (result == VK_SUCCESS) result = createBuffer(12, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -571,9 +565,7 @@ private:
 
         VkBufferCreateInfo create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         create.size = static_cast<VkDeviceSize>(bufferBytes);
-        create.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-            (bp16StageOwnedInput_ ? VkBufferUsageFlags(VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
-                                  : VkBufferUsageFlags(0));
+        create.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
         create.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         VkResult result = checked(api_.createBuffer(device_, &create, nullptr, &owner->buffer_));
         if (result != VK_SUCCESS) return result;
@@ -690,13 +682,9 @@ public:
         (void)finishValidation(VK_SUCCESS);
 
         const bool profileBP16Input = profileEnabled_ && format_ == Format::BP16;
-        const bool stageOwnedInput = imported && bp16StageOwnedInput_;
         const auto inputPrepareStarted = profileEnabled_ ? Clock::now() : Clock::time_point{};
         const auto bufferPrepareStarted = profileBP16Input ? Clock::now() : Clock::time_point{};
-        VkResult result = stageOwnedInput
-            ? checked(ensureStagedOwnedInput(inputBytes, output, offset,
-                                             static_cast<VkDeviceSize>(paddedRaw)))
-            : imported
+        VkResult result = imported
             ? updateDescriptors(output, offset, static_cast<VkDeviceSize>(inputBytes),
                 static_cast<VkDeviceSize>(paddedRaw), imported->buffer_)
             : checked(ensureInputBuffers(inputBytes, output, offset,
@@ -749,9 +737,7 @@ public:
             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &reuse, 0, nullptr, 0, nullptr);
 
         const VkBufferCopy uploadRegion{0, 0, static_cast<VkDeviceSize>(inputBytes)};
-        if (stageOwnedInput)
-            api_.cmdCopyBuffer(commandBuffer_, imported->buffer_, input_.buffer, 1, &uploadRegion);
-        else if (!bp16HostInput_ && !imported)
+        if (!bp16HostInput_ && !imported)
             api_.cmdCopyBuffer(commandBuffer_, upload_.buffer, input_.buffer, 1, &uploadRegion);
         api_.cmdFillBuffer(commandBuffer_, scratch_.buffer, 0, 4, 0);
         // Canonical BP16 frames cover every output word. Avoid a redundant
@@ -829,10 +815,6 @@ public:
                     std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
             return result;
         }
-        if (profileEnabled_ && stageOwnedInput) {
-            ++profile_.gpuStageCalls;
-            profile_.gpuStageBytes += inputBytes;
-        }
         result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
         if (result != VK_SUCCESS) {
             markPoisoned(); // Work may still be in flight; never reset/free these objects.
@@ -878,8 +860,7 @@ public:
             return result;
         };
         if (!initialized_ || poisoned_) return finishValidation(VK_ERROR_DEVICE_LOST);
-        if (format_ != Format::BP16 || bp16StageOwnedInput_ ||
-            (!bp16ImportHostInput_ && !bp16AllocatedHostInput_) ||
+        if (format_ != Format::BP16 || (!bp16ImportHostInput_ && !bp16AllocatedHostInput_) ||
             !items || count < 2 || count > 4)
             return finishValidation(VK_ERROR_VALIDATION_FAILED_EXT);
 
@@ -1238,33 +1219,6 @@ private:
 
     VkBuffer shaderInputBuffer() const noexcept {
         return bp16HostInput_ ? upload_.buffer : input_.buffer;
-    }
-
-    VkResult ensureStagedOwnedInput(std::size_t bytes, VkBuffer output,
-                                    VkDeviceSize outputOffset, VkDeviceSize outputRange) {
-        if (bytes > input_.size) {
-            std::size_t capacity = bytes;
-            Buffer newInput{};
-            VkResult result = createBuffer(static_cast<VkDeviceSize>(capacity),
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, newInput);
-            if (result != VK_SUCCESS) {
-                destroyBuffer(newInput);
-                return result;
-            }
-            result = updateDescriptors(output, outputOffset, static_cast<VkDeviceSize>(bytes),
-                                       outputRange, newInput.buffer);
-            if (result != VK_SUCCESS) {
-                destroyBuffer(newInput);
-                return result;
-            }
-            auto oldInput = input_;
-            input_ = newInput;
-            destroyBuffer(oldInput);
-            return VK_SUCCESS;
-        }
-        return updateDescriptors(output, outputOffset, static_cast<VkDeviceSize>(bytes),
-                                 outputRange, input_.buffer);
     }
 
     VkResult createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
@@ -1759,7 +1713,6 @@ private:
         bp16CachedUploadPreference_ = false;
         bp16ImportHostInput_ = false;
         bp16AllocatedHostInput_ = false;
-        bp16StageOwnedInput_ = false;
         bp16EncoderRequested_ = false;
         bp16EncoderEnabled_ = false;
         importHostAlignment_ = 0;
@@ -1811,7 +1764,6 @@ private:
     bool bp16CachedUploadPreference_{};
     bool bp16ImportHostInput_{};
     bool bp16AllocatedHostInput_{};
-    bool bp16StageOwnedInput_{};
     bool bp16EncoderRequested_{};
     bool bp16EncoderEnabled_{};
     unsigned bp16UploadWorkers_{1};

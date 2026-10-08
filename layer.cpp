@@ -264,6 +264,7 @@ struct Device {
     bool residentAdmissionArmed{true};
     bool restoreBudgetRefused{};
     bool cleanCache{};
+    bool cleanFirstEviction{};
     zvram::clean_cache::Policy cleanCachePolicy{zvram::clean_cache::Policy::First};
     bool mruEviction{};
     unsigned minSavingsPercent{};
@@ -401,10 +402,6 @@ void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
                 logf("GPU BP16 restore batch submissions=%llu items=%llu%s",
                      static_cast<unsigned long long>(profile.batchSubmissions),
                      static_cast<unsigned long long>(profile.batchItems),suffix);
-            if(profile.gpuStageCalls)
-                logf("GPU BP16 owned input stage calls=%llu bytes=%llu%s",
-                     static_cast<unsigned long long>(profile.gpuStageCalls),
-                     static_cast<unsigned long long>(profile.gpuStageBytes),suffix);
             logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu%s",
                  static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
                  static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs),suffix);
@@ -1202,6 +1199,13 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 if(d->activeEviction && rangeEnabled) d->rangeChunkBytes=rangeMiB*1024ull*1024ull;
                 const char* clean=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE");
                 d->cleanCache=d->rangeChunkBytes && clean && std::strcmp(clean,"1")==0;
+                if(const char* cleanFirst=std::getenv("ZVRAM_VULKAN_CLEAN_FIRST_EVICTION")) {
+                    const bool recognized=std::strcmp(cleanFirst,"0")==0 || std::strcmp(cleanFirst,"1")==0;
+                    d->cleanFirstEviction=d->cleanCache && std::strcmp(cleanFirst,"1")==0;
+                    logf("Vulkan clean-first resident eviction requested=%s effective=%u status=%s",
+                         cleanFirst,d->cleanFirstEviction?1u:0u,
+                         !recognized?"rejected":d->cleanFirstEviction?"enabled":"inactive");
+                }
                 if(const char* policy=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE_POLICY")) {
                     bool valid=false;
                     d->cleanCachePolicy=zvram::clean_cache::parsePolicy(policy,valid);
@@ -1787,15 +1791,13 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
         const auto* path=std::getenv(bp16?"ZVRAM_BP16_SHADER_PATH":"ZVRAM_GDEFLATE_SHADER_PATH");
         const auto* encodeRequested=std::getenv("ZVRAM_VULKAN_BP16_GPU_ENCODE");
         const bool gpuEncode=bp16 && encodeRequested && std::strcmp(encodeRequested,"1")==0;
-        const auto* stageRequested=std::getenv("ZVRAM_VULKAN_BP16_STAGE_OWNED_INPUT");
-        const bool stageOwned=bp16 && stageRequested && std::strcmp(stageRequested,"1")==0;
         const auto format=bp16?zvram::gdeflate::gpu::Format::BP16:zvram::gdeflate::gpu::Format::GDeflate;
         const auto result=d.gpuDecoder && path?d.gpuDecoder->initialize(d.handle,d.gdpa,d.memory,d.copyQueue,family,
             d.setDeviceLoaderData,path,&d.gpuProperties,format,d.gpuTimestampBits,
             bp16 && d.gpuImportHostInput,d.gpuImportHostAlignment,
             bp16 && d.gpuAllocatedHostInput,d.gpuAllocatedHostBudgetBytes,
             gpuEncode?std::getenv("ZVRAM_BP16_ENCODE_ANALYZE_SHADER_PATH"):nullptr,
-            gpuEncode?std::getenv("ZVRAM_BP16_ENCODE_PACK_SHADER_PATH"):nullptr,stageOwned):VK_ERROR_INITIALIZATION_FAILED;
+            gpuEncode?std::getenv("ZVRAM_BP16_ENCODE_PACK_SHADER_PATH"):nullptr):VK_ERROR_INITIALIZATION_FAILED;
         if(result!=VK_SUCCESS) {
             d.gpuRestoreEnabled=false; d.gpuDecoder.reset();
             logf("GPU %s restore unavailable result=%d; retaining CPU codec",codecName,result);
@@ -1806,13 +1808,10 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
                 d.gpuDecoder->allocatedHostInputEnabled()?"cached allocated host input":
                 d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
             d.bp16RestoreBatchEnabled=bp16 && d.bp16RestoreBatchRequested &&
-                !d.gpuDecoder->stageOwnedInputEnabled() &&
                 (d.gpuDecoder->importedHostInputEnabled() || d.gpuDecoder->allocatedHostInputEnabled());
             if(d.bp16RestoreBatchRequested)
                 logf("BP16 GPU restore batch requested=%u effective=%u max-items=4",
                      d.bp16RestoreBatchRequested?1u:0u,d.bp16RestoreBatchEnabled?1u:0u);
-            if(stageOwned) logf("GPU BP16 owned input staging requested=1 effective=%u",
-                d.gpuDecoder->stageOwnedInputEnabled()?1u:0u);
             if(bp16) logf("GPU BP16 upload workers=%u",d.gpuDecoder->uploadWorkers());
             if(d.gpuDecoder->bp16EncoderEnabled()) {
                 // The first GPU encoder uses the existing synchronous freeze transaction.
