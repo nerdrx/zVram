@@ -279,6 +279,7 @@ struct Device {
     std::uint64_t gpuImportedFrames{}, gpuImportedReuses{}, gpuImportedBytes{};
     std::uint64_t gpuAllocatedHostAllocations{}, gpuAllocatedHostReuses{}, gpuAllocatedHostBytes{};
     std::uint64_t gpuProfileLogRestoreCount{};
+    std::uint64_t lastGpuProfileLoggedCalls{};
     VkDeviceSize gpuStorageAlignment{1};
     VkDeviceSize gpuStorageRange{};
     std::uint64_t gpuDecodeCalls{}, gpuDecodeBytes{}, gpuDecodeNanoseconds{}, gpuDecodeFallbacks{};
@@ -366,6 +367,34 @@ void runAsyncEncoderUnlocked(std::unique_lock<std::mutex>& deviceLock,
     catch(...) { deviceLock.lock(); queueLock.lock(); throw; }
     deviceLock.lock(); queueLock.lock();
 }
+void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
+    bool newProfile=false;
+    if(d.gpuDecoder && d.gpuDecoder->profilingEnabled()) {
+        const auto profile=d.gpuDecoder->profile();
+        newProfile=profile.calls>d.lastGpuProfileLoggedCalls;
+        if(newProfile || force) {
+            logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu%s",
+                 static_cast<unsigned long long>(profile.calls),static_cast<unsigned long long>(profile.validationNs),
+                 static_cast<unsigned long long>(profile.inputPrepareNs),static_cast<unsigned long long>(profile.submitWaitNs),suffix);
+            logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu%s",
+                 static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
+                 static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs),suffix);
+            d.lastGpuProfileLoggedCalls=profile.calls;
+        }
+    }
+    if(d.gpuProfileEnabled && (newProfile || force))
+        logf("GPU restore backing profile alloc-calls=%llu alloc-ok=%llu alloc-fail=%llu alloc-ns=%llu free-calls=%llu free-ns=%llu sparse-calls=%llu sparse-ok=%llu sparse-fail=%llu sparse-ns=%llu%s",
+             static_cast<unsigned long long>(d.gpuProfileAllocCalls.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileAllocSuccess.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileAllocFailures.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileAllocNs.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileFreeCalls.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileFreeNs.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseCalls.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseSuccess.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseFailures.load(std::memory_order_relaxed)),
+             static_cast<unsigned long long>(d.gpuProfileSparseNs.load(std::memory_order_relaxed)),suffix);
+}
 void logSnapshotState(const char* event,Device& d) {
     logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu cache-stored=%llu clean-reuses=%llu cache-invalidations=%llu copy-calls=%llu copy-bytes=%llu copy-ns=%llu decode-bytes=%llu decode-ns=%llu pipeline-prefetches=%llu pipeline-restores=%llu pipeline-wait-ns=%llu gpu-decode-calls=%llu gpu-decode-bytes=%llu gpu-decode-ns=%llu gpu-decode-fallbacks=%llu",
          event,static_cast<unsigned long long>(d.residentBytes),static_cast<unsigned long long>(d.coldLogicalBytes),
@@ -384,15 +413,7 @@ void logSnapshotState(const char* event,Device& d) {
         const auto sample=++d.gpuProfileLogRestoreCount;
         logGpuDiagnostics=sample==1 || sample%256==0;
     }
-    if(d.gpuDecoder && d.gpuDecoder->profilingEnabled() && logGpuDiagnostics) {
-        const auto profile=d.gpuDecoder->profile();
-        logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu",
-             static_cast<unsigned long long>(profile.calls),static_cast<unsigned long long>(profile.validationNs),
-             static_cast<unsigned long long>(profile.inputPrepareNs),static_cast<unsigned long long>(profile.submitWaitNs));
-        logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu",
-             static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
-             static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs));
-    }
+    if(logGpuDiagnostics) logGpuProfileSummary(d,"");
     if(d.gpuImportHostInput && logGpuDiagnostics)
         logf("GPU BP16 imported input imports=%llu reuses=%llu bytes=%llu",
              static_cast<unsigned long long>(d.gpuImportedFrames),
@@ -405,18 +426,6 @@ void logSnapshotState(const char* event,Device& d) {
              static_cast<unsigned long long>(d.gpuAllocatedHostBytes),
              static_cast<unsigned long long>(d.gpuDecoder?d.gpuDecoder->allocatedHostInputUsedBytes():0),
              static_cast<unsigned long long>(d.gpuDecoder?d.gpuDecoder->allocatedHostInputLimitBytes():0));
-    if(d.gpuProfileEnabled && logGpuDiagnostics)
-        logf("GPU restore backing profile alloc-calls=%llu alloc-ok=%llu alloc-fail=%llu alloc-ns=%llu free-calls=%llu free-ns=%llu sparse-calls=%llu sparse-ok=%llu sparse-fail=%llu sparse-ns=%llu",
-             static_cast<unsigned long long>(d.gpuProfileAllocCalls.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileAllocSuccess.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileAllocFailures.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileAllocNs.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileFreeCalls.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileFreeNs.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileSparseCalls.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileSparseSuccess.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileSparseFailures.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileSparseNs.load(std::memory_order_relaxed)));
 }
 std::mutex mapsMutex;
 // Future command entry points absent from our build cannot be tracked safely.
@@ -1643,27 +1652,7 @@ void releaseSnapshotResources(Device& d) {
         ?d.gpuDecoder->allocatedHostInputUsedBytes():0;
     const auto allocatedHostLimitBytes=d.gpuDecoder
         ?d.gpuDecoder->allocatedHostInputLimitBytes():0;
-    if(d.gpuDecoder && d.gpuDecoder->profilingEnabled()) {
-        const auto profile=d.gpuDecoder->profile();
-        logf("GPU restore host profile calls=%llu validation-ns=%llu input-prepare-ns=%llu submit-wait-ns=%llu final=1",
-             static_cast<unsigned long long>(profile.calls),static_cast<unsigned long long>(profile.validationNs),
-             static_cast<unsigned long long>(profile.inputPrepareNs),static_cast<unsigned long long>(profile.submitWaitNs));
-        logf("GPU restore device profile samples=%llu transfer-ns=%llu decode-ns=%llu finish-ns=%llu final=1",
-             static_cast<unsigned long long>(profile.gpuSamples),static_cast<unsigned long long>(profile.gpuTransferNs),
-             static_cast<unsigned long long>(profile.gpuDecodeNs),static_cast<unsigned long long>(profile.gpuFinishNs));
-    }
-    if(d.gpuProfileEnabled)
-        logf("GPU restore backing profile alloc-calls=%llu alloc-ok=%llu alloc-fail=%llu alloc-ns=%llu free-calls=%llu free-ns=%llu sparse-calls=%llu sparse-ok=%llu sparse-fail=%llu sparse-ns=%llu final=1",
-             static_cast<unsigned long long>(d.gpuProfileAllocCalls.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileAllocSuccess.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileAllocFailures.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileAllocNs.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileFreeCalls.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileFreeNs.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileSparseCalls.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileSparseSuccess.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileSparseFailures.load(std::memory_order_relaxed)),
-             static_cast<unsigned long long>(d.gpuProfileSparseNs.load(std::memory_order_relaxed)));
+    logGpuProfileSummary(d," final=1",true);
     d.gpuDecoder.reset();
     if(d.gpuImportHostInput)
         logf("GPU BP16 imported input imports=%llu reuses=%llu bytes=%llu",
@@ -3029,7 +3018,10 @@ VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice device,VkDeviceMemory memory
           d->coldBytes-=i->second.coldStoredBytes; d->coldLogicalBytes-=i->second.coldLogicalSize;
           releaseChildren(*d,i->second); if(i->second.capacityAccounted) d->virtualUsage-=i->second.size;
           logf("virtual free bytes=%llu",static_cast<unsigned long long>(i->second.size));
-          delete static_cast<std::uint8_t*>(i->second.token); d->virtualMemory.erase(i); return;
+          delete static_cast<std::uint8_t*>(i->second.token); d->virtualMemory.erase(i);
+          if(d->gpuProfileEnabled && (d->gpuDecodeCalls || d->gpuDecodeFallbacks))
+              logGpuProfileSummary(*d," allocation-free=1");
+          return;
       } }
     Allocation a{}; bool found=false;
     { std::lock_guard<std::mutex> lock(d->mutex); auto i=d->allocations.find(memory);
