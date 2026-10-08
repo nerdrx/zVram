@@ -1,0 +1,7 @@
+{
+  "error": "automatic: MemAvailable 16368 MiB below guard floor 16384 MiB",
+  "performance": null,
+  "offload": null,
+  "stdout_sha256": null,
+  "diagnostics": []
+}

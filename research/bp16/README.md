@@ -190,3 +190,20 @@ The BDA follow-up also passed for a real 32 MiB frame using an exact-size
 and readback-copy median 1.13584 ms over three exact-byte iterations with zero
 validation/VUID errors. This is component timing, not end-to-end inference
 performance. [BDA and full-frame evidence](../../validation/bp16-allocated-host-size/extra/summary.json).
+
+The production `ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1` option remains off by
+default. Its bounded correctness gates passed (8 GPU, 11 CPU, 120 total CTests,
+three hidden presentation frames), but a separate full-model trial stopped at
+the **16 GiB available-RAM floor** after sending the prompt. It produced no
+completed output or throughput result. [Gate summary](../../validation/bp16-allocated-host-layer/summary.json)
+and [stopped-run record](../../validation/internlm-bp16-allocated-host-ram-guard/summary.json).
+
+One plausible driver-path explanation is that RADV marks ordinary allocations
+with `NO_INTERPROCESS_SHARING` and `PREFER_LOCAL_BO`, then treats BOs in VRAM/GTT
+domains as local and `VM_ALWAYS_VALID` ([allocation flags](https://gitlab.freedesktop.org/mesa/mesa/-/blob/mesa-26.2.4/src/amd/vulkan/radv_device_memory.c#L227),
+[BO placement](https://gitlab.freedesktop.org/mesa/mesa/-/blob/mesa-26.2.4/src/amd/vulkan/winsys/amdgpu/radv_amdgpu_bo.c#L604)).
+The imported-user-pointer path lacks these placement flags and triggers kernel
+HMM validation of the userptr range on submission
+([AMDGPU CS validation](https://github.com/CachyOS/linux/blob/cachyos-7.2.9-1/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c#L901)).
+This mechanism fits the component timing difference, but it does not establish
+causality or explain the full-model delay.

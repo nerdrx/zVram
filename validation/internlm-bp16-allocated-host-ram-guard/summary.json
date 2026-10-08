@@ -1,0 +1,34 @@
+{
+  "status": "stopped by RAM floor guard; no completed inference result",
+  "scope": "BP16 ordinary allocated-host-input full-model trial, 32 CPU encoding workers, 19 GiB resident cap, 2.5 GiB reserve",
+  "source_commit": "220ae18f3b01c94f7f17fcfa3c3c9257abd9acfc",
+  "process_exit": -9,
+  "prompt_sent": true,
+  "elapsed_seconds": 76.95,
+  "guard": {
+    "available_mib_at_stop": 16368,
+    "minimum_available_mib": 16384,
+    "swap_growth_mib": 1163,
+    "ollama_gpu_detected": []
+  },
+  "allocated_input_counters_at_stop": {
+    "allocations": 631,
+    "reuses": 1,
+    "cumulative_bytes": 15607075264
+  },
+  "gpu_decode_calls": 632,
+  "gpu_decode_fallbacks": 0,
+  "diagnostics": [],
+  "completed_output": false,
+  "output_sha256": null,
+  "tokens_per_second": null,
+  "source_sha256": {
+    "layer.cpp": "9779dbb131a74209ae1705b753ec0603240dbe8219f8b62cdb0285e1e6226326",
+    "gdeflate_gpu.hpp": "e3461196528103d47666b7aecf14636c291a7a4426c6ef04cabc029aebd304ee",
+    "submission_hooks.inc": "fb1bf489cf9ab8ee9756d42635ed0b299f27306f77a6ed332b1ca2a7f3af6546",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf"
+  },
+  "runtime_hashes_file": "runtime-binary-sha256.json"
+}

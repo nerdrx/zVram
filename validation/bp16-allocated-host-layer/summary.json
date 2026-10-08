@@ -1,0 +1,42 @@
+{
+  "scope": "Opt-in allocated cached/coherent BP16 host-input correctness and lifetime gates; no speed or inference claim",
+  "source_commit": "220ae18f3b01c94f7f17fcfa3c3c9257abd9acfc",
+  "results": {
+    "focused_gpu_ctest": "8/8 passed in 7.36 seconds",
+    "cpu_ctest": "11/11 passed in 4.49 seconds",
+    "full_ctest": "120/120 passed in 84.92 seconds",
+    "hidden_presented_frames": 3,
+    "presentation_pixel_and_full_buffer_checks": "passed",
+    "allocated_host_path_observed": true,
+    "allocated_host_marker": "GPU BP16 allocated input allocations=3 reuses=0 bytes=100194048",
+    "validation_errors": 0,
+    "validation_vuids": 0
+  },
+  "environment": {
+    "ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT": "1",
+    "ZVRAM_VULKAN_BP16_GPU": "1",
+    "ZVRAM_VULKAN_GPU_PROFILE": "1",
+    "VK_DRIVER_FILES": "/usr/share/vulkan/icd.d/radeon_icd.json",
+    "device": "AMD Radeon RX 7900 XTX (RADV NAVI31)"
+  },
+  "source_sha256": {
+    "gdeflate_gpu.hpp": "e3461196528103d47666b7aecf14636c291a7a4426c6ef04cabc029aebd304ee",
+    "layer.cpp": "9779dbb131a74209ae1705b753ec0603240dbe8219f8b62cdb0285e1e6226326",
+    "bp16_codec_check.cpp": "a7ec4c777b925c5a4afbc7cebf2c0e8937fcbfb52a745c41fb346efe9ff4a0d0",
+    "test_gdeflate_gpu_layer.py": "a506e31973ea5d88b37a72c986924234a60096d5b0efd555e7e3e97f1230da54",
+    "test_graphics_presentation.py": "25040d862a85b4887f057b9f3866be47b687e250edc184850e7930025804fd62"
+  },
+  "binary_sha256": {
+    "zvram": "97e8761ebe1a954b61be554f5b1fd3d103398531889113e32495864a35984cc7",
+    "build/bp16-codec/libzvram_layer.so": "d0142b83b44d7613e7c4f421574cc6e6499f37a0cc830040cc1e603e4633ba99",
+    "build/bp16-codec/zvram-vulkan-graphics-check": "5ee61b6fe7f17089c5da69dfcf6415ca2f7ca4650d5a6a7417a37f238ac46e7e"
+  },
+  "limits": [
+    "The CPU CTest run passed 11 tests; do not report this as 12 BP16 CPU tests.",
+    "The full 120-test CTest run includes unrelated compression round-trip coverage; it is not a BP16-only count.",
+    "Three hidden Gamescope presentation frames establish only the recorded draw/readback checks, not game or frame-rate behavior.",
+    "The CPU owner test uses fake Vulkan handles to check normal unmap/release and poison retention; no real device loss was induced.",
+    "The presentation archive contains its raw harness log and result JSON; the harness did not emit a raw frame file.",
+    "Repeated allocated-host cached-frame reuse and full-model behavior are not established by this archive."
+  ]
+}

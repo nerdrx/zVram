@@ -1218,3 +1218,25 @@ used an exact-size **29,202,816-byte** ordinary host-visible allocation
 iterations, BP16 decode median was **1.05684 ms** and readback-copy median was
 **1.13584 ms**. This is decoder-component timing, not end-to-end model
 performance.
+
+The opt-in production path uses `ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1` and
+remains off by default. Its correctness gates passed 8/8 focused GPU cases,
+11/11 CPU checks, 120/120 full CTests, and three hidden presentation frames
+with exact pixels/full-buffer readback and zero validation errors
+([gate summary](validation/bp16-allocated-host-layer/summary.json)). A separate
+19 GiB full-model attempt did not complete: after the prompt was sent, the RAM
+guard stopped it at **16,368 MiB available**, below its 16,384 MiB floor, after
+76.95 s. It had recorded 631 allocations, one reuse and 15,607,075,264
+cumulative allocated-host bytes; there is no completed output hash or rate.
+This is evidence that the guard stopped the run, not model correctness or
+performance. [Stopped-run record and logs](validation/internlm-bp16-allocated-host-ram-guard/summary.json).
+
+One plausible driver-path explanation is that Mesa 26.2.4 RADV marks ordinary
+allocations with `NO_INTERPROCESS_SHARING` and `PREFER_LOCAL_BO`, then treats
+BOs in VRAM/GTT domains as local and `VM_ALWAYS_VALID` ([allocation flags](https://gitlab.freedesktop.org/mesa/mesa/-/blob/mesa-26.2.4/src/amd/vulkan/radv_device_memory.c#L227),
+[BO placement](https://gitlab.freedesktop.org/mesa/mesa/-/blob/mesa-26.2.4/src/amd/vulkan/winsys/amdgpu/radv_amdgpu_bo.c#L604)).
+The imported-user-pointer path lacks these placement flags and triggers kernel
+HMM validation of the userptr range on submission
+([AMDGPU CS validation](https://github.com/CachyOS/linux/blob/cachyos-7.2.9-1/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c#L901)).
+This mechanism fits the component timing difference, but does not establish
+causality or explain the full-model submit/wait delay.
