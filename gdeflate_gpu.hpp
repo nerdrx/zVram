@@ -73,6 +73,10 @@ public:
         return true;
     }
 
+    static bool parseLocalOwnerBudgetMiB(const char* text, std::uint64_t& bytes) noexcept {
+        return parseAllocatedHostBudgetMiB(text, bytes);
+    }
+
     static bool parseBP16UploadWorkers(const char* text, unsigned& workers) noexcept {
         if (!text || !*text) return false;
         unsigned value = 0;
@@ -159,6 +163,7 @@ public:
         ImportedHostInput& operator=(const ImportedHostInput&) = delete;
         std::size_t encodedBytes() const noexcept { return encodedBytes_; }
         VkDeviceSize allocationBytes() const noexcept { return allocationBytes_; }
+        bool deviceLocal() const noexcept { return deviceLocal_; }
         const std::uint8_t* data() const noexcept {
             return static_cast<const std::uint8_t*>(allocation_);
         }
@@ -171,6 +176,7 @@ public:
             if (device_ && memory_ && freeMemory_) freeMemory_(device_, memory_, nullptr);
             if (!driverAllocatedHostMemory_) std::free(allocation_);
             if (budget_ && reservedBudgetBytes_) budget_->release(reservedBudgetBytes_);
+            if (localBudget_ && reservedLocalBudgetBytes_) localBudget_->release(reservedLocalBudgetBytes_);
         }
 
     private:
@@ -191,8 +197,11 @@ public:
         PFN_vkFreeMemory freeMemory_{};
         PFN_vkUnmapMemory unmapMemory_{};
         bool driverAllocatedHostMemory_{};
+        bool deviceLocal_{};
         std::shared_ptr<AllocatedHostBudget> budget_;
         std::uint64_t reservedBudgetBytes_{};
+        std::shared_ptr<AllocatedHostBudget> localBudget_;
+        std::uint64_t reservedLocalBudgetBytes_{};
         std::shared_ptr<std::atomic<bool>> poisoned_;
     };
     using ImportedHostInputPtr = std::shared_ptr<ImportedHostInput>;
@@ -233,6 +242,12 @@ public:
     std::uint64_t allocatedHostInputLimitBytes() const noexcept {
         return allocatedHostBudget_ ? allocatedHostBudget_->limitBytes() : 0;
     }
+    std::uint64_t localOwnerUsedBytes() const noexcept {
+        return localOwnerBudget_ ? localOwnerBudget_->usedBytes() : 0;
+    }
+    std::uint64_t localOwnerLimitBytes() const noexcept {
+        return localOwnerBudget_ ? localOwnerBudget_->limitBytes() : 0;
+    }
     Profile profile() const noexcept { return profile_; }
 
     // GDeflate requires shaderInt64, subgroup-size-control, computeFullSubgroups,
@@ -251,10 +266,14 @@ public:
                         bool allocatedHostInput = false,
                         std::uint64_t allocatedHostBudgetBytes = DefaultAllocatedHostBudgetBytes,
                         const char* bp16EncodeAnalyzeShaderPath = nullptr,
-                        const char* bp16EncodePackShaderPath = nullptr) {
+                        const char* bp16EncodePackShaderPath = nullptr,
+                        std::uint64_t localOwnerBudgetBytes = 0,
+                        std::uint32_t localOwnerHeapIndex = UINT32_MAX) {
         const char* profileEnv = std::getenv("ZVRAM_VULKAN_GPU_PROFILE");
         profileEnabled_ = profileEnv && std::strcmp(profileEnv, "1") == 0;
         profile_ = {};
+        localOwnerHeapIndex_ = localOwnerHeapIndex < memory.memoryHeapCount
+            ? localOwnerHeapIndex : UINT32_MAX;
         if (initialized_ || poisoned_ || !device || !nextGdpa || !queue || !setLoaderData || !shaderPath)
             return VK_ERROR_INITIALIZATION_FAILED;
         if (format != Format::GDeflate && format != Format::BP16)
@@ -287,6 +306,11 @@ public:
         if (bp16AllocatedHostInput_) {
             try { allocatedHostBudget_ = std::make_shared<AllocatedHostBudget>(allocatedHostBudgetBytes); }
             catch (const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+            if (localOwnerBudgetBytes) {
+                try { localOwnerBudget_ = std::make_shared<AllocatedHostBudget>(
+                    std::min(localOwnerBudgetBytes, allocatedHostBudgetBytes)); }
+                catch (const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+            }
         }
         if (format == Format::BP16 && (!properties ||
             properties->limits.maxComputeWorkGroupInvocations < 256 ||
@@ -500,7 +524,7 @@ public:
             return VK_ERROR_VALIDATION_FAILED_EXT;
 
         ImportedHostInputPtr owner;
-        result = allocateHostFrameBuffer(nextPayload, owner, maxEncodedBytes);
+        result = allocateHostFrameBuffer(nextPayload, owner, maxEncodedBytes, true);
         if (result != VK_SUCCESS) return result;
         std::memcpy(owner->allocation_, prefix.data(), prefix.size());
         std::memset(static_cast<std::uint8_t*>(owner->allocation_) + nextPayload, 0,
@@ -537,7 +561,8 @@ public:
 
 private:
     VkResult allocateHostFrameBuffer(std::size_t encodedSize, ImportedHostInputPtr& out,
-                                     std::uint64_t maxAllocationBytes = MaxBP16InputBytes + 65536u) {
+                                     std::uint64_t maxAllocationBytes = MaxBP16InputBytes + 65536u,
+                                     bool preferLocal = false) {
         out.reset();
         if (!allocatedHostBudget_ || !allocatedHostBudget_->limitBytes())
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
@@ -576,37 +601,72 @@ private:
             memoryRequirements.size > maxAllocationBytes)
             return VK_ERROR_FEATURE_NOT_PRESENT;
 
-        constexpr VkMemoryPropertyFlags required = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+        constexpr VkMemoryPropertyFlags gttRequired = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-        std::uint32_t memoryType = UINT32_MAX;
+        constexpr VkMemoryPropertyFlags localRequired = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+#ifdef VK_AMD_device_coherent_memory
+        constexpr VkMemoryPropertyFlags localForbidden = VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD;
+#else
+        constexpr VkMemoryPropertyFlags localForbidden = 0;
+#endif
+        std::uint32_t localType = UINT32_MAX, gttType = UINT32_MAX;
         for (std::uint32_t i = 0; i < memory_.memoryTypeCount; ++i) {
             if (!(memoryRequirements.memoryTypeBits & (1u << i))) continue;
             const auto flags = memory_.memoryTypes[i].propertyFlags;
-            if ((flags & required) == required && !(flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
-                memoryType = i;
-                break;
-            }
+            if ((flags & localRequired) == localRequired && !(flags & localForbidden) &&
+                memory_.memoryTypes[i].heapIndex == localOwnerHeapIndex_)
+                localType = i;
+            if ((flags & gttRequired) == gttRequired && !(flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
+                gttType = i;
         }
-        if (memoryType == UINT32_MAX) return VK_ERROR_FEATURE_NOT_PRESENT;
+        const bool useLocal = preferLocal && localOwnerBudget_ && localType != UINT32_MAX &&
+            localOwnerBudget_->reserve(memoryRequirements.size);
+        if (!useLocal && gttType == UINT32_MAX) return VK_ERROR_FEATURE_NOT_PRESENT;
         if (!allocatedHostBudget_->reserve(memoryRequirements.size))
+        {
+            if (useLocal) localOwnerBudget_->release(memoryRequirements.size);
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
         owner->reservedBudgetBytes_ = memoryRequirements.size;
+        if (useLocal) {
+            owner->localBudget_ = localOwnerBudget_;
+            owner->reservedLocalBudgetBytes_ = memoryRequirements.size;
+            owner->deviceLocal_ = true;
+        }
 
         VkMemoryDedicatedAllocateInfo dedicatedAllocate{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO};
         dedicatedAllocate.buffer = owner->buffer_;
         VkMemoryAllocateInfo allocate{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
         allocate.pNext = dedicated.requiresDedicatedAllocation ? &dedicatedAllocate : nullptr;
         allocate.allocationSize = memoryRequirements.size;
-        allocate.memoryTypeIndex = memoryType;
+        allocate.memoryTypeIndex = useLocal ? localType : gttType;
         result = checked(api_.allocateMemory(device_, &allocate, nullptr, &owner->memory_));
-        if (result != VK_SUCCESS) return result;
+        if (result != VK_SUCCESS) {
+            if (useLocal && result != VK_ERROR_DEVICE_LOST) {
+                owner.reset();
+                return allocateHostFrameBuffer(encodedSize, out, maxAllocationBytes, false);
+            }
+            return result;
+        }
         owner->allocationBytes_ = memoryRequirements.size;
         result = checked(api_.bindBufferMemory(device_, owner->buffer_, owner->memory_, 0));
-        if (result != VK_SUCCESS) return result;
+        if (result != VK_SUCCESS) {
+            if (useLocal && result != VK_ERROR_DEVICE_LOST) {
+                owner.reset();
+                return allocateHostFrameBuffer(encodedSize, out, maxAllocationBytes, false);
+            }
+            return result;
+        }
         result = checked(api_.mapMemory(device_, owner->memory_, 0, owner->allocationBytes_, 0,
                                        &owner->allocation_));
-        if (result != VK_SUCCESS) return result;
-        if (!owner->allocation_) return VK_ERROR_MEMORY_MAP_FAILED;
+        if (result != VK_SUCCESS || !owner->allocation_) {
+            if (useLocal && result != VK_ERROR_DEVICE_LOST) {
+                owner.reset();
+                return allocateHostFrameBuffer(encodedSize, out, maxAllocationBytes, false);
+            }
+            return result == VK_SUCCESS ? VK_ERROR_MEMORY_MAP_FAILED : result;
+        }
         out = std::move(owner);
         return VK_SUCCESS;
     }
@@ -1492,6 +1552,7 @@ private:
         if (!poisoned_) {
             poisonState_.reset();
             allocatedHostBudget_.reset();
+            localOwnerBudget_.reset();
         }
         queryPool_ = VK_NULL_HANDLE;
         gpuProfileEnabled_ = false;
@@ -1541,6 +1602,8 @@ private:
     VkDeviceSize importHostAlignment_{};
     std::shared_ptr<std::atomic<bool>> poisonState_;
     std::shared_ptr<AllocatedHostBudget> allocatedHostBudget_;
+    std::shared_ptr<AllocatedHostBudget> localOwnerBudget_;
+    std::uint32_t localOwnerHeapIndex_{UINT32_MAX};
     std::uint32_t timestampValidBits_{};
     double timestampPeriod_{};
     Profile profile_{};
