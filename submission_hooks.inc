@@ -413,30 +413,53 @@ VkResult admitTrackedSubmit(Device& d,const char* name,std::uint32_t count,const
             bool cleanSnapshot;
         };
         std::vector<Victim> victims;
+        std::size_t busyCount=0;
+        VkDeviceSize busyBytes=0,candidateBytes=0;
+        const auto addBytes=[](VkDeviceSize& total,VkDeviceSize value) {
+            total=value>std::numeric_limits<VkDeviceSize>::max()-total?
+                std::numeric_limits<VkDeviceSize>::max():total+value;
+        };
         for(const auto& pair:d.virtualMemory) {
             const auto& memory=pair.second;
             for(std::size_t i=0;i<memory.children.size();++i) {
                 const auto& group=memory.coldGroups[i];
-                if(!memory.children[i] || group.cold || d.activeRefs.busy(pair.first,i)) continue;
+                const auto childBytes=i<memory.childSizes.size()?memory.childSizes[i]:VkDeviceSize{0};
+                if(!memory.children[i] || group.cold) continue;
+                if(d.activeRefs.busy(pair.first,i)) {
+                    ++busyCount; addBytes(busyBytes,childBytes);
+                    continue;
+                }
                 const ActiveRefs::Use use{pair.first,i};
-                if(std::find(selected.begin(),selected.end(),use)==selected.end())
+                if(std::find(selected.begin(),selected.end(),use)==selected.end()) {
                     victims.push_back({pair.first,i,group.lastUse,d.cleanCache && !group.chunks.empty()});
+                    addBytes(candidateBytes,childBytes);
+                }
             }
         }
         std::sort(victims.begin(),victims.end(),[&](const auto& a,const auto& b){
             if(d.cleanFirstEviction && a.cleanSnapshot!=b.cleanSnapshot) return a.cleanSnapshot;
             return d.mruEviction?a.used>b.used:a.used<b.used;
         });
-        std::size_t evicted=0;
+        const VkDeviceSize residentBeforeEviction=d.residentBytes;
+        std::size_t evicted=0,freezeAttempts=0,freezeFailures=0,freezeVkFailures=0;
         for(const auto& victim:victims) {
             if(d.residentBytes<=limit-incoming) break;
             auto& memory=d.virtualMemory.at(victim.memory);
+            ++freezeAttempts;
             const auto result=freezeChildLocked(d,memory,victim.child);
             if(d.gpuGateError!=VK_SUCCESS) return d.gpuGateError;
+            if(result!=VK_SUCCESS) ++freezeVkFailures;
             if(result==VK_SUCCESS && memory.coldGroups[victim.child].cold) ++evicted;
+            else ++freezeFailures;
         }
         if(d.residentBytes>limit-incoming) {
-            logf("resident admission refused: completed evictable backing or cold budget unavailable");
+            logf("resident admission refused: completed evictable backing or cold budget unavailable known=%d selected=%zu needed=%llu incoming=%llu limit=%llu resident=%llu active-busy=%zu/%llu candidates=%zu/%llu freeze-attempts=%zu freeze-failures=%zu freeze-vk-failures=%zu evicted=%zu remaining-resident=%llu",
+                 known,selected.size(),static_cast<unsigned long long>(needed),
+                 static_cast<unsigned long long>(incoming),static_cast<unsigned long long>(limit),
+                 static_cast<unsigned long long>(residentBeforeEviction),busyCount,
+                 static_cast<unsigned long long>(busyBytes),victims.size(),
+                 static_cast<unsigned long long>(candidateBytes),freezeAttempts,freezeFailures,freezeVkFailures,evicted,
+                 static_cast<unsigned long long>(d.residentBytes));
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         }
         logf("resident admission selected-chunks=%zu evicted-chunks=%zu resident-before-restore=%llu incoming-bytes=%llu limit-bytes=%llu",
