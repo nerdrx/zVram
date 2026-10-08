@@ -142,8 +142,9 @@ native inference speed. [Layer checks](../../VALIDATION.md#cached-bp16-imported-
 
 A full InternLM2.5-20B F16 run with this mode preserved exact output and all
 49/49 layers, but took **166,980.73 ms** for 12 decode runs (**0.0718646
-tokens/s**). That is far slower than the **0.40653 tokens/s** non-import BP16
-run; this experiment is correct-output evidence, not a speed path. It recorded
+tokens/s**). That is far slower than both the earlier **0.40653** and latest
+**0.4626948 tokens/s** non-import BP16 runs; this experiment is correct-output
+evidence, not a speed path. It recorded
 2,120 imports and 6,495 reuses covering **43,318,460,416 cumulative bytes**;
 those counts do not describe resident memory. Host input preparation was
 **9.62 ms**, while submit/wait was **121.59 s**. A possible driver BO-overhead
@@ -192,10 +193,33 @@ validation/VUID errors. This is component timing, not end-to-end inference
 performance. [BDA and full-frame evidence](../../validation/bp16-allocated-host-size/extra/summary.json).
 
 The production `ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1` option remains off by
-default. Its bounded correctness gates passed (8 GPU, 11 CPU, 120 total CTests,
-three hidden presentation frames), but a separate full-model trial stopped at
-the **16 GiB available-RAM floor** after sending the prompt. It produced no
-completed output or throughput result. [Gate summary](../../validation/bp16-allocated-host-layer/summary.json)
+default. It uses ordinary allocated host memory (no external-memory-host
+extension) and now caps the live allocated-input cache at **8 GiB**. Set
+`ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB` to a decimal MiB value to override; `0`
+disables only this cache, not direct coherent-host GPU input. Cold/cache quotas
+still apply. The cache charges each owner's actual Vulkan allocation size
+before allocation and releases it only after unmap/free; poisoned in-flight
+owners keep their reservation. The shutdown marker's allocation/reuse/byte
+counters are cumulative accepted-use values, while `live-bytes` and
+`limit-bytes` show current charge and cap.
+
+The latest completed full InternLM2.5-20B F16 run under this 8 GiB cache completed 12
+decode runs at **0.4626948 tokens/s** (reported as 0.46), with 49/49 layers,
+exact output and zero fallback. Sampled live cache stayed within its byte cap;
+14.19 GB is cumulative accepted-use traffic, not resident memory. This is
+numerically 13.8% above the prior 0.40653 run, but those sequential runs had
+unlocked clocks and different RAM conditions; it is not a controlled
+improvement claim. [Run summary and limits](../../VALIDATION.md#latest-completed-bp16-run-bounded-allocated-host-cache-32-workers).
+
+At source `23c05842cebf2fe3c7093191ba7f448626505d6e`, focused GPU checks passed
+8/8 in 7.30 s with the default budget and 8/8 in 7.08 s with the cache
+disabled; CPU budget-parser/ownership checks passed. The earlier 120 CTests,
+11 CPU checks and three presentation frames were from source
+`220ae18f3b01c94f7f17fcfa3c3c9257abd9acfc`, before this cap. A separate
+full-model run under that earlier uncapped source stopped at the 16 GiB RAM
+floor after sending the prompt; it yielded no completed output
+or throughput result and does not establish behavior with the new bound.
+[Earlier gate record](../../validation/bp16-allocated-host-layer/summary.json)
 and [stopped-run record](../../validation/internlm-bp16-allocated-host-ram-guard/summary.json).
 
 One plausible driver-path explanation is that RADV marks ordinary allocations

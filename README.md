@@ -279,14 +279,18 @@ and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored
 87.0% of raw bytes versus GDeflate's 81.1% on that slice. These are decoder-only
 measurements, not a model speedup. [Component evidence](validation/bp16-component).
 
-The latest full InternLM2.5-20B F16 BP16 run used 32 CPU encoding workers and
-direct coherent host input, completing 12 decode runs at 0.40653 tokens/s
-(reported as 0.41), with exact output and zero GPU fallback. The layer binary
-matches the earlier eight-worker run, but the collector source changed; the
-observed 3.6% rate difference is not an isolated worker comparison. A separate
-fresh native reference measured 1.6995 tokens/s (4.18x the BP16 rate), but uses
-a different VRAM/GTT path and was not a controlled comparison. The default
-worker count remains 1. [Latest BP16 run](VALIDATION.md#nineteen-gibibyte-direct-host-input-run-32-workers);
+The latest completed full InternLM2.5-20B F16 BP16 run used 32 CPU workers and the
+8 GiB-bounded allocated-host cache. It completed 12 decode runs at
+**0.4626948 tokens/s** (reported as 0.46), with exact output, 49/49 layers, and
+zero GPU fallback. Sampled live cache use remained below its 8 GiB limit; its
+14.19 GB cumulative-use counter is not resident memory. The earlier 0.40653
+direct-host run is numerically 13.8% lower, but the sequential runs had unlocked
+clocks and different RAM conditions, so this is not a controlled improvement
+comparison or cache-effect attribution. A separate fresh native reference
+measured 1.6995 tokens/s (about 3.67x this BP16 rate), using a different
+VRAM/GTT path and uncontrolled conditions. The default worker count remains 1.
+[Latest completed BP16 run](VALIDATION.md#latest-completed-bp16-run-bounded-allocated-host-cache-32-workers);
+[earlier direct-host run](VALIDATION.md#nineteen-gibibyte-direct-host-input-run-32-workers);
 [fresh native reference and limits](VALIDATION.md#fresh-native-nodes4-reference).
 
 A separate zVram virtual-native-spill run, without automatic snapshots or
@@ -297,5 +301,5 @@ uncontrolled result is not a fair codec comparison. [Virtual-spill evidence](VAL
 The optional cached imported-host-input experiment completed the same full-model
 correctness check, but throughput fell to **0.0718646 tokens/s** despite 2,120
 imports and 6,495 reuses. It is experimental and not a speed improvement; the
-best compressed result above remains **0.40653 tokens/s**. [Import evidence and
+best measured compressed result above is **0.4626948 tokens/s**. [Import evidence and
 limits](VALIDATION.md#cached-bp16-imported-host-input).

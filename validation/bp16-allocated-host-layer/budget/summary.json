@@ -1,0 +1,39 @@
+{
+  "scope": "Allocated-host BP16 live-byte budget and zero-cache fallback gates; no speed or inference claim",
+  "source_commit": "23c05842cebf2fe3c7093191ba7f448626505d6e",
+  "results": {
+    "default_8gib_budget_gpu_ctest": "8/8 passed in 7.30 seconds",
+    "zero_mib_budget_gpu_ctest": "8/8 passed in 7.08 seconds",
+    "cpu_budget_check": "passed",
+    "zero_budget_gate": "passed; allocated input counters were required to remain zero while GPU decode and exact-output checks passed",
+    "poison_budget_gate": "CPU fake-owner check confirms poisoned allocated owners retain reservations",
+    "actual_device_loss": false
+  },
+  "gpu_environment": {
+    "ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT": "1",
+    "ZVRAM_VULKAN_BP16_GPU": "1",
+    "default_case_ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB": "unset (8 GiB default)",
+    "zero_case_ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB": "0",
+    "device": "AMD Radeon RX 7900 XTX (RADV NAVI31)"
+  },
+  "source_sha256": {
+    "gdeflate_gpu.hpp": "76c1133a96e1439c9f1c6cb3cb150a776eb00ddebbbde78ef9a00e1f5ca6264b",
+    "layer.cpp": "d57d4c210e20df06a0c0860e8a191c7081490627ff79ffda4a8df9d21c9f0dba",
+    "bp16_codec_check.cpp": "f938eda4ee18067c89a098b967147e46084a79a1676d71a1660d83d9f0a92323",
+    "test_gdeflate_gpu_layer.py": "f6cac1c31c854417a3eedd8a00ac64bfaad2a3baacd00dffa42101b20f0dbfa3",
+    "test_graphics_presentation.py": "25040d862a85b4887f057b9f3866be47b687e250edc184850e7930025804fd62"
+  },
+  "binary_sha256": {
+    "build/bp16-codec/libzvram_layer.so": "6b1c15c52d8d144e24f5818b441bcf52e35b74c619b30e428dec2e2ed773abc6",
+    "build/bp16-codec/zvram-bp16-codec-check": "5c797ea31f8511ac37d5c94712dfaa6b6cb62540a611fa69109d27b005bcd9d3",
+    "build/bp16-codec/zvram-vulkan-auto-check": "d9a6a92dc06b08095a892c40213ffe5c2c60171e778cee4b954f6ac6385940c6",
+    "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854"
+  },
+  "limits": [
+    "This archive contains no full 120-test CTest claim for the final budget code.",
+    "Budget parser checks cover decimal MiB, zero, empty/sign/decimal rejection, and multiplication overflow.",
+    "Normal owner destruction releases its reservation; poisoned owner retention was tested with fake Vulkan handles, not real device loss.",
+    "The zero-MiB case proves the gated direct coherent host-input fallback and zero allocated-owner counters, not performance.",
+    "No full-model inference rate or repeated cached-owner reuse claim is made here."
+  ]
+}

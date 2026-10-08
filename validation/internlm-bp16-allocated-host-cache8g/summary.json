@@ -1,0 +1,54 @@
+{
+  "status": "full-model output-correct run; latest measured compressed BP16 rate, comparison uncontrolled",
+  "scope": "InternLM2.5-20B F16, BP16 GPU restore, 32 CPU workers, 19 GiB tracked resident cap, 2.5 GiB reserve, 8 GiB allocated-host-input live cache",
+  "source_commit": "23c05842cebf2fe3c7093191ba7f448626505d6e",
+  "performance": {
+    "decode_ms": 25935.02,
+    "decode_runs": 12,
+    "tokens_per_second_exact": 0.4626948427261672,
+    "tokens_per_second_reported": 0.46,
+    "prompt_ms": 6929.72
+  },
+  "returncode": 0,
+  "offload": [49, 49],
+  "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+  "diagnostics": [],
+  "source_sha256": {
+    "layer.cpp": "d57d4c210e20df06a0c0860e8a191c7081490627ff79ffda4a8df9d21c9f0dba",
+    "gdeflate_gpu.hpp": "76c1133a96e1439c9f1c6cb3cb150a776eb00ddebbbde78ef9a00e1f5ca6264b",
+    "submission_hooks.inc": "fb1bf489cf9ab8ee9756d42635ed0b299f27306f77a6ed332b1ca2a7f3af6546",
+    "submission_tracking.hpp": "e9dc7b4d7b0f26ceed22edfcf2e232b37cfc33b38e23e98679d3918739c291fa",
+    "command_hooks.inc": "f30bfeb9a30ad76665d8d973acf9b281373694b0f6d487d31e2b3a4a062395bc",
+    "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf"
+  },
+  "minimum_available_mib": 18993,
+  "swap_growth_mib": 2612,
+  "ollama_gpu_detected": [],
+  "allocated_host_cache": {
+    "default_limit_bytes": 8589934592,
+    "sampled_live_max_bytes": 8589301536,
+    "final_live_bytes": 8587966272,
+    "allocations": 695,
+    "reuses": 3028,
+    "cumulative_accepted_use_bytes": 14186299600
+  },
+  "gpu_profile_ns": {
+    "decode": 7785599320,
+    "transfer": 42394520,
+    "finish": 78661200
+  },
+  "host_profile_ns": {
+    "validation": 1072436334,
+    "input_prepare": 7681307461,
+    "submit_wait": 9471585584
+  },
+  "gpu_decode_calls": 8468,
+  "gpu_decode_fallbacks": 0,
+  "comparison": "Numerically 13.8% above the prior 0.40653 tokens/s result; runs were sequential, clocks were unlocked, and RAM conditions differed, so this is not a controlled paired improvement claim.",
+  "binary_sha256": {
+    "build/bp16-codec/libzvram_layer.so": "6b1c15c52d8d144e24f5818b441bcf52e35b74c619b30e428dec2e2ed773abc6",
+    "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+    "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+  },
+  "runtime_hashes_file": "runtime-binary-sha256.json"
+}

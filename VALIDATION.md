@@ -1088,6 +1088,34 @@ failure does not establish a host-input defect or native GPU fault. See the
 [command](validation/internlm-bp16-workers32-20g-host-input-failed/command.json),
 and [full stderr](validation/internlm-bp16-workers32-20g-host-input-failed/automatic.stderr.txt.gz).
 
+### Latest completed BP16 run: bounded allocated-host cache, 32 workers
+
+The full InternLM2.5-20B F16 run used the 8 GiB allocated-host cache, a 19 GiB
+tracked-residency cap, 2.5 GiB reserve, and 32 BP16 encoding workers. It completed
+12 decode runs in **25,935.02 ms** (`12,000 / 25,935.02 = 0.4626948427 tokens/s`,
+reported as **0.46**), with **49/49** layers and the established exact output
+SHA-256 `8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b`.
+There were zero diagnostics and GPU fallbacks. Prompt processing took **6,929.72
+ms**.
+
+The sampled live allocated-host cache peaked at **8,589,301,536 bytes**, under
+its **8,589,934,592-byte** limit. It recorded 695 allocations, 3,028 reuses,
+and **14,186,299,600 cumulative bytes**; cumulative bytes are not resident
+memory. Minimum available RAM was **18,993 MiB**, swap grew by **2,612 MiB**,
+and the Ollama GPU guard detected no process. GPU profiling recorded **7.786 s
+decode**; host profiling recorded **1.072 s validation**, **7.681 s input
+preparation**, and **9.472 s submit/wait**.
+
+This is numerically about **13.8% above** the earlier **0.40653 tokens/s**
+direct-host run, but the runs were sequential with unlocked clocks and different
+RAM conditions. This is not a controlled paired comparison or evidence that
+the cache alone caused the difference. [Run summary](validation/internlm-bp16-allocated-host-cache8g/summary.json),
+[command](validation/internlm-bp16-allocated-host-cache8g/command.json),
+[resource samples](validation/internlm-bp16-allocated-host-cache8g/automatic.resources.json.gz),
+[runtime hashes](validation/internlm-bp16-allocated-host-cache8g/runtime-binary-sha256.json),
+[full result](validation/internlm-bp16-allocated-host-cache8g/result.json.gz), and
+[full stderr](validation/internlm-bp16-allocated-host-cache8g/automatic.stderr.txt.gz).
+
 ### Bounded imported BP16 host input and current regression checks
 
 The standalone research decoder now has an opt-in `--import-host-input` path using
@@ -1141,7 +1169,9 @@ F16 check with **49/49** layers and the same output SHA-256 as other BP16 runs,
 but took **166,980.73 ms** for 12 decode runs:
 `12 * 1000 / 166980.73 = 0.0718646 tokens/s`. There were zero GPU fallbacks.
 This is correctness evidence with a substantial slowdown, not a faster mode;
-the best compressed result remains **0.40653 tokens/s**.
+the latest measured compressed result is **0.4626948 tokens/s** in the
+separate bounded allocated-host-cache run above. The earlier **0.40653** run
+remains a historical direct-host result.
 
 The run recorded **2,120 imports**, **6,495 reuses**, and **43,318,460,416
 cumulative imported bytes**. These counters are cumulative use, not current
@@ -1219,17 +1249,35 @@ iterations, BP16 decode median was **1.05684 ms** and readback-copy median was
 **1.13584 ms**. This is decoder-component timing, not end-to-end model
 performance.
 
-The opt-in production path uses `ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1` and
-remains off by default. Its correctness gates passed 8/8 focused GPU cases,
-11/11 CPU checks, 120/120 full CTests, and three hidden presentation frames
-with exact pixels/full-buffer readback and zero validation errors
-([gate summary](validation/bp16-allocated-host-layer/summary.json)). A separate
-19 GiB full-model attempt did not complete: after the prompt was sent, the RAM
-guard stopped it at **16,368 MiB available**, below its 16,384 MiB floor, after
-76.95 s. It had recorded 631 allocations, one reuse and 15,607,075,264
-cumulative allocated-host bytes; there is no completed output hash or rate.
-This is evidence that the guard stopped the run, not model correctness or
-performance. [Stopped-run record and logs](validation/internlm-bp16-allocated-host-ram-guard/summary.json).
+The production path is opt-in with `ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1`
+and BP16 GPU restore flags; it remains off by default. It uses ordinary
+allocated host memory, not `VK_EXT_external_memory_host`, and caps the live
+allocated-input cache at **8 GiB** by default. Set
+`ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB` to a decimal MiB value to override the
+cap; `0` disables only this cache, leaving direct coherent-host GPU input
+available. Existing cold/cache byte quotas still apply. Each owner is charged
+its actual Vulkan allocation requirement before allocation and released only
+after unmapping and freeing; poisoned/in-flight owners retain their reservation.
+The shutdown marker reports `allocations`, `reuses`, cumulative `bytes`,
+`live-bytes`, and `limit-bytes`; accepted-use counters are cumulative, while
+`live-bytes` reports current cache charge.
+
+On source `23c05842cebf2fe3c7093191ba7f448626505d6e`, focused GPU checks passed
+**8/8** in 7.30 s with the default budget and **8/8** in 7.08 s with the
+allocated-host cache disabled; CPU budget-parser and ownership checks also
+passed. The
+earlier **120/120** CTest, **11/11** CPU, and three-frame presentation evidence
+was recorded at source `220ae18f3b01c94f7f17fcfa3c3c9257abd9acfc`, before the
+new budget, and must not be read as testing this final capped version
+([earlier gate summary](validation/bp16-allocated-host-layer/summary.json)).
+
+The earlier uncapped 19 GiB full-model attempt at source
+`220ae18f3b01c94f7f17fcfa3c3c9257abd9acfc` did not complete: after the
+prompt was sent, the RAM guard stopped it at **16,368 MiB available**, below
+its 16,384 MiB floor, after 76.95 s. It had recorded 631 allocations, one reuse
+and 15,607,075,264 cumulative allocated-host bytes; there is no completed
+output hash or rate. This run predates the 8 GiB cache cap and says nothing
+about full-model behavior with the current bound. [Stopped-run record and logs](validation/internlm-bp16-allocated-host-ram-guard/summary.json).
 
 One plausible driver-path explanation is that Mesa 26.2.4 RADV marks ordinary
 allocations with `NO_INTERPROCESS_SHARING` and `PREFER_LOCAL_BO`, then treats

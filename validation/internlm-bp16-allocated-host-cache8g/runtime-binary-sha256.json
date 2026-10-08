@@ -1,0 +1,9 @@
+{
+  "layer.cpp": "d57d4c210e20df06a0c0860e8a191c7081490627ff79ffda4a8df9d21c9f0dba",
+  "gdeflate_gpu.hpp": "76c1133a96e1439c9f1c6cb3cb150a776eb00ddebbbde78ef9a00e1f5ca6264b",
+  "submission_hooks.inc": "fb1bf489cf9ab8ee9756d42635ed0b299f27306f77a6ed332b1ca2a7f3af6546",
+  "check_vulkan_idle_model.py": "d7fe2188922bbd9c4f9833b5c61a4c0abe657ccee99619d4baa10b54d94782bf",
+  "build/bp16-codec/libzvram_layer.so": "6b1c15c52d8d144e24f5818b441bcf52e35b74c619b30e428dec2e2ed773abc6",
+  "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+  "build/third-party/llama-vulkan-build/bin/llama-completion": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d"
+}
