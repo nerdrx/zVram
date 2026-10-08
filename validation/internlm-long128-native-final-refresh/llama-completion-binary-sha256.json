@@ -1,0 +1,7 @@
+{
+  "path": "build/third-party/llama-vulkan-build/bin/llama-completion",
+  "bytes": 15976,
+  "mtime_ns": 1791342276079173008,
+  "sha256": "5a927490be2eb10b387e4246442b2f9c4ca6f01fc42d4f97ee98e5bc04d0be9d",
+  "note": "Hash captured during archive; binary mtime predates this run and was not rebuilt for this measurement."
+}

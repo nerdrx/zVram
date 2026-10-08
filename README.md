@@ -318,7 +318,7 @@ the same exact output SHA-256
 GPU encodes over 135,199,260,672 raw bytes, zero encoder fallback, and zero
 final snapshot-copy bytes. It used 26 GiB cold/owner ceilings, 19 GiB tracked
 residency, a 2.5 GiB reserve, 32 encoder/eight upload workers, LFU, and
-immutable-owner validation caching. The fresh native 92-token reference was
+immutable-owner validation caching. An earlier fresh native 92-token reference was
 **1.69935367 tokens/s**; the older 0.43978 observation is about 2.5x slower by
 rate, but these sequential runs had uncontrolled clocks and background activity
 and do not isolate causality. A same-runtime CPU-synchronous encoder comparator
@@ -331,7 +331,11 @@ tokens/s**, about **6.1–6.2%** above the prior repeated 1.10252711 rate. Both
 preserved exact output, offloaded 49/49 layers, and had zero GPU restore fallback
 and zero swap growth; minimum available RAM was 28.43 and 27.77 GiB. These
 sequential runs had uncontrolled clocks/background activity, so they do not
-establish clean-first as the cause. The policy remains experimental; a 20 GiB resident-cap attempt hit Vulkan out-of-device-memory, so retain the validated 19 GiB profile. [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [20 GiB failure](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
+establish clean-first as the cause. A fresh same-prompt native reference measured
+**1.6991 tokens/s**; these clean-first runs are about **31% slower by rate**
+(about **45% more time per token**), but this sequential comparison is not
+controlled. The policy remains experimental; a 20 GiB resident-cap attempt hit
+Vulkan out-of-device-memory, so retain the validated 19 GiB profile. [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [20 GiB failure](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
 
 A bounded fence-polling prototype was also tested and discarded: its 92-token run
 measured 1.16783681 tokens/s versus 1.17068766 for the clean-first repeat, with

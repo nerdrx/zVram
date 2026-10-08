@@ -1805,6 +1805,22 @@ contained the fence-spin code, but its environment value was `0`, so spinning
 was disabled. Keep the previous **19 GiB** resident profile; this failure does
 not prove all 20 GiB configurations fail. [Diagnostic archive](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
 
+### Fresh native 92-token final refresh
+
+A native Vulkan run without zVram paging, snapshot compression, or a tracked
+resident cap completed the same 92-token prompt in **54,145.45 ms**
+(`92,000 / 54,145.45 = 1.6991 tokens/s`, reported as **1.70**). It produced
+exact stdout SHA-256
+`b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`, offloaded
+49/49 layers, and exited normally. Minimum available RAM was **27,722 MiB** and
+swap growth was **34 MiB**.
+
+The two clean-first GPU-encoder runs measured **1.16969830** and **1.17068766
+tokens/s** on this prompt and produced the same exact output. Relative to this
+native rate, they were about **31% slower by rate** (about **45% more time per
+token**). These sequential runs had uncontrolled clocks and background activity,
+so this is not a controlled comparison. [Native run archive](validation/internlm-long128-native-final-refresh/README.md) · [clean-first pair](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md).
+
 ### Latest BP16 GPU-encoder full-model repeat: 26 GiB cold/owner ceilings
 
 The opt-in synchronous GPU BP16 encoder completed two 92-token
