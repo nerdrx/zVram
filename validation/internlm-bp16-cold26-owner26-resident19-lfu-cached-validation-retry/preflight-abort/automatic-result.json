@@ -1,0 +1,14 @@
+{
+  "scope": "Immutable-owner validation cache plus26GiB cold/owner ceiling (samequota); restored knownsafe19GiB resident hardcap and2.5GiB reserve;LFU;32encoder/8upload;fixed128KiB childallocator;16GiB availableRAMguard;sequential unlocked clocks;not isolated attribution",
+  "prompt_utf8": "Write a 300-word story about a fox exploring a forest. Continue the story until you have written at least 300 words.\n",
+  "source_sha256": {
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "layer.cpp": "df1ac8e220c6b7bdf3c5c21852d7c2d7eb9e4ca0d6ea1c86b9b6f277ea7769a7",
+    "gdeflate_gpu.hpp": "e67940b4d48b0aa438b0b40251d0cb6f96f821ff04360b19659ad310a712ec41",
+    "submission_hooks.inc": "fb1bf489cf9ab8ee9756d42635ed0b299f27306f77a6ed332b1ca2a7f3af6546",
+    "check_vulkan_idle_model.py": "7063006f7e4243728f79ee8a0383408ee04ca75ee727ec6f637bc4be6b8d0f2e"
+  },
+  "runs": {},
+  "error": "automatic: Ollama GPU model active: qwen3.5:9b-local (6113858682 bytes VRAM)"
+}
