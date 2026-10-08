@@ -1354,7 +1354,10 @@ comparison. It is about 2x the earlier 0.43978 tokens/s long-run result, but
 sequential runs had uncontrolled clocks and background activity. The fresh
 native 92-token reference measured **1.69935367 tokens/s** under a different
 memory path. These long runs remain distinct from the best 12-token short run
-of **0.61020197 tokens/s**. [Run archive and provenance](validation/internlm-bp16-cold26-owner26-resident19-lfu-cached-validation-retry/README.md).
+of **0.61020197 tokens/s**. An exact-configuration repeat reached the prompt
+but ended with `vk::Queue::submit: ErrorOutOfDeviceMemory`, without a completed
+reply or throughput result. The successful 0.889 run is not yet reproduced; the
+repeat failure does not establish instability. [Repeat failure diagnostic](validation/internlm-bp16-cold26-repeat-oom/README.md). [Run archive and provenance](validation/internlm-bp16-cold26-owner26-resident19-lfu-cached-validation-retry/README.md).
 
 A separate 27 GiB cold/owner preflight was stopped before prompting because
 Ollama's `qwen3.5:9b-local` was using **6,113,858,682 bytes of VRAM**. It has no

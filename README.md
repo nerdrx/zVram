@@ -309,7 +309,10 @@ is about 2x the earlier 0.43978 long-run observation, but these sequential
 results had uncontrolled clocks and background activity and do not isolate a
 causal speedup. The fresh native 92-token reference measured **1.69935367**
 tokens/s. This long-run result is separate from the best 12-token short run
-above (**0.61020197 tokens/s**). [Safe26 run and limits](VALIDATION.md#latest-safe-bp16-long-run-26-gib); [27 GiB Ollama preflight abort](validation/internlm-bp16-cold27-preflight-abort/README.md).
+above (**0.61020197 tokens/s**). An exact-configuration repeat later reached the
+prompt but ended with `vk::Queue::submit: ErrorOutOfDeviceMemory`; it produced no
+throughput result, so the 0.889 observation is not yet reproduced. [Repeat
+failure](validation/internlm-bp16-cold26-repeat-oom/README.md). [Safe26 run and limits](VALIDATION.md#latest-safe-bp16-long-run-26-gib); [27 GiB Ollama preflight abort](validation/internlm-bp16-cold27-preflight-abort/README.md).
 
 A same-prompt 92-token comparison produced identical stdout across 49/49 layers:
 **1.69935 tokens/s** native and **0.43978 tokens/s** allocated-host under the
