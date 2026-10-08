@@ -1,0 +1,41 @@
+{
+  "fused4-matrix.json": {
+    "bytes": 663,
+    "sha256": "435207ef0eaf1c5aade3f68bb2d8003fdad5a494ee5027af5edf9d49b045178a"
+  },
+  "fused4-local-one.log": {
+    "bytes": 2356,
+    "sha256": "ee3f6e47eab19c4ca458ec3c1d49802aa95a6c0535962a14273a6602355be800"
+  },
+  "fused4-local-four.log": {
+    "bytes": 2367,
+    "sha256": "4cb5e8c5b9ce6f58003644a63e0afdc96f83e9c6a6219534d6424e3618a88c73"
+  },
+  "fused4-gtt-one.log": {
+    "bytes": 2358,
+    "sha256": "7d78e8fd1c69cd498dea946dcbb2472843edc36305bff34a0bcf2998e4ff0ffb"
+  },
+  "fused4-gtt-four.log": {
+    "bytes": 2374,
+    "sha256": "6bed05fc20803fff869dfdd9584ac942333a1d07fac1287fbaed8300be02d1c5"
+  },
+  "decode_fused4.hlsl": {
+    "bytes": 5556,
+    "sha256": "f7b4dc47ee87e43b1588eb61de1c62bdb710a59adcf062fb4e65971c098a28f2",
+    "source_commit": "39444d7"
+  },
+  "vulkan_gdeflate_smoke.cpp": {
+    "bytes": 124958,
+    "sha256": "d2c8dfa23369f790acd02ee63b7a279be18b81f16cbe0e0b977ef3034a003b03",
+    "source_commit": "39444d7"
+  },
+  "bp16-fused4.spv": {
+    "bytes": 18904,
+    "sha256": "11b3a10e3a65d09d60f1c64be65220b34c5cf29a4048316952fd7b9c4068ddcd",
+    "source_commit": "39444d7"
+  },
+  "source-commit.txt": {
+    "bytes": 8,
+    "sha256": "bd4d002edad4314528516e14d8ea3f412b9ef794b1ca21095b25d8d12b457970"
+  }
+}

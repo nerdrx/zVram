@@ -1,0 +1,38 @@
+[
+  {
+    "case": "local-one",
+    "exit": 0,
+    "median_ns": 722320,
+    "pass": true,
+    "validation": [
+      "validation-errors=0 validation-vuids=0"
+    ]
+  },
+  {
+    "case": "local-four",
+    "exit": 0,
+    "median_ns": 749800,
+    "pass": true,
+    "validation": [
+      "validation-errors=0 validation-vuids=0"
+    ]
+  },
+  {
+    "case": "gtt-one",
+    "exit": 0,
+    "median_ns": 4237480,
+    "pass": true,
+    "validation": [
+      "validation-errors=0 validation-vuids=0"
+    ]
+  },
+  {
+    "case": "gtt-four",
+    "exit": 0,
+    "median_ns": 4283480,
+    "pass": true,
+    "validation": [
+      "validation-errors=0 validation-vuids=0"
+    ]
+  }
+]

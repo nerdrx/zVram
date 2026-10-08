@@ -1,0 +1,20 @@
+preflight codec=BP16 blocks=131072 decoded-bytes=33554432 payload-bytes=28154224
+validation=on debug-utils=on
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=0x1002 type=2 queue-family=0 shaderInt64=not-required robustness2=disabled bufferDeviceAddress=disabled execution=GPU-compute default-subgroup=64 supported-stages=0x3fff supported-operations=0x6ff subgroup-range=32-64
+buffer bytes=29202816 allocation-bytes=29202816 memory-type=3 flags=0x7 host-visible=yes device-local=yes
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=29202816 allocation-bytes=29202816 memory-type=3 flags=0x7 host-visible=yes device-local=yes
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=29202816 allocation-bytes=29202816 memory-type=3 flags=0x7 host-visible=yes device-local=yes
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=29202816 allocation-bytes=29202816 memory-type=3 flags=0x7 host-visible=yes device-local=yes
+buffer bytes=33554432 allocation-bytes=33554432 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=4 allocation-bytes=16 memory-type=0 flags=0x1 host-visible=no device-local=yes
+buffer bytes=134217732 allocation-bytes=134217744 memory-type=5 flags=0xe host-visible=yes device-local=no
+fused4-input-owners=4 distinct-vkdevice-memory=4 total-allocation-bytes=116811264 groups-per-frame=32768 input-memory-domain=device-local-host-visible dispatch-mode=one-fused-dispatch input-flags=0x7,0x7,0x7,0x7
+fused4-host-submit-wait-ns-one-submit-four-frames-includes-full-four-frame-raw-readback iterations=16 values=6449105,6298334,5877961,5937671,6585676,5988912,5887001,6342414,5890411,5900990,5865921,6405934,5820760,5885511,6046112,5982401
+fused4-host-submit-ns iterations=16 values=401363,63281,79050,88401,66421,61311,43550,64481,43480,62020,27860,44030,28220,40230,28900,29890
+fused4-fence-wait-ns iterations=16 values=6047712,6235023,5798891,5849230,6519215,5927561,5843431,6277893,5846911,5838940,5838041,6361864,5792530,5845251,6017192,5952491
+fused4-gpu-decode-ns-median=722320 four-frames-per-dispatch=1
+PASS: one dispatch decoded four independent canonical BP16 frames exactly
+validation-errors=0 validation-vuids=0
