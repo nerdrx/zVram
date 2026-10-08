@@ -242,6 +242,13 @@ below the earlier best short run and used a later profiling runtime build, so
 they are not matched comparisons and do not justify changing defaults.
 [Pair archive](../../validation/bp16-short-mmap-threshold-comparison/README.md).
 
+The BMI2-inline encoder was later exercised in one 12-token run (**0.5939342
+tokens/s**) and one 92-token run (**0.5727251**). The latter used the same
+child-only allocator thresholds as the earlier 0.4652449 run and matched the
+native 92-token output. This sequential evidence does not isolate the encoder's
+effect. Both rates remain distinct from and below the **0.61020197** short-run
+best. [Run records and limits](../../VALIDATION.md#bmi2-bp16-model-run-follow-ups).
+
 At source `23c05842cebf2fe3c7093191ba7f448626505d6e`, focused GPU checks passed
 8/8 in 7.30 s with the default budget and 8/8 in 7.08 s with the cache
 disabled; CPU budget-parser/ownership checks passed. The earlier 120 CTests,

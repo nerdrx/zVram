@@ -1,0 +1,30 @@
+{
+  "scope": "Sequential GPU model observations after BMI2 BP16 encoder change; do not infer causal benefit from single runs",
+  "runtime_code_commit": "d453be4",
+  "runtime_library_sha256": "7135d7a577af73123c414b29fd5e2519bbc0cc8e1d5da361613a19a5ce264157",
+  "shader_sha256": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854",
+  "runs": [
+    {
+      "path": "internlm-bp16-cold24-upload8-bmi2",
+      "kind": "short",
+      "decode_runs": 12,
+      "decode_ms": 20204.26,
+      "tokens_per_second": 0.5939341505207318,
+      "output_sha256": "8ac12258546a6f05dd7ff9cab38e38b4e85fdfe918c178ba14bcb38dd0b7f04b",
+      "source_commit": "1ea33e347d0838c2f88ecb4e9be07c672c133ac5",
+      "minimum_available_mib": 18296,
+      "swap_growth_mib": 923
+    },
+    {
+      "path": "internlm-bp16-cold24-upload8-long128-bmi2-mmap",
+      "kind": "long",
+      "decode_runs": 92,
+      "decode_ms": 160635.54,
+      "tokens_per_second": 0.5727250644533581,
+      "output_sha256": "b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b",
+      "source_commit": "1ea33e347d0838c2f88ecb4e9be07c672c133ac5",
+      "minimum_available_mib": 18322,
+      "swap_growth_mib": 3388
+    }
+  ]
+}

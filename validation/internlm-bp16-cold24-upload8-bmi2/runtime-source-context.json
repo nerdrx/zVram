@@ -1,0 +1,4 @@
+{
+  "runtime_code_commit": "d453be4",
+  "note": "Rebuilt runtime includes target BMI2 packBlock specialization and BP16 upload-subphase profiling; production BP16 shader unchanged."
+}

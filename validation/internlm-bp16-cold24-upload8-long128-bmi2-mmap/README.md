@@ -1,0 +1,10 @@
+# BP16 BMI2 long full-model run
+
+This 92-token InternLM2.5-20B F16 run used the rebuilt BMI2-inline BP16 encoder, 24 GiB cold quota, 19 GiB tracked cap, 2.5 GiB reserve, 32 BP16 encoding workers, and eight upload workers. It completed in **160,635.54 ms** (**0.57272506 tokens/s**), with exact output (SHA-256 `b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`), **49/49** layers, and zero GPU fallback. Child allocator settings: child-only MALLOC_MMAP_THRESHOLD_=131072 and MALLOC_TRIM_THRESHOLD_=131072 (MALLOC_ARENA_MAX=2). Minimum available RAM was **18,322 MiB** and swap grew by **3,388 MiB**.
+
+The runtime was built from `d453be4` (BMI2 encoder plus profiling); layer SHA-256 `7135d7a577af73123c414b29fd5e2519bbc0cc8e1d5da361613a19a5ce264157`; production shader SHA-256 `246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854`. The launch source commit and per-file hashes are recorded separately.
+
+This is a sequential run with unlocked clocks and background activity. The 92-token rate is higher than the earlier 0.4652449 tokens/s allocator-threshold run, but the two sequential runs do not isolate the encoder change; CPU encoding may contribute. GPU decode was about 51.875 s here versus 51.847 s earlier, while CPU-side input/copy timing changed from about 42.400 s to 40.861 s. Snapshot counters also changed: **4,756 copies / 157.19 GB / 15.91 s** versus **7,783 / 258.18 GB / 25.45 s**, with **51,280** versus **48,246** clean reuses and **3,790** versus **6,816** invalidations. These differing cache and eviction histories prevent attributing the model-rate difference to the packer change alone. The run does not change the headline short-run result or defaults.
+
+[Command](command.json), [result](result.json.gz), [resource samples](automatic.resources.json), [stderr](automatic.stderr.txt.gz), [stdout](automatic.stdout.txt.gz), [runtime hashes](runtime-binary-sha256.json), and [source revision](source-commit.txt).
+[Process memory samples](memory.jsonl), [monitor script](monitor_restore_memory.py).

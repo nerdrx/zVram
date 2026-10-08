@@ -1377,6 +1377,32 @@ background activity were uncontrolled. Both rates are below the separate
 are not matched comparisons. No allocator or cache default changed.
 [Pair summary and per-run archives](validation/bp16-short-mmap-threshold-comparison/README.md).
 
+### BMI2 BP16 model-run follow-ups
+
+After the CPU encoder specialization, a separate 12-token run measured
+**0.5939342 tokens/s**, with exact output, **49/49** layers, zero GPU fallback,
+minimum available RAM of **18,296 MiB**, and swap growth of **923 MiB**. It is
+below the **0.61020197** short-run best; the earlier best used a different
+runtime build, and the runs were sequential with unlocked clocks.
+
+The same child-only 128 KiB mmap/trim thresholds were used in a later 92-token
+run. It measured **0.5727251 tokens/s**, matched the native 92-token stdout
+exactly, offloaded **49/49** layers, and had zero fallback. Minimum available
+RAM was **18,322 MiB**, with **3,388 MiB** swap growth. Compared with the
+threshold run before the encoder change (**0.4652449 tokens/s**), the observed
+rate is higher, but these sequential runs do not isolate causality. Cumulative
+profiles showed direct-copy time **40.861 s** versus **42.400 s**, while GPU
+decode was **51.875 s** versus **51.847 s**. Snapshot counters also changed:
+**4,756 copies / 157.19 GB / 15.91 s** versus **7,783 / 258.18 GB / 25.45 s**,
+with **51,280** versus **48,246** clean reuses and **3,790** versus **6,816**
+invalidations. These histories prevent assigning the rate difference to the
+packer change alone. This run is also distinct from the 12-token short-run best
+and the same-output native 92-token reference at **1.6993468 tokens/s**.
+
+[Short BMI2 run](validation/internlm-bp16-cold24-upload8-bmi2/README.md),
+[92-token BMI2 run](validation/internlm-bp16-cold24-upload8-long128-bmi2-mmap/README.md),
+[paired archive and provenance](validation/bp16-bmi2-model-runs/README.md).
+
 ### Bounded imported BP16 host input and current regression checks
 
 The standalone research decoder now has an opt-in `--import-host-input` path using

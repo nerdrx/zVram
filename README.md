@@ -308,6 +308,13 @@ sequential long-run observations are distinct from the 12-token **0.61020**
 short-run BP16 result, which remains the best measured short run. The allocator
 thresholds are not application defaults. [Long-run evidence and limits](VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
 
+The BMI2-inline BP16 encoder later measured **0.59393 tokens/s** in a separate
+12-token run and **0.57273** in a 92-token run using those child-only allocator
+thresholds. Both outputs were exact; these sequential runs do not isolate the
+encoder's effect. The 92-token run remains distinct from the 12-token **0.61020**
+short-run best and the same-output native 92-token reference at **1.69935**.
+[BMI2 model-run evidence](VALIDATION.md#bmi2-bp16-model-run-follow-ups).
+
 Two separate 12-token runs with the same child-only thresholds measured
 **0.54232 tokens/s** with normal upload reuse and **0.52496** with the cached
 upload preference. The cached preference did not win this sequential pair;
