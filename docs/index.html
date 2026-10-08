@@ -62,9 +62,9 @@
       <table aria-label="92-token InternLM2.5-20B F16 throughput comparison">
         <thead><tr><th scope="col">Run</th><th scope="col">Tokens/s</th><th scope="col">Output</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Fresh native reference</th><td>1.6991</td><td>92 tokens</td></tr>
-          <tr><th scope="row">BP16 GPU-encoder baseline</th><td>1.09323773 / 1.10252711</td><td>Exact, 49/49</td></tr>
-          <tr><th scope="row">BP16 clean-first repeat</th><td>1.16969830 / 1.17068766</td><td>Exact, 49/49</td></tr>
+          <tr><th scope="row">Fresh native reference</th><td>1.70</td><td>92 tokens</td></tr>
+          <tr><th scope="row">BP16 GPU-encoder baseline</th><td>1.09 / 1.10</td><td>Exact, 49/49</td></tr>
+          <tr><th scope="row">BP16 clean-first repeat</th><td>1.17 / 1.17</td><td>Exact, 49/49</td></tr>
         </tbody>
       </table>
       <p>These runs were sequential, with clocks and background activity uncontrolled; they do not isolate a clean-first effect. BP16 clean-first remains experimental and off by default.</p>
