@@ -29,19 +29,20 @@ def main():
     host_input = parser.add_mutually_exclusive_group()
     host_input.add_argument("--bp16-host-input", action="store_true")
     host_input.add_argument("--bp16-import-host-input", action="store_true")
+    host_input.add_argument("--bp16-allocated-host-input", action="store_true")
     parser.add_argument("--video-driver", choices=("x11", "wayland"), default="x11")
     parser.add_argument("--prefer-device")
     parser.add_argument("--output-dir", type=Path, default=Path("build/presentation-check"))
     args = parser.parse_args()
     if args.native and (args.async_compression or args.gdeflate_gpu or args.bp16_gpu or
-                        args.bp16_host_input or args.bp16_import_host_input or args.lazy_backing or args.headroom_mib is not None):
+                        args.bp16_host_input or args.bp16_import_host_input or args.bp16_allocated_host_input or args.lazy_backing or args.headroom_mib is not None):
         parser.error("paging options require a wrapped run")
     if args.headroom_mib is not None and (not args.lazy_backing or args.headroom_mib <= 0):
         parser.error("headroom requires lazy backing and a positive MiB size")
     if args.expect_headroom_refusal and (args.headroom_mib is None or args.async_compression or
-                                         args.gdeflate_gpu or args.bp16_gpu or args.bp16_host_input or args.bp16_import_host_input):
+                                         args.gdeflate_gpu or args.bp16_gpu or args.bp16_host_input or args.bp16_import_host_input or args.bp16_allocated_host_input):
         parser.error("refusal check requires headroom without encoder/decode options")
-    if (args.bp16_host_input or args.bp16_import_host_input) and not args.bp16_gpu:
+    if (args.bp16_host_input or args.bp16_import_host_input or args.bp16_allocated_host_input) and not args.bp16_gpu:
         parser.error("BP16 host input requires --bp16-gpu")
     if args.cpu and not args.native:
         parser.error("CPU control requires --native; this does not validate zVram paging")
@@ -61,6 +62,8 @@ def main():
         env["ZVRAM_VULKAN_BP16_HOST_INPUT"] = "1"
     if args.bp16_import_host_input:
         env["ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT"] = "1"
+    if args.bp16_allocated_host_input:
+        env["ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT"] = "1"
     command = ["gamescope", "--backend", "headless", "--expose-wayland",
                "-W", "16", "-H", "16", "-w", "16", "-h", "16", "-r", "60"]
     if args.prefer_device:
@@ -137,6 +140,9 @@ def main():
     if args.bp16_import_host_input:
         imports = re.findall(r"GPU BP16 imported input imports=(\d+) reuses=(\d+) bytes=(\d+)", text)
         passed = passed and bool(imports) and int(imports[-1][0]) > 0 and int(imports[-1][2]) > 0
+    if args.bp16_allocated_host_input:
+        allocations = re.findall(r"GPU BP16 allocated input allocations=(\d+) reuses=(\d+) bytes=(\d+)", text)
+        passed = passed and bool(allocations) and int(allocations[-1][0]) > 0 and int(allocations[-1][2]) > 0
     if args.expect_headroom_refusal:
         passed = (not timed_out and process.returncode == 0 and "graphics-validation=on" in text and
                   "type=2" in text and "PASS: lazy bootstrap resident=0 cold-logical=33554432 cold-stored=0" in text and
@@ -153,6 +159,8 @@ def main():
                   binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
     if args.bp16_host_input:
         report["environment"]["ZVRAM_VULKAN_BP16_HOST_INPUT"] = env["ZVRAM_VULKAN_BP16_HOST_INPUT"]
+    if args.bp16_allocated_host_input:
+        report["environment"]["ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT"] = env["ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT"]
     if args.bp16_import_host_input:
         report["environment"]["ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT"] = env["ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT"]
     if not args.native:

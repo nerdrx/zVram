@@ -112,7 +112,7 @@ struct VirtualMemory {
         Imported imported;
         VkDeviceSize rawSize{};
         bool compressed{};
-        bool importedUsed{};
+        bool hostInputUsed{};
         unsigned byteShuffle{};
         zvram::snapshot::Codec codec{zvram::snapshot::Codec::Zstd};
         const std::uint8_t* data() const noexcept { return imported ? imported->data() : bytes.data(); }
@@ -272,8 +272,10 @@ struct Device {
     std::atomic<std::uint64_t> gpuProfileSparseCalls{}, gpuProfileSparseSuccess{}, gpuProfileSparseFailures{}, gpuProfileSparseNs{};
     bool gpuRestoreEnabled{}, gpuRestoreUnsafe{};
     bool gpuImportHostInput{};
+    bool gpuAllocatedHostInput{};
     VkDeviceSize gpuImportHostAlignment{};
     std::uint64_t gpuImportedFrames{}, gpuImportedReuses{}, gpuImportedBytes{};
+    std::uint64_t gpuAllocatedHostAllocations{}, gpuAllocatedHostReuses{}, gpuAllocatedHostBytes{};
     VkDeviceSize gpuStorageAlignment{1};
     VkDeviceSize gpuStorageRange{};
     std::uint64_t gpuDecodeCalls{}, gpuDecodeBytes{}, gpuDecodeNanoseconds{}, gpuDecodeFallbacks{};
@@ -388,6 +390,11 @@ void logSnapshotState(const char* event,const Device& d) {
              static_cast<unsigned long long>(d.gpuImportedFrames),
              static_cast<unsigned long long>(d.gpuImportedReuses),
              static_cast<unsigned long long>(d.gpuImportedBytes));
+    if(d.gpuAllocatedHostInput && std::strcmp(event,"restore")==0)
+        logf("GPU BP16 allocated input allocations=%llu reuses=%llu bytes=%llu",
+             static_cast<unsigned long long>(d.gpuAllocatedHostAllocations),
+             static_cast<unsigned long long>(d.gpuAllocatedHostReuses),
+             static_cast<unsigned long long>(d.gpuAllocatedHostBytes));
     if(d.gpuProfileEnabled && std::strcmp(event,"restore")==0)
         logf("GPU restore backing profile alloc-calls=%llu alloc-ok=%llu alloc-fail=%llu alloc-ns=%llu free-calls=%llu free-ns=%llu sparse-calls=%llu sparse-ok=%llu sparse-fail=%llu sparse-ns=%llu",
              static_cast<unsigned long long>(d.gpuProfileAllocCalls.load(std::memory_order_relaxed)),
@@ -818,7 +825,29 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             gpuProperties.limits.maxStorageBufferRange>=zvram::bp16::MaxRawBytes;
     }
     const char* importHostEnv=std::getenv("ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT");
-    const bool importHostRequested=importHostEnv && std::strcmp(importHostEnv,"1")==0;
+    bool importHostRequested=importHostEnv && std::strcmp(importHostEnv,"1")==0;
+    const char* allocatedHostEnv=std::getenv("ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT");
+    bool allocatedHostRequested=allocatedHostEnv && std::strcmp(allocatedHostEnv,"1")==0;
+    if(importHostRequested && allocatedHostRequested) {
+        logf("BP16 imported and allocated host input conflict; disabling both modes");
+        importHostRequested=false; allocatedHostRequested=false;
+    }
+    bool gpuAllocatedHostPlanned=false;
+    if(allocatedHostRequested && gpuRestorePlanned && codecEnv && std::strcmp(codecEnv,"bp16")==0 &&
+       in->apiVersion>=VK_API_VERSION_1_1 && gpuProperties.apiVersion>=VK_API_VERSION_1_1) {
+        VkPhysicalDeviceMemoryProperties hostMemory{};
+        in->memoryProperties(physical,&hostMemory);
+        gpuAllocatedHostPlanned=std::any_of(hostMemory.memoryTypes,
+            hostMemory.memoryTypes+hostMemory.memoryTypeCount,[](const auto& type) {
+                const auto flags=type.propertyFlags;
+                constexpr VkMemoryPropertyFlags required=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+                return (flags&required)==required && !(flags&VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            });
+        if(!gpuAllocatedHostPlanned)
+            logf("BP16 allocated cached host input unavailable; using ordinary compressed upload");
+    } else if(allocatedHostRequested && gpuRestorePlanned && codecEnv && std::strcmp(codecEnv,"bp16")==0)
+        logf("BP16 allocated cached host input requires Vulkan 1.1; using ordinary compressed upload");
     if(importHostRequested && gpuRestorePlanned && codecEnv && std::strcmp(codecEnv,"bp16")==0) {
         auto getProperties2=reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(
             in->gipa(in->handle,"vkGetPhysicalDeviceProperties2"));
@@ -911,6 +940,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     injectGpuSubgroup = injectGpuSubgroup && gpuRestorePlanned;
     gpuRequiresInt64 = gpuRequiresInt64 && gpuRestorePlanned;
     gpuImportHostPlanned = gpuImportHostPlanned && gpuRestorePlanned;
+    gpuAllocatedHostPlanned = gpuAllocatedHostPlanned && gpuRestorePlanned;
     VkDeviceCreateInfo copy=*ci; VkDeviceMemoryOverallocationCreateInfoAMD behavior{VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD};
     if(privateQueuePlanned) { copy.queueCreateInfoCount=static_cast<std::uint32_t>(queueInfos.size()); copy.pQueueCreateInfos=queueInfos.data(); }
     std::vector<const char*> extensions;
@@ -1005,6 +1035,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         d->asyncCompression=asyncCompression && std::strcmp(asyncCompression,"1")==0;
         d->gpuRestoreEnabled=gpuRestorePlanned;
         d->gpuImportHostInput=gpuImportHostPlanned;
+        d->gpuAllocatedHostInput=gpuAllocatedHostPlanned;
         d->gpuImportHostAlignment=gpuImportHostAlignment;
         if(budgetRequested) {
             d->budgetProperties=in->memoryProperties2; d->budgetHeap=budgetHeap;
@@ -1574,13 +1605,15 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
         const auto format=bp16?zvram::gdeflate::gpu::Format::BP16:zvram::gdeflate::gpu::Format::GDeflate;
         const auto result=d.gpuDecoder && path?d.gpuDecoder->initialize(d.handle,d.gdpa,d.memory,d.copyQueue,family,
             d.setDeviceLoaderData,path,&d.gpuProperties,format,d.gpuTimestampBits,
-            bp16 && d.gpuImportHostInput,d.gpuImportHostAlignment):VK_ERROR_INITIALIZATION_FAILED;
+            bp16 && d.gpuImportHostInput,d.gpuImportHostAlignment,
+            bp16 && d.gpuAllocatedHostInput):VK_ERROR_INITIALIZATION_FAILED;
         if(result!=VK_SUCCESS) {
             d.gpuRestoreEnabled=false; d.gpuDecoder.reset();
             logf("GPU %s restore unavailable result=%d; retaining CPU codec",codecName,result);
             if(result==VK_ERROR_DEVICE_LOST) { d.gpuGateError=result; return false; }
         } else logf("GPU %s restore enabled: %s, %s, direct backing output",codecName,bp16?"256-thread":"wave32",
             d.gpuDecoder->importedHostInputEnabled()?"cached imported host input":
+            d.gpuDecoder->allocatedHostInputEnabled()?"cached allocated host input":
             d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
     }
     return true;
@@ -1592,6 +1625,11 @@ void releaseSnapshotResources(Device& d) {
              static_cast<unsigned long long>(d.gpuImportedFrames),
              static_cast<unsigned long long>(d.gpuImportedReuses),
              static_cast<unsigned long long>(d.gpuImportedBytes));
+    if(d.gpuAllocatedHostInput)
+        logf("GPU BP16 allocated input allocations=%llu reuses=%llu bytes=%llu",
+             static_cast<unsigned long long>(d.gpuAllocatedHostAllocations),
+             static_cast<unsigned long long>(d.gpuAllocatedHostReuses),
+             static_cast<unsigned long long>(d.gpuAllocatedHostBytes));
     if(d.gpuDecodeCalls || d.gpuDecodeFallbacks)
         logf("GPU %s restore calls=%llu bytes=%llu host-ns=%llu fallbacks=%llu",
              d.snapshotCodec==zvram::snapshot::Codec::BP16?"BP16":"GDeflate",
@@ -1793,9 +1831,11 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                    gpuChunk.rawSize<=group.logicalBytes-offset && offset%d.gpuStorageAlignment==0 &&
                    ((gpuChunk.rawSize+3)&~VkDeviceSize(3))<=d.gpuStorageRange && offset<=amount &&
                    ((gpuChunk.rawSize+3)&~VkDeviceSize(3))<=amount-offset) {
-                    if(d.gpuImportHostInput && !gpuChunk.imported) {
+                    if((d.gpuImportHostInput || d.gpuAllocatedHostInput) && !gpuChunk.imported) {
                         zvram::gdeflate::gpu::Decoder::ImportedHostInputPtr imported;
-                        const auto importResult=d.gpuDecoder->importHostInput(gpuChunk.data(),gpuChunk.size(),imported);
+                        const auto importResult=d.gpuImportHostInput
+                            ?d.gpuDecoder->importHostInput(gpuChunk.data(),gpuChunk.size(),imported)
+                            :d.gpuDecoder->allocateHostInput(gpuChunk.data(),gpuChunk.size(),imported);
                         if(importResult==VK_SUCCESS && imported) {
                             const auto padding=imported->allocationBytes-gpuChunk.size();
                             const auto charged=gpuChunk.size()<=std::numeric_limits<std::uint64_t>::max()-padding
@@ -1818,9 +1858,18 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
                     if(gpuResult==VK_SUCCESS) {
                         ++d.gpuDecodeCalls; d.gpuDecodeBytes+=gpuChunk.rawSize;
                         if(gpuChunk.imported) {
-                            if(gpuChunk.importedUsed) ++d.gpuImportedReuses;
-                            else { ++d.gpuImportedFrames; d.gpuImportedBytes+=gpuChunk.imported->allocationBytes; }
-                            gpuChunk.importedUsed=true;
+                            if(d.gpuAllocatedHostInput) {
+                                if(gpuChunk.hostInputUsed) ++d.gpuAllocatedHostReuses;
+                                else {
+                                    ++d.gpuAllocatedHostAllocations;
+                                    d.gpuAllocatedHostBytes+=gpuChunk.imported->allocationBytes;
+                                }
+                            } else if(gpuChunk.hostInputUsed) ++d.gpuImportedReuses;
+                            else {
+                                ++d.gpuImportedFrames;
+                                d.gpuImportedBytes+=gpuChunk.imported->allocationBytes;
+                            }
+                            gpuChunk.hostInputUsed=true;
                         }
                         offset+=gpuChunk.rawSize; ++next; continue;
                     }

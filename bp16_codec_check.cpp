@@ -25,12 +25,16 @@ void require(bool condition, const char* message);
 
 unsigned destroyedImportBuffers{};
 unsigned freedImportMemory{};
+unsigned unmappedAllocatedMemory{};
 
 void VKAPI_CALL fakeDestroyImportBuffer(VkDevice, VkBuffer, const VkAllocationCallbacks*) {
     ++destroyedImportBuffers;
 }
 void VKAPI_CALL fakeFreeImportMemory(VkDevice, VkDeviceMemory, const VkAllocationCallbacks*) {
     ++freedImportMemory;
+}
+void VKAPI_CALL fakeUnmapAllocatedMemory(VkDevice, VkDeviceMemory) {
+    ++unmappedAllocatedMemory;
 }
 
 template<class T> T fakeHandle(std::uintptr_t value) {
@@ -54,7 +58,7 @@ void testImportedHostOwnerAccounting() {
     require(!Decoder::importedHostFitsBudget(100, 50, 11, 160), "padded cache quota exceeded budget");
     require(!Decoder::importedHostFitsBudget(UINT64_MAX, 1, 0, UINT64_MAX), "quota overflow accepted");
 
-    destroyedImportBuffers = freedImportMemory = 0;
+    destroyedImportBuffers = freedImportMemory = unmappedAllocatedMemory = 0;
     void* host{};
     require(posix_memalign(&host, 4096, 4096) == 0, "aligned host owner allocation failed");
     auto owner = std::make_shared<ImportedInput>();
@@ -68,6 +72,19 @@ void testImportedHostOwnerAccounting() {
     require(destroyedImportBuffers == 1 && freedImportMemory == 1,
             "owned Vulkan import handles were not released exactly once");
 
+    auto allocated = std::make_shared<ImportedInput>();
+    allocated->device = fakeHandle<VkDevice>(7);
+    allocated->buffer = fakeHandle<VkBuffer>(8);
+    allocated->memory = fakeHandle<VkDeviceMemory>(9);
+    allocated->allocation = reinterpret_cast<void*>(10);
+    allocated->destroyBuffer = fakeDestroyImportBuffer;
+    allocated->freeMemory = fakeFreeImportMemory;
+    allocated->unmapMemory = fakeUnmapAllocatedMemory;
+    allocated->driverAllocatedHostMemory = true;
+    allocated.reset();
+    require(unmappedAllocatedMemory == 1 && destroyedImportBuffers == 2 && freedImportMemory == 2,
+            "allocated cached host memory was not unmapped and released exactly once");
+
     void* poisonedHost{};
     require(posix_memalign(&poisonedHost, 4096, 4096) == 0, "poison owner allocation failed");
     auto poison = std::make_shared<std::atomic<bool>>(true);
@@ -75,9 +92,11 @@ void testImportedHostOwnerAccounting() {
     retained->device = fakeHandle<VkDevice>(4); retained->buffer = fakeHandle<VkBuffer>(5);
     retained->memory = fakeHandle<VkDeviceMemory>(6); retained->allocation = poisonedHost;
     retained->destroyBuffer = fakeDestroyImportBuffer; retained->freeMemory = fakeFreeImportMemory;
+    retained->unmapMemory = fakeUnmapAllocatedMemory;
+    retained->driverAllocatedHostMemory = true;
     retained->poisoned = poison;
     retained.reset();
-    require(destroyedImportBuffers == 1 && freedImportMemory == 1,
+    require(destroyedImportBuffers == 2 && freedImportMemory == 2 && unmappedAllocatedMemory == 1,
             "poisoned import owner freed potentially in-flight handles");
     std::free(poisonedHost); // The poisoned owner intentionally leaked this in production.
 }
@@ -340,7 +359,7 @@ int main(int argc, char** argv) {
         testMalformed();
         testWorkerEncoding();
         testImportedHostOwnerAccounting();
-        std::cout << "PASS: BP16 codec and imported-host ownership, alignment, quota, and poison checks\n";
+        std::cout << "PASS: BP16 codec and imported/allocated-host ownership, alignment, quota, and poison checks\n";
         if (argc == 3) benchmarkWorkers(argv[1], argv[2]);
         return 0;
     } catch (const std::exception& error) {

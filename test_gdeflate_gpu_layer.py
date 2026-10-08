@@ -30,4 +30,8 @@ if os.environ.get("ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT") == "1":
     imports = re.findall(r"GPU BP16 imported input imports=(\d+) reuses=(\d+) bytes=(\d+)", result.stdout)
     if expected != "bp16" or not imports or int(imports[-1][0]) <= 0 or int(imports[-1][2]) <= 0:
         raise SystemExit("FAIL: imported BP16 input requested but no actual imports observed")
+if os.environ.get("ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT") == "1":
+    allocations = re.findall(r"GPU BP16 allocated input allocations=(\d+) reuses=(\d+) bytes=(\d+)", result.stdout)
+    if expected != "bp16" or not allocations or int(allocations[-1][0]) <= 0 or int(allocations[-1][2]) <= 0:
+        raise SystemExit("FAIL: allocated BP16 input requested but no actual allocations observed")
 print("PASS: application byte checks, observed GPU decoding, zero fallback and validation diagnostics")
