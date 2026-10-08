@@ -1,0 +1,45 @@
+{
+  "scope": "27B Q4 native vs BP16 forced12GiB residency,8GiB cold/owners; desktop background uncontrolled",
+  "full_result": "result.json.gz",
+  "output_matches": true,
+  "runs": {
+    "native": {
+      "performance": {
+        "decode_ms": 2719.53,
+        "decode_runs": 94,
+        "tokens_per_second": 34.56,
+        "prompt_ms": 193.45,
+        "restore_ms": []
+      },
+      "offload": [
+        66,
+        66
+      ],
+      "minimum_available_mib": 27147,
+      "swap_used_baseline_mib": 20262,
+      "swap_used_peak_mib": 20263,
+      "swap_growth_mib": 1,
+      "returncode": 0,
+      "stdout_sha256": "ab00fd0d30f1e0c2eb8dd044f34a85228adc47951e04517bd24d53092b0a5b9d"
+    },
+    "automatic": {
+      "performance": {
+        "decode_ms": 52773.42,
+        "decode_runs": 94,
+        "tokens_per_second": 1.78,
+        "prompt_ms": 798.82,
+        "restore_ms": []
+      },
+      "offload": [
+        66,
+        66
+      ],
+      "minimum_available_mib": 23697,
+      "swap_used_baseline_mib": 20263,
+      "swap_used_peak_mib": 20263,
+      "swap_growth_mib": 0,
+      "returncode": 0,
+      "stdout_sha256": "ab00fd0d30f1e0c2eb8dd044f34a85228adc47951e04517bd24d53092b0a5b9d"
+    }
+  }
+}

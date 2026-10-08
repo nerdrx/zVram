@@ -1,0 +1,23 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+    Start  8: cpu-vulkan-compression-options
+1/9 Test  #8: cpu-vulkan-compression-options ........................   Passed    2.60 sec
+    Start 11: cpu-clean-cache-policy
+2/9 Test #11: cpu-clean-cache-policy ................................   Passed    0.00 sec
+    Start 56: vulkan-range-clean-cache-synthetic
+3/9 Test #56: vulkan-range-clean-cache-synthetic ....................   Passed    0.73 sec
+    Start 57: vulkan-range-clean-cache-native
+4/9 Test #57: vulkan-range-clean-cache-native .......................   Passed    0.73 sec
+    Start 58: vulkan-range-clean-cache-bootstrap
+5/9 Test #58: vulkan-range-clean-cache-bootstrap ....................   Passed    1.71 sec
+    Start 61: vulkan-range-clean-cache-quota-synthetic
+6/9 Test #61: vulkan-range-clean-cache-quota-synthetic ..............   Passed    1.24 sec
+    Start 62: vulkan-range-clean-cache-quota-native
+7/9 Test #62: vulkan-range-clean-cache-quota-native .................   Passed    1.21 sec
+    Start 67: vulkan-range-clean-cache-accepted-unknown-synthetic
+8/9 Test #67: vulkan-range-clean-cache-accepted-unknown-synthetic ...   Passed    2.21 sec
+    Start 68: vulkan-range-clean-cache-accepted-unknown-native
+9/9 Test #68: vulkan-range-clean-cache-accepted-unknown-native ......   Passed    2.21 sec
+
+100% tests passed out of 9
+
+Total Test time (real) =  12.66 sec

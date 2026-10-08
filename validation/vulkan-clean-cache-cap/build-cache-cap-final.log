@@ -1,0 +1,38 @@
+-- Configuring done (0.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+[  2%] Built target zvram_pool
+[  8%] Built target zvram-compression-check
+[  8%] Built target zvram-capacity-check
+[ 11%] Built target zvram_layer
+[ 14%] Built target zvram-file-pool-check
+[ 18%] Built target zvram-compression-policy-check
+[ 24%] Built target zvram-vulkan-auto-check
+[ 28%] Built target zvram-vulkan-graphics-check
+[ 31%] Built target zvram-clean-cache-policy-check
+[ 34%] Built target zvram-resident-budget-check
+[ 37%] Built target zvram-resident-bootstrap-check
+[ 40%] Built target zvram-bp16-codec-check
+[ 42%] Built target zvram-gdeflate-envelope-check
+[ 45%] Built target zvram-snapshot-decode-check
+[ 48%] Built target zvram-snapshot-pipeline-check
+[ 51%] Built target zvram-gdeflate-research
+[ 54%] Built target zvram-active-refs-check
+[ 57%] Built target zvram-submission-tracking-check
+[ 64%] Built target zvram_hip
+[ 67%] Built target zvram-hip-vmm-fd-check
+[ 72%] Built target zvram_hip_oom_test
+[ 72%] Built target zvram-hip-capacity-check
+[ 75%] Built target zvram-hip-proc-check
+[ 78%] Built target zvram-hip-error-check
+[ 81%] Built target zvram-hip_check
+[ 81%] Built target zvram-hip_probe
+[ 82%] Built target zvram-vmm_probe
+[ 84%] Built target zvram-hip_hibernate_check
+[ 88%] Built target zvram-hip_auto_guard_check
+[ 88%] Built target zvram-hip_auto_check
+[ 88%] Built target zvram-hip_auto_thread_check
+[ 90%] Built target zvram-hsa_vmm_probe
+[ 91%] Built target zvram-ram_vmm_probe
+[100%] Built target zvram-sparse-check
+[100%] Built target zvram-managed-check

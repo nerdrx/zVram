@@ -44,5 +44,8 @@ int main() {
     if (needsTrim(40, 50, 100, 10) || !needsTrim(41, 50, 100, 10) ||
         needsTrim(90, 9, 100, 1) || !needsTrim(101, 0, 100, 0) ||
         needsTrim(100, 0, 99, 100)) return 12;
+    if (needsTrim(40, 50, 100, 0, 50) || !needsTrim(40, 51, 100, 0, 50) ||
+        !needsTrim(41, 50, 100, 10, 60) ||
+        needsTrim(40, 50, 100, 0, std::numeric_limits<std::uint64_t>::max())) return 13;
     return 0;
 }

@@ -1,0 +1,24 @@
+CMakeLists.txt lines 706-728
+706:     foreach(raw_host_mode synthetic native)
+707:         add_test(NAME vulkan-bp16-raw-host-input-${raw_host_mode}
+708:             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_raw_host_input.py
+709:                 ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
+710:                 $<TARGET_FILE:zvram-vulkan-auto-check> ${raw_host_mode})
+711:         set_tests_properties(vulkan-bp16-raw-host-input-${raw_host_mode} PROPERTIES TIMEOUT 120
+712:             ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_BP16_RAW_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=512;ZVRAM_VULKAN_GPU_PROFILE=1")
+713:     endforeach()
+714:     add_test(NAME vulkan-bp16-raw-host-input-owner-budget
+715:         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_raw_host_input.py
+716:             ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
+717:             $<TARGET_FILE:zvram-vulkan-auto-check> owner-budget)
+718:     set_tests_properties(vulkan-bp16-raw-host-input-owner-budget PROPERTIES TIMEOUT 120
+719:         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_BP16_RAW_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=8;ZVRAM_VULKAN_GPU_PROFILE=1")
+720:     add_test(NAME vulkan-bp16-raw-host-input-cold-budget
+721:         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_raw_host_input.py
+722:             ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
+723:             $<TARGET_FILE:zvram-vulkan-auto-check> cold-budget)
+724:     set_tests_properties(vulkan-bp16-raw-host-input-cold-budget PROPERTIES TIMEOUT 120
+725:         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_BP16_RAW_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=512;ZVRAM_VULKAN_GPU_PROFILE=1")
+726: endif()
+727: get_property(ZVRAM_TESTS DIRECTORY PROPERTY TESTS)
+728: set_tests_properties(${ZVRAM_TESTS} PROPERTIES TIMEOUT 60)

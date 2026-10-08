@@ -1,0 +1,12 @@
+{
+  "scope": "raw BP16 host-input fixture validation only; no model throughput result",
+  "runtime_library_sha256": "04c6d673e812e7ebee1922e6e4b8fe43580bb663a44ed39b67d14788b2bf87d2",
+  "source_commit": "30984142546f273de0d1812ab8d99284486198cb",
+  "source_patch": "raw-owner-source.patch",
+  "source_provenance": "raw-owner-provenance.json",
+  "test_harness_sha256": "2680e296f8be9c58669ba67c05f0f4e8a9a41bd32bdc860941291ba166613ba2",
+  "cmake_lists_sha256": "9fec1cd23bc6f6c591a0a51d84d65eb30d4a96aff357af6f4c74ff2a1d496b5b",
+  "cmake_excerpt": "cmake-raw-owner-registration.txt (updated for 129-test suite)",
+  "binary_sha_source": "build/qwen27-raw-owner-pair/provenance.json",
+  "historical_127_test_harness_sha256": "18d323c9789e8c1d5ef2edbd8b426378020a80e746998ab3f174596d88b5983d"
+}

@@ -141,8 +141,15 @@ application must use Vulkan 1.1 or later and the device must support suitable
 `VK_EXT_external_memory_host` storage buffers. The first restore copies a
 compressed frame into an owned aligned allocation; later restores can reuse
 that import when `--vulkan-clean-cache` retains the immutable snapshot. Alignment
-padding is charged to the shared cold/cache quota. Unsupported imports or quota
-pressure use the existing upload path; default settings stay unchanged.
+padding is charged to the shared cold/cache quota. `--vulkan-clean-cache-mib N`
+sets a positive MiB ceiling for expendable cached snapshots; it requires
+`--vulkan-clean-cache`, `--vulkan-range-mib`, and `--vulkan-cold-mib`, and cannot
+exceed the cold quota. Without this option, the existing uncapped-cache behavior
+remains. Cached snapshots and cold data still share the cold quota, so this
+option bounds cache RAM only within that budget; trimming cache may require
+re-encoding on a later restore. It does not guarantee that a model fits. Unsupported
+imports or quota pressure use the existing upload path; default settings stay
+unchanged.
 
 The layer reports `GPU BP16 imported input imports=N reuses=N bytes=N`; these
 are cumulative successful-use counters, not current RAM usage. GPU completion
@@ -212,6 +219,27 @@ before allocation and releases it only after unmap/free; poisoned in-flight
 owners keep their reservation. The shutdown marker's allocation/reuse/byte
 counters are cumulative accepted-use values, while `live-bytes` and
 `limit-bytes` show current charge and cap.
+
+## Experimental raw-host input
+
+`ZVRAM_VULKAN_BP16_RAW_HOST_INPUT=1` is an additional opt-in, off by default.
+It requires BP16 GPU restore, allocated-host input, and clean-cache with range
+mode; it applies to one exact RAW chunk. Instead of staging each restored
+chunk through a vector, it uses a canonical, budgeted cached GTT owner and
+charges the owner's actual allocation size, including padding, against the
+shared quota. The synchronous direct-transfer path skips the repeated CPU
+staging copy and remains eligible for asynchronous prefetch where supported.
+The first conversion still copies on the CPU, and every restore still
+transfers data from GTT to VRAM. The [full-byte fixtures and 129/129 suite](../../validation/vulkan-bp16-raw-owner/README.md) validate correctness only;
+four alternating same-binary Qwen 27B Q4 runs with 12 GiB residency and 8 GiB
+cold/owner ceilings measured **1.75–1.78 tokens/s**
+with the feature off and **2.29 tokens/s** with it on, with identical 94-token
+output and 66/66 layers. This is about 30% higher measured decode rate in this
+pair; it is not an isolated causal result. CPU decode work fell from about
+20.8 seconds to zero, while copy wait remained about 40 seconds. Desktop
+activity was uncontrolled and swap grew by 88–2,305 MiB. The separate 34.56
+tokens/s native run is a capacity baseline, not a matched comparison. This
+Q4 result does not establish broad application speed or model fit. [Pair logs, per-run memory and provenance](../../validation/qwen27-raw-owner-pair/README.md) · [Separate native capacity baseline](../../validation/qwen27-vulkan-pressure-hour/README.md).
 
 An earlier full InternLM2.5-20B F16 run under this 8 GiB cache completed 12
 decode runs at **0.4626948 tokens/s** (reported as 0.46), with 49/49 layers,
@@ -349,8 +377,8 @@ validation was fixed in `427d93a` and covered by the fixtures in `e394ea8`.
 The CPU codec and ownership checks also passed [AddressSanitizer,
 UndefinedBehaviorSanitizer, and leak detection](../../validation/bp16-sanitizer-local-owner/README.md).
 A [current tiny fixture and isolated before-control build](../../validation/local-owner-metadata-control/README.md)
-are archived separately. The current fixture passed, but the paired GPU timing
-check was not launched while the GPU was busy; no model-speed claim follows.
+are archived separately. The current fixture passed; an alternating before/current
+metadata timing pair is recorded below. Neither fixture establishes model throughput.
 
 A 7 GiB local-owner + 12 GiB shared/raw trial completed exact output and 49/49
 layers with zero GPU restore fallback, but measured **1.076476 tokens/s**, below
@@ -361,6 +389,11 @@ These are sequential experimental runs, not a controlled comparison. [7+12 GiB
 run](../../validation/internlm-bp16-local-owner7-raw12-total19/README.md) ·
 [13+6 GiB failed attempt](../../validation/internlm-bp16-local-owner13-raw6-total19/README.md) ·
 [fixture and CTest evidence](../../validation/local-owner-fixtures/README.md).
+
+An alternating before/current metadata fixture passed all four exact-byte runs,
+with 13 encodes over 436,207,616 raw bytes each. Host encode timing was about
+2.345 s before and 26.8 ms current; desktop activity was uncontrolled, and this
+is fixture timing, not model throughput. [Pair, commands, and provenance](../../validation/local-owner-metadata-pair-retry/README.md).
 
 ## Experimental admission budget snapshot
 

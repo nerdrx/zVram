@@ -40,6 +40,7 @@ parser.add_argument("--vulkan-resident-after-cold", action="store_true", help="a
 parser.add_argument("--vulkan-eviction-policy", choices=("lru", "mru"), help="choose pressure victims: oldest first (default lru), or newest first for cyclic scans; requires resident admission")
 parser.add_argument("--vulkan-strict-robustness", action="store_true", help="enable supported robustness2 bounds for narrow descriptor residency; requires range mode")
 parser.add_argument("--vulkan-clean-cache", action="store_true", help="reuse retained snapshots after proven read-only work; shares cold-store budget and requires range mode")
+parser.add_argument("--vulkan-clean-cache-mib", type=int, help="cap expendable clean snapshot cache in MiB; requires --vulkan-clean-cache and cannot exceed --vulkan-cold-mib")
 parser.add_argument("--verbose", action="store_true", help="log each Vulkan allocation")
 parser.add_argument("--validate", action="store_true", help="enable Vulkan core and synchronization validation")
 parser.add_argument("--isolate-layers", action="store_true", help="disable implicit layers for a controlled experiment")
@@ -148,6 +149,11 @@ if args.vulkan_eviction_policy is not None and args.vulkan_resident_mib is None:
     parser.error("--vulkan-eviction-policy requires --vulkan-resident-mib")
 if args.vulkan_clean_cache and args.vulkan_range_mib is None:
     parser.error("--vulkan-clean-cache requires --vulkan-range-mib")
+if args.vulkan_clean_cache_mib is not None and (
+        args.hip or not args.vulkan_clean_cache or args.vulkan_range_mib is None or
+        args.vulkan_cold_mib is None or not 0 < args.vulkan_clean_cache_mib <= ((1 << 64) - 1) // (1024 * 1024) or
+        args.vulkan_clean_cache_mib > args.vulkan_cold_mib):
+    parser.error("--vulkan-clean-cache-mib requires clean cache, range mode, and a positive size no larger than --vulkan-cold-mib")
 if not args.hip and (args.hip_vmm or args.hip_report_capacity or args.hip_local_mib is not None or args.hip_host_mib is not None or args.hip_auto_idle_ms is not None or args.hip_cold_mib is not None):
     parser.error("HIP virtual memory and memory limits require --hip")
 if args.hip_report_capacity and (not args.hip_vmm or args.hip_local_mib is None or
@@ -241,6 +247,8 @@ else:
         env["ZVRAM_VULKAN_STRICT_ROBUSTNESS"] = "1"
     if args.vulkan_clean_cache:
         env["ZVRAM_VULKAN_CLEAN_CACHE"] = "1"
+    if args.vulkan_clean_cache_mib is not None:
+        env["ZVRAM_VULKAN_CLEAN_CACHE_MIB"] = str(args.vulkan_clean_cache_mib)
     path_variable = "VK_LAYER_PATH" if env.get("VK_LAYER_PATH") else "VK_ADD_LAYER_PATH"
     env[path_variable] = str(build) + (os.pathsep + env[path_variable] if env.get(path_variable) else "")
     layers = ["VK_LAYER_NX_zvram"]

@@ -136,6 +136,16 @@ bool prepareRangeDecode(Device& d,const ActiveRefs::Use& use,std::size_t slot,
     if(p==d.virtualMemory.end() || use.child==SIZE_MAX || use.child>=p->second.coldGroups.size()) return false;
     const auto& group=p->second.coldGroups[use.child];
     auto& s=d.snapshot;
+    if(d.gpuRawHostInput && d.residentAdmissionArmed && d.gpuDecoder &&
+       use.child<p->second.childSizes.size() && group.chunks.size()==1) {
+        const auto& chunk=group.chunks.front();
+        if(!chunk.compressed && !chunk.byteShuffle && !chunk.imported &&
+           chunk.rawSize==group.logicalBytes && chunk.rawSize==p->second.childSizes[use.child] &&
+           chunk.size()==chunk.rawSize &&
+           chunk.rawSize<=s.chunkSize && chunk.rawSize<=zvram::bp16::MaxRawBytes &&
+           chunk.rawSize%zvram::bp16::RawBytesPerBlock==0)
+            return false; // Keep eligible RAW groups on the synchronous direct-transfer path.
+    }
     if(!group.cold || !group.logicalBytes || group.logicalBytes>s.stagingSize ||
        group.chunks.empty() || group.chunks.size()>4) return false;
     std::array<zvram::snapshot::EncodedChunk,4> chunks{};

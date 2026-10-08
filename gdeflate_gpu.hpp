@@ -179,6 +179,7 @@ public:
         std::size_t encodedBytes() const noexcept { return encodedBytes_; }
         VkDeviceSize allocationBytes() const noexcept { return allocationBytes_; }
         bool deviceLocal() const noexcept { return deviceLocal_; }
+        VkBuffer rawTransferBuffer() const noexcept { return rawTransfer_ ? buffer_ : VK_NULL_HANDLE; }
         const std::uint8_t* data() const noexcept {
             return static_cast<const std::uint8_t*>(allocation_);
         }
@@ -213,6 +214,7 @@ public:
         PFN_vkUnmapMemory unmapMemory_{};
         bool driverAllocatedHostMemory_{};
         bool deviceLocal_{};
+        bool rawTransfer_{};
         std::shared_ptr<AllocatedHostBudget> budget_;
         std::uint64_t reservedBudgetBytes_{};
         std::shared_ptr<AllocatedHostBudget> localBudget_;
@@ -582,17 +584,39 @@ public:
         return VK_SUCCESS;
     }
 
+    VkResult allocateRawHostInput(const std::uint8_t* raw, std::size_t rawSize,
+                                  ImportedHostInputPtr& out) {
+        out.reset();
+        if (!initialized_ || poisoned_ || !bp16AllocatedHostInput_ || !raw || !rawSize ||
+            rawSize > bp16::MaxRawBytes || rawSize % bp16::RawBytesPerBlock)
+            return VK_ERROR_FEATURE_NOT_PRESENT;
+        ImportedHostInputPtr owner;
+        VkResult result = allocateHostFrameBuffer(rawSize, owner, rawSize + 65536u,
+                                                   false, UINT64_MAX,
+                                                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT, false);
+        if (result != VK_SUCCESS) return result;
+        owner->rawTransfer_ = true;
+        copyBP16UploadBytes(static_cast<std::uint8_t*>(owner->allocation_), raw, rawSize,
+                            bp16UploadWorkers_);
+        std::memset(static_cast<std::uint8_t*>(owner->allocation_) + rawSize, 0,
+                    static_cast<std::size_t>(owner->allocationBytes_) - rawSize);
+        out = std::move(owner);
+        return VK_SUCCESS;
+    }
+
 private:
     VkResult allocateHostFrameBuffer(std::size_t encodedSize, ImportedHostInputPtr& out,
                                      std::uint64_t maxAllocationBytes = MaxBP16InputBytes + 65536u,
                                      bool preferLocal = false,
-                                     std::uint64_t localOwnerLiveLimitBytes = UINT64_MAX) {
+                                     std::uint64_t localOwnerLiveLimitBytes = UINT64_MAX,
+                                     VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                     bool storageInput = true) {
         out.reset();
         if (!allocatedHostBudget_ || !allocatedHostBudget_->limitBytes())
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         if (!api_.getBufferMemoryRequirements2) return VK_ERROR_FEATURE_NOT_PRESENT;
         const auto bufferBytes = (encodedSize + 3u) & ~std::size_t(3u);
-        if (!encodedSize || bufferBytes > maxStorageBufferRange_ || bufferBytes < encodedSize)
+        if (!encodedSize || (storageInput && bufferBytes > maxStorageBufferRange_) || bufferBytes < encodedSize)
             return VK_ERROR_VALIDATION_FAILED_EXT;
         ImportedHostInputPtr owner;
         try { owner.reset(new ImportedHostInput()); }
@@ -608,7 +632,7 @@ private:
 
         VkBufferCreateInfo create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         create.size = static_cast<VkDeviceSize>(bufferBytes);
-        create.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        create.usage = usage;
         create.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         VkResult result = checked(api_.createBuffer(device_, &create, nullptr, &owner->buffer_));
         if (result != VK_SUCCESS) return result;

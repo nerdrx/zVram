@@ -59,6 +59,31 @@ with tempfile.TemporaryDirectory() as temporary:
                       ("--hip", "--vulkan-lazy-backing")):
         result = run(launcher, *arguments, "--", sys.executable, "-c", "pass")
         assert result.returncode == 2 and "requires immediate" in result.stderr, result.stderr
+    clean_cache_base = [*BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-selective-restore",
+                        "--vulkan-active-eviction", "--vulkan-range-mib", "32",
+                        "--vulkan-resident-mib", "32", "--vulkan-clean-cache"]
+    result = run(launcher, *clean_cache_base, "--vulkan-clean-cache-mib", "8", "--", sys.executable, "-c",
+                 "import os; print(os.environ['ZVRAM_VULKAN_CLEAN_CACHE_MIB'])")
+    assert result.returncode == 0 and result.stdout == "8\n", (result.stdout, result.stderr)
+    uncapped_env = os.environ.copy()
+    uncapped_env.pop("ZVRAM_VULKAN_CLEAN_CACHE_MIB", None)
+    result = run(launcher, *clean_cache_base, "--", sys.executable, "-c",
+                 "import os; print(os.environ.get('ZVRAM_VULKAN_CLEAN_CACHE_MIB', 'uncapped'))", env=uncapped_env)
+    assert result.returncode == 0 and result.stdout == "uncapped\n", (result.stdout, result.stderr)
+    missing_clean_flag = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-selective-restore",
+                             "--vulkan-active-eviction", "--vulkan-range-mib", "32", "--vulkan-resident-mib", "32",
+                             "--vulkan-clean-cache-mib", "8", "--", sys.executable, "-c", "pass")
+    assert missing_clean_flag.returncode == 2, missing_clean_flag.stderr
+    missing_range = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-clean-cache",
+                        "--vulkan-clean-cache-mib", "8", "--", sys.executable, "-c", "pass")
+    assert missing_range.returncode == 2, missing_range.stderr
+    over_cold_budget = run(launcher, *clean_cache_base, "--vulkan-clean-cache-mib", "65",
+                           "--", sys.executable, "-c", "pass")
+    assert over_cold_budget.returncode == 2, over_cold_budget.stderr
+    for value in ("0", "-1", "17592186044416", "not-an-int"):
+        result = run(launcher, *clean_cache_base, "--vulkan-clean-cache-mib", value,
+                     "--", sys.executable, "-c", "pass")
+        assert result.returncode == 2, (value, result.stderr)
     result = run(launcher, *lazy_base, "--vulkan-lazy-backing", "--vulkan-headroom-mib", "2048",
                  "--", sys.executable, "-c", "import os; print(os.environ['ZVRAM_VULKAN_HEADROOM_MIB'])")
     assert result.returncode == 0 and result.stdout == "2048\n", (result.stdout, result.stderr)

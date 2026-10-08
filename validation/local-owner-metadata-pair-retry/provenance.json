@@ -1,0 +1,34 @@
+{
+  "source_control_commit": "576c783fdfac9a8c4d08cd17f990564af9e80da6",
+  "source_control_patch": "before-control.patch",
+  "source_control_patch_sha256": "d032c4cc319b5143118d80fa0eefad809039f15e5b2ac6a57ccb56d4d8faa52d",
+  "source_hashes_from_control_provenance": {
+    "layer.cpp": "76c9fc56efc2b954c5fc00dd80a3540b0a4b40f03abb5535a3f1e4cd861526bf",
+    "gdeflate_gpu.hpp": "39a1d9c188b907a65926940fc95b9912a5f52193e2bc23dd24f8fdd60ffd492e",
+    "bp16_codec.hpp": "703bc061cb460926f83c88194668b6412408a00c94b4d107deb3a6784f6a97c4",
+    "build/metadata-before-control/layer.cpp": "76c9fc56efc2b954c5fc00dd80a3540b0a4b40f03abb5535a3f1e4cd861526bf",
+    "build/metadata-before-control/gdeflate_gpu.hpp": "d452dc7d4e46a3c6c791cad392d7532f22ff31707c38a3829380f2c1d6b79114",
+    "build/metadata-before-control/libzvram_layer.so": "59edeee67e4c1071ea3fa2239f71fbea35d3ccac57a2c8de484290253576b815",
+    "build/bp16-codec/libzvram_layer.so": "969f3ef9f730d900554a2bc7dfa4a20dad566c85012d861e8566a11af13665ba"
+  },
+  "runtime_binary_sha256": {
+    "build/metadata-before-control/libzvram_layer.so": "59edeee67e4c1071ea3fa2239f71fbea35d3ccac57a2c8de484290253576b815",
+    "build/bp16-codec/libzvram_layer.so": "969f3ef9f730d900554a2bc7dfa4a20dad566c85012d861e8566a11af13665ba"
+  },
+  "codec_manifest": {
+    "path": "zvram-codecs.json",
+    "sha256": "01d833f76dc2f72c69fdbd713936497d905d5102caf5e1a39b9c0ff2a002b309",
+    "used_for": [
+      "build/metadata-before-control",
+      "build/bp16-codec"
+    ],
+    "same_manifest_in_both_builds": true
+  },
+  "commands": {
+    "current": "command.json",
+    "before": "before-command.json",
+    "pair_run_commands_and_clock_samples": "result.json"
+  },
+  "environment": "env.json",
+  "source_control_provenance": "source-control-provenance.json"
+}

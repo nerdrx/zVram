@@ -1,0 +1,41 @@
+[  2%] Built target zvram_pool
+[  8%] Building CXX object CMakeFiles/zvram_layer.dir/layer.cpp.o
+[ 10%] Built target zvram-capacity-check
+[ 10%] Built target zvram-compression-check
+[ 15%] Built target zvram-vulkan-auto-check
+[ 21%] Built target zvram-file-pool-check
+[ 24%] Built target zvram-vulkan-graphics-check
+[ 27%] Built target zvram-compression-policy-check
+[ 28%] Building CXX object CMakeFiles/zvram-bp16-codec-check.dir/bp16_codec_check.cpp.o
+[ 31%] Built target zvram-clean-cache-policy-check
+[ 32%] Building CXX object CMakeFiles/zvram-resident-bootstrap-check.dir/resident_bootstrap_check.cpp.o
+[ 35%] Built target zvram-resident-budget-check
+[ 38%] Built target zvram-snapshot-decode-check
+[ 41%] Built target zvram-gdeflate-envelope-check
+[ 44%] Built target zvram-gdeflate-research
+[ 47%] Built target zvram-snapshot-pipeline-check
+[ 50%] Built target zvram-submission-tracking-check
+[ 52%] Built target zvram-active-refs-check
+[ 60%] Built target zvram_hip
+[ 62%] Built target zvram-hip-vmm-fd-check
+[ 65%] Built target zvram_hip_oom_test
+[ 68%] Built target zvram-hip-capacity-check
+[ 71%] Built target zvram-hip-proc-check
+[ 74%] Built target zvram-hip-error-check
+[ 75%] Built target zvram-hip_check
+[ 77%] Built target zvram-hip_probe
+[ 78%] Built target zvram-vmm_probe
+[ 80%] Built target zvram-hip_hibernate_check
+[ 81%] Built target zvram-hip_auto_check
+[ 82%] Built target zvram-hip_auto_thread_check
+[ 84%] Built target zvram-hip_auto_guard_check
+[ 85%] Built target zvram-hsa_vmm_probe
+[ 87%] Built target zvram-ram_vmm_probe
+[ 91%] Built target zvram-managed-check
+[ 95%] Built target zvram-sparse-check
+[ 97%] Linking CXX executable zvram-bp16-codec-check
+[ 97%] Built target zvram-bp16-codec-check
+[ 98%] Linking CXX shared library libzvram_layer.so
+[ 98%] Built target zvram_layer
+[100%] Linking CXX executable zvram-resident-bootstrap-check
+[100%] Built target zvram-resident-bootstrap-check

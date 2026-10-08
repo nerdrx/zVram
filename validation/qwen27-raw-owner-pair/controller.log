@@ -1,0 +1,4 @@
+{"label": "off1", "performance": {"decode_ms": 52865.95, "decode_runs": 94, "tokens_per_second": 1.78, "prompt_ms": 786.41, "restore_ms": []}, "offload": [66, 66], "sha": "ab00fd0d30f1e0c2eb8dd044f34a85228adc47951e04517bd24d53092b0a5b9d"}
+{"label": "on1", "performance": {"decode_ms": 41034.63, "decode_runs": 94, "tokens_per_second": 2.29, "prompt_ms": 894.39, "restore_ms": []}, "offload": [66, 66], "sha": "ab00fd0d30f1e0c2eb8dd044f34a85228adc47951e04517bd24d53092b0a5b9d"}
+{"label": "off2", "performance": {"decode_ms": 53768.75, "decode_runs": 94, "tokens_per_second": 1.75, "prompt_ms": 771.75, "restore_ms": []}, "offload": [66, 66], "sha": "ab00fd0d30f1e0c2eb8dd044f34a85228adc47951e04517bd24d53092b0a5b9d"}
+{"label": "on2", "performance": {"decode_ms": 41023.85, "decode_runs": 94, "tokens_per_second": 2.29, "prompt_ms": 913.78, "restore_ms": []}, "offload": [66, 66], "sha": "ab00fd0d30f1e0c2eb8dd044f34a85228adc47951e04517bd24d53092b0a5b9d"}

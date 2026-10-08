@@ -57,4 +57,11 @@ inline bool needsTrim(std::uint64_t coldBytes, std::uint64_t cacheBytes,
     return coldBytes > available || cacheBytes > available - coldBytes;
 }
 
+inline bool needsTrim(std::uint64_t coldBytes, std::uint64_t cacheBytes,
+                      std::uint64_t budgetBytes, std::uint64_t requiredBytes,
+                      std::uint64_t cacheLimitBytes) noexcept {
+    return needsTrim(coldBytes, cacheBytes, budgetBytes, requiredBytes) ||
+           cacheBytes > cacheLimitBytes;
+}
+
 } // namespace zvram::clean_cache

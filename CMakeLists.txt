@@ -119,7 +119,13 @@ add_test(NAME cpu-bp16-codec COMMAND zvram-bp16-codec-check)
 add_test(NAME cpu-resident-budget COMMAND zvram-resident-budget-check)
 add_test(NAME cpu-resident-bootstrap COMMAND zvram-resident-bootstrap-check)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-set(graphics_check_launch ${CMAKE_CURRENT_SOURCE_DIR}/zvram --build-dir ${CMAKE_CURRENT_BINARY_DIR}
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/zvram ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-source COPYONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/ctest_launcher.py.in
+    ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py COPYONLY)
+file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
+    PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+set(ZVRAM_TEST_LAUNCH ${Python3_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py)
+set(graphics_check_launch ${ZVRAM_TEST_LAUNCH}
     --validate --isolate-layers --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64)
 add_test(NAME vulkan-graphics-cold-restore COMMAND ${graphics_check_launch}
     -- $<TARGET_FILE:zvram-vulkan-graphics-check>)
@@ -164,19 +170,19 @@ target_compile_features(zvram-active-refs-check PRIVATE cxx_std_17)
 target_include_directories(zvram-active-refs-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 add_test(NAME cpu-active-refs COMMAND zvram-active-refs-check)
 add_test(NAME compression-roundtrip COMMAND zvram-compression-check)
-add_test(NAME layer-capacity-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --isolate-layers -- $<TARGET_FILE:zvram-capacity-check> --mib 64)
-add_test(NAME vulkan-virtual-single-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 40960 -- $<TARGET_FILE:zvram-capacity-check> --single-allocation --mib 320 --chunk-mib 64)
-add_test(NAME vulkan-virtual-api2-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 98304 -- $<TARGET_FILE:zvram-capacity-check> --single-allocation --api2 --mib 320 --chunk-mib 64)
+add_test(NAME layer-capacity-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --isolate-layers -- $<TARGET_FILE:zvram-capacity-check> --mib 64)
+add_test(NAME vulkan-virtual-single-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 40960 -- $<TARGET_FILE:zvram-capacity-check> --single-allocation --mib 320 --chunk-mib 64)
+add_test(NAME vulkan-virtual-api2-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 98304 -- $<TARGET_FILE:zvram-capacity-check> --single-allocation --api2 --mib 320 --chunk-mib 64)
 foreach(pool_api legacy api2)
     set(pool_flags --suballocation)
     if(pool_api STREQUAL "api2")
         list(APPEND pool_flags --suballocation-api2)
     endif()
-    add_test(NAME vulkan-virtual-pool-${pool_api} COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${pool_flags})
-    add_test(NAME vulkan-automatic-pool-${pool_api} COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${pool_flags} --suballocation-auto)
+    add_test(NAME vulkan-virtual-pool-${pool_api} COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${pool_flags})
+    add_test(NAME vulkan-automatic-pool-${pool_api} COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${pool_flags} --suballocation-auto)
     set_tests_properties(vulkan-virtual-pool-${pool_api} vulkan-automatic-pool-${pool_api} PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
-add_test(NAME vulkan-automatic-pool-bda COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --suballocation-auto --suballocation-api2 --bda)
+add_test(NAME vulkan-automatic-pool-bda COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --suballocation-auto --suballocation-api2 --bda)
 set_tests_properties(vulkan-automatic-pool-bda PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 foreach(native_pool_mode legacy api2 bda two-queues two-families)
     set(native_pool_flags --suballocation-auto --native-allocation)
@@ -189,7 +195,7 @@ foreach(native_pool_mode legacy api2 bda two-queues two-families)
     elseif(native_pool_mode STREQUAL "two-families")
         list(APPEND native_pool_flags --two-families --bda)
     endif()
-    add_test(NAME vulkan-automatic-native-pool-${native_pool_mode} COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${native_pool_flags})
+    add_test(NAME vulkan-automatic-native-pool-${native_pool_mode} COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> ${native_pool_flags})
     set_tests_properties(vulkan-automatic-native-pool-${native_pool_mode} PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
 foreach(submit_mode synthetic-legacy synthetic-api2 native-legacy native-api2 synthetic-unknown native-unknown synthetic-bda native-bda)
@@ -205,7 +211,7 @@ foreach(submit_mode synthetic-legacy synthetic-api2 native-legacy native-api2 sy
         list(APPEND submit_flags --native-allocation)
     endif()
     add_test(NAME vulkan-selective-submit-${submit_mode}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
                 --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64 --vulkan-selective-restore --
                 $<TARGET_FILE:zvram-vulkan-auto-check> ${submit_flags})
     set_tests_properties(vulkan-selective-submit-${submit_mode} PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
@@ -216,7 +222,7 @@ foreach(range_mode synthetic native)
         list(APPEND range_flags --native-allocation)
     endif()
     add_test(NAME vulkan-range-residency-${range_mode}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32 --
             $<TARGET_FILE:zvram-vulkan-auto-check> ${range_flags})
@@ -229,7 +235,7 @@ foreach(range_mode synthetic native)
         list(APPEND range_flags --native-allocation)
     endif()
     add_test(NAME vulkan-rawrange-${range_mode}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 128
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
             --vulkan-min-savings-percent 100 --
@@ -248,7 +254,7 @@ foreach(range_pressure_mode synthetic native)
         endif()
         set(test_name vulkan-range-pressure-${range_pressure_mode}-${queue_mode})
         add_test(NAME ${test_name}
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
                 --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
                 --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
                 --vulkan-resident-mib 32 --
@@ -270,7 +276,7 @@ foreach(batch_mode synthetic native)
     foreach(batch_savings 0 100)
         set(batch_test vulkan-transfer-batch-${batch_mode}-${batch_savings})
         add_test(NAME ${batch_test}
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
                 --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512
                 --vulkan-selective-restore --vulkan-active-eviction
                 --vulkan-range-mib 128 --vulkan-min-savings-percent ${batch_savings} --
@@ -281,7 +287,7 @@ foreach(batch_mode synthetic native)
     foreach(shuffle_stride 2 4)
         set(shuffle_test vulkan-byte-shuffle-${batch_mode}-${shuffle_stride})
         add_test(NAME ${shuffle_test}
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
                 --vulkan-virtual-mib 512 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512
                 --vulkan-selective-restore --vulkan-active-eviction
                 --vulkan-range-mib 128 --vulkan-byte-shuffle ${shuffle_stride} --
@@ -292,7 +298,7 @@ foreach(batch_mode synthetic native)
 endforeach()
 add_test(NAME vulkan-snapshot-pipeline
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_pipeline.py
-        ${CMAKE_CURRENT_SOURCE_DIR}/zvram $<TARGET_FILE:zvram-vulkan-auto-check>)
+        ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>)
 set_tests_properties(vulkan-snapshot-pipeline PROPERTIES TIMEOUT 480
     ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 foreach(range_cache_mode synthetic native)
@@ -302,7 +308,7 @@ foreach(range_cache_mode synthetic native)
     endif()
     set(test_name vulkan-range-clean-cache-${range_cache_mode})
     add_test(NAME ${test_name}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
             --vulkan-resident-mib 32 --vulkan-clean-cache --
@@ -312,16 +318,24 @@ foreach(range_cache_mode synthetic native)
 endforeach()
 add_test(NAME vulkan-range-clean-cache-bootstrap
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_cache_bootstrap.py
-        ${CMAKE_CURRENT_SOURCE_DIR}/zvram $<TARGET_FILE:zvram-vulkan-auto-check>)
+        ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>)
 set_tests_properties(vulkan-range-clean-cache-bootstrap PROPERTIES TIMEOUT 60
     ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+foreach(clean_cache_cap_mode synthetic native)
+    add_test(NAME vulkan-range-clean-cache-cap-${clean_cache_cap_mode}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_clean_cache_cap.py
+            ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>
+            ${clean_cache_cap_mode})
+    set_tests_properties(vulkan-range-clean-cache-cap-${clean_cache_cap_mode} PROPERTIES TIMEOUT 60
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
 foreach(range_cache_mode synthetic native)
     set(range_cache_flags --range-cache)
     if(range_cache_mode STREQUAL "native")
         list(APPEND range_cache_flags --native-allocation)
     endif()
     add_test(NAME vulkan-rawcache-${range_cache_mode}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
             --vulkan-resident-mib 32 --vulkan-clean-cache --vulkan-eviction-policy mru
@@ -337,7 +351,7 @@ foreach(range_cache_mode synthetic native)
     endif()
     set(test_name vulkan-range-clean-cache-quota-${range_cache_mode})
     add_test(NAME ${test_name}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
             --vulkan-resident-mib 64 --vulkan-clean-cache --
@@ -351,7 +365,7 @@ foreach(range_cache_mode synthetic native)
         list(APPEND range_cache_flags --native-allocation)
     endif()
     add_test(NAME vulkan-range-mru-${range_cache_mode}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
             --vulkan-resident-mib 32 --vulkan-clean-cache --vulkan-eviction-policy mru --
@@ -364,7 +378,7 @@ foreach(range_cache_mode synthetic native)
         list(APPEND range_cache_quota_flags --native-allocation)
     endif()
     add_test(NAME vulkan-range-mru-quota-${range_cache_mode}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
             --vulkan-resident-mib 64 --vulkan-clean-cache --vulkan-eviction-policy mru --
@@ -379,7 +393,7 @@ foreach(range_cache_mode synthetic native)
     endif()
     set(test_name vulkan-range-clean-cache-accepted-unknown-${range_cache_mode})
     add_test(NAME ${test_name}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 1000 --vulkan-cold-mib 64
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
             --vulkan-resident-mib 96 --vulkan-clean-cache --
@@ -393,7 +407,7 @@ foreach(robust_mode synthetic native)
         list(APPEND robust_flags --native-allocation)
     endif()
     add_test(NAME vulkan-range-pressure-robust-${robust_mode}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
             --vulkan-resident-mib 32 --vulkan-strict-robustness --
@@ -410,7 +424,7 @@ foreach(active_mode synthetic native synthetic-unknown native-unknown)
         list(APPEND active_flags --selective-submit-unknown)
     endif()
     add_test(NAME vulkan-active-eviction-${active_mode}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
             --vulkan-selective-restore --vulkan-active-eviction --
             $<TARGET_FILE:zvram-vulkan-auto-check> ${active_flags})
@@ -426,29 +440,29 @@ foreach(selective_mode synthetic-legacy synthetic-api2 native-legacy native-api2
         list(APPEND selective_flags --native-allocation)
     endif()
     add_test(NAME vulkan-automatic-selective-bind-${selective_mode}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
                 --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64 --
                 $<TARGET_FILE:zvram-vulkan-auto-check> ${selective_flags})
     set_tests_properties(vulkan-automatic-selective-bind-${selective_mode}
         PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1")
 endforeach()
-add_test(NAME vulkan-automatic-idle-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check>)
-add_test(NAME vulkan-automatic-budget-refusal COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 98304 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 1 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-budget-refusal)
-add_test(NAME vulkan-automatic-budget-release COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-mib 98304 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 14 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-budget-release)
-add_test(NAME vulkan-automatic-partial-freeze COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 11 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-partial-freeze)
-add_test(NAME vulkan-automatic-partial-restore-retry COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-partial-restore)
+add_test(NAME vulkan-automatic-idle-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check>)
+add_test(NAME vulkan-automatic-budget-refusal COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 98304 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 1 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-budget-refusal)
+add_test(NAME vulkan-automatic-budget-release COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 98304 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 14 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-budget-release)
+add_test(NAME vulkan-automatic-partial-freeze COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 11 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-partial-freeze)
+add_test(NAME vulkan-automatic-partial-restore-retry COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --expect-partial-restore)
 set_tests_properties(vulkan-automatic-partial-freeze PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 set_tests_properties(vulkan-automatic-partial-restore-retry PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;ZVRAM_TEST_RESTORE_FAIL_AFTER_GROUPS=1")
-add_test(NAME vulkan-automatic-bda-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --bda)
-add_test(NAME vulkan-automatic-native-two-queues COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation --two-queues --pending-wait)
-add_test(NAME vulkan-automatic-native-two-families COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation --two-families --bda)
-add_test(NAME vulkan-automatic-exclusive-families COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --exclusive-families --bda)
-add_test(NAME vulkan-virtual-pending-bind COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 -- $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation --two-queues --pending-bind)
-add_test(NAME vulkan-virtual-concurrent-pending-wait COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers --vulkan-virtual-gib 96 -- $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation --two-queues --pending-wait --concurrent-wait)
+add_test(NAME vulkan-automatic-bda-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --bda)
+add_test(NAME vulkan-automatic-native-two-queues COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation --two-queues --pending-wait)
+add_test(NAME vulkan-automatic-native-two-families COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation --two-families --bda)
+add_test(NAME vulkan-automatic-exclusive-families COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 512 -- $<TARGET_FILE:zvram-vulkan-auto-check> --exclusive-families --bda)
+add_test(NAME vulkan-virtual-pending-bind COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-gib 96 -- $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation --two-queues --pending-bind)
+add_test(NAME vulkan-virtual-concurrent-pending-wait COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-gib 96 -- $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation --two-queues --pending-wait --concurrent-wait)
 set_tests_properties(vulkan-automatic-native-two-queues vulkan-automatic-native-two-families vulkan-automatic-exclusive-families vulkan-virtual-pending-bind vulkan-virtual-concurrent-pending-wait PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~" TIMEOUT 20)
-add_test(NAME managed-compute-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --isolate-layers -- $<TARGET_FILE:zvram-managed-check>)
-add_test(NAME managed-capacity-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --isolate-layers -- $<TARGET_FILE:zvram-managed-check> --capacity-mib 320)
-add_test(NAME sparse-compute-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --validate --isolate-layers -- $<TARGET_FILE:zvram-sparse-check> ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv)
+add_test(NAME managed-compute-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --isolate-layers -- $<TARGET_FILE:zvram-managed-check>)
+add_test(NAME managed-capacity-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --isolate-layers -- $<TARGET_FILE:zvram-managed-check> --capacity-mib 320)
+add_test(NAME sparse-compute-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers -- $<TARGET_FILE:zvram-sparse-check> ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv)
 set_tests_properties(compression-roundtrip layer-capacity-integrity vulkan-virtual-single-integrity vulkan-virtual-api2-integrity vulkan-automatic-idle-integrity vulkan-automatic-budget-refusal vulkan-automatic-bda-integrity managed-compute-integrity managed-capacity-integrity sparse-compute-integrity PROPERTIES ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 
 option(ZVRAM_BUILD_HIP "Build the experimental HIP spillover backend when ROCm is installed" ON)
@@ -540,18 +554,18 @@ if(ZVRAM_BUILD_HIP)
             endforeach()
         endif()
         add_test(NAME hip-native-integrity COMMAND ${CMAKE_CURRENT_BINARY_DIR}/hip_check)
-        add_test(NAME hip-spill-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-local-mib 16 --hip-host-mib 64 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check)
-        add_test(NAME hip-procedure-native-query COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-local-mib 32 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-proc-check> --expect-physical)
+        add_test(NAME hip-spill-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --hip --hip-local-mib 16 --hip-host-mib 64 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check)
+        add_test(NAME hip-procedure-native-query COMMAND ${ZVRAM_TEST_LAUNCH} --hip --hip-local-mib 32 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-proc-check> --expect-physical)
         if(DRM_AMDGPU_FOUND)
         if(ZVRAM_CAN_HIP_DISPATCH)
         add_test(NAME hip-automatic-idle-integrity COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
-            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64
+            ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64
             --hip-auto-idle-ms 100 --hip-cold-mib 32 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_auto_check)
         add_test(NAME hip-automatic-concurrent-integrity COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
-            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 128
+            ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 128
             --hip-auto-idle-ms 100 --hip-cold-mib 64 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_auto_thread_check)
         add_test(NAME hip-automatic-local-integrity COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
-            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 64 --hip-host-mib 0
+            ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 64 --hip-host-mib 0
             --hip-auto-idle-ms 100 --hip-cold-mib 32 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_auto_check)
         foreach(guard capture callback)
             if(guard STREQUAL "callback")
@@ -560,47 +574,47 @@ if(ZVRAM_BUILD_HIP)
                 set(ZVRAM_GUARD_ARGS)
             endif()
             add_test(NAME hip-automatic-${guard}-guard COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
-                ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64
+                ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64
                 --hip-auto-idle-ms 100 --hip-cold-mib 32 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_auto_guard_check ${ZVRAM_GUARD_ARGS})
         endforeach()
         endif()
         add_test(NAME hip-hibernation-integrity COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
-            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 --
+            ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 --
             ${CMAKE_CURRENT_BINARY_DIR}/hip_hibernate_check)
         add_test(NAME hip-hibernation-multisegment COMMAND ${CMAKE_COMMAND} -E env "HIP_VISIBLE_DEVICES=0"
-            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 768 --
+            ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 768 --
             ${CMAKE_CURRENT_BINARY_DIR}/hip_hibernate_check --large)
-        add_test(NAME hip-vmm-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 32 --hip-host-mib 32 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check --single-allocation --mib 64)
-        add_test(NAME hip-vmm-host-integrity COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 0 --hip-host-mib 64 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check --single-allocation --mib 32)
-        add_test(NAME hip-native-capacity-query COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-capacity-check>)
-        add_test(NAME hip-virtual-capacity-query COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-report-capacity --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-capacity-check>)
-        add_test(NAME hip-vmm-descriptor-lifetime COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 0 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-vmm-fd-check>)
-        add_test(NAME hip-procedure-vmm-query COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-report-capacity --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-proc-check>)
+        add_test(NAME hip-vmm-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 32 --hip-host-mib 32 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check --single-allocation --mib 64)
+        add_test(NAME hip-vmm-host-integrity COMMAND ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 0 --hip-host-mib 64 -- ${CMAKE_CURRENT_BINARY_DIR}/hip_check --single-allocation --mib 32)
+        add_test(NAME hip-native-capacity-query COMMAND ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-capacity-check>)
+        add_test(NAME hip-virtual-capacity-query COMMAND ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-report-capacity --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-capacity-check>)
+        add_test(NAME hip-vmm-descriptor-lifetime COMMAND ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 0 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-vmm-fd-check>)
+        add_test(NAME hip-procedure-vmm-query COMMAND ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-report-capacity --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-proc-check>)
         endif()
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
         add_test(NAME hip-fallback-error-state COMMAND ${CMAKE_COMMAND} -E env
             "LD_PRELOAD=$<TARGET_FILE:zvram_hip_oom_test>" "ZVRAM_TEST_NATIVE_ERROR=1" "HIP_VISIBLE_DEVICES=0"
             --unset=ZVRAM_HIP_LOCAL_LIMIT_MIB --unset=ZVRAM_HIP_VMM
             --unset=ZVRAM_HIP_REPORT_CAPACITY --unset=ZVRAM_TEST_VMM_FAIL_AFTER
-            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-error-check>)
+            ${ZVRAM_TEST_LAUNCH} --hip --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-error-check>)
         if(DRM_AMDGPU_FOUND)
         add_test(NAME hip-vmm-error-state COMMAND ${CMAKE_COMMAND} -E env
             "LD_PRELOAD=$<TARGET_FILE:zvram_hip_oom_test>" "ZVRAM_TEST_NATIVE_ERROR=1" "HIP_VISIBLE_DEVICES=0"
             --unset=ZVRAM_TEST_VMM_FAIL_AFTER
-            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-report-capacity
+            ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-report-capacity
             --hip-local-mib 16 --hip-host-mib 64 -- $<TARGET_FILE:zvram-hip-error-check>)
         endif()
         add_test(NAME hip-injected-oom-integrity COMMAND ${Python3_EXECUTABLE} -c
-            "import os,subprocess; e=os.environ.copy(); e['LD_PRELOAD']='${CMAKE_CURRENT_BINARY_DIR}/libzvram_hip_oom_test.so'; e.pop('ZVRAM_HIP_LOCAL_LIMIT_MIB',None); e.pop('ZVRAM_HIP_VMM',None); p=subprocess.run(['${CMAKE_CURRENT_SOURCE_DIR}/zvram','--hip','--hip-host-mib','64','--','${CMAKE_CURRENT_BINARY_DIR}/hip_check'],env=e,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True); print(p.stdout); assert p.returncode==0; assert 'mapped_host_allocations=6 ' in p.stdout")
+            "import os,subprocess,sys; e=os.environ.copy(); e['LD_PRELOAD']='${CMAKE_CURRENT_BINARY_DIR}/libzvram_hip_oom_test.so'; e.pop('ZVRAM_HIP_LOCAL_LIMIT_MIB',None); e.pop('ZVRAM_HIP_VMM',None); p=subprocess.run([sys.executable,'${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py','--hip','--hip-host-mib','64','--','${CMAKE_CURRENT_BINARY_DIR}/hip_check'],env=e,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True); print(p.stdout); assert p.returncode==0; assert 'mapped_host_allocations=6 ' in p.stdout")
         if(DRM_AMDGPU_FOUND)
         add_test(NAME hip-hibernation-remap-recovery COMMAND ${CMAKE_COMMAND} -E env
             "LD_PRELOAD=$<TARGET_FILE:zvram_hip_oom_test>" "HIP_VISIBLE_DEVICES=0"
             "ZVRAM_TEST_VMM_FAIL_AFTER=999999" "ZVRAM_TEST_VMM_MAP_FAIL_AFTER=3"
             --unset=ZVRAM_TEST_NATIVE_ERROR
-            ${CMAKE_CURRENT_SOURCE_DIR}/zvram --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 --
+            ${ZVRAM_TEST_LAUNCH} --hip --hip-vmm --hip-local-mib 16 --hip-host-mib 64 --
             ${CMAKE_CURRENT_BINARY_DIR}/hip_hibernate_check --retry-map-failure)
         add_test(NAME hip-vmm-partial-failure-cleanup COMMAND ${Python3_EXECUTABLE} -c
-            "import os,subprocess; e=os.environ.copy(); e['LD_PRELOAD']='${CMAKE_CURRENT_BINARY_DIR}/libzvram_hip_oom_test.so'; e['ZVRAM_TEST_VMM_FAIL_AFTER']='1'; p=subprocess.run(['${CMAKE_CURRENT_SOURCE_DIR}/zvram','--hip','--hip-vmm','--hip-local-mib','512','--hip-host-mib','256','--','${CMAKE_CURRENT_BINARY_DIR}/hip_check','--single-allocation','--mib','768'],env=e,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True); print(p.stdout); assert p.returncode==1; assert 'failures=1' in p.stdout; assert 'hipMalloc_api_bytes_current=0' in p.stdout; assert 'host_pinned_backing_bytes_current=0 pending=0' in p.stdout; assert 'tracked=0 ' in p.stdout")
+            "import os,subprocess,sys; e=os.environ.copy(); e['LD_PRELOAD']='${CMAKE_CURRENT_BINARY_DIR}/libzvram_hip_oom_test.so'; e['ZVRAM_TEST_VMM_FAIL_AFTER']='1'; p=subprocess.run([sys.executable,'${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py','--hip','--hip-vmm','--hip-local-mib','512','--hip-host-mib','256','--','${CMAKE_CURRENT_BINARY_DIR}/hip_check','--single-allocation','--mib','768'],env=e,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True); print(p.stdout); assert p.returncode==1; assert 'failures=1' in p.stdout; assert 'hipMalloc_api_bytes_current=0' in p.stdout; assert 'host_pinned_backing_bytes_current=0 pending=0' in p.stdout; assert 'tracked=0 ' in p.stdout")
         endif()
     else()
         message(STATUS "ROCm development tools absent: skipping HIP backend")
@@ -619,7 +633,7 @@ if(ZVRAM_ENABLE_GDEFLATE)
     target_link_libraries(zvram-gdeflate-snapshot-check PRIVATE zvram_gdeflate Threads::Threads PkgConfig::ZSTD)
     add_test(NAME cpu-gdeflate-snapshot COMMAND zvram-gdeflate-snapshot-check)
     set(gdeflate_gpu_launch ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_gdeflate_gpu_layer.py
-        ${CMAKE_CURRENT_SOURCE_DIR}/zvram --build-dir ${CMAKE_CURRENT_BINARY_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
         --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100
         --vulkan-cold-mib 512 --vulkan-codec gdeflate --vulkan-gdeflate-gpu)
     add_test(NAME vulkan-gdeflate-gpu-idle-integrity COMMAND ${gdeflate_gpu_launch} -- $<TARGET_FILE:zvram-vulkan-auto-check>)
@@ -641,7 +655,7 @@ if(ZVRAM_ENABLE_GDEFLATE)
 endif()
 if(ZVRAM_ENABLE_BP16_GPU_TESTS)
     set(bp16_gpu_launch ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_gdeflate_gpu_layer.py
-        ${CMAKE_CURRENT_SOURCE_DIR}/zvram --build-dir ${CMAKE_CURRENT_BINARY_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
         --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100
         --vulkan-cold-mib 512 --vulkan-codec bp16 --vulkan-bp16-gpu)
     add_test(NAME vulkan-bp16-gpu-idle-integrity COMMAND ${bp16_gpu_launch}
@@ -689,6 +703,26 @@ if(ZVRAM_ENABLE_BP16_GPU_TESTS)
         set_tests_properties(${local_owner_test} PROPERTIES TIMEOUT 60
             ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;ZVRAM_VULKAN_BP16_LOCAL_OWNER_MIB=64;ZVRAM_VULKAN_BP16_LOCAL_TOTAL_MIB=96;ZVRAM_VULKAN_BP16_GPU_ENCODE=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=512;ZVRAM_VULKAN_GPU_PROFILE=1")
     endforeach()
+    foreach(raw_host_mode synthetic native)
+        add_test(NAME vulkan-bp16-raw-host-input-${raw_host_mode}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_raw_host_input.py
+                ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
+                $<TARGET_FILE:zvram-vulkan-auto-check> ${raw_host_mode})
+        set_tests_properties(vulkan-bp16-raw-host-input-${raw_host_mode} PROPERTIES TIMEOUT 120
+            ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_BP16_RAW_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=512;ZVRAM_VULKAN_GPU_PROFILE=1")
+    endforeach()
+    add_test(NAME vulkan-bp16-raw-host-input-owner-budget
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_raw_host_input.py
+            ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
+            $<TARGET_FILE:zvram-vulkan-auto-check> owner-budget)
+    set_tests_properties(vulkan-bp16-raw-host-input-owner-budget PROPERTIES TIMEOUT 120
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_BP16_RAW_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=8;ZVRAM_VULKAN_GPU_PROFILE=1")
+    add_test(NAME vulkan-bp16-raw-host-input-cold-budget
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_raw_host_input.py
+            ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
+            $<TARGET_FILE:zvram-vulkan-auto-check> cold-budget)
+    set_tests_properties(vulkan-bp16-raw-host-input-cold-budget PROPERTIES TIMEOUT 120
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_BP16_RAW_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=512;ZVRAM_VULKAN_GPU_PROFILE=1")
 endif()
 get_property(ZVRAM_TESTS DIRECTORY PROPERTY TESTS)
 set_tests_properties(${ZVRAM_TESTS} PROPERTIES TIMEOUT 60)

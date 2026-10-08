@@ -1,0 +1,19 @@
+{
+  "scope": "clean-cache cap validation harness and pre-raw-prototype library only",
+  "binary": {
+    "path": "build/bp16-codec/libzvram_layer.so",
+    "sha256": "be279aedb05b94ab8832e251869e85ab9878e2624c053a9f6c39860ad9941dce"
+  },
+  "source_provenance": {
+    "recorded_in": "../qwen27-vulkan-pressure-hour/source.patch",
+    "metadata": "../qwen27-vulkan-pressure-hour/provenance.json",
+    "recorded_layer_sha256": "be279aedb05b94ab8832e251869e85ab9878e2624c053a9f6c39860ad9941dce"
+  },
+  "current_harness_sources": {
+    "test_vulkan_clean_cache_cap.py": "6a9c1312c729f13f1b214b35a14e280225a18e2816ae81bd401cce9c112bd7ea",
+    "ctest_launcher.py.in": "eecf9fc303386220e07f450cfb6251c7bfecde96680956895e9ed6e7f6a210b5",
+    "CMakeLists.txt": "478d876aa2c0d2bb0200d8aaca0dcf13054da6e484c016f4099537ffdbc7f3f4",
+    "cmake_excerpt": "cmake-launcher-and-cap-registration.txt"
+  },
+  "validation_scope": "native and synthetic one-MiB cache cap fixtures; LRU/MRU/LFU policy repeats; current raw prototype source is not included in binary validation"
+}

@@ -1,0 +1,58 @@
+{
+  "0-before.log": {
+    "bytes": 22652,
+    "sha256": "59d6d5090c3b95d1ebcdaad3818a8c43ea57a9bd08f70ecf76d598c3893dfb64"
+  },
+  "1-current.log": {
+    "bytes": 22645,
+    "sha256": "cdc9021e96cd483def3c3ae7a82de7150c245e7877d9225f57156832a37261af"
+  },
+  "2-before.log": {
+    "bytes": 22661,
+    "sha256": "ed0732b3e97649f718b6ee8ddbbfff307153c2d4a4244165d6b3b7fe33e9ef26"
+  },
+  "3-current.log": {
+    "bytes": 22652,
+    "sha256": "45deeb8986f128dd7f76bdc466c60185258952e17a74d17812ad5d4941090ae3"
+  },
+  "README.md": {
+    "bytes": 1576,
+    "sha256": "21d4ef0a35b86970d8652f849ebfb6eeddaddf3b48a6ddc8aab8f4dcd38bf53b"
+  },
+  "before-command.json": {
+    "bytes": 607,
+    "sha256": "2a6099b948a6129dd70d099852ed95ca1bca8e609f7b48bde4a0dc76fb5629a6"
+  },
+  "before-control.patch": {
+    "bytes": 566,
+    "sha256": "d032c4cc319b5143118d80fa0eefad809039f15e5b2ac6a57ccb56d4d8faa52d"
+  },
+  "command.json": {
+    "bytes": 594,
+    "sha256": "92b212c8114aaa666a8bcf7155cb6c457852c4020d3b9ed8398f652981c3a633"
+  },
+  "env.json": {
+    "bytes": 309,
+    "sha256": "3cb71953080438fdfeed1d6e945bdecaa08836dbbaf0d24f4fa018bfa9a32976"
+  },
+  "provenance.json": {
+    "bytes": 1789,
+    "sha256": "a148b78953fd09bf33a64e06d8f5fb29cfad713df3a2a5ca5b2fc1ecb5cd4b81"
+  },
+  "result.json": {
+    "bytes": 5459,
+    "sha256": "f5e800e0d2bc6f958eb1f908fed8b050a8bfea9bc64606dd433a70d0e706b59b"
+  },
+  "run.py": {
+    "bytes": 1945,
+    "sha256": "dda6fb02ea4c01bdaaa264c5caaf265894e27fcc5c3c7a32dfb47cb1c83577ff"
+  },
+  "source-control-provenance.json": {
+    "bytes": 1255,
+    "sha256": "0a2abdcfd5c6d986b533fd6d5d2c8c95260cb3c78d7a5542d1ef25444d783c86"
+  },
+  "zvram-codecs.json": {
+    "bytes": 68,
+    "sha256": "01d833f76dc2f72c69fdbd713936497d905d5102caf5e1a39b9c0ff2a002b309"
+  }
+}

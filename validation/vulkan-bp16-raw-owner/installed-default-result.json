@@ -1,0 +1,10 @@
+{
+  "scope": "refreshed default build plus global command smoke; same runtime bytes as selected BP16 test build",
+  "tests_passed": 115,
+  "tests_failed": 0,
+  "seconds": 89.02,
+  "runtime_sha256": "04c6d673e812e7ebee1922e6e4b8fe43580bb663a44ed39b67d14788b2bf87d2",
+  "command_path": "/home/nerdrx/.local/bin/zvram",
+  "command_target": "/home/nerdrx/Documents/ChatGPT/NX/zvram/zvram",
+  "help_has_clean_cache_mib": true
+}

@@ -1,0 +1,30 @@
+## Configured source/launcher setup (CMakeLists.txt lines 118-130)
+118: add_test(NAME cpu-bp16-codec COMMAND zvram-bp16-codec-check)
+119: add_test(NAME cpu-resident-budget COMMAND zvram-resident-budget-check)
+120: add_test(NAME cpu-resident-bootstrap COMMAND zvram-resident-bootstrap-check)
+121: find_package(Python3 REQUIRED COMPONENTS Interpreter)
+122: configure_file(${CMAKE_CURRENT_SOURCE_DIR}/zvram ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-source COPYONLY)
+123: configure_file(${CMAKE_CURRENT_SOURCE_DIR}/ctest_launcher.py.in
+124:     ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py COPYONLY)
+125: file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
+126:     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+127: set(ZVRAM_TEST_LAUNCH ${Python3_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py)
+128: set(graphics_check_launch ${ZVRAM_TEST_LAUNCH}
+129:     --validate --isolate-layers --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64)
+130: add_test(NAME vulkan-graphics-cold-restore COMMAND ${graphics_check_launch}
+## Cap harness test registration (CMakeLists.txt lines 319-333)
+319: add_test(NAME vulkan-range-clean-cache-bootstrap
+320:     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_cache_bootstrap.py
+321:         ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>)
+322: set_tests_properties(vulkan-range-clean-cache-bootstrap PROPERTIES TIMEOUT 60
+323:     ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+324: foreach(clean_cache_cap_mode synthetic native)
+325:     add_test(NAME vulkan-range-clean-cache-cap-${clean_cache_cap_mode}
+326:         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_clean_cache_cap.py
+327:             ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>
+328:             ${clean_cache_cap_mode})
+329:     set_tests_properties(vulkan-range-clean-cache-cap-${clean_cache_cap_mode} PROPERTIES TIMEOUT 60
+330:         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+331: endforeach()
+332: foreach(range_cache_mode synthetic native)
+333:     set(range_cache_flags --range-cache)

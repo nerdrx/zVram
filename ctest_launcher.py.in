@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+import os
+from pathlib import Path
+import sys
+
+build = Path(__file__).resolve().parent
+source = build / "zvram-test-source"
+os.execv(sys.executable, [sys.executable, str(source), "--build-dir", str(build), *sys.argv[1:]])

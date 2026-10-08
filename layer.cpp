@@ -111,13 +111,15 @@ struct VirtualMemory {
         using Imported = zvram::gdeflate::gpu::Decoder::ImportedHostInputPtr;
         std::vector<std::uint8_t> bytes;
         Imported imported;
+        Imported rawOwner;
         VkDeviceSize rawSize{};
         bool compressed{};
         bool hostInputUsed{};
+        bool rawHostInputUsed{};
         unsigned byteShuffle{};
         zvram::snapshot::Codec codec{zvram::snapshot::Codec::Zstd};
-        const std::uint8_t* data() const noexcept { return imported ? imported->data() : bytes.data(); }
-        std::size_t size() const noexcept { return imported ? imported->encodedBytes() : bytes.size(); }
+        const std::uint8_t* data() const noexcept { return rawOwner ? rawOwner->data() : imported ? imported->data() : bytes.data(); }
+        std::size_t size() const noexcept { return rawOwner ? rawOwner->encodedBytes() : imported ? imported->encodedBytes() : bytes.size(); }
     };
     struct ColdGroup {
         std::vector<ColdChunk> chunks;
@@ -268,6 +270,7 @@ struct Device {
     bool admissionBudgetSnapshotValid{};
     VkDeviceSize admissionBudgetSnapshotLimit{};
     bool cleanCache{};
+    VkDeviceSize cleanCacheLimitBytes{std::numeric_limits<VkDeviceSize>::max()};
     bool cleanFirstEviction{};
     zvram::clean_cache::Policy cleanCachePolicy{zvram::clean_cache::Policy::First};
     bool mruEviction{};
@@ -282,11 +285,15 @@ struct Device {
     bool gpuRestoreEnabled{}, gpuRestoreUnsafe{};
     bool gpuImportHostInput{};
     bool gpuAllocatedHostInput{};
+    bool gpuRawHostInput{};
     std::uint64_t gpuAllocatedHostBudgetBytes{
         zvram::gdeflate::gpu::Decoder::DefaultAllocatedHostBudgetBytes};
     VkDeviceSize gpuImportHostAlignment{};
     std::uint64_t gpuImportedFrames{}, gpuImportedReuses{}, gpuImportedBytes{};
     std::uint64_t gpuAllocatedHostAllocations{}, gpuAllocatedHostReuses{}, gpuAllocatedHostBytes{};
+    std::uint64_t gpuRawHostAllocations{}, gpuRawHostReuses{}, gpuRawHostDirectBytes{}, gpuRawHostFallbacks{};
+    std::uint64_t lastGpuRawHostLoggedAllocations{}, lastGpuRawHostLoggedReuses{};
+    std::uint64_t lastGpuRawHostLoggedBytes{}, lastGpuRawHostLoggedFallbacks{};
     std::uint64_t gpuProfileLogRestoreCount{};
     std::uint64_t lastGpuProfileLoggedCalls{};
     VkDeviceSize gpuStorageAlignment{1};
@@ -438,6 +445,22 @@ void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
              static_cast<unsigned long long>(d.gpuProfileSparseFailures.load(std::memory_order_relaxed)),
              static_cast<unsigned long long>(d.gpuProfileSparseNs.load(std::memory_order_relaxed)),suffix);
 }
+void logRawHostInputSummary(Device& d,const char* suffix,bool force=false) {
+    if(!d.gpuRawHostInput || (!force &&
+       d.lastGpuRawHostLoggedAllocations==d.gpuRawHostAllocations &&
+       d.lastGpuRawHostLoggedReuses==d.gpuRawHostReuses &&
+       d.lastGpuRawHostLoggedBytes==d.gpuRawHostDirectBytes &&
+       d.lastGpuRawHostLoggedFallbacks==d.gpuRawHostFallbacks)) return;
+    logf("GPU BP16 raw host input allocations=%llu reuses=%llu direct-bytes=%llu fallbacks=%llu%s",
+         static_cast<unsigned long long>(d.gpuRawHostAllocations),
+         static_cast<unsigned long long>(d.gpuRawHostReuses),
+         static_cast<unsigned long long>(d.gpuRawHostDirectBytes),
+         static_cast<unsigned long long>(d.gpuRawHostFallbacks),suffix);
+    d.lastGpuRawHostLoggedAllocations=d.gpuRawHostAllocations;
+    d.lastGpuRawHostLoggedReuses=d.gpuRawHostReuses;
+    d.lastGpuRawHostLoggedBytes=d.gpuRawHostDirectBytes;
+    d.lastGpuRawHostLoggedFallbacks=d.gpuRawHostFallbacks;
+}
 void logSnapshotState(const char* event,Device& d) {
     logf("snapshot state event=%s resident=%llu cold-logical=%llu cold-stored=%llu freezes=%llu restores=%llu failures=%llu cache-stored=%llu clean-reuses=%llu cache-invalidations=%llu copy-calls=%llu copy-bytes=%llu copy-ns=%llu decode-bytes=%llu decode-ns=%llu pipeline-prefetches=%llu pipeline-restores=%llu pipeline-wait-ns=%llu gpu-decode-calls=%llu gpu-decode-bytes=%llu gpu-decode-ns=%llu gpu-decode-fallbacks=%llu",
          event,static_cast<unsigned long long>(d.residentBytes),static_cast<unsigned long long>(d.coldLogicalBytes),
@@ -469,6 +492,7 @@ void logSnapshotState(const char* event,Device& d) {
              static_cast<unsigned long long>(d.gpuAllocatedHostBytes),
              static_cast<unsigned long long>(d.gpuDecoder?d.gpuDecoder->allocatedHostInputUsedBytes():0),
              static_cast<unsigned long long>(d.gpuDecoder?d.gpuDecoder->allocatedHostInputLimitBytes():0));
+    if(logGpuDiagnostics) logRawHostInputSummary(d,"");
 }
 std::mutex mapsMutex;
 // Future command entry points absent from our build cannot be tracked safely.
@@ -890,6 +914,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     bool importHostRequested=importHostEnv && std::strcmp(importHostEnv,"1")==0;
     const char* allocatedHostEnv=std::getenv("ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT");
     bool allocatedHostRequested=allocatedHostEnv && std::strcmp(allocatedHostEnv,"1")==0;
+    const char* rawHostInputEnv=std::getenv("ZVRAM_VULKAN_BP16_RAW_HOST_INPUT");
+    const bool rawHostInputRequested=rawHostInputEnv && std::strcmp(rawHostInputEnv,"1")==0;
     if(importHostRequested && allocatedHostRequested) {
         logf("BP16 imported and allocated host input conflict; disabling both modes");
         importHostRequested=false; allocatedHostRequested=false;
@@ -1012,6 +1038,11 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     gpuRequiresInt64 = gpuRequiresInt64 && gpuRestorePlanned;
     gpuImportHostPlanned = gpuImportHostPlanned && gpuRestorePlanned;
     gpuAllocatedHostPlanned = gpuAllocatedHostPlanned && gpuRestorePlanned;
+    if(rawHostInputRequested && (!gpuRestorePlanned || !gpuAllocatedHostPlanned || !codecEnv ||
+       std::strcmp(codecEnv,"bp16")!=0 || !allocatedHostRequested || importHostRequested)) {
+        logf("BP16 raw host input requires BP16 GPU restore and allocated host input");
+        return VK_ERROR_FEATURE_NOT_PRESENT;
+    }
     VkDeviceCreateInfo copy=*ci; VkDeviceMemoryOverallocationCreateInfoAMD behavior{VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD};
     if(privateQueuePlanned) { copy.queueCreateInfoCount=static_cast<std::uint32_t>(queueInfos.size()); copy.pQueueCreateInfos=queueInfos.data(); }
     std::vector<const char*> extensions;
@@ -1109,6 +1140,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         d->gpuRestoreEnabled=gpuRestorePlanned;
         d->gpuImportHostInput=gpuImportHostPlanned;
         d->gpuAllocatedHostInput=gpuAllocatedHostPlanned;
+        d->gpuRawHostInput=rawHostInputRequested;
         d->gpuAllocatedHostBudgetBytes=gpuAllocatedHostBudgetBytes;
         d->gpuImportHostAlignment=gpuImportHostAlignment;
         if(budgetRequested) {
@@ -1211,6 +1243,25 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 if(d->activeEviction && rangeEnabled) d->rangeChunkBytes=rangeMiB*1024ull*1024ull;
                 const char* clean=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE");
                 d->cleanCache=d->rangeChunkBytes && clean && std::strcmp(clean,"1")==0;
+                if(d->gpuRawHostInput && !d->cleanCache) {
+                    autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
+                    logf("BP16 raw host input requires clean cache with active range eviction");
+                }
+                if(d->gpuRawHostInput && autoResult==VK_SUCCESS)
+                    logf("BP16 raw host input enabled");
+                if(const char* limit=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE_MIB")) {
+                    const auto limitMiB=positiveEnv("ZVRAM_VULKAN_CLEAN_CACHE_MIB",
+                        std::numeric_limits<std::uint64_t>::max()/(1024ull*1024ull));
+                    if(!d->cleanCache || !limitMiB || limitMiB>std::numeric_limits<VkDeviceSize>::max()/(1024ull*1024ull) ||
+                       limitMiB*1024ull*1024ull>d->coldBudget) {
+                        autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
+                        logf("clean snapshot cache MiB cap requires clean cache and a positive size within the cold budget");
+                    } else {
+                        d->cleanCacheLimitBytes=limitMiB*1024ull*1024ull;
+                        logf("Vulkan clean snapshot cache cap enabled limit-bytes=%llu",
+                             static_cast<unsigned long long>(d->cleanCacheLimitBytes));
+                    }
+                }
                 if(const char* cleanFirst=std::getenv("ZVRAM_VULKAN_CLEAN_FIRST_EVICTION")) {
                     const bool recognized=std::strcmp(cleanFirst,"0")==0 || std::strcmp(cleanFirst,"1")==0;
                     d->cleanFirstEviction=d->cleanCache && std::strcmp(cleanFirst,"1")==0;
@@ -1763,6 +1814,7 @@ void releaseSnapshotResources(Device& d) {
     const auto allocatedHostLimitBytes=d.gpuDecoder
         ?d.gpuDecoder->allocatedHostInputLimitBytes():0;
     logGpuProfileSummary(d," final=1",true);
+    logRawHostInputSummary(d," final=1",true);
     d.gpuDecoder.reset();
     if(d.gpuImportHostInput)
         logf("GPU BP16 imported input imports=%llu reuses=%llu bytes=%llu",
@@ -1835,10 +1887,15 @@ void discardCleanCacheLocked(Device& d,VirtualMemory& memory,std::size_t i) {
 // Clean copies are expendable; cold copies remain the only lossless backing.
 // Both share the existing cold-store quota, so retaining copies cannot grow RAM
 // beyond that quota. Drop clean copies only when a new snapshot needs room.
-void trimCleanCacheLocked(Device& d,VkDeviceSize required) {
+void trimCleanCacheLocked(Device& d,VkDeviceSize required,bool enforceCacheLimit=false) {
     if(required>d.coldBudget) return;
+    const auto needsTrim=[&] {
+        return enforceCacheLimit
+            ?zvram::clean_cache::needsTrim(d.coldBytes,d.cacheBytes,d.coldBudget,required,d.cleanCacheLimitBytes)
+            :zvram::clean_cache::needsTrim(d.coldBytes,d.cacheBytes,d.coldBudget,required);
+    };
     if(d.cleanCachePolicy!=zvram::clean_cache::Policy::First) {
-        while(zvram::clean_cache::needsTrim(d.coldBytes,d.cacheBytes,d.coldBudget,required)) {
+        while(needsTrim()) {
             VirtualMemory* victimMemory=nullptr;
             std::size_t victimIndex=0;
             zvram::clean_cache::Candidate victim{};
@@ -1872,7 +1929,7 @@ void trimCleanCacheLocked(Device& d,VkDeviceSize required) {
     }
     for(auto& pair:d.virtualMemory) {
         for(std::size_t i=0;i<pair.second.coldGroups.size();++i) {
-            if(!zvram::clean_cache::needsTrim(d.coldBytes,d.cacheBytes,d.coldBudget,required)) return;
+            if(!needsTrim()) return;
             const auto& group=pair.second.coldGroups[i];
             if(!group.cold && group.storedBytes)
                 logf("clean snapshot cache trimmed bytes=%llu",static_cast<unsigned long long>(group.storedBytes));
@@ -2018,6 +2075,69 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             }
             for(std::size_t next=0;!preparedBuffer && next<group.chunks.size();) {
                 auto& gpuChunk=group.chunks[next];
+                if(d.gpuRawHostInput && !gpuChunk.compressed && !gpuChunk.byteShuffle) {
+                    const bool eligible=d.residentAdmissionArmed && d.gpuDecoder &&
+                        group.chunks.size()==1 && next==0 && offset==0 &&
+                        !gpuChunk.compressed && !gpuChunk.byteShuffle && !gpuChunk.imported &&
+                        gpuChunk.rawSize==amount && gpuChunk.size()==gpuChunk.rawSize &&
+                        gpuChunk.rawSize==group.logicalBytes && gpuChunk.rawSize<=s.chunkSize &&
+                        gpuChunk.rawSize<=zvram::bp16::MaxRawBytes &&
+                        gpuChunk.rawSize%zvram::bp16::RawBytesPerBlock==0;
+                    bool fellBack=false;
+                    if(eligible) {
+                        if(!gpuChunk.rawOwner) {
+                            // Bound the brief source-vector + owner overlap as well as
+                            // the steady-state allocation padding charged below.
+                            const auto transientBytes=gpuChunk.rawSize+65536u;
+                            if(!zvram::gdeflate::gpu::Decoder::importedHostFitsBudget(
+                                   d.coldBytes,d.cacheBytes,transientBytes,d.coldBudget)) {
+                                fellBack=true;
+                            } else {
+                                zvram::gdeflate::gpu::Decoder::ImportedHostInputPtr owner;
+                                const auto allocationResult=d.gpuDecoder->allocateRawHostInput(
+                                    gpuChunk.data(),gpuChunk.size(),owner);
+                                if(allocationResult==VK_SUCCESS && owner) {
+                                    if(owner->allocationBytes()>=gpuChunk.rawSize) {
+                                        const auto padding=owner->allocationBytes()-gpuChunk.rawSize;
+                                        if(padding<=std::numeric_limits<VkDeviceSize>::max()-group.importedPaddingBytes &&
+                                           zvram::gdeflate::gpu::Decoder::importedHostFitsBudget(
+                                               d.coldBytes,d.cacheBytes,padding,d.coldBudget)) {
+                                            gpuChunk.rawOwner=std::move(owner);
+                                            gpuChunk.bytes.clear(); std::vector<std::uint8_t>().swap(gpuChunk.bytes);
+                                            group.importedPaddingBytes+=padding;
+                                            d.coldBytes+=padding; memory.coldStoredBytes+=padding;
+                                            ++d.gpuRawHostAllocations;
+                                        } else fellBack=true;
+                                    } else fellBack=true;
+                                } else if(allocationResult==VK_ERROR_DEVICE_LOST || d.gpuDecoder->unsafe()) {
+                                    d.gpuRestoreUnsafe=true; d.gpuGateError=VK_ERROR_DEVICE_LOST;
+                                    d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
+                                    return VK_ERROR_DEVICE_LOST;
+                                } else fellBack=true;
+                            }
+                        }
+                        if(gpuChunk.rawOwner) {
+                            const auto source=gpuChunk.rawOwner->rawTransferBuffer();
+                            if(source) {
+                                r=copyChunkLocked(d,source,memory.poolViews[i],0,offset,gpuChunk.rawSize,true);
+                                if(r==VK_SUCCESS) {
+                                    if(gpuChunk.rawHostInputUsed) ++d.gpuRawHostReuses;
+                                    gpuChunk.rawHostInputUsed=true;
+                                    d.gpuRawHostDirectBytes+=gpuChunk.rawSize;
+                                    offset+=gpuChunk.rawSize; ++next; continue;
+                                }
+                                if(r==VK_ERROR_DEVICE_LOST) {
+                                    d.gpuGateError=VK_ERROR_DEVICE_LOST; d.autoEnabled=false;
+                                    d.stopWorker.store(true); d.activity.notify_all();
+                                    return VK_ERROR_DEVICE_LOST;
+                                }
+                                break;
+                            }
+                            fellBack=true;
+                        }
+                    } else if(!gpuChunk.rawOwner) fellBack=true;
+                    if(fellBack) ++d.gpuRawHostFallbacks;
+                }
                 if(d.gpuRestoreEnabled && d.gpuDecoder && gpuChunk.compressed &&
                    gpuChunk.codec==d.snapshotCodec && gpuChunk.codec!=zvram::snapshot::Codec::Zstd && !gpuChunk.byteShuffle &&
                    gpuChunk.rawSize && gpuChunk.rawSize<=s.chunkSize && offset<=group.logicalBytes &&
@@ -2139,6 +2259,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             memory.coldStoredBytes-=accounted; memory.coldLogicalSize-=group.logicalBytes;
             if(!retainClean) { group.chunks.clear(); group.logicalBytes=0; group.storedBytes=0; group.importedPaddingBytes=0; }
             group.cold=false; group.pristine=false; group.restoreBound=false;
+            if(retainClean) trimCleanCacheLocked(d,0,true);
             restoredAny=true; ++d.restoreCount; ++restoredThisCall;
             memory.cold=std::any_of(memory.coldGroups.begin(),memory.coldGroups.end(),[](const auto& entry){return entry.cold;});
             const bool coldRemains=std::any_of(d.virtualMemory.begin(),d.virtualMemory.end(),
@@ -3239,6 +3360,7 @@ VKAPI_ATTR void VKAPI_CALL layerFreeMemory(VkDevice device,VkDeviceMemory memory
           delete static_cast<std::uint8_t*>(i->second.token); d->virtualMemory.erase(i);
           if(d->gpuProfileEnabled && (d->gpuDecodeCalls || d->gpuDecodeFallbacks))
               logGpuProfileSummary(*d," allocation-free=1");
+          logRawHostInputSummary(*d," allocation-free=1");
           return;
       } }
     Allocation a{}; bool found=false;
