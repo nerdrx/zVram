@@ -26,6 +26,11 @@ if (result.returncode != 0 or "PASS:" not in result.stdout or
         profiles[-1][1] <= 0 or profiles[-1][2] <= 0 or profiles[-1][4] != 0 or "VUID-" in result.stdout or
         "Validation Error" in result.stdout):
     raise SystemExit("FAIL: full-byte check, observed GPU decode, or zero-fallback validation gate failed")
+upload_workers = os.environ.get("ZVRAM_VULKAN_BP16_UPLOAD_WORKERS")
+if expected == "bp16" and upload_workers is not None:
+    observed_workers = re.findall(r"GPU BP16 upload workers=(\d+)", result.stdout)
+    if not observed_workers or int(observed_workers[-1]) != int(upload_workers):
+        raise SystemExit("FAIL: requested BP16 upload worker count was not observed")
 if os.environ.get("ZVRAM_VULKAN_BP16_IMPORT_HOST_INPUT") == "1":
     imports = re.findall(r"GPU BP16 imported input imports=(\d+) reuses=(\d+) bytes=(\d+)", result.stdout)
     if expected != "bp16" or not imports or int(imports[-1][0]) <= 0 or int(imports[-1][2]) <= 0:

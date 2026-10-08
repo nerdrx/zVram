@@ -15,6 +15,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <thread>
 #include <vector>
 
 namespace zvram::gdeflate::gpu {
@@ -70,6 +71,56 @@ public:
         }
         bytes = value * MiB;
         return true;
+    }
+
+    static bool parseBP16UploadWorkers(const char* text, unsigned& workers) noexcept {
+        if (!text || !*text) return false;
+        unsigned value = 0;
+        for (; *text; ++text) {
+            if (*text < '0' || *text > '9') return false;
+            const auto digit = static_cast<unsigned>(*text - '0');
+            if (digit > 8u || value > (8u - digit) / 10u) return false;
+            value = value * 10u + digit;
+        }
+        if (!value) return false;
+        workers = value;
+        return true;
+    }
+
+    static void copyBP16UploadBytes(std::uint8_t* destination, const std::uint8_t* source,
+                                    std::size_t bytes, unsigned workers) noexcept {
+        constexpr std::size_t MinimumParallelBytes = 1024u * 1024u;
+        constexpr std::size_t PartitionAlignment = 64;
+        if (!bytes || destination == source) return;
+        if (!destination || !source || workers < 2 || workers > 8 ||
+            bytes < MinimumParallelBytes) {
+            if (destination && source) std::memcpy(destination, source, bytes);
+            return;
+        }
+        const auto partitionBytes = (bytes / workers) & ~(PartitionAlignment - 1u);
+        if (!partitionBytes) {
+            std::memcpy(destination, source, bytes);
+            return;
+        }
+        std::vector<std::thread> threads;
+        try { threads.reserve(workers - 1u); }
+        catch (...) { std::memcpy(destination, source, bytes); return; }
+        bp16::detail::JoinThreads joiner{threads};
+        try {
+            for (unsigned i = 1; i < workers; ++i) {
+                const auto begin = std::size_t(i) * partitionBytes;
+                const auto end = i + 1u == workers ? bytes : begin + partitionBytes;
+                threads.emplace_back([=] {
+                    std::memcpy(destination + begin, source + begin, end - begin);
+                });
+            }
+        } catch (...) {
+            joiner.join();
+            std::memcpy(destination, source, bytes);
+            return;
+        }
+        std::memcpy(destination, source, partitionBytes);
+        joiner.join();
     }
 
     class AllocatedHostBudget {
@@ -156,6 +207,7 @@ public:
     bool cachedHostUploadPreferenceEnabled() const noexcept { return bp16CachedUploadPreference_; }
     bool importedHostInputEnabled() const noexcept { return bp16ImportHostInput_; }
     bool allocatedHostInputEnabled() const noexcept { return bp16AllocatedHostInput_; }
+    unsigned uploadWorkers() const noexcept { return bp16UploadWorkers_; }
     std::uint64_t allocatedHostInputUsedBytes() const noexcept {
         return allocatedHostBudget_ ? allocatedHostBudget_->usedBytes() : 0;
     }
@@ -186,6 +238,12 @@ public:
             return VK_ERROR_INITIALIZATION_FAILED;
         if (format != Format::GDeflate && format != Format::BP16)
             return VK_ERROR_VALIDATION_FAILED_EXT;
+        bp16UploadWorkers_ = 1;
+        if (format == Format::BP16) {
+            if (const char* uploadWorkers = std::getenv("ZVRAM_VULKAN_BP16_UPLOAD_WORKERS"))
+                if (!parseBP16UploadWorkers(uploadWorkers, bp16UploadWorkers_))
+                    return VK_ERROR_VALIDATION_FAILED_EXT;
+        }
         bp16ImportHostInput_ = format == Format::BP16 && importHostInput;
         bp16AllocatedHostInput_ = format == Format::BP16 && allocatedHostInput;
         if (bp16ImportHostInput_ && bp16AllocatedHostInput_)
@@ -291,7 +349,8 @@ public:
         void* allocation{};
         if (posix_memalign(&allocation, static_cast<std::size_t>(importHostAlignment_), hostBytes) != 0)
             return VK_ERROR_OUT_OF_HOST_MEMORY;
-        std::memcpy(allocation, encoded, encodedSize);
+        copyBP16UploadBytes(static_cast<std::uint8_t*>(allocation), encoded,
+                            encodedSize, bp16UploadWorkers_);
         std::memset(static_cast<std::uint8_t*>(allocation) + encodedSize, 0, hostBytes - encodedSize);
         ImportedHostInputPtr owner;
         try { owner = std::make_shared<ImportedHostInput>(); }
@@ -415,8 +474,10 @@ public:
                                        &owner->allocation));
         if (result != VK_SUCCESS) return result;
         if (!owner->allocation) return VK_ERROR_MEMORY_MAP_FAILED;
-        std::memset(owner->allocation, 0, static_cast<std::size_t>(owner->allocationBytes));
-        std::memcpy(owner->allocation, encoded, encodedSize);
+        copyBP16UploadBytes(static_cast<std::uint8_t*>(owner->allocation), encoded,
+                            encodedSize, bp16UploadWorkers_);
+        std::memset(static_cast<std::uint8_t*>(owner->allocation) + encodedSize, 0,
+                    static_cast<std::size_t>(owner->allocationBytes) - encodedSize);
         out = std::move(owner);
         return VK_SUCCESS;
     }
@@ -495,7 +556,10 @@ public:
 
         if (!imported) {
             auto* upload = static_cast<std::uint8_t*>(upload_.mapped);
-            std::memcpy(upload, encoded, encodedSize);
+            if (format_ == Format::BP16)
+                copyBP16UploadBytes(upload, encoded, encodedSize, bp16UploadWorkers_);
+            else
+                std::memcpy(upload, encoded, encodedSize);
             std::memset(upload + encodedSize, 0, inputBytes - encodedSize);
         }
         const std::uint32_t controlWords[3]{1u, 0u, 0u};
@@ -1103,6 +1167,7 @@ private:
     bool bp16CachedUploadPreference_{};
     bool bp16ImportHostInput_{};
     bool bp16AllocatedHostInput_{};
+    unsigned bp16UploadWorkers_{1};
     VkDeviceSize importHostAlignment_{};
     std::shared_ptr<std::atomic<bool>> poisonState_;
     std::shared_ptr<AllocatedHostBudget> allocatedHostBudget_;

@@ -1640,10 +1640,13 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
             d.gpuRestoreEnabled=false; d.gpuDecoder.reset();
             logf("GPU %s restore unavailable result=%d; retaining CPU codec",codecName,result);
             if(result==VK_ERROR_DEVICE_LOST) { d.gpuGateError=result; return false; }
-        } else logf("GPU %s restore enabled: %s, %s, direct backing output",codecName,bp16?"256-thread":"wave32",
-            d.gpuDecoder->importedHostInputEnabled()?"cached imported host input":
-            d.gpuDecoder->allocatedHostInputEnabled()?"cached allocated host input":
-            d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
+        } else {
+            logf("GPU %s restore enabled: %s, %s, direct backing output",codecName,bp16?"256-thread":"wave32",
+                d.gpuDecoder->importedHostInputEnabled()?"cached imported host input":
+                d.gpuDecoder->allocatedHostInputEnabled()?"cached allocated host input":
+                d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
+            if(bp16) logf("GPU BP16 upload workers=%u",d.gpuDecoder->uploadWorkers());
+        }
     }
     return true;
 }

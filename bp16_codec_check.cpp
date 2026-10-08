@@ -356,6 +356,50 @@ void testWorkerEncoding() {
             "excess workers changed output or succeeded");
 }
 
+void testBP16UploadCopy() {
+    using Decoder = zvram::gdeflate::gpu::Decoder;
+    unsigned workers = 99;
+    require(Decoder::parseBP16UploadWorkers("1", workers) && workers == 1,
+            "one upload worker parse failed");
+    require(Decoder::parseBP16UploadWorkers("8", workers) && workers == 8,
+            "eight upload workers parse failed");
+    for (const char* invalid : {"", "0", "9", "workers", "4294967296"}) {
+        workers = 3;
+        require(!Decoder::parseBP16UploadWorkers(invalid, workers) && workers == 3,
+                "invalid upload worker count accepted or changed output");
+    }
+
+    constexpr std::uint8_t SourceCanary = 0xa7;
+    constexpr std::uint8_t DestinationCanary = 0x5c;
+    for (const auto bytes : {std::size_t(1024u * 1024u - 3u),
+                             std::size_t(1024u * 1024u + 13u),
+                             std::size_t(3u * 1024u * 1024u + 61u)}) {
+        Bytes source(bytes + 17u, SourceCanary);
+        Bytes expected(bytes);
+        for (std::size_t i = 0; i < bytes; ++i) {
+            source[7u + i] = static_cast<std::uint8_t>((i * 131u + i / 251u) & 0xffu);
+            expected[i] = source[7u + i];
+        }
+        for (unsigned count = 1; count <= 8; ++count) {
+            Bytes destination(bytes + 29u, DestinationCanary);
+            Decoder::copyBP16UploadBytes(destination.data() + 11u, source.data() + 7u,
+                                         bytes, count);
+            require(std::equal(expected.begin(), expected.end(), destination.begin() + 11u),
+                    "BP16 upload copy differs from source");
+            require(std::all_of(destination.begin(), destination.begin() + 11u,
+                                [](std::uint8_t value) { return value == DestinationCanary; }) &&
+                    std::all_of(destination.begin() + 11u + bytes, destination.end(),
+                                [](std::uint8_t value) { return value == DestinationCanary; }),
+                    "BP16 upload copy overwrote destination canary");
+            require(std::all_of(source.begin(), source.begin() + 7u,
+                                [](std::uint8_t value) { return value == SourceCanary; }) &&
+                    std::all_of(source.begin() + 7u + bytes, source.end(),
+                                [](std::uint8_t value) { return value == SourceCanary; }),
+                    "BP16 upload copy overwrote source canary");
+        }
+    }
+}
+
 Bytes readRawFixture(const std::string& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) throw std::runtime_error("cannot open 32 MiB BP16 raw fixture");
@@ -419,8 +463,9 @@ int main(int argc, char** argv) {
         testPatterns();
         testMalformed();
         testWorkerEncoding();
+        testBP16UploadCopy();
         testImportedHostOwnerAccounting();
-        std::cout << "PASS: BP16 codec and imported/allocated-host ownership, alignment, quota, and poison checks\n";
+        std::cout << "PASS: BP16 codec, upload worker partitions, and imported/allocated-host ownership, alignment, quota, and poison checks\n";
         if (argc == 3) benchmarkWorkers(argv[1], argv[2]);
         return 0;
     } catch (const std::exception& error) {
