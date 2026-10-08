@@ -19,7 +19,7 @@ nx update zvram
 zvram gui
 ```
 
-Requires Linux x86_64, glibc 2.35 or newer, Python 3.9+, Tk, libzstd, and a
+Requires Linux x86_64, glibc 2.39 or newer, Python 3.9+, Tk, libzstd, and a
 working Vulkan driver. Keep `~/.local/bin` on PATH for terminal and Steam use.
 The package includes the Vulkan layer, compiled shaders, GUI and TUI. HIP
 remains an optional source build. Model serving also requires a Vulkan-enabled

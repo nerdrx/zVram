@@ -9,8 +9,8 @@ permissions:
 
 jobs:
   linux-x86_64:
-    # Keep the runtime compatible with glibc 2.35 (Ubuntu 22.04) and newer.
-    runs-on: ubuntu-22.04
+    # Keep the runtime compatible with glibc 2.39 (Ubuntu 24.04) and newer.
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
