@@ -23,17 +23,24 @@ def main():
     parser.add_argument("--lazy-backing", action="store_true")
     parser.add_argument("--headroom-mib", type=int)
     parser.add_argument("--expect-headroom-refusal", action="store_true")
-    parser.add_argument("--gdeflate-gpu", action="store_true")
+    codec = parser.add_mutually_exclusive_group()
+    codec.add_argument("--gdeflate-gpu", action="store_true")
+    codec.add_argument("--bp16-gpu", action="store_true")
+    parser.add_argument("--bp16-host-input", action="store_true")
     parser.add_argument("--video-driver", choices=("x11", "wayland"), default="x11")
     parser.add_argument("--prefer-device")
     parser.add_argument("--output-dir", type=Path, default=Path("build/presentation-check"))
     args = parser.parse_args()
-    if args.native and (args.async_compression or args.gdeflate_gpu or args.lazy_backing or args.headroom_mib is not None):
+    if args.native and (args.async_compression or args.gdeflate_gpu or args.bp16_gpu or
+                        args.bp16_host_input or args.lazy_backing or args.headroom_mib is not None):
         parser.error("paging options require a wrapped run")
     if args.headroom_mib is not None and (not args.lazy_backing or args.headroom_mib <= 0):
         parser.error("headroom requires lazy backing and a positive MiB size")
-    if args.expect_headroom_refusal and (args.headroom_mib is None or args.async_compression or args.gdeflate_gpu):
+    if args.expect_headroom_refusal and (args.headroom_mib is None or args.async_compression or
+                                         args.gdeflate_gpu or args.bp16_gpu or args.bp16_host_input):
         parser.error("refusal check requires headroom without encoder/decode options")
+    if args.bp16_host_input and not args.bp16_gpu:
+        parser.error("BP16 host input requires --bp16-gpu")
     if args.cpu and not args.native:
         parser.error("CPU control requires --native; this does not validate zVram paging")
     binary, icd = args.binary.resolve(strict=True), args.icd.resolve(strict=True)
@@ -48,6 +55,8 @@ def main():
     env.update(VK_DRIVER_FILES=str(icd), VK_LOADER_LAYERS_DISABLE="~implicit~",
                VK_VALIDATION_VALIDATE_SYNC="1", DISABLE_GAMESCOPE_WSI="1", DISABLE_LSFGVK="1",
                LP_NUM_THREADS="2", MALLOC_ARENA_MAX="2")
+    if args.bp16_host_input:
+        env["ZVRAM_VULKAN_BP16_HOST_INPUT"] = "1"
     command = ["gamescope", "--backend", "headless", "--expose-wayland",
                "-W", "16", "-H", "16", "-w", "16", "-h", "16", "-r", "60"]
     if args.prefer_device:
@@ -59,7 +68,7 @@ def main():
                     "--vulkan-auto-idle-ms", "100", "--vulkan-cold-mib", "64",
                     "--vulkan-selective-restore", "--vulkan-active-eviction",
                     "--vulkan-buffer-presentation"]
-        if args.async_compression or args.lazy_backing:
+        if args.async_compression or args.lazy_backing or args.bp16_gpu:
             command += ["--vulkan-range-mib", "32", "--vulkan-resident-mib", "32"]
         if args.async_compression:
             command.append("--vulkan-async-compression")
@@ -70,6 +79,9 @@ def main():
         if args.gdeflate_gpu:
             command += ["--vulkan-codec", "gdeflate", "--vulkan-gdeflate-workers", "32",
                         "--vulkan-gdeflate-gpu"]
+        if args.bp16_gpu:
+            command += ["--vulkan-codec", "bp16", "--vulkan-bp16-workers", "8",
+                        "--vulkan-bp16-gpu"]
         command.append("--")
     command += [str(binary), "--present", "--frames", "3"]
     if args.native:
@@ -114,6 +126,10 @@ def main():
         import re
         profiles = re.findall(r"GPU GDeflate restore calls=(\d+) bytes=(\d+) host-ns=(\d+) fallbacks=(\d+)", text)
         passed = passed and bool(profiles) and int(profiles[-1][0]) >= 3 and int(profiles[-1][3]) == 0
+    if args.bp16_gpu:
+        import re
+        profiles = re.findall(r"GPU BP16 restore calls=(\d+) bytes=(\d+) host-ns=(\d+) fallbacks=(\d+)", text)
+        passed = passed and bool(profiles) and int(profiles[-1][0]) >= 3 and int(profiles[-1][3]) == 0
     if args.expect_headroom_refusal:
         passed = (not timed_out and process.returncode == 0 and "graphics-validation=on" in text and
                   "type=2" in text and "PASS: lazy bootstrap resident=0 cold-logical=33554432 cold-stored=0" in text and
@@ -128,6 +144,8 @@ def main():
                   scope=("expected zero-budget refusal before GPU buffer use; no presented frames" if args.expect_headroom_refusal else
                          "three hidden presented frames with pixel/full-buffer checks; no game or speed claim"),
                   binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
+    if args.bp16_host_input:
+        report["environment"]["ZVRAM_VULKAN_BP16_HOST_INPUT"] = env["ZVRAM_VULKAN_BP16_HOST_INPUT"]
     if not args.native:
         report["layer_binary_sha256"] = hashlib.sha256((args.build_dir.resolve() / "libzvram_layer.so").read_bytes()).hexdigest()
     (args.output_dir / "result.json").write_text(json.dumps(report, indent=2) + "\n")
