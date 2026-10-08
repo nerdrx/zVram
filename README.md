@@ -274,8 +274,12 @@ with Zstd remaining the default. Opt in with `--vulkan-codec bp16`; add
 `--vulkan-bp16-gpu` for GPU restoration. `--vulkan-bp16-workers 1..32` controls
 bounded CPU packing (default 1). `--vulkan-bp16-upload-workers 1..8` optionally
 parallelizes copies into the BP16 GPU upload buffer; it requires BP16 GPU restore
-and automatic snapshots, defaults to 1, and is ignored by GDeflate. Byte shuffle
-is restricted to Zstd.
+and automatic snapshots, defaults to 1, and is ignored by GDeflate.
+`ZVRAM_VULKAN_BP16_RESTORE_BATCH=1` optionally batches 2–4 existing immutable
+BP16-owned frames for known selective restores; it defaults off. Unsafe decode
+or device errors retain backing and stop GPU paging. Two focused GPU fixtures
+pass, but no batch-mode model-speed result is available yet. Byte shuffle is
+restricted to Zstd.
 
 The paired 32 MiB component check measured median GPU decode at 0.118 ms for BP16
 and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored
@@ -352,5 +356,8 @@ limits](VALIDATION.md#cached-bp16-imported-host-input).
 An experimental BP16 GPU snapshot encoder is also available behind
 `ZVRAM_VULKAN_BP16_GPU_ENCODE=1`; it requires BP16 GPU restore and allocated-host
 input. When enabled, freezing is synchronous and disables async compression for
-that mode. It defaults off, keeps CPU fallback, and has correctness checks only;
-no model speedup has been isolated. Two 92-token GPU-encoder runs completed at 1.09323773 and 1.10252711 tokens/s with exact matching output, 49/49 layers, and zero GPU restore fallback. The repeat reports 4,097 GPU encodes, zero encoder fallback, and zero final copy bytes. These sequential runs do not establish causality. [Latest run, first run, tests, and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md).
+that mode. It defaults off and keeps CPU fallback. Two 92-token GPU-encoder
+runs completed at 1.09323773 and 1.10252711 tokens/s with exact matching output,
+49/49 layers, and zero GPU restore fallback. The repeat reports 4,097 GPU
+encodes, zero encoder fallback, and zero final copy bytes. These sequential runs
+do not isolate causality. [Latest run, first run, tests, and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md).

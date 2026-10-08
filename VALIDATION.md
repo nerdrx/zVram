@@ -1710,6 +1710,15 @@ GPU encoding. These are correctness checks, not a model speed result. The
 production decoder SPIR-V is unchanged. [Commands, logs, runtime/source hashes](validation/bp16-gpu-encoder/README.md).
 
 
+### Experimental BP16 batched GPU restore
+
+`ZVRAM_VULKAN_BP16_RESTORE_BATCH=1` opts into batching **2–4** existing
+immutable owned BP16 frames during known selective restores. It is off by
+default and requires BP16 GPU restore; it does not widen restore selection. The
+focused GPU batch fixtures pass with full-byte checks. Unsafe/device errors keep
+the backing owners and stop GPU paging; recoverable decode errors retain the
+existing CPU fallback. No model speed result is available yet.
+
 ### Latest BP16 GPU-encoder full-model repeat: 26 GiB cold/owner ceilings
 
 The opt-in synchronous GPU BP16 encoder completed two 92-token
