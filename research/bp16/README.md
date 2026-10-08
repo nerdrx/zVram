@@ -355,3 +355,21 @@ These are sequential experimental runs, not a controlled comparison. [7+12 GiB
 run](../../validation/internlm-bp16-local-owner7-raw12-total19/README.md) ·
 [13+6 GiB failed attempt](../../validation/internlm-bp16-local-owner13-raw6-total19/README.md) ·
 [fixture and CTest evidence](../../validation/local-owner-fixtures/README.md).
+
+## Experimental admission budget snapshot
+
+`ZVRAM_VULKAN_ADMISSION_BUDGET_SNAPSHOT=1` enables one driver-budget sample per
+locked queue call to estimate headroom for the bounded fresh-retry path. It is
+off by default. Worker-side and native-owner checks continue to query the
+current budget; the resident hard cap remains enforced, and the reserve estimate
+is not a reservation. The setting does not change the cold/shared quota.
+
+A 3 GiB local-owner + 16 GiB shared/raw run completed exact output and 49/49
+layers at **0.84003098 tokens/s** with zero GPU restore fallback, but the
+cold/owner ceiling was 32 GiB instead of the comparison's 26 GiB, so the rates
+are confounded. An earlier attempt with this split failed during loading with
+Vulkan out-of-device-memory; the exact cause is not established. The initial
+retry launch was correctly stopped by the Ollama GPU preflight guard. [Completed
+run](../../validation/internlm-bp16-local-owner3-raw16-total19-budget-snapshot-retry/README.md) ·
+[load failure](../../validation/internlm-bp16-local-owner3-raw16-total19-headroom2/README.md) ·
+[preflight abort](../../validation/internlm-bp16-local-owner3-raw16-total19-budget-snapshot-preflight-abort/README.md).

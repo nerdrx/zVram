@@ -37,5 +37,17 @@
   "local-owner-full-123-source-commit.txt": {
     "bytes": 8,
     "sha256": "c909b76f75c0cc2f0017577dd6692425d8a3f1857681c71a947dbbc8488ee387"
+  },
+  "budget-snapshot-focused.log": {
+    "bytes": 2783,
+    "sha256": "12775832be7cb6afde3231a2281e8d1a0c1c21f54b8d447b27958e050568ec4a"
+  },
+  "budget-snapshot-full-123.log": {
+    "bytes": 18242,
+    "sha256": "2b46b505688a50ddd02f9c1389f6c3ef026e6b39df6b595262f78ab70192ac25"
+  },
+  "budget-snapshot-source-commits.txt": {
+    "bytes": 16,
+    "sha256": "cb771d94c175b001a09b2f9bfc36d5a4d87d3eb68b72d1150e1051ddf4dc27a2"
   }
 }

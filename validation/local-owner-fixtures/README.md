@@ -30,3 +30,6 @@ that smoke fixture only; it is not production code or model-performance proof.
 
 `original-bytes-sha256.json` records hashes and sizes for the fixture logs and
 shader; the patch entry records the uncompressed patch size/hash.
+- `budget-snapshot-focused.log` records **22/22** focused checks in 12.86 s;
+  `budget-snapshot-full-123.log` records **123/123** in 89.55 s. Both used the
+  captured source commits listed in `budget-snapshot-source-commits.txt`.
