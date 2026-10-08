@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(zvram VERSION 0.2.0 LANGUAGES CXX)
+project(zvram VERSION 0.3.0 LANGUAGES CXX)
 find_package(Vulkan REQUIRED)
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)

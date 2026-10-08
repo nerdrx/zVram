@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import time
 import urllib.error
 import urllib.parse
@@ -108,9 +109,10 @@ def build_server_command(model_path, alias, port=8097, compressed=False,
         raise ValueError('memory sizes and context must be positive integers')
     if clean_cache_mib > cold_mib:
         raise ValueError('clean cache cannot exceed cold storage')
-    binary = Path(server or DEFAULT_SERVER).expanduser().resolve()
+    default = DEFAULT_SERVER if DEFAULT_SERVER.is_file() else shutil.which('llama-server')
+    binary = Path(server or default or DEFAULT_SERVER).expanduser().resolve()
     if not binary.is_file() or not os.access(binary, os.X_OK):
-        raise ValueError('Vulkan llama-server is missing; build the llama-server target first')
+        raise ValueError('Vulkan llama-server is missing; put it on PATH or specify --server')
     command = [str(ROOT / 'zvram')]
     if build_dir:
         command += ['--build-dir', str(Path(build_dir).expanduser().resolve())]

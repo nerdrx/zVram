@@ -5,6 +5,11 @@ import json
 import os
 from pathlib import Path
 import sys
+sys.dont_write_bytecode = True
+
+if sys.argv[1:] == ["--version"]:
+    print("zVram " + (Path(__file__).resolve().parent / "VERSION").read_text().strip())
+    sys.exit(0)
 
 if len(sys.argv) > 1 and sys.argv[1] in ("gui", "tui", "manage", "model", "run"):
     if sys.argv[1] == "model":

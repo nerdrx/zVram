@@ -57,8 +57,10 @@ def owned_worker(job):
     if not saved or saved != identity(saved["pid"]) or saved["uid"] != os.getuid():
         return False
     try:
-        argv = Path(f'/proc/{saved["pid"]}/cmdline').read_bytes().split(b"\0")
-        return os.fsencode(__file__) in argv and b"_worker" in argv and job["token"].encode() in argv
+        argv = [item for item in Path(f'/proc/{saved["pid"]}/cmdline').read_bytes().split(b"\0") if item]
+        script = job.get("worker_script") or (os.fsdecode(argv[1]) if len(argv) > 1 else "")
+        return (len(argv) == 5 and Path(script).name == "zvram_manager.py" and argv[1] == os.fsencode(script)
+                and argv[2:] == [b"_worker", job.get("profile", {}).get("name", "").encode(), job["token"].encode()])
     except OSError:
         return False
 
@@ -218,6 +220,8 @@ class Manager:
 
     def launch_command(self, profile):
         command = list(profile["command"])
+        if Path(command[0]).name == "zvram":
+            command[0] = str(ROOT / "zvram")
         total = max((c["vram_total_mib"] for c in gpu_status()), default=8192)
         resident = profile.get("resident_mib") or max(256, int(total * PRIORITIES[profile["priority"]]))
         if profile.get("mode") == "vulkan":
@@ -234,6 +238,8 @@ class Manager:
         return command, resident
 
     def start(self, name):
+        if not Path(__file__).is_file():
+            raise ValueError("Manager was updated; reopen it before starting a process")
         with self.lock():
             profiles = read_json(self.profiles_path, {})
             profile = profiles[name]
@@ -250,7 +256,7 @@ class Manager:
                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                       start_new_session=True)
             self._workers[name] = worker
-            job = {"token": token, "identity": identity(worker.pid), "profile": profile, "command": command,
+            job = {"token": token, "identity": identity(worker.pid), "worker_script": __file__, "profile": profile, "command": command,
                    "resident_mib": resident, "min_available_mib": floor, "state": "starting"}
             write_json(path, job)
             return job

@@ -30,6 +30,10 @@ class ManagerChecks(unittest.TestCase):
                     time.sleep(.05)
                 self.assertEqual(output.read_text(), literal)
                 self.assertTrue(manager.list_profiles()[0]["running"])
+                # A new package must still recognize and stop a worker from the previous version.
+                job = json.loads(manager.job_path("test").read_text())
+                with patch("zvram_manager.__file__", "/different-version/zvram_manager.py"):
+                    self.assertTrue(owned_worker(job))
                 manager.set_priority("test", "high")
                 self.assertTrue(manager.list_profiles()[0]["running"])
                 self.assertTrue(manager.stop("test"))

@@ -4,7 +4,39 @@
 
 zVram tests GPU memory beyond local VRAM: segmented Vulkan allocations, lossless idle snapshots for eligible Vulkan/HIP allocations, and an explicit managed buffer pool.
 
-**Status: experimental v0.2.0.** The managed pool controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing, plus opt-in automatic compression of idle, tracked VMM allocations on one exact ROCm HIP dispatch ABI. The VMM/GTT provider passed a 40 GiB single-pointer integrity check using 20 GiB each of VRAM and GTT. An official 39.73 GB InternLM2.5-20B F16 GGUF also loaded through HIP VMM/GTT with a 36,798.77 MiB GPU model buffer and all 49/49 layers offloaded; the native full-GPU HIP request OOMed. A separate native CPU/GPU HIP run offloaded 24/49 layers and matched VMM output. The same model also completed through the zVram Vulkan virtual heap and matched native Vulkan output. With llama.cpp's own n-gram self-drafting, a repeated-text prompt measured 6.33 versus 1.10 tokens/s and matched output; an ordinary code explanation measured 1.45 versus 1.43 tokens/s but diverged in output. These short sequential runs show workload-specific app behavior, not a zVram or general speedup. A 40 GiB GPU model buffer and broad app compatibility remain unverified. Idle compression is not transparent active-working-set paging.
+**Status: experimental v0.3.0.** The managed pool controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing, plus opt-in automatic compression of idle, tracked VMM allocations on one exact ROCm HIP dispatch ABI. The VMM/GTT provider passed a 40 GiB single-pointer integrity check using 20 GiB each of VRAM and GTT. An official 39.73 GB InternLM2.5-20B F16 GGUF also loaded through HIP VMM/GTT with a 36,798.77 MiB GPU model buffer and all 49/49 layers offloaded; the native full-GPU HIP request OOMed. A separate native CPU/GPU HIP run offloaded 24/49 layers and matched VMM output. The same model also completed through the zVram Vulkan virtual heap and matched native Vulkan output. With llama.cpp's own n-gram self-drafting, a repeated-text prompt measured 6.33 versus 1.10 tokens/s and matched output; an ordinary code explanation measured 1.45 versus 1.43 tokens/s but diverged in output. These short sequential runs show workload-specific app behavior, not a zVram or general speedup. A 40 GiB GPU model buffer and broad app compatibility remain unverified. Idle compression is not transparent active-working-set paging.
+
+## Install and update with NX Hub
+
+Refresh NX Hub, select **zVram**, and install **Vulkan launcher and manager
+(Linux x86_64)**. Hub also handles later release updates and adds the zVram
+Manager desktop entry. From the Hub CLI:
+
+```sh
+nx refresh --force
+nx install zvram
+nx update zvram
+zvram gui
+```
+
+Requires Linux x86_64, glibc 2.35 or newer, Python 3.9+, Tk, libzstd, and a
+working Vulkan driver. Keep `~/.local/bin` on PATH for terminal and Steam use.
+The package includes the Vulkan layer, compiled shaders, GUI and TUI. HIP
+remains an optional source build. Model serving also requires a Vulkan-enabled
+`llama-server` on PATH or an explicit `zvram model setup --server /path/to/llama-server`.
+Models are not bundled.
+
+Profiles and logs live in `~/.local/state/zvram`, outside the installed package.
+Hub updates preserve this state and existing model files. Reopen the manager
+after updating before starting new jobs. Running jobs retain their loaded
+backend; stop and relaunch them to use the updated version.
+
+Release tags build a versioned runtime archive, `nx-app.json`, and SHA-256
+checksums. To reproduce packaging locally:
+
+```sh
+python3 scripts/package.py --build-dir build --output dist --version 0.3.0
+```
 
 ## What works today
 
