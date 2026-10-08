@@ -131,6 +131,7 @@ struct VirtualMemory {
         bool restoreBound{};
         bool budgetBlocked{};
         std::uint64_t writeEpoch{};
+        std::uint64_t successfulFreezes{};
         std::chrono::steady_clock::time_point lastUse{std::chrono::steady_clock::now()};
         VkDeviceSize accountedBytes() const noexcept { return storedBytes + importedPaddingBytes; }
     };
@@ -1177,7 +1178,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     d->cleanCachePolicy=zvram::clean_cache::parsePolicy(policy,valid);
                     logf("Vulkan clean snapshot cache policy requested=%s effective=%s status=%s",
                          policy,d->cleanCachePolicy==zvram::clean_cache::Policy::Lru?"lru":
-                               d->cleanCachePolicy==zvram::clean_cache::Policy::Mru?"mru":"first",
+                               d->cleanCachePolicy==zvram::clean_cache::Policy::Mru?"mru":
+                               d->cleanCachePolicy==zvram::clean_cache::Policy::Lfu?"lfu":"first",
                          valid?"accepted":"rejected");
                 }
                 d->minSavingsPercent=static_cast<unsigned>(positiveEnv("ZVRAM_VULKAN_MIN_SAVINGS_PERCENT",100));
@@ -1757,10 +1759,12 @@ void trimCleanCacheLocked(Device& d,VkDeviceSize required) {
                     const auto& group=memory.coldGroups[i];
                     if(group.cold || !group.storedBytes) continue;
                     const zvram::clean_cache::Candidate candidate{
-                        group.lastUse,memory.identityGeneration,i};
+                        group.lastUse,memory.identityGeneration,i,group.successfulFreezes};
                     const bool preferred=d.cleanCachePolicy==zvram::clean_cache::Policy::Lru
                         ? zvram::clean_cache::older(candidate,victim)
-                        : zvram::clean_cache::newer(candidate,victim);
+                        : d.cleanCachePolicy==zvram::clean_cache::Policy::Mru
+                            ? zvram::clean_cache::newer(candidate,victim)
+                            : zvram::clean_cache::lessFrequent(candidate,victim);
                     if(!found || preferred) {
                         victimMemory=&memory;
                         victimIndex=i;
@@ -2082,6 +2086,7 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
             d.coldBytes+=group.accountedBytes(); d.coldLogicalBytes+=group.logicalBytes;
             memory.coldStoredBytes+=group.accountedBytes(); memory.coldLogicalSize+=group.logicalBytes;
         ++d.freezeCount; ++d.cleanReuseCount;
+        group.successfulFreezes=zvram::clean_cache::nextSuccessfulFreeze(group.successfulFreezes);
         logf("snapshot reused clean bytes=%llu stored=%llu",static_cast<unsigned long long>(group.logicalBytes),static_cast<unsigned long long>(group.storedBytes));
         logSnapshotState("clean-freeze",d);
         return VK_SUCCESS;
@@ -2194,7 +2199,9 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     memory.residentBytes-=dataSize;
     releaseBackingChild(d,memory,i);
     memory.bound=std::any_of(memory.children.begin(),memory.children.end(),[](VkDeviceMemory child){return child!=VK_NULL_HANDLE;});
-    candidate.logicalBytes=logicalBytes; candidate.storedBytes=stored; candidate.cold=true; group=std::move(candidate);
+    candidate.logicalBytes=logicalBytes; candidate.storedBytes=stored; candidate.cold=true;
+    candidate.successfulFreezes=zvram::clean_cache::nextSuccessfulFreeze(group.successfulFreezes);
+    group=std::move(candidate);
     memory.cold=true; memory.coldStoredBytes+=stored; memory.coldLogicalSize+=logicalBytes;
     d.coldBytes+=stored; d.coldLogicalBytes+=logicalBytes; ++d.freezeCount;
     const auto compressedChunks=static_cast<std::size_t>(std::count_if(group.chunks.begin(),group.chunks.end(),[](const auto& chunk){return chunk.compressed;}));
@@ -2351,6 +2358,7 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
     d.residentBytes-=rawSize; current.residentBytes-=rawSize;
     releaseBackingChild(d,current,token.child);
     current.bound=std::any_of(current.children.begin(),current.children.end(),[](VkDeviceMemory value){return value!=VK_NULL_HANDLE;});
+    candidate.successfulFreezes=zvram::clean_cache::nextSuccessfulFreeze(currentGroup.successfulFreezes);
     currentGroup=std::move(candidate); current.cold=true;
     current.coldStoredBytes+=stored; current.coldLogicalSize+=rawSize;
     d.coldBytes+=stored; d.coldLogicalBytes+=rawSize; ++d.freezeCount;
