@@ -1208,6 +1208,18 @@ device-input result on an exact 16 MiB all-mask component fixture; see the
 [result](validation/internlm-bp16-deposit-fastpath/result.json.gz), and
 [full stderr](validation/internlm-bp16-deposit-fastpath/automatic.stderr.txt.gz).
 
+### BP16 allocated-host cache at 10 GiB
+
+One full-model run changed the allocated-host cache budget to **10,240 MiB**
+and completed 12 decode runs at **0.4063374 tokens/s**, with exact output,
+49/49 layers and zero GPU fallback. Sampled live cache usage peaked at
+**10,736,501,008 bytes** of the **10,737,418,240-byte** limit; minimum available
+RAM was **19,199 MiB**, with **1,976 MiB** swap growth. This sequential,
+uncontrolled run was slower than the best 8 GiB result at **0.4626948 tokens/s**;
+the larger cache is not a demonstrated speed improvement.
+
+[Run archive and limits](validation/internlm-bp16-host-cache10g/README.md).
+
 ### Same-prompt 92-token native/allocated-host comparison
 
 A separate longer generation used the same prompt, temperature 0, seed 1,

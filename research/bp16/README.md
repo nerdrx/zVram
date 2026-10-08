@@ -272,3 +272,8 @@ unadopted, and the measured best remains **0.4626948 tokens/s**. [Candidate
 run and limits](../../validation/internlm-bp16-deposit-fastpath/README.md).
 An exact 16 MiB all-mask device-input component fixture was 33.6% slower with
 the candidate shader. [Component archive](../../validation/bp16-deposit-fastpath/README.md).
+
+A full run with a 10 GiB allocated-host cache peaked at 10,736,501,008 bytes
+under its 10 GiB bound and measured **0.4063374 tokens/s**. This was slower
+than the best 8 GiB result and does not support increasing the cache for speed.
+[Run archive](../../validation/internlm-bp16-host-cache10g/README.md).
