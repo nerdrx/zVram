@@ -1173,6 +1173,17 @@ measured **0.4626948 tokens/s** result or establish a speed improvement.
 [result](validation/internlm-bp16-cache8g-sampled-profile/result.json.gz), and
 [full stderr](validation/internlm-bp16-cache8g-sampled-profile/automatic.stderr.txt.gz).
 
+### BP16 allocation-free profiling marker check
+
+After the allocation-free profiling change, the focused CTest suite passed
+**8/8 GPU checks in 7.17 s** with
+`ZVRAM_VULKAN_GPU_PROFILE=1` and
+`ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1`. The final per-test log records
+`allocation-free=1` on the relevant profiling outputs and final markers. This
+checks only opt-in profile reporting; it makes no speed claim. The tests used
+source `a8d113b`; the runtime layer binary hash is archived alongside the
+[CTest logs](validation/bp16-allocation-free-profile-check/).
+
 ### Same-prompt 92-token native/allocated-host comparison
 
 A separate longer generation used the same prompt, temperature 0, seed 1,

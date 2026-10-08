@@ -259,3 +259,8 @@ tokens/s**, with the same exact output, 49/49 layers and zero fallback. The
 last sampled profile covered 8,304 calls, short of the final snapshot's 8,363
 GPU restores, so its phase totals are partial. It does not replace the best
 **0.4626948 tokens/s** result or prove a speed gain. [Run limits and archive](../../VALIDATION.md#bp16-allocated-host-run-with-sampled-profiling).
+
+The allocation-free profiling change passed the focused **8/8 GPU CTests**
+with GPU profiling and allocated-host input enabled. The logs show the marker
+and final profile records; this confirms opt-in reporting behavior only, not
+performance. [Test log and binary provenance](../../validation/bp16-allocation-free-profile-check/).
