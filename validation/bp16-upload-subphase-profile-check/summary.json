@@ -8,7 +8,7 @@
   ],
   "observed_log_marker": "GPU BP16 upload profile buffer-prepare-ns=... direct-copy-ns=...",
   "test_log": "ctest.log",
-  "full_ctest_output": "LastTest.log",
+  "full_ctest_output": "LastTest.log (reduced to per-test BP16 upload profile markers)",
   "runtime_sha256": {
     "gdeflate_gpu.hpp": "7c643f6af6f2630858ae277fcfaedd4d9b7889d0567a8962c6f46b149b070294",
     "layer.cpp": "e9e80c102b21cca672374f77b9a41878b2d4636d9c6efaf9535969824ad75036",
