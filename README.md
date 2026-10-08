@@ -338,7 +338,7 @@ controlled. A separate 28 GiB shared cold/owner-cap trial measured 1.174347 toke
 0.31% above the 26 GiB clean-first repeat and not a meaningful observed gain;
 keep 26 GiB as the recommendation. The policy remains experimental; a 20 GiB
 resident-cap attempt hit Vulkan out-of-device-memory, so retain the validated
-19 GiB resident limit. [28 GiB trial](validation/internlm-bp16-gpu-clean-first-cold28-owner28-resident19-lfu/README.md) · [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [20 GiB failure](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
+19 GiB resident limit. A separate single run with llama.cpp `GGML_VK_MAX_NODES_PER_SUBMIT=16` measured 1.134885 tokens/s versus 1.170688 at 4 nodes; keep 4 as the recommendation. This sequential result does not isolate the setting. [16-node run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-nodes16/README.md) · [28 GiB trial](validation/internlm-bp16-gpu-clean-first-cold28-owner28-resident19-lfu/README.md) · [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [20 GiB failure](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
 
 A bounded fence-polling prototype was also tested and discarded: its 92-token run
 measured 1.16783681 tokens/s versus 1.17068766 for the clean-first repeat, with

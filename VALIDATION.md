@@ -1783,6 +1783,10 @@ the recommendation. That run's minimum available RAM was **29,057 MiB
 paired clean-first runs is from compiled commits `3c76d7d` and `a19bd5d`,
 respectively; the 28 GiB trial used `ceabc25`. [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [28 GiB cap trial](validation/internlm-bp16-gpu-clean-first-cold28-owner28-resident19-lfu/README.md) · [clean-first correctness evidence](validation/clean-first-eviction/README.md).
 
+### llama.cpp 16-node submission setting check
+
+A single 92-token clean-first run set llama.cpp `GGML_VK_MAX_NODES_PER_SUBMIT=16`; the comparable clean-first runs used **4**. The 16-node run completed in **81,065.47 ms** (**1.13488517 tokens/s**) with the exact expected stdout, 49/49 layers, and zero GPU restore fallback. Minimum available RAM was **28,940 MiB (28.26 GiB)** and swap growth was **974 MiB**. The 4-node repeat measured **1.17068766 tokens/s**, so this 16-node run was slower. Since runs were sequential with uncontrolled clocks/background activity, this is not causal evidence; keep 4 as the recommendation. The zVram runtime/profile was unchanged (`ceabc25`); this changed only the llama.cpp app setting. [Run archive](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-nodes16/README.md) · [4-node repeat](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md).
+
 ### Discarded BP16 fence-polling prototype
 
 The bounded fence-spin prototype completed one 92-token run in **78,778.13 ms**
