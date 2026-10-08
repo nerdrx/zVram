@@ -1,0 +1,15 @@
+{
+  "label": "automatic",
+  "performance": {
+    "decode_ms": 83444.66,
+    "decode_runs": 92,
+    "tokens_per_second": 1.1,
+    "prompt_ms": 2446.3,
+    "restore_ms": []
+  },
+  "offload": [
+    49,
+    49
+  ],
+  "sha": "b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b"
+}

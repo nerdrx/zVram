@@ -1338,7 +1338,7 @@ Minimum available RAM was **18,123 MiB** and swap grew by **621 MiB**. This
 single sequential result is below the 24 GiB run above and does not replace the
 current best or isolate a quota effect. [Run archive](validation/internlm-bp16-cold25-upload8/README.md).
 
-### Latest safe BP16 long run: 26 GiB cold/owner ceilings
+### Earlier BP16 long run with CPU encoding: 26 GiB cold/owner ceilings
 
 The 92-token InternLM2.5-20B F16 run completed in **103,473.50 ms**
 (**0.889116537 tokens/s**) with exact stdout SHA-256
@@ -1356,8 +1356,9 @@ native 92-token reference measured **1.69935367 tokens/s** under a different
 memory path. These long runs remain distinct from the best 12-token short run
 of **0.61020197 tokens/s**. An exact-configuration repeat reached the prompt
 but ended with `vk::Queue::submit: ErrorOutOfDeviceMemory`, without a completed
-reply or throughput result. The successful 0.889 run is not yet reproduced; the
-repeat failure does not establish instability. [Repeat failure diagnostic](validation/internlm-bp16-cold26-repeat-oom/README.md). [Run archive and provenance](validation/internlm-bp16-cold26-owner26-resident19-lfu-cached-validation-retry/README.md).
+reply or throughput result. This run was later exceeded by two completed GPU-encoder runs below; the
+intervening allocation failure remains a separate diagnostic and does not by
+itself establish configuration instability. [Repeat failure diagnostic](validation/internlm-bp16-cold26-repeat-oom/README.md). [Run archive and provenance](validation/internlm-bp16-cold26-owner26-resident19-lfu-cached-validation-retry/README.md).
 
 A separate 27 GiB cold/owner preflight was stopped before prompting because
 Ollama's `qwen3.5:9b-local` was using **6,113,858,682 bytes of VRAM**. It has no
@@ -1535,8 +1536,8 @@ F16 check with **49/49** layers and the same output SHA-256 as other BP16 runs,
 but took **166,980.73 ms** for 12 decode runs:
 `12 * 1000 / 166980.73 = 0.0718646 tokens/s`. There were zero GPU fallbacks.
 This is correctness evidence with a substantial slowdown, not a faster mode;
-the latest measured compressed result is **0.61020197 tokens/s** in the
-separate bounded allocated-host-cache run above. The earlier **0.40653** run
+the latest repeated GPU-encoder long-run result is **1.10252711 tokens/s**; the
+**0.61020197** result remains the separate 12-token short run. The earlier **0.40653** run
 remains a historical direct-host result.
 
 The run recorded **2,120 imports**, **6,495 reuses**, and **43,318,460,416
@@ -1709,23 +1710,26 @@ GPU encoding. These are correctness checks, not a model speed result. The
 production decoder SPIR-V is unchanged. [Commands, logs, runtime/source hashes](validation/bp16-gpu-encoder/README.md).
 
 
-### BP16 GPU-encoder full-model run (pending repeat)
+### Latest BP16 GPU-encoder full-model repeat: 26 GiB cold/owner ceilings
 
-The experimental synchronous GPU BP16 encoder completed one 92-token
-InternLM2.5-20B F16 run in **84,153.70 ms** (**1.09323773 tokens/s**), with
-exact output SHA-256
-`b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`, **49/49**
-layers, and zero GPU restore fallback. Minimum available RAM was **17,610 MiB**
-and swap grew by **4,806 MiB**. The model file is **39,725,643,136 bytes**
-(39.725 GB, not 40 GiB). The combined opt-in used a 26 GiB cold/owner ceiling,
-19 GiB tracked-resident cap, 2.5 GiB reserve, LFU, 32 BP16 encoder workers, eight
-upload workers, and immutable-owner validation caching.
+The opt-in synchronous GPU BP16 encoder completed two 92-token
+InternLM2.5-20B F16 runs at **1.09323773** and **1.10252711 tokens/s**. The
+latest completed in **83,444.66 ms** and produced exact stdout SHA-256
+`b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`, offloaded
+**49/49** layers, and reported zero GPU restore fallback. Minimum available RAM
+was **18,030 MiB** and swap grew by **2,816 MiB**. The model file is
+**39,725,643,136 bytes** (39.725 GB, not 40 GiB). Both used 26 GiB cold/owner
+ceilings, 19 GiB tracked residency, a 2.5 GiB reserve, LFU, 32 BP16 encoder
+workers, eight upload workers, and immutable-owner validation caching.
 
-The app did not destroy its Vulkan device before exit, so final GPU-encoder
-teardown counters and encode host-time are unavailable; they are not inferred.
-The captured state records 4,382 cold-freeze events and zero async commits. An
-exact-configuration repeat is pending. Keep the 0.889 completed run as the
-current headline until that repeat; this single observation is not a causal
-comparison and clocks/background activity were uncontrolled. The original
-launch stopped at Ollama preflight before prompting, with no model result.
-[Completed run and provenance](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md) · [Ollama preflight diagnostic](validation/internlm-bp16-gpu-encode-cold26-preflight-abort/README.md).
+The repeat's teardown counters recorded **4,097 GPU encodes / 135,199,260,672
+raw bytes / 12,286,491,799 ns**, zero encoder fallback, zero RAW snapshots, and
+zero final snapshot-copy bytes. Allocated-host input ended at 27,859,143,808
+live bytes under its 27,917,287,424-byte limit. The repeat used runtime commit
+`23787c6`, a telemetry-only change from the first run's `72516bb`. Both runs
+matched output; clocks and background activity were uncontrolled, so this does
+not isolate a causal speed effect. The fresh native reference was
+**1.69935367 tokens/s**; the older 0.43978 observation is about 2.5x slower by
+rate but is not a matched comparison. The 12-token **0.61020197 tokens/s**
+short run remains distinct. The original launch stopped at Ollama preflight
+before prompting, with no model result. [Latest repeat and provenance](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md) · [first run](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md) · [preflight diagnostic](validation/internlm-bp16-gpu-encode-cold26-preflight-abort/README.md).

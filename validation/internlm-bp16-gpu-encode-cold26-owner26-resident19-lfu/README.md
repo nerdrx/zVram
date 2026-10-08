@@ -13,10 +13,9 @@ encoder workers, eight upload workers, and immutable-owner validation cache.
 The encoder metrics normally emitted at device teardown are absent because the
 model app did not destroy the Vulkan device before exit; no encode host-time or
 per-call total is inferred here. The captured state records 4,382 cold-freeze
-events and zero async commits. This is one completed run, pending an exact
-repeat; it does not replace the current headline until reproduced. Clocks and
-background activity were uncontrolled, so the combined configuration is not a
-causal comparison.
+events and zero async commits. The exact-output repeat is archived in the sibling `...-repeat` directory.
+Both runs are sequential observations with uncontrolled clocks and background
+activity; they do not isolate a causal speed effect.
 
 Runtime source commit: `72516bb0d58e658e10796bb5d589496421c65d90`. The loaded
 layer SHA-256 is in `runtime-binary-sha256.json`; per-run source hashes and the

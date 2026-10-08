@@ -282,7 +282,7 @@ and 5.78 ms for GDeflate, with exact bytes over three iterations. BP16 stored
 87.0% of raw bytes versus GDeflate's 81.1% on that slice. These are decoder-only
 measurements, not a model speedup. [Component evidence](validation/bp16-component).
 
-The latest full InternLM2.5-20B F16 BP16 run completed 12 decode runs at
+The best measured 12-token InternLM2.5-20B F16 BP16 short run completed at
 **0.61020197 tokens/s** (reported as 0.61), with exact output, 49/49 layers,
 and zero GPU fallback. It used 32 BP16 encoding workers, eight opt-in upload
 workers, an 8 GiB allocated-host cache, a 19 GiB tracked-residency cap, and a
@@ -299,20 +299,19 @@ measured 0.5275435 tokens/s. The upload-worker setting remains default-one.
 [previous 8 GiB-cache run](VALIDATION.md#earlier-best-bp16-run-bounded-allocated-host-cache-32-workers);
 [fresh native reference](VALIDATION.md#fresh-native-nodes4-reference).
 
-The separate 92-token long run now measures **0.889116537 tokens/s** (92 /
-103,473.50 ms), with exact output SHA-256
-`b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`, 49/49
-layers, and zero GPU fallback. This experimental run used 26 GiB cold and
-allocated-owner ceilings, 19 GiB tracked residency, a 2.5 GiB reserve, 32 BP16
-workers, eight upload workers, LFU, and immutable-owner validation caching. It
-is about 2x the earlier 0.43978 long-run observation, but these sequential
-results had uncontrolled clocks and background activity and do not isolate a
-causal speedup. The fresh native 92-token reference measured **1.69935367**
-tokens/s. This long-run result is separate from the best 12-token short run
-above (**0.61020197 tokens/s**). An exact-configuration repeat later reached the
-prompt but ended with `vk::Queue::submit: ErrorOutOfDeviceMemory`; it produced no
-throughput result, so the 0.889 observation is not yet reproduced. [Repeat
-failure](validation/internlm-bp16-cold26-repeat-oom/README.md). [Safe26 run and limits](VALIDATION.md#latest-safe-bp16-long-run-26-gib); [27 GiB Ollama preflight abort](validation/internlm-bp16-cold27-preflight-abort/README.md).
+Two opt-in GPU-encoder 92-token long runs completed at **1.09323773** and
+**1.10252711 tokens/s**; the latest rate uses 92 / 83,444.66 ms. Both produced
+the same exact output SHA-256
+`b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`, offloaded
+49/49 layers, and reported zero GPU restore fallback. The repeat recorded 4,097
+GPU encodes over 135,199,260,672 raw bytes, zero encoder fallback, and zero
+final snapshot-copy bytes. It used 26 GiB cold/owner ceilings, 19 GiB tracked
+residency, a 2.5 GiB reserve, 32 encoder/eight upload workers, LFU, and
+immutable-owner validation caching. The fresh native 92-token reference was
+**1.69935367 tokens/s**; the older 0.43978 observation is about 2.5x slower by
+rate, but these sequential runs had uncontrolled clocks and background activity
+and do not isolate causality. The 12-token **0.61020197 tokens/s** short-run
+result remains separate. [Latest encoder repeat and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md); [first encoder run](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md).
 
 A same-prompt 92-token comparison produced identical stdout across 49/49 layers:
 **1.69935 tokens/s** native and **0.43978 tokens/s** allocated-host under the
@@ -352,4 +351,4 @@ An experimental BP16 GPU snapshot encoder is also available behind
 `ZVRAM_VULKAN_BP16_GPU_ENCODE=1`; it requires BP16 GPU restore and allocated-host
 input. When enabled, freezing is synchronous and disables async compression for
 that mode. It defaults off, keeps CPU fallback, and has correctness checks only;
-no model speedup has been measured. [Encoder tests, budget cases, and hashes](validation/bp16-gpu-encoder/README.md). One 92-token full-model GPU-encoder run later completed at 1.09323773 tokens/s with exact output and 49/49 layers, but encoder teardown counters were unavailable and an exact repeat is pending; it does not replace the completed 0.889 long-run result yet. [Single-run archive and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md).
+no model speedup has been isolated. Two 92-token GPU-encoder runs completed at 1.09323773 and 1.10252711 tokens/s with exact matching output, 49/49 layers, and zero GPU restore fallback. The repeat reports 4,097 GPU encodes, zero encoder fallback, and zero final copy bytes. These sequential runs do not establish causality. [Latest run, first run, tests, and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md).
