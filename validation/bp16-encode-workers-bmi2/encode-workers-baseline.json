@@ -1,0 +1,14 @@
+{
+  "raw_bytes": 33554432,
+  "encoded_bytes": 29202816,
+  "bmi2_selected": true,
+  "round_trip_equal": true,
+  "runs": [
+    {"workers": 1, "median_ns": 18358375, "runs_ns": [18346395, 18358375, 18760827]},
+    {"workers": 2, "median_ns": 10515032, "runs_ns": [10387722, 10515032, 10624443]},
+    {"workers": 4, "median_ns": 6258525, "runs_ns": [6149526, 6258525, 6406306]},
+    {"workers": 8, "median_ns": 4217637, "runs_ns": [4134147, 4217637, 4498619]},
+    {"workers": 16, "median_ns": 3698695, "runs_ns": [3521185, 3698695, 4040467]},
+    {"workers": 32, "median_ns": 3582485, "runs_ns": [3491374, 3582485, 4641019]}
+  ]
+}

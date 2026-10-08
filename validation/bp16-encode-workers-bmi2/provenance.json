@@ -1,0 +1,16 @@
+{
+  "scope": "CPU encoder component and focused CTest evidence; no model-throughput claim",
+  "commits": {
+    "encoder_optimization": "d453be4017b24a4cf7d235902a6bcf7f13fe852a",
+    "benchmark_harness": "a7044cc66f976ce39352f86c6e6c692e469e9129",
+    "test_checkout": "1ea33e347d0838c2f88ecb4e9be07c672c133ac5"
+  },
+  "binary_sha256": {
+    "build/bp16-codec/zvram-bp16-codec-check": "b8875d3f5f5642b0c9f71f2bc1b7e323a1fdeb2ff7076544d8db408360d74b5f",
+    "build/bp16-codec/zvram-vulkan-auto-check": "d9a6a92dc06b08095a892c40213ffe5c2c60171e778cee4b954f6ac6385940c6",
+    "build/bp16-codec/libzvram_layer.so": "7135d7a577af73123c414b29fd5e2519bbc0cc8e1d5da361613a19a5ce264157",
+    "build/bp16-codec/bp16.spv": "246b5e7f5d5893a1137e31141e7ba41b9bc2b109fae91d671e2cea3b89eff854"
+  },
+  "host": "AMD Ryzen 9 9950X3D, 16 cores / 32 threads (reported by runner)",
+  "bmi2_candidate": "specialized BMI2 block packer in d453be4; portable path retained"
+}

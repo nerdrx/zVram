@@ -9,6 +9,16 @@ sticky scratch error bit. Component comparisons are recorded in
 work only, not whole-model inference or application frame rates. The production
 layer supports opt-in BP16 snapshots and GPU restoration.
 
+## CPU encoder experiment
+
+A BMI2-inline block-packing candidate was compared with the baseline encoder on
+a 32 MiB F16 model slice. Each worker count is the median of three runs; all
+18 outputs matched the serial reference byte-for-byte and decoded to the raw
+slice. At 32 workers, encode time measured **2.526 ms** versus **3.582 ms** for
+the baseline. This is CPU component timing only; it does not establish GPU
+restore or end-to-end inference speed. Portable packing remains available, and
+no model-facing default changed. [Measurements and focused CTest evidence](../../validation/bp16-encode-workers-bmi2/README.md).
+
 The shader reuses `research/gdeflate/vulkan_gdeflate_smoke.cpp` resource,
 validation, fence, and readback lifetime through an opt-in codec selector. The
 existing GDeflate command syntax and default path are unchanged.

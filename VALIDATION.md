@@ -1306,6 +1306,17 @@ noisy/hot-repeat evidence and does not demonstrate an end-to-end speed gain.
 
 [Matrix archive, source, binary, and logs](validation/bp16-host-copy-workers/README.md).
 
+### BP16 CPU encoder BMI2 component check
+
+A 32 MiB F16 model slice was encoded at 1, 2, 4, 8, 16, and 32 workers. The
+BMI2-inline candidate measured **9.611, 6.058, 3.857, 3.131, 2.535, and 2.526
+ms**, versus **18.358, 10.515, 6.259, 4.218, 3.699, and 3.582 ms** for the
+baseline. All 18 outputs were byte-identical to the serial reference and
+decoded back to the raw slice. The current focused checks passed **11/11 CPU**
+tests and **8/8 GPU** tests. This is CPU component evidence only; it does not
+measure restore or model throughput, and the **0.61** short-run headline stays
+unchanged. [Results, provenance, and logs](validation/bp16-encode-workers-bmi2/README.md).
+
 ### Same-prompt 92-token native/allocated-host comparison
 
 A separate longer generation used the same prompt, temperature 0, seed 1,
