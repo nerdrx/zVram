@@ -17,5 +17,13 @@
     "sha256": "dfc237be0ee93c6b5c67cd6b05ab22404012f5d74bf66e1af22b9e26de5ca5f1",
     "compressed": true,
     "source_commit": "c3f8850"
+  },
+  "local-owner-fixture-liveheadroom.log": {
+    "bytes": 22503,
+    "sha256": "541bca0afd1c8c80fc22258097b6b9e50ffeb5d004d62d7c416a115e71469c1a"
+  },
+  "bp16-fused4-component.log": {
+    "bytes": 2246,
+    "sha256": "321eae067c85e4329069ce7a810052d59f6042028d0b6c0d7f0e180474f5e34f"
   }
 }
