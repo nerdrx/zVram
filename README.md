@@ -340,6 +340,19 @@ keep 26 GiB as the recommendation. The policy remains experimental; a 20 GiB
 resident-cap attempt hit Vulkan out-of-device-memory, so retain the validated
 19 GiB resident limit. A separate single run with llama.cpp `GGML_VK_MAX_NODES_PER_SUBMIT=16` measured 1.134885 tokens/s versus 1.170688 at 4 nodes; keep 4 as the recommendation. This sequential result does not isolate the setting. [16-node run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-nodes16/README.md) · [28 GiB trial](validation/internlm-bp16-gpu-clean-first-cold28-owner28-resident19-lfu/README.md) · [First run](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu/README.md) · [repeat and limits](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident19-lfu-repeat/README.md) · [20 GiB failure](validation/internlm-bp16-gpu-clean-first-cold26-owner26-resident20-oom/README.md).
 
+The optional BP16 local-owner tier stores compressed frames in actual GPU-local
+memory, with a combined cap for raw backing plus compressed owners. It remains
+off by default; byte-checked fixtures passed, but the completed 7 GiB owner /
+12 GiB raw trial was slower than the retained profile. See the
+[configuration requirements and measured limits](research/bp16/README.md#experimental-local-owner-tier).
+
+Later machine conditions changed: a native run after the VRAM clock-cap removal
+measured 1.46258 tokens/s, while compressed trials with 26, 22, and 18 GiB
+cold-store ceilings stopped at the 16 GiB available-RAM guard without accepted
+rates. The earlier recommended limits are a historical tested profile, not
+universal defaults. [Current native reference](validation/internlm-native-92-uncapped-memory/README.md)
+· [guarded trials and current research notes](research/bp16/README.md).
+
 A bounded fence-polling prototype was tested and discarded. The later 3 ms run
 completed at 1.1741 tokens/s versus 1.1725 for the immediately prior timing
 baseline, which is no meaningful observed gain; polling completed on 97.3% of
