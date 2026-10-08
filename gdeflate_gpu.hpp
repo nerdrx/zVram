@@ -222,6 +222,7 @@ public:
     bool cachedHostUploadPreferenceEnabled() const noexcept { return bp16CachedUploadPreference_; }
     bool importedHostInputEnabled() const noexcept { return bp16ImportHostInput_; }
     bool allocatedHostInputEnabled() const noexcept { return bp16AllocatedHostInput_; }
+    bool bp16EncoderEnabled() const noexcept { return bp16EncoderEnabled_; }
     unsigned uploadWorkers() const noexcept { return bp16UploadWorkers_; }
     std::uint64_t allocatedHostInputUsedBytes() const noexcept {
         return allocatedHostBudget_ ? allocatedHostBudget_->usedBytes() : 0;
@@ -245,7 +246,9 @@ public:
                         bool importHostInput = false,
                         VkDeviceSize importHostAlignment = 0,
                         bool allocatedHostInput = false,
-                        std::uint64_t allocatedHostBudgetBytes = DefaultAllocatedHostBudgetBytes) {
+                        std::uint64_t allocatedHostBudgetBytes = DefaultAllocatedHostBudgetBytes,
+                        const char* bp16EncodeAnalyzeShaderPath = nullptr,
+                        const char* bp16EncodePackShaderPath = nullptr) {
         const char* profileEnv = std::getenv("ZVRAM_VULKAN_GPU_PROFILE");
         profileEnabled_ = profileEnv && std::strcmp(profileEnv, "1") == 0;
         profile_ = {};
@@ -300,6 +303,7 @@ public:
         if (properties) {
             maxStorageBufferRange_ = properties->limits.maxStorageBufferRange;
             maxDispatchGroupsX_ = properties->limits.maxComputeWorkGroupCount[0];
+            minStorageBufferOffsetAlignment_ = properties->limits.minStorageBufferOffsetAlignment;
             timestampPeriod_ = properties->limits.timestampPeriod;
         }
         VkResult result = loadFunctions(nextGdpa);
@@ -339,6 +343,14 @@ public:
         if (result == VK_SUCCESS) result = createBuffer(4, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0, errorReadback_);
         if (result == VK_SUCCESS) result = createPipeline(code, format);
+        if (result == VK_SUCCESS && format == Format::BP16 && bp16AllocatedHostInput_ &&
+            bp16EncodeAnalyzeShaderPath && bp16EncodePackShaderPath) {
+            const auto encoderResult = createBP16Encoder(bp16EncodeAnalyzeShaderPath,
+                                                         bp16EncodePackShaderPath);
+            if (encoderResult == VK_ERROR_DEVICE_LOST) result = checked(encoderResult);
+            else if (encoderResult != VK_SUCCESS) cleanupBP16Encoder();
+            else bp16EncoderRequested_ = true;
+        }
         if (result == VK_SUCCESS) result = createDescriptors();
         if (result == VK_SUCCESS) result = createCommands();
         if (result == VK_SUCCESS) result = createFence();
@@ -349,6 +361,7 @@ public:
         }
         inputCapacity_ = 4;
         initialized_ = true;
+        bp16EncoderEnabled_ = bp16EncoderRequested_;
         return VK_SUCCESS;
     }
 
@@ -421,16 +434,113 @@ public:
         return VK_SUCCESS;
     }
 
+    // Experimental synchronous BP16 encoder. Source must be storage-buffer
+    // readable and stable until this call returns; uncertain GPU completion
+    // poisons the decoder so the caller retains the sparse backing and owner.
+    VkResult encodeBP16(VkBuffer rawBuffer, VkDeviceSize rawOffset, std::size_t rawBytes,
+                        std::size_t maxEncodedBytes, ImportedHostInputPtr& out) {
+        out.reset();
+        if (!initialized_ || poisoned_) return VK_ERROR_DEVICE_LOST;
+        if (!allocatedHostBudget_ || !allocatedHostBudget_->limitBytes() ||
+            allocatedHostBudget_->usedBytes() >= allocatedHostBudget_->limitBytes())
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        if (!bp16EncoderEnabled_ || !rawBuffer || !rawBytes ||
+            rawBytes > MaxRawBytes || rawBytes % bp16::RawBytesPerBlock ||
+            rawBytes > maxStorageBufferRange_ ||
+            rawOffset > std::numeric_limits<VkDeviceSize>::max() - rawBytes ||
+            (rawOffset & 3u) ||
+            (minStorageBufferOffsetAlignment_ && rawOffset % minStorageBufferOffsetAlignment_))
+            return VK_ERROR_VALIDATION_FAILED_EXT;
+        const auto blockCount = rawBytes / bp16::RawBytesPerBlock;
+        const auto analyzeGroups = static_cast<std::uint32_t>((blockCount + 255u) / 256u);
+        const auto packedWords = blockCount * 64u;
+        const auto packGroups = static_cast<std::uint32_t>((packedWords + 255u) / 256u);
+        const auto metadataBytes = blockCount * sizeof(std::uint32_t);
+        if (!analyzeGroups || analyzeGroups > maxDispatchGroupsX_ ||
+            !packGroups || packGroups > maxDispatchGroupsX_ ||
+            metadataBytes > maxStorageBufferRange_ || !maxEncodedBytes)
+            return VK_ERROR_VALIDATION_FAILED_EXT;
+        maxEncodedBytes = std::min(maxEncodedBytes, MaxBP16InputBytes);
+        VkResult result = updateEncoderDescriptors(rawBuffer, rawOffset, rawBytes,
+            VK_NULL_HANDLE, 0, true);
+        if (result != VK_SUCCESS) return result;
+        result = recordAndSubmitBP16Encode(rawBuffer, rawOffset, rawBytes,
+            VK_NULL_HANDLE, 0, analyzeGroups, true);
+        if (result != VK_SUCCESS) return result;
+
+        const auto tableBytes = blockCount * bp16::DescriptorBytes;
+        const auto payloadBegin = bp16::HeaderBytes + tableBytes;
+        if (payloadBegin > maxEncodedBytes || payloadBegin > UINT32_MAX)
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        std::vector<std::uint8_t> prefix;
+        try { prefix.resize(payloadBegin); }
+        catch (const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+        bp16::store32(prefix.data(), bp16::Magic);
+        bp16::store32(prefix.data() + 4, bp16::Version);
+        bp16::store32(prefix.data() + 8, static_cast<std::uint32_t>(rawBytes));
+        bp16::store32(prefix.data() + 12, static_cast<std::uint32_t>(blockCount));
+        std::size_t nextPayload = payloadBegin;
+        const auto* metadata = static_cast<const std::uint8_t*>(encodeMetadata_.mapped);
+        for (std::size_t block = 0; block < blockCount; ++block) {
+            const auto packed = bp16::load32(metadata + block * sizeof(std::uint32_t));
+            const auto mask = packed >> 16;
+            const auto bits = static_cast<unsigned>(__builtin_popcount(mask));
+            if (nextPayload > maxEncodedBytes || nextPayload > UINT32_MAX ||
+                bits * 16u > maxEncodedBytes - nextPayload)
+                return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            auto* descriptor = prefix.data() + bp16::HeaderBytes + block * bp16::DescriptorBytes;
+            bp16::store32(descriptor, static_cast<std::uint32_t>(nextPayload));
+            bp16::store32(descriptor + 4, packed);
+            nextPayload += bits * 16u;
+        }
+        if (nextPayload > maxStorageBufferRange_ || nextPayload > MaxBP16InputBytes)
+            return VK_ERROR_VALIDATION_FAILED_EXT;
+
+        ImportedHostInputPtr owner;
+        result = allocateHostFrameBuffer(nextPayload, owner, maxEncodedBytes);
+        if (result != VK_SUCCESS) return result;
+        std::memcpy(owner->allocation_, prefix.data(), prefix.size());
+        std::memset(static_cast<std::uint8_t*>(owner->allocation_) + nextPayload, 0,
+                    static_cast<std::size_t>(owner->allocationBytes_ - nextPayload));
+        result = updateEncoderDescriptors(rawBuffer, rawOffset, rawBytes,
+            owner->buffer_, static_cast<VkDeviceSize>(nextPayload), false);
+        if (result != VK_SUCCESS) return result;
+        result = recordAndSubmitBP16Encode(rawBuffer, rawOffset, rawBytes,
+            owner->buffer_, static_cast<VkDeviceSize>(nextPayload), packGroups, false);
+        if (result != VK_SUCCESS) return result;
+        if (!bp16::inspect(owner->data(), nextPayload, &owner->bp16Info_))
+            return VK_ERROR_UNKNOWN;
+        out = std::move(owner);
+        return VK_SUCCESS;
+    }
+
     VkResult allocateHostInput(const std::uint8_t* encoded, std::size_t encodedSize,
                                ImportedHostInputPtr& out) {
         out.reset();
         if (!initialized_ || poisoned_ || !bp16AllocatedHostInput_ || !encoded || !encodedSize ||
             encodedSize > MaxBP16InputBytes) return VK_ERROR_FEATURE_NOT_PRESENT;
+        ImportedHostInputPtr owner;
+        VkResult result = allocateHostFrameBuffer(encodedSize, owner);
+        if (result != VK_SUCCESS) return result;
+        copyBP16UploadBytes(static_cast<std::uint8_t*>(owner->allocation_), encoded,
+                            encodedSize, bp16UploadWorkers_);
+        std::memset(static_cast<std::uint8_t*>(owner->allocation_) + encodedSize, 0,
+                    static_cast<std::size_t>(owner->allocationBytes_) - encodedSize);
+        if (!bp16::inspect(owner->data(), encodedSize, &owner->bp16Info_))
+            return VK_ERROR_VALIDATION_FAILED_EXT;
+        out = std::move(owner);
+        return VK_SUCCESS;
+    }
+
+private:
+    VkResult allocateHostFrameBuffer(std::size_t encodedSize, ImportedHostInputPtr& out,
+                                     std::uint64_t maxAllocationBytes = MaxBP16InputBytes + 65536u) {
+        out.reset();
         if (!allocatedHostBudget_ || !allocatedHostBudget_->limitBytes())
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         if (!api_.getBufferMemoryRequirements2) return VK_ERROR_FEATURE_NOT_PRESENT;
         const auto bufferBytes = (encodedSize + 3u) & ~std::size_t(3u);
-        if (bufferBytes > maxStorageBufferRange_ || bufferBytes < encodedSize)
+        if (!encodedSize || bufferBytes > maxStorageBufferRange_ || bufferBytes < encodedSize)
             return VK_ERROR_VALIDATION_FAILED_EXT;
         ImportedHostInputPtr owner;
         try { owner.reset(new ImportedHostInput()); }
@@ -459,7 +569,8 @@ public:
         api_.getBufferMemoryRequirements2(device_, &reqInfo, &requirements);
         const auto& memoryRequirements = requirements.memoryRequirements;
         if (memoryRequirements.size < bufferBytes ||
-            memoryRequirements.size > MaxBP16InputBytes + 65536u)
+            memoryRequirements.size > MaxBP16InputBytes + 65536u ||
+            memoryRequirements.size > maxAllocationBytes)
             return VK_ERROR_FEATURE_NOT_PRESENT;
 
         constexpr VkMemoryPropertyFlags required = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -474,7 +585,7 @@ public:
             }
         }
         if (memoryType == UINT32_MAX) return VK_ERROR_FEATURE_NOT_PRESENT;
-        if (!allocatedHostBudget_ || !allocatedHostBudget_->reserve(memoryRequirements.size))
+        if (!allocatedHostBudget_->reserve(memoryRequirements.size))
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         owner->reservedBudgetBytes_ = memoryRequirements.size;
 
@@ -493,15 +604,11 @@ public:
                                        &owner->allocation_));
         if (result != VK_SUCCESS) return result;
         if (!owner->allocation_) return VK_ERROR_MEMORY_MAP_FAILED;
-        copyBP16UploadBytes(static_cast<std::uint8_t*>(owner->allocation_), encoded,
-                            encodedSize, bp16UploadWorkers_);
-        std::memset(static_cast<std::uint8_t*>(owner->allocation_) + encodedSize, 0,
-                    static_cast<std::size_t>(owner->allocationBytes_) - encodedSize);
-        if (!bp16::inspect(owner->data(), encodedSize, &owner->bp16Info_))
-            return VK_ERROR_VALIDATION_FAILED_EXT;
         out = std::move(owner);
         return VK_SUCCESS;
     }
+
+public:
 
     // `output` must belong to this device, contain [offset, offset+roundUp(raw,4)),
     // and have STORAGE_BUFFER and TRANSFER_DST usage. `offset` must satisfy
@@ -1031,19 +1138,224 @@ private:
         return api_.createComputePipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline_);
     }
 
+    VkResult createBP16Encoder(const char* analyzePath, const char* packPath) {
+        if (format_ != Format::BP16 || !bp16AllocatedHostInput_ || !analyzePath || !packPath ||
+            !api_.getBufferMemoryRequirements2 || !maxStorageBufferRange_ || !maxDispatchGroupsX_)
+            return VK_ERROR_FEATURE_NOT_PRESENT;
+        const auto metadataBytes = (MaxRawBytes / bp16::RawBytesPerBlock) * sizeof(std::uint32_t);
+        if (metadataBytes > maxStorageBufferRange_) return VK_ERROR_FEATURE_NOT_PRESENT;
+        VkResult result = createBuffer(metadataBytes,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, encodeMetadata_);
+        if (result != VK_SUCCESS) return result;
+
+        std::vector<std::uint8_t> analyzeCode, packCode;
+        try {
+            if (!readShader(analyzePath, analyzeCode) || !readShader(packPath, packCode))
+                return VK_ERROR_INITIALIZATION_FAILED;
+        } catch (const std::bad_alloc&) {
+            return VK_ERROR_OUT_OF_HOST_MEMORY;
+        }
+        result = createShaderAndPipeline(analyzeCode, "AnalyzeMain",
+                                         encodeAnalyzeShader_, encodeAnalyzePipeline_);
+        if (result != VK_SUCCESS) return result;
+        result = createShaderAndPipeline(packCode, "PackMain",
+                                         encodePackShader_, encodePackPipeline_);
+        if (result != VK_SUCCESS) return result;
+        bp16EncoderRequested_ = true;
+        return VK_SUCCESS;
+    }
+
+    VkResult createShaderAndPipeline(const std::vector<std::uint8_t>& code, const char* entry,
+                                     VkShaderModule& shader, VkPipeline& pipeline) {
+        VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        shaderInfo.codeSize = code.size();
+        shaderInfo.pCode = reinterpret_cast<const std::uint32_t*>(code.data());
+        VkResult result = api_.createShaderModule(device_, &shaderInfo, nullptr, &shader);
+        if (result != VK_SUCCESS) return result;
+        VkComputePipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        pipelineInfo.stage.module = shader;
+        pipelineInfo.stage.pName = entry;
+        pipelineInfo.layout = pipelineLayout_;
+        return api_.createComputePipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
+    }
+
+    void cleanupBP16Encoder() noexcept {
+        if (!device_) return;
+        if (encodeAnalyzePipeline_) api_.destroyPipeline(device_, encodeAnalyzePipeline_, nullptr);
+        if (encodePackPipeline_) api_.destroyPipeline(device_, encodePackPipeline_, nullptr);
+        if (encodeAnalyzeShader_) api_.destroyShaderModule(device_, encodeAnalyzeShader_, nullptr);
+        if (encodePackShader_) api_.destroyShaderModule(device_, encodePackShader_, nullptr);
+        destroyBuffer(encodeMetadata_);
+        encodeAnalyzePipeline_ = VK_NULL_HANDLE;
+        encodePackPipeline_ = VK_NULL_HANDLE;
+        encodeAnalyzeShader_ = VK_NULL_HANDLE;
+        encodePackShader_ = VK_NULL_HANDLE;
+        encodeDescriptorSet_ = VK_NULL_HANDLE;
+        bp16EncoderRequested_ = false;
+        bp16EncoderEnabled_ = false;
+    }
+
+    VkResult updateEncoderDescriptors(VkBuffer raw, VkDeviceSize rawOffset,
+                                     VkDeviceSize rawBytes, VkBuffer frame,
+                                     VkDeviceSize frameBytes, bool analyze) {
+        VkDescriptorBufferInfo infos[4]{};
+        infos[0] = {raw, rawOffset, rawBytes};
+        infos[1] = {encodeMetadata_.buffer, 0,
+            static_cast<VkDeviceSize>((rawBytes / bp16::RawBytesPerBlock) * sizeof(std::uint32_t))};
+        infos[2] = {analyze ? control_.buffer : frame, 0,
+                    analyze ? VkDeviceSize(12) : frameBytes};
+        infos[3] = {scratch_.buffer, 0, 4};
+        VkWriteDescriptorSet writes[4]{};
+        for (std::uint32_t i = 0; i < 4; ++i) {
+            writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet = encodeDescriptorSet_;
+            writes[i].dstBinding = i;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[i].pBufferInfo = &infos[i];
+        }
+        api_.updateDescriptorSets(device_, 4, writes, 0, nullptr);
+        return VK_SUCCESS;
+    }
+
+    VkResult recordAndSubmitBP16Encode(VkBuffer raw, VkDeviceSize rawOffset,
+                                       VkDeviceSize rawBytes, VkBuffer frame,
+                                       VkDeviceSize frameBytes, std::uint32_t groups,
+                                       bool analyze) {
+        VkResult result = checked(api_.resetCommandPool(device_, commandPool_, 0));
+        if (result != VK_SUCCESS) return result;
+        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        result = checked(api_.beginCommandBuffer(commandBuffer_, &begin));
+        if (result != VK_SUCCESS) return result;
+
+        VkBufferMemoryBarrier rawReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        rawReady.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+        rawReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        rawReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        rawReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        rawReady.buffer = raw;
+        rawReady.offset = rawOffset;
+        rawReady.size = rawBytes;
+        if (analyze) {
+            api_.cmdPipelineBarrier(commandBuffer_, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &rawReady, 0, nullptr);
+        } else {
+            VkBufferMemoryBarrier hostPrefix{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            hostPrefix.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+            hostPrefix.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            hostPrefix.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            hostPrefix.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            hostPrefix.buffer = frame;
+            hostPrefix.offset = 0;
+            hostPrefix.size = frameBytes;
+            VkBufferMemoryBarrier metadataReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            metadataReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_HOST_READ_BIT;
+            metadataReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            metadataReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            metadataReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            metadataReady.buffer = encodeMetadata_.buffer;
+            metadataReady.offset = 0;
+            metadataReady.size = static_cast<VkDeviceSize>(
+                (rawBytes / bp16::RawBytesPerBlock) * sizeof(std::uint32_t));
+            VkBufferMemoryBarrier barriers[3]{rawReady, hostPrefix, metadataReady};
+            api_.cmdPipelineBarrier(commandBuffer_, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT |
+                VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0, 0, nullptr, 3, barriers, 0, nullptr);
+        }
+        api_.cmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE,
+            analyze ? encodeAnalyzePipeline_ : encodePackPipeline_);
+        api_.cmdBindDescriptorSets(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE,
+            pipelineLayout_, 0, 1, &encodeDescriptorSet_, 0, nullptr);
+        api_.cmdDispatch(commandBuffer_, groups, 1, 1);
+        if (analyze) {
+            VkBufferMemoryBarrier metadataHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            metadataHost.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            metadataHost.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+            metadataHost.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            metadataHost.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            metadataHost.buffer = encodeMetadata_.buffer;
+            metadataHost.offset = 0;
+            metadataHost.size = static_cast<VkDeviceSize>(
+                (rawBytes / bp16::RawBytesPerBlock) * sizeof(std::uint32_t));
+            api_.cmdPipelineBarrier(commandBuffer_, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &metadataHost, 0, nullptr);
+        } else {
+            VkBufferMemoryBarrier frameHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            frameHost.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            frameHost.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+            frameHost.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            frameHost.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            frameHost.buffer = frame;
+            frameHost.offset = 0;
+            frameHost.size = frameBytes;
+            api_.cmdPipelineBarrier(commandBuffer_, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &frameHost, 0, nullptr);
+        }
+        result = checked(api_.endCommandBuffer(commandBuffer_));
+        if (result != VK_SUCCESS) return result;
+        result = checked(api_.resetFences(device_, 1, &fence_));
+        if (result != VK_SUCCESS) return result;
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &commandBuffer_;
+        result = api_.queueSubmit(queue_, 1, &submit, fence_);
+        if (result != VK_SUCCESS) {
+            markPoisoned();
+            return result;
+        }
+        result = api_.waitForFences(device_, 1, &fence_, VK_TRUE, WaitNanoseconds);
+        if (result != VK_SUCCESS) {
+            markPoisoned();
+            return result;
+        }
+        return VK_SUCCESS;
+    }
+
     VkResult createDescriptors() {
-        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
+        const auto descriptorCount = bp16EncoderRequested_ ? 8u : 4u;
+        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, descriptorCount};
         VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        poolInfo.maxSets = 1;
+        poolInfo.maxSets = bp16EncoderRequested_ ? 2u : 1u;
         poolInfo.poolSizeCount = 1;
         poolInfo.pPoolSizes = &size;
         VkResult result = api_.createDescriptorPool(device_, &poolInfo, nullptr, &descriptorPool_);
+        if (result != VK_SUCCESS && bp16EncoderRequested_ && result != VK_ERROR_DEVICE_LOST) {
+            cleanupBP16Encoder();
+            size.descriptorCount = 4;
+            poolInfo.maxSets = 1;
+            result = api_.createDescriptorPool(device_, &poolInfo, nullptr, &descriptorPool_);
+        }
         if (result != VK_SUCCESS) return result;
         VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         allocate.descriptorPool = descriptorPool_;
-        allocate.descriptorSetCount = 1;
-        allocate.pSetLayouts = &setLayout_;
-        return api_.allocateDescriptorSets(device_, &allocate, &descriptorSet_);
+        VkDescriptorSetLayout layouts[2]{setLayout_, setLayout_};
+        VkDescriptorSet sets[2]{};
+        allocate.descriptorSetCount = bp16EncoderRequested_ ? 2u : 1u;
+        allocate.pSetLayouts = layouts;
+        result = api_.allocateDescriptorSets(device_, &allocate, sets);
+        if (result != VK_SUCCESS && bp16EncoderRequested_ && result != VK_ERROR_DEVICE_LOST) {
+            api_.destroyDescriptorPool(device_, descriptorPool_, nullptr);
+            descriptorPool_ = VK_NULL_HANDLE;
+            cleanupBP16Encoder();
+            size.descriptorCount = 4;
+            poolInfo.maxSets = 1;
+            result = api_.createDescriptorPool(device_, &poolInfo, nullptr, &descriptorPool_);
+            if (result != VK_SUCCESS) return result;
+            allocate.descriptorPool = descriptorPool_;
+            allocate.descriptorSetCount = 1;
+            result = api_.allocateDescriptorSets(device_, &allocate, sets);
+        }
+        if (result == VK_SUCCESS) {
+            descriptorSet_ = sets[0];
+            if (bp16EncoderRequested_) encodeDescriptorSet_ = sets[1];
+        }
+        return result;
     }
 
     VkResult updateDescriptors(VkBuffer output, VkDeviceSize outputOffset,
@@ -1127,6 +1439,7 @@ private:
         if (queryPool_) api_.destroyQueryPool(device_, queryPool_, nullptr);
         if (fence_) api_.destroyFence(device_, fence_, nullptr);
         if (commandPool_) api_.destroyCommandPool(device_, commandPool_, nullptr);
+        cleanupBP16Encoder();
         if (descriptorPool_) api_.destroyDescriptorPool(device_, descriptorPool_, nullptr);
         if (pipeline_) api_.destroyPipeline(device_, pipeline_, nullptr);
         if (shader_) api_.destroyShaderModule(device_, shader_, nullptr);
@@ -1156,10 +1469,13 @@ private:
         format_ = Format::GDeflate;
         maxDispatchGroupsX_ = 0;
         maxStorageBufferRange_ = 0;
+        minStorageBufferOffsetAlignment_ = 0;
         bp16HostInput_ = false;
         bp16CachedUploadPreference_ = false;
         bp16ImportHostInput_ = false;
         bp16AllocatedHostInput_ = false;
+        bp16EncoderRequested_ = false;
+        bp16EncoderEnabled_ = false;
         importHostAlignment_ = 0;
         if (!poisoned_) {
             poisonState_.reset();
@@ -1180,7 +1496,9 @@ private:
     Format format_{Format::GDeflate};
     std::uint32_t maxDispatchGroupsX_{};
     VkDeviceSize maxStorageBufferRange_{};
+    VkDeviceSize minStorageBufferOffsetAlignment_{};
     Buffer upload_{}, input_{}, control_{}, scratch_{}, errorReadback_{};
+    Buffer encodeMetadata_{};
     std::size_t inputCapacity_{};
     VkDescriptorSetLayout setLayout_{};
     VkPipelineLayout pipelineLayout_{};
@@ -1188,6 +1506,11 @@ private:
     VkPipeline pipeline_{};
     VkDescriptorPool descriptorPool_{};
     VkDescriptorSet descriptorSet_{};
+    VkDescriptorSet encodeDescriptorSet_{};
+    VkShaderModule encodeAnalyzeShader_{};
+    VkShaderModule encodePackShader_{};
+    VkPipeline encodeAnalyzePipeline_{};
+    VkPipeline encodePackPipeline_{};
     VkCommandPool commandPool_{};
     VkCommandBuffer commandBuffer_{};
     VkFence fence_{};
@@ -1200,6 +1523,8 @@ private:
     bool bp16CachedUploadPreference_{};
     bool bp16ImportHostInput_{};
     bool bp16AllocatedHostInput_{};
+    bool bp16EncoderRequested_{};
+    bool bp16EncoderEnabled_{};
     unsigned bp16UploadWorkers_{1};
     VkDeviceSize importHostAlignment_{};
     std::shared_ptr<std::atomic<bool>> poisonState_;

@@ -286,6 +286,8 @@ struct Device {
     VkDeviceSize gpuStorageAlignment{1};
     VkDeviceSize gpuStorageRange{};
     std::uint64_t gpuDecodeCalls{}, gpuDecodeBytes{}, gpuDecodeNanoseconds{}, gpuDecodeFallbacks{};
+    std::uint64_t gpuEncodeCalls{}, gpuEncodeBytes{}, gpuEncodeNanoseconds{}, gpuEncodeFallbacks{};
+    std::uint64_t gpuEncodeRawSnapshots{};
     VkPhysicalDeviceProperties gpuProperties{};
     std::uint32_t gpuTimestampBits{};
     std::unique_ptr<zvram::gdeflate::gpu::Decoder> gpuDecoder;
@@ -371,6 +373,11 @@ void runAsyncEncoderUnlocked(std::unique_lock<std::mutex>& deviceLock,
     deviceLock.lock(); queueLock.lock();
 }
 void logGpuProfileSummary(Device& d,const char* suffix,bool force=false) {
+    if(force && (d.gpuEncodeCalls || d.gpuEncodeFallbacks))
+        logf("GPU BP16 encode calls=%llu raw-bytes=%llu host-ns=%llu fallbacks=%llu raw-snapshots=%llu%s",
+            static_cast<unsigned long long>(d.gpuEncodeCalls),static_cast<unsigned long long>(d.gpuEncodeBytes),
+            static_cast<unsigned long long>(d.gpuEncodeNanoseconds),static_cast<unsigned long long>(d.gpuEncodeFallbacks),
+            static_cast<unsigned long long>(d.gpuEncodeRawSnapshots),suffix);
     bool newProfile=false;
     if(d.gpuDecoder && d.gpuDecoder->profilingEnabled()) {
         const auto profile=d.gpuDecoder->profile();
@@ -1648,11 +1655,15 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
         try { d.gpuDecoder=std::make_unique<zvram::gdeflate::gpu::Decoder>(); }
         catch(const std::bad_alloc&) { d.gpuRestoreEnabled=false; }
         const auto* path=std::getenv(bp16?"ZVRAM_BP16_SHADER_PATH":"ZVRAM_GDEFLATE_SHADER_PATH");
+        const auto* encodeRequested=std::getenv("ZVRAM_VULKAN_BP16_GPU_ENCODE");
+        const bool gpuEncode=bp16 && encodeRequested && std::strcmp(encodeRequested,"1")==0;
         const auto format=bp16?zvram::gdeflate::gpu::Format::BP16:zvram::gdeflate::gpu::Format::GDeflate;
         const auto result=d.gpuDecoder && path?d.gpuDecoder->initialize(d.handle,d.gdpa,d.memory,d.copyQueue,family,
             d.setDeviceLoaderData,path,&d.gpuProperties,format,d.gpuTimestampBits,
             bp16 && d.gpuImportHostInput,d.gpuImportHostAlignment,
-            bp16 && d.gpuAllocatedHostInput,d.gpuAllocatedHostBudgetBytes):VK_ERROR_INITIALIZATION_FAILED;
+            bp16 && d.gpuAllocatedHostInput,d.gpuAllocatedHostBudgetBytes,
+            gpuEncode?std::getenv("ZVRAM_BP16_ENCODE_ANALYZE_SHADER_PATH"):nullptr,
+            gpuEncode?std::getenv("ZVRAM_BP16_ENCODE_PACK_SHADER_PATH"):nullptr):VK_ERROR_INITIALIZATION_FAILED;
         if(result!=VK_SUCCESS) {
             d.gpuRestoreEnabled=false; d.gpuDecoder.reset();
             logf("GPU %s restore unavailable result=%d; retaining CPU codec",codecName,result);
@@ -1663,6 +1674,11 @@ bool initSnapshotResources(Device& d,std::uint32_t family) {
                 d.gpuDecoder->allocatedHostInputEnabled()?"cached allocated host input":
                 d.gpuDecoder->hostInputEnabled()?"direct coherent host input":"compressed upload");
             if(bp16) logf("GPU BP16 upload workers=%u",d.gpuDecoder->uploadWorkers());
+            if(d.gpuDecoder->bp16EncoderEnabled()) {
+                // The first GPU encoder uses the existing synchronous freeze transaction.
+                d.asyncCompression=false;
+                logf("GPU BP16 encoder enabled: synchronous allocated-host snapshots");
+            } else if(gpuEncode) logf("GPU BP16 encoder unavailable: retaining CPU encoder");
         }
     }
     return true;
@@ -2107,66 +2123,106 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
         candidate.chunks.reserve(static_cast<std::size_t>((logicalBytes+d.snapshot.chunkSize-1)/d.snapshot.chunkSize));
         std::vector<std::uint8_t> encoded;
         std::vector<std::uint8_t> shuffled;
+        VkDeviceSize stagedBase=VK_WHOLE_SIZE;
         for(VkDeviceSize offset=0;offset<logicalBytes;offset+=d.snapshot.chunkSize) {
             const auto amount=std::min(d.snapshot.chunkSize,logicalBytes-offset);
-            const auto stagedOffset=offset%d.snapshot.stagingSize;
-            if(!stagedOffset) {
-                r=copyChunkLocked(d,memory.poolViews[i],d.snapshot.stagingBuffer,offset,0,
-                    std::min(d.snapshot.stagingSize,logicalBytes-offset),false);
-                if(r!=VK_SUCCESS) { okay=false; break; }
-            }
-            const auto* source=static_cast<std::uint8_t*>(d.snapshot.mapped)+stagedOffset;
             VirtualMemory::ColdChunk chunk; chunk.rawSize=amount;
-            std::size_t compressed=0;
-            bool keepCompressed=false;
-            if(d.minSavingsPercent<100) {
+            bool gpuRawSnapshot=false;
+            if(d.gpuDecoder && d.gpuDecoder->bp16EncoderEnabled() && d.minSavingsPercent<100 &&
+               amount<=zvram::bp16::MaxRawBytes && amount%zvram::bp16::RawBytesPerBlock==0 &&
+               offset%d.gpuStorageAlignment==0) {
+                const auto prefix=stored+candidate.importedPaddingBytes;
+                if(prefix<=d.coldBudget)
+                    trimCleanCacheLocked(d,amount<=d.coldBudget-prefix?prefix+amount:d.coldBudget);
+                const auto available=d.coldBytes<=d.coldBudget && prefix<=d.coldBudget-d.coldBytes
+                    ?d.coldBudget-d.coldBytes-prefix:0;
+                zvram::gdeflate::gpu::Decoder::ImportedHostInputPtr owner;
+                const auto started=std::chrono::steady_clock::now();
+                const auto result=d.gpuDecoder->encodeBP16(memory.poolViews[i],offset,
+                    static_cast<std::size_t>(amount),static_cast<std::size_t>(available),owner);
+                d.gpuEncodeNanoseconds+=std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now()-started).count();
+                if(d.gpuDecoder->unsafe() || result==VK_TIMEOUT || result==VK_ERROR_DEVICE_LOST) {
+                    // The source view/backing may still be in flight. Do not unbind or roll back.
+                    d.gpuRestoreUnsafe=true; d.gpuGateError=VK_ERROR_DEVICE_LOST;
+                    d.autoEnabled=false; d.stopWorker.store(true); d.activity.notify_all();
+                    ++d.snapshotFailures; d.lastSnapshotError=VK_ERROR_DEVICE_LOST;
+                    return VK_ERROR_DEVICE_LOST;
+                }
+                if(result==VK_SUCCESS && owner) {
+                    ++d.gpuEncodeCalls; d.gpuEncodeBytes+=amount;
+                    if(retainCompression(amount,owner->allocationBytes(),d.minSavingsPercent)) {
+                        chunk.imported=std::move(owner); chunk.compressed=true;
+                        chunk.codec=zvram::snapshot::Codec::BP16;
+                        candidate.importedPaddingBytes+=chunk.imported->allocationBytes()-chunk.imported->encodedBytes();
+                    } else { gpuRawSnapshot=true; ++d.gpuEncodeRawSnapshots; }
+                } else {
+                    ++d.gpuEncodeFallbacks;
+                    logf("GPU BP16 encode fallback result=%d",result);
+                }
+            }
+            if(!chunk.imported) {
+                const auto stagedOffset=offset%d.snapshot.stagingSize;
+                const auto base=offset-stagedOffset;
+                if(stagedBase!=base) {
+                    r=copyChunkLocked(d,memory.poolViews[i],d.snapshot.stagingBuffer,base,0,
+                        std::min(d.snapshot.stagingSize,logicalBytes-base),false);
+                    if(r!=VK_SUCCESS) { okay=false; break; }
+                    stagedBase=base;
+                }
+                const auto* source=static_cast<std::uint8_t*>(d.snapshot.mapped)+stagedOffset;
+                std::size_t compressed=0;
+                bool keepCompressed=false;
+                if(d.minSavingsPercent<100 && !gpuRawSnapshot) {
 #ifdef ZVRAM_HAVE_GDEFLATE
-                if(d.snapshotCodec==zvram::snapshot::Codec::GDeflate) {
-                    if(!zvram::gdeflate::encode(source,static_cast<std::size_t>(amount),encoded,d.gdeflateWorkers)) {
-                        okay=false; r=VK_ERROR_UNKNOWN; break;
-                    }
-                    compressed=encoded.size();
-                    keepCompressed=retainCompression(amount,compressed,d.minSavingsPercent);
-                } else
-#endif
-                if(d.snapshotCodec==zvram::snapshot::Codec::BP16) {
-                    if(amount<=zvram::bp16::MaxRawBytes && amount%zvram::bp16::RawBytesPerBlock==0) {
-                        if(!zvram::bp16::encodeFast(source,static_cast<std::size_t>(amount),encoded,d.bp16Workers)) {
+                    if(d.snapshotCodec==zvram::snapshot::Codec::GDeflate) {
+                        if(!zvram::gdeflate::encode(source,static_cast<std::size_t>(amount),encoded,d.gdeflateWorkers)) {
                             okay=false; r=VK_ERROR_UNKNOWN; break;
                         }
                         compressed=encoded.size();
                         keepCompressed=retainCompression(amount,compressed,d.minSavingsPercent);
+                    } else
+#endif
+                    if(d.snapshotCodec==zvram::snapshot::Codec::BP16) {
+                        if(amount<=zvram::bp16::MaxRawBytes && amount%zvram::bp16::RawBytesPerBlock==0) {
+                            if(!zvram::bp16::encodeFast(source,static_cast<std::size_t>(amount),encoded,d.bp16Workers)) {
+                                okay=false; r=VK_ERROR_UNKNOWN; break;
+                            }
+                            compressed=encoded.size();
+                            keepCompressed=retainCompression(amount,compressed,d.minSavingsPercent);
+                        }
+                    } else {
+                    const auto* compressionSource=source;
+                    if(d.byteShuffle) {
+                        shuffled.resize(static_cast<std::size_t>(amount));
+                        if(!zvram::byte_shuffle(source,shuffled.data(),static_cast<std::size_t>(amount),d.byteShuffle)) {
+                            okay=false; r=VK_ERROR_UNKNOWN; break;
+                        }
+                        compressionSource=shuffled.data();
                     }
+                    encoded.resize(ZSTD_compressBound(static_cast<std::size_t>(amount)));
+                    compressed=ZSTD_compress(encoded.data(),encoded.size(),compressionSource,static_cast<std::size_t>(amount),1);
+                    keepCompressed=!ZSTD_isError(compressed) && retainCompression(amount,compressed,d.minSavingsPercent);
+                    }
+                }
+                if(keepCompressed) {
+                    // Transfer exact-sized BP16 storage; keep copying when spare capacity would evade the quota.
+                    if(d.snapshotCodec==zvram::snapshot::Codec::BP16 && encoded.size()==compressed && encoded.capacity()==compressed)
+                        chunk.bytes=std::move(encoded);
+                    else { chunk.bytes.resize(compressed); std::memcpy(chunk.bytes.data(),encoded.data(),compressed); }
+                    chunk.compressed=true;
+                    chunk.byteShuffle=d.byteShuffle;
+                    chunk.codec=d.snapshotCodec;
                 } else {
-                const auto* compressionSource=source;
-                if(d.byteShuffle) {
-                    shuffled.resize(static_cast<std::size_t>(amount));
-                    if(!zvram::byte_shuffle(source,shuffled.data(),static_cast<std::size_t>(amount),d.byteShuffle)) {
-                        okay=false; r=VK_ERROR_UNKNOWN; break;
-                    }
-                    compressionSource=shuffled.data();
-                }
-                encoded.resize(ZSTD_compressBound(static_cast<std::size_t>(amount)));
-                compressed=ZSTD_compress(encoded.data(),encoded.size(),compressionSource,static_cast<std::size_t>(amount),1);
-                keepCompressed=!ZSTD_isError(compressed) && retainCompression(amount,compressed,d.minSavingsPercent);
+                    chunk.bytes.resize(static_cast<std::size_t>(amount)); std::memcpy(chunk.bytes.data(),source,static_cast<std::size_t>(amount));
                 }
             }
-            if(keepCompressed) {
-                // Transfer exact-sized BP16 storage; keep copying when spare capacity would evade the quota.
-                if(d.snapshotCodec==zvram::snapshot::Codec::BP16 && encoded.size()==compressed && encoded.capacity()==compressed)
-                    chunk.bytes=std::move(encoded);
-                else { chunk.bytes.resize(compressed); std::memcpy(chunk.bytes.data(),encoded.data(),compressed); }
-                chunk.compressed=true;
-                chunk.byteShuffle=d.byteShuffle;
-                chunk.codec=d.snapshotCodec;
-            } else {
-                chunk.bytes.resize(static_cast<std::size_t>(amount)); std::memcpy(chunk.bytes.data(),source,static_cast<std::size_t>(amount));
-            }
-            if(stored<=d.coldBudget && chunk.bytes.size()<=d.coldBudget-stored)
-                trimCleanCacheLocked(d,stored+chunk.bytes.size());
+            const auto prefix=stored+candidate.importedPaddingBytes;
+            if(prefix<=d.coldBudget && chunk.size()<=d.coldBudget-prefix)
+                trimCleanCacheLocked(d,prefix+chunk.size());
             const auto remaining=d.coldBudget-d.coldBytes-d.cacheBytes;
-            if(stored>remaining || chunk.bytes.size()>remaining-stored) { okay=false; budgetExceeded=true; break; }
-            stored+=chunk.bytes.size(); candidate.chunks.push_back(std::move(chunk));
+            if(prefix>remaining || chunk.size()>remaining-prefix) { okay=false; budgetExceeded=true; break; }
+            stored+=chunk.size(); candidate.chunks.push_back(std::move(chunk));
         }
     } catch(const std::bad_alloc&) { okay=false; r=VK_ERROR_OUT_OF_HOST_MEMORY; }
     if(!okay || candidate.chunks.size()!=(logicalBytes+d.snapshot.chunkSize-1)/d.snapshot.chunkSize) {
@@ -2202,8 +2258,8 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     candidate.logicalBytes=logicalBytes; candidate.storedBytes=stored; candidate.cold=true;
     candidate.successfulFreezes=zvram::clean_cache::nextSuccessfulFreeze(group.successfulFreezes);
     group=std::move(candidate);
-    memory.cold=true; memory.coldStoredBytes+=stored; memory.coldLogicalSize+=logicalBytes;
-    d.coldBytes+=stored; d.coldLogicalBytes+=logicalBytes; ++d.freezeCount;
+    memory.cold=true; memory.coldStoredBytes+=group.accountedBytes(); memory.coldLogicalSize+=logicalBytes;
+    d.coldBytes+=group.accountedBytes(); d.coldLogicalBytes+=logicalBytes; ++d.freezeCount;
     const auto compressedChunks=static_cast<std::size_t>(std::count_if(group.chunks.begin(),group.chunks.end(),[](const auto& chunk){return chunk.compressed;}));
     const auto shuffledChunks=static_cast<std::size_t>(std::count_if(group.chunks.begin(),group.chunks.end(),[](const auto& chunk){return chunk.byteShuffle!=0;}));
     logf("snapshot cold bytes=%llu stored=%llu compressed-chunks=%zu raw-chunks=%zu shuffled-chunks=%zu",static_cast<unsigned long long>(logicalBytes),static_cast<unsigned long long>(stored),compressedChunks,group.chunks.size()-compressedChunks,shuffledChunks);
@@ -3169,6 +3225,7 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
         if(p->second!=d->restoreGeneration) {
             const auto visible=d->autoQueues.fromCopyQueueActive(queue);
             if(visible!=VK_SUCCESS) {
+                logf("queue submit failed stage=restore-visibility api=%s result=%d",name,visible);
                 d->gpuGateError=visible; d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
                 return visible;
             }
@@ -3176,6 +3233,7 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
         }
     }
     const auto r=next(queue,args...);
+    if(r!=VK_SUCCESS) logf("queue call failed stage=application api=%s result=%d",name,r);
     if(r==VK_SUCCESS && std::strcmp(name,"vkQueueWaitIdle")!=0)
         invalidateAcceptedWrites(*d,name,args...);
     if(r==VK_SUCCESS && std::strcmp(name,"vkQueueWaitIdle")!=0)

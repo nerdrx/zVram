@@ -214,6 +214,9 @@ else:
         if bp16_gpu:
             env["ZVRAM_VULKAN_BP16_GPU"] = "1"
             env["ZVRAM_BP16_SHADER_PATH"] = str(build / "bp16.spv")
+            if env.get("ZVRAM_VULKAN_BP16_GPU_ENCODE") == "1":
+                env["ZVRAM_BP16_ENCODE_ANALYZE_SHADER_PATH"] = str(build / "bp16-encode-analyze.spv")
+                env["ZVRAM_BP16_ENCODE_PACK_SHADER_PATH"] = str(build / "bp16-encode-pack.spv")
     if args.vulkan_selective_restore:
         env["ZVRAM_VULKAN_SELECTIVE_RESTORE"] = "1"
     if args.vulkan_active_eviction:

@@ -9,6 +9,8 @@ option(ZVRAM_ENABLE_BP16_GPU_TESTS "Register opt-in BP16 GPU integrity tests" OF
 set(ZVRAM_GDEFLATE_CAPABILITY false)
 set(ZVRAM_GDEFLATE_GPU_CAPABILITY false)
 configure_file(research/bp16/decode.spv bp16.spv COPYONLY)
+configure_file(research/bp16/encode_analyze.spv bp16-encode-analyze.spv COPYONLY)
+configure_file(research/bp16/encode_pack.spv bp16-encode-pack.spv COPYONLY)
 if(ZVRAM_ENABLE_GDEFLATE)
     enable_language(C)
     if(POLICY CMP0135)
@@ -39,7 +41,9 @@ file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
 add_library(zvram_layer SHARED layer.cpp)
 set_property(TARGET zvram_layer APPEND PROPERTY LINK_DEPENDS
     ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
-    ${CMAKE_CURRENT_BINARY_DIR}/bp16.spv)
+    ${CMAKE_CURRENT_BINARY_DIR}/bp16.spv
+    ${CMAKE_CURRENT_BINARY_DIR}/bp16-encode-analyze.spv
+    ${CMAKE_CURRENT_BINARY_DIR}/bp16-encode-pack.spv)
 add_custom_command(TARGET zvram_layer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs.json

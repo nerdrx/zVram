@@ -43,4 +43,9 @@ if os.environ.get("ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT") == "1":
     count, _, size = map(int, allocations[-1])
     if (disabled and (count != 0 or size != 0)) or (not disabled and (count <= 0 or size <= 0)):
         raise SystemExit("FAIL: allocated BP16 input counters do not match cache configuration")
+if os.environ.get("ZVRAM_VULKAN_BP16_GPU_ENCODE") == "1":
+    encodes = re.findall(r"GPU BP16 encode calls=(\d+) raw-bytes=(\d+) host-ns=(\d+) fallbacks=(\d+)", result.stdout)
+    if (expected != "bp16" or "GPU BP16 encoder enabled:" not in result.stdout or
+            not encodes or int(encodes[-1][0]) <= 0 or int(encodes[-1][1]) <= 0 or int(encodes[-1][3]) != 0):
+        raise SystemExit("FAIL: requested GPU BP16 encoding was not observed without fallback")
 print("PASS: application byte checks, observed GPU decoding, zero fallback and validation diagnostics")
