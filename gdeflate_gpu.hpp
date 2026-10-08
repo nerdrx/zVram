@@ -235,6 +235,8 @@ public:
         std::uint64_t gpuFinishNs{};
         std::uint64_t gpuSamples{};
         std::uint64_t bp16InputBytes{};
+        std::uint64_t bp16LocalOwnerInputBytes{};
+        std::uint64_t bp16OtherInputBytes{};
     };
 
     Decoder() = default;
@@ -905,8 +907,13 @@ public:
         if (profileEnabled_)
             profile_.submitWaitNs += static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - submitWaitStarted).count());
-        if (profileEnabled_ && format_ == Format::BP16)
+        if (profileEnabled_ && format_ == Format::BP16) {
             profile_.bp16InputBytes += inputBytes;
+            if (imported && imported->deviceLocal_)
+                profile_.bp16LocalOwnerInputBytes += inputBytes;
+            else
+                profile_.bp16OtherInputBytes += inputBytes;
+        }
         if (gpuProfileEnabled_) {
             std::uint64_t timestamps[4]{};
             result = api_.getQueryPoolResults(device_, queryPool_, 0, 4, sizeof(timestamps),
