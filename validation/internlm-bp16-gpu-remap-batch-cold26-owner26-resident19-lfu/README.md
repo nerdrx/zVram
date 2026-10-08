@@ -11,8 +11,8 @@ was **18,027 MiB** and swap grew by **2,888 MiB**. Final telemetry recorded
 combined remap calls / child frames.
 
 The prior encoder repeat without these batching options measured **1.10252711
-tokens/s**; this run is effectively the same rate. Host submit/wait time was
-**70.54 s** versus **70.20 s**. These sequential runs had uncontrolled clocks and
+tokens/s** with **69.785 s** host submit/wait; this run is effectively the same
+rate and measured **70.540 s**. These sequential runs had uncontrolled clocks and
 background activity, so they do not establish a speed gain or isolate cause.
 Both batching options remain opt-in and default off.
 

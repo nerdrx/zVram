@@ -8,10 +8,9 @@ layers offloaded, and zero GPU restore fallback. Minimum available RAM was
 **16,669 MiB** and swap growth was **2,443 MiB**. Telemetry recorded
 **15,074 batch submissions / 51,174 frame items**.
 
-The comparable encoder repeat measured **1.10252711 tokens/s**, with device
-restore time **52.10 s** versus **52.10 s** for this batch run and host restore
-time **70.20 s** versus **70.20 s**. The batch run shows no observed throughput
-gain. These are sequential runs with uncontrolled clocks/background activity,
+The comparable encoder repeat measured **1.10252711 tokens/s**; its host
+submit/wait time was **69.785 s**, versus **70.196 s** for this batch run. The
+batch run shows no observed throughput gain. These are sequential runs with uncontrolled clocks/background activity,
 not a controlled performance comparison. Batching remains opt-in and defaults
 off.
 

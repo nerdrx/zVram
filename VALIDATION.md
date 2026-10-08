@@ -1710,6 +1710,16 @@ GPU encoding. These are correctness checks, not a model speed result. The
 production decoder SPIR-V is unchanged. [Commands, logs, runtime/source hashes](validation/bp16-gpu-encoder/README.md).
 
 
+### Experimental staged BP16 owned input
+
+`ZVRAM_VULKAN_BP16_STAGE_OWNED_INPUT=1` stages encoded BP16 frames from
+allocated host owners into VRAM before decoding. It is opt-in and defaults off;
+only allocated-host owners use it, and serial GPU restore batching is disabled
+while active. CPU12, two staged GPU fixtures, the full **125/125** CTest suite
+(in **86.64 s**), and the focused opt-in staged GPU suite (**8/8**, **6.39 s**)
+passed. The CPU encoder stage checks passed **2/2**. These are correctness gates;
+there is no model speed result yet.
+
 ### Experimental BP16 batched GPU restore
 
 `ZVRAM_VULKAN_BP16_RESTORE_BATCH=1` opts into batching **2–4** existing
@@ -1721,13 +1731,13 @@ existing CPU fallback. One 92-token InternLM2.5-20B F16 run completed at
 **1.09282503 tokens/s** with exact output, 49/49 layers, zero GPU restore
 fallback, and **15,074 batch submissions / 51,174 frame items**. The synchronous
 GPU-encoder repeat without restore batching measured **1.10252711 tokens/s**;
-reported device restore time and host restore time were both unchanged at 52.10 s
-and 70.20 s, respectively. This is no observed speed gain from batching. These
+the batch run's host submit/wait was **70.196 s**, versus **69.785 s** for the
+encoder repeat. This is no observed speed gain from batching. These
 sequential runs had uncontrolled clocks/background activity, so the comparison
 is not causal; batching remains opt-in and defaults off. A later run combined the
 four-frame restore batches with one sparse remap transaction and measured
 **1.10334585 tokens/s**, essentially matching the **1.10252711** encoder repeat;
-host submit/wait was **70.54 s** versus **70.20 s**. It completed exact output,
+host submit/wait was **70.540 s** versus **69.785 s** for the encoder repeat. It completed exact output,
 49/49 layers, zero GPU restore fallback, with **14,957 submissions / 50,894
 frames**. This likewise shows no observed gain. [Combined-remap run and
 provenance](validation/internlm-bp16-gpu-remap-batch-cold26-owner26-resident19-lfu/README.md)
