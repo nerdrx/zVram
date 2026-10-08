@@ -343,6 +343,11 @@ input. Exact owner-tuple mismatch checks and GPU readback integrity passed
 with zero fallback or Vulkan validation diagnostics. This correctness change
 has no model performance result yet. [Tests and hashes](validation/bp16-immutable-owner-validation/README.md).
 
+The first combined 28 GiB cold/owner, 21 GiB resident, 1 GiB headroom trial
+aborted after prompt submission with `vk::Queue::submit: ErrorOutOfDeviceMemory`
+while system available RAM stayed above **30 GiB**. It has no completed output
+or throughput result and does not establish a single cause. [Failure context and logs](validation/internlm-bp16-cold28-owner28-resident21-lfu-cached-validation-abort/README.md).
+
 ## Vulkan range eviction policy
 
 `--vulkan-eviction-policy lru|mru` requires `--vulkan-resident-mib`; the default is `lru`. LRU evicts the least-recently-used eligible completed chunk first. MRU evicts the newest eligible completed, unselected chunk first. Both policies retain the existing protection for selected or in-flight chunks and the same unknown-access fallback.
