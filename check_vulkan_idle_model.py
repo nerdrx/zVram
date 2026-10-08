@@ -296,8 +296,8 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
                 else:
                     stderr.extend(chunk)
                     if (automatic and pressure_on_first_submit and prompt_sent and
-                            b"snapshot state event=restore" in stderr[pressure_stderr_start:] and
-                            "pressure" not in backing):
+                            "pressure" not in backing and
+                            b"snapshot state event=restore" in stderr[pressure_stderr_start:]):
                         backing["pressure"] = capture_backing(
                             proc.pid, output_dir / f"{label}-pressure.fdinfo.txt")
             if proc.poll() is not None:
