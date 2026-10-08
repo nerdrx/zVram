@@ -263,6 +263,10 @@ struct Device {
     bool lazyBacking{};
     bool residentAdmissionArmed{true};
     bool restoreBudgetRefused{};
+    bool admissionBudgetSnapshotEnabled{};
+    bool admissionBudgetSnapshotActive{};
+    bool admissionBudgetSnapshotValid{};
+    VkDeviceSize admissionBudgetSnapshotLimit{};
     bool cleanCache{};
     bool cleanFirstEviction{};
     zvram::clean_cache::Policy cleanCachePolicy{zvram::clean_cache::Policy::First};
@@ -1096,6 +1100,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         auto d=std::make_shared<Device>(); d->handle=*out; d->physical=physical; d->gdpa=nextGdpa; d->setDeviceLoaderData=setDeviceLoaderData;
         const char* gpuProfile=std::getenv("ZVRAM_VULKAN_GPU_PROFILE");
         d->gpuProfileEnabled=gpuProfile && std::strcmp(gpuProfile,"1")==0;
+        const char* admissionSnapshot=std::getenv("ZVRAM_VULKAN_ADMISSION_BUDGET_SNAPSHOT");
+        d->admissionBudgetSnapshotEnabled=admissionSnapshot && std::strcmp(admissionSnapshot,"1")==0;
         const char* bufferPresentation=std::getenv("ZVRAM_VULKAN_BUFFER_PRESENTATION");
         d->bufferPresentation=bufferPresentation && std::strcmp(bufferPresentation,"1")==0;
         const char* asyncCompression=std::getenv("ZVRAM_VULKAN_ASYNC_COMPRESSION");
@@ -1299,6 +1305,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     if(d->autoEnabled && strictRobustnessEnabled) logf("bounded Vulkan robustness enabled alignment-bytes=%llu",static_cast<unsigned long long>(robustAlignment));
                     else if(strictRequested) logf("bounded Vulkan robustness unavailable: feature chain or device support");
                     if(d->autoEnabled && d->residentLimitBytes) logf("Vulkan resident admission enabled limit-bytes=%llu",static_cast<unsigned long long>(d->residentLimitBytes));
+                    if(d->autoEnabled && d->admissionBudgetSnapshotEnabled)
+                        logf("Vulkan per-queue admission budget snapshot enabled experimental=1");
                     if(d->autoEnabled && d->residentLimitBytes) logf("Vulkan eviction policy=%s",d->mruEviction?"mru":"lru");
                     if(d->autoEnabled && d->cleanCache)
                         logf("Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget");
@@ -1877,7 +1885,17 @@ void trimCleanCacheLocked(Device& d,VkDeviceSize required) {
 // Estimates can change immediately after a query: retain the hard cap too.
 VkResult residentAdmissionLimit(Device& d,VkDeviceSize& limit) {
     limit=d.residentLimitBytes;
-    if(!d.budgetReserveBytes) return VK_SUCCESS;
+    if(d.admissionBudgetSnapshotActive && d.admissionBudgetSnapshotValid) {
+        limit=d.admissionBudgetSnapshotLimit;
+        return VK_SUCCESS;
+    }
+    if(!d.budgetReserveBytes) {
+        if(d.admissionBudgetSnapshotActive) {
+            d.admissionBudgetSnapshotLimit=limit;
+            d.admissionBudgetSnapshotValid=true;
+        }
+        return VK_SUCCESS;
+    }
     if(!d.budgetProperties || d.budgetHeap>=d.memory.memoryHeapCount) return VK_ERROR_FEATURE_NOT_PRESENT;
     VkDeviceSize tracked=0;
     for(const auto& pair:d.virtualMemory) {
@@ -1900,6 +1918,10 @@ VkResult residentAdmissionLimit(Device& d,VkDeviceSize& limit) {
     const auto total=std::min(budget.heapBudget[d.budgetHeap],d.memory.memoryHeaps[d.budgetHeap].size);
     const auto usage=budget.heapUsage[d.budgetHeap];
     limit=zvram::residentBudgetLimit(limit,total,usage,tracked,d.budgetReserveBytes);
+    if(d.admissionBudgetSnapshotActive) {
+        d.admissionBudgetSnapshotLimit=limit;
+        d.admissionBudgetSnapshotValid=true;
+    }
     if(limit!=d.lastBudgetLimit) {
         logf("resident budget native-heap=%u budget=%llu usage=%llu tracked-local=%llu reserve=%llu effective-limit=%llu hard-limit=%llu",
              d.budgetHeap,static_cast<unsigned long long>(total),static_cast<unsigned long long>(usage),
@@ -3239,10 +3261,18 @@ VkResult restoreForQueueWithBudgetRetry(Device& d,const char* name,Args... args)
     // EXT memory-budget estimates can shrink between admission and restore.
     // Re-admit once under the current estimate; this is not a reservation.
     d.restoreBudgetRefused=false;
+    d.admissionBudgetSnapshotValid=false;
     result=admitForQueue(d,name,args...);
-    if(result!=VK_SUCCESS) return result;
+    if(result!=VK_SUCCESS) {
+        if(d.admissionBudgetSnapshotEnabled && result==VK_ERROR_OUT_OF_DEVICE_MEMORY)
+            logf("resident admission budget snapshot retry refused stage=admission result=%d",static_cast<int>(result));
+        return result;
+    }
     d.restoreBudgetRefused=false;
-    return restoreForQueue(d,name,args...);
+    result=restoreForQueue(d,name,args...);
+    if(result==VK_ERROR_OUT_OF_DEVICE_MEMORY && d.admissionBudgetSnapshotEnabled)
+        logf("resident admission budget snapshot retry refused stage=restore result=%d",static_cast<int>(result));
+    return result;
 }
 
 template<class... Args>
@@ -3284,6 +3314,22 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     std::unique_lock<std::mutex> deviceLock(d->mutex,std::defer_lock);
     std::unique_lock<std::mutex> queueLock(d->queueMutex,std::defer_lock);
     if(d->virtualEnabled) { deviceLock.lock(); queueLock.lock(); }
+    struct AdmissionBudgetSnapshotScope {
+        Device& device;
+        bool enabled;
+        explicit AdmissionBudgetSnapshotScope(Device& value):device(value),enabled(value.admissionBudgetSnapshotEnabled) {
+            if(enabled) {
+                device.admissionBudgetSnapshotActive=true;
+                device.admissionBudgetSnapshotValid=false;
+            }
+        }
+        ~AdmissionBudgetSnapshotScope() {
+            if(enabled) {
+                device.admissionBudgetSnapshotActive=false;
+                device.admissionBudgetSnapshotValid=false;
+            }
+        }
+    } budgetSnapshotScope(*d);
     if(d->gpuGateError!=VK_SUCCESS) return d->gpuGateError;
     const auto admission=admitForQueue(*d,name,args...); if(admission!=VK_SUCCESS) return admission;
     const bool hasCold=std::any_of(d->virtualMemory.begin(),d->virtualMemory.end(),[](const auto& pair){return pair.second.cold;});
