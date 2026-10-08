@@ -1,0 +1,13 @@
+{
+  "runtime_code_commit": "72516bb0d58e658e10796bb5d589496421c65d90",
+  "note": "Experimental synchronous GPU encoder opt-in; existing CPU async bypassed only in thismode; exactcanonicalallocatedowner output; productiondecoderunchanged; sequentialunlockedclocks",
+  "sources": {
+    "layer.cpp": "fbe3d993ab721c84c70f45cd7974c776f58f9dfbf061580052ccd204d9bda9b2",
+    "gdeflate_gpu.hpp": "47fc95d3e07a358e0fcad3bc6a451a7d05d63e149e73979cfac626574cba5fd1",
+    "bp16_codec.hpp": "291fe77e3f72b31327ecefdbe35590f95a5db741ddae296a75b1fc62daf9e421",
+    "clean_cache_policy.hpp": "cfaabc8c8a83a66cfe1fd77e0babd5c88f8c2423decd88a692aefa13e3e4e0e8",
+    "submission_hooks.inc": "fb1bf489cf9ab8ee9756d42635ed0b299f27306f77a6ed332b1ca2a7f3af6546",
+    "zvram": "7e2b177eb6cecdcbbcd48cccc419e78d460f6fec28b6e2c98e43394053958a49",
+    "CMakeLists.txt": "c544ea4cd0853609607c6f83145c4e78b0a8d5ecd8851dcbd14de540400a9cf9"
+  }
+}

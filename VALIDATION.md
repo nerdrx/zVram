@@ -1707,3 +1707,25 @@ fixtures also preserved bytes: a 64 MiB quota exercised CPU fallback, a zero
 allocated-owner budget expected fallback, and the 100% savings cutoff bypassed
 GPU encoding. These are correctness checks, not a model speed result. The
 production decoder SPIR-V is unchanged. [Commands, logs, runtime/source hashes](validation/bp16-gpu-encoder/README.md).
+
+
+### BP16 GPU-encoder full-model run (pending repeat)
+
+The experimental synchronous GPU BP16 encoder completed one 92-token
+InternLM2.5-20B F16 run in **84,153.70 ms** (**1.09323773 tokens/s**), with
+exact output SHA-256
+`b8803c0156cf91c4c8f6af68959d503e61206de7c8962f197d479950f146587b`, **49/49**
+layers, and zero GPU restore fallback. Minimum available RAM was **17,610 MiB**
+and swap grew by **4,806 MiB**. The model file is **39,725,643,136 bytes**
+(39.725 GB, not 40 GiB). The combined opt-in used a 26 GiB cold/owner ceiling,
+19 GiB tracked-resident cap, 2.5 GiB reserve, LFU, 32 BP16 encoder workers, eight
+upload workers, and immutable-owner validation caching.
+
+The app did not destroy its Vulkan device before exit, so final GPU-encoder
+teardown counters and encode host-time are unavailable; they are not inferred.
+The captured state records 4,382 cold-freeze events and zero async commits. An
+exact-configuration repeat is pending. Keep the 0.889 completed run as the
+current headline until that repeat; this single observation is not a causal
+comparison and clocks/background activity were uncontrolled. The original
+launch stopped at Ollama preflight before prompting, with no model result.
+[Completed run and provenance](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md) · [Ollama preflight diagnostic](validation/internlm-bp16-gpu-encode-cold26-preflight-abort/README.md).

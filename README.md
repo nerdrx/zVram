@@ -352,4 +352,4 @@ An experimental BP16 GPU snapshot encoder is also available behind
 `ZVRAM_VULKAN_BP16_GPU_ENCODE=1`; it requires BP16 GPU restore and allocated-host
 input. When enabled, freezing is synchronous and disables async compression for
 that mode. It defaults off, keeps CPU fallback, and has correctness checks only;
-no model speedup has been measured. [Encoder tests, budget cases, and hashes](validation/bp16-gpu-encoder/README.md).
+no model speedup has been measured. [Encoder tests, budget cases, and hashes](validation/bp16-gpu-encoder/README.md). One 92-token full-model GPU-encoder run later completed at 1.09323773 tokens/s with exact output and 49/49 layers, but encoder teardown counters were unavailable and an exact repeat is pending; it does not replace the completed 0.889 long-run result yet. [Single-run archive and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md).
