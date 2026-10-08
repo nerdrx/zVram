@@ -1626,3 +1626,12 @@ The tested source was commit `736ef60bc57304848810de1b598702badbe08d30`;
 the runtime library SHA-256 was
 `d745d704135f7af4e3a57c3df1180c5bee9af3ff42d2343dedc9b191981829f8`.
 [Raw CTest logs and provenance](validation/bp16-upload-workers/README.md).
+
+### BP16 exact-sized snapshot storage transfer
+
+The ownership-transfer change passed **12/12 CPU tests**, the full **121/121**
+CTest suite in **86.12 seconds**, and focused async range/pressure tests **4/4**
+in **1.90 seconds**. Async test logs contain real `async-freeze` events. The
+change moves exact-sized BP16 storage into the snapshot and keeps the copy path
+when vector capacity exceeds encoded size, preserving quota accounting. These
+checks do not establish a model-level speedup. [Logs, hashes, and source](validation/bp16-exact-storage-move/README.md).

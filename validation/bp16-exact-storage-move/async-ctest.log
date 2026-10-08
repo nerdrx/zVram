@@ -1,0 +1,13 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-codec
+    Start 117: vulkan-bp16-gpu-range-synthetic
+1/4 Test #117: vulkan-bp16-gpu-range-synthetic ......   Passed    0.44 sec
+    Start 118: vulkan-bp16-gpu-range-native
+2/4 Test #118: vulkan-bp16-gpu-range-native .........   Passed    0.43 sec
+    Start 120: vulkan-bp16-gpu-pressure-synthetic
+3/4 Test #120: vulkan-bp16-gpu-pressure-synthetic ...   Passed    0.52 sec
+    Start 121: vulkan-bp16-gpu-pressure-native
+4/4 Test #121: vulkan-bp16-gpu-pressure-native ......   Passed    0.50 sec
+
+100% tests passed out of 4
+
+Total Test time (real) =   1.90 sec
