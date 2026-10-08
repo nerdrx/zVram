@@ -50,13 +50,13 @@ def profile_details(profile):
         cap = "%s MiB" % profile["active_resident_mib"] if profile.get("active_resident_mib") is not None else "unknown"
         text += " | External zVram launch | " + profile.get("state", "Launch configured") + " | Configured cap: " + cap
         if not profile.get("live_capable"):
-            text += " · restart with zvram --live-control for live residency controls"
+            text += " · restart through updated zVram for live residency controls"
     elif profile.get("mode") == "native":
         text += " | Native: no zVram residency cap"
     else:
-        active = "%s MiB" % profile["active_resident_mib"] if profile.get("running") and profile.get("active_resident_mib") else "not running"
+        active = "%s MiB" % profile["active_resident_mib"] if profile.get("running") and profile.get("active_resident_mib") else "automatic" if profile.get("running") else "not running"
         pending = "%s MiB" % profile["resident_mib"] if profile.get("resident_mib") else profile.get("priority", "normal") + " preset"
-        text += " | Active cap: %s · Next launch: %s" % (active, pending)
+        text += " | Launch cap: %s · Next launch: %s" % (active, pending)
         if profile.get("mode") == "wrapped":
             text += " · existing zVram command"
     for index, device in enumerate(profile.get("control_devices", []), 1):
@@ -266,7 +266,7 @@ class ManagerWindow:
     def apply_live(self):
         profile = self.profiles.get(self.selected())
         if not profile or not profile.get("live_capable"):
-            self.message.set("Restart with zvram --live-control for live residency controls.")
+            self.message.set("Restart through updated zVram for live residency controls.")
             return
         try:
             resident = self.fields["resident_mib"].get().strip()
@@ -511,7 +511,7 @@ def _tui(screen, manager):
                                 manager.set_live_priority(profile["name"], priority)
                         message = "Live cap requested; reduction may remain pending until resident data fits"
                     else:
-                        message = "External launch: restart with zvram --live-control for live residency controls" if key in map(ord, "ep") else "External launch has no saved profile or manager log"
+                        message = "External launch: restart through updated zVram for live residency controls" if key in map(ord, "ep") else "External launch has no saved profile or manager log"
                     continue
                 if key == ord("n") or key == ord("e") and profile:
                     edited = _edit(screen, profile if key == ord("e") else None)

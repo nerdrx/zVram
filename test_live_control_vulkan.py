@@ -17,7 +17,7 @@ def main():
         os.environ['ZVRAM_CONTROL_DIR'] = str(root / 'control')
         manager = Manager(root / 'state')
         log = root / 'fixture.log'
-        command = [str(ROOT / 'zvram'), '--validate', '--isolate-layers', '--live-control',
+        command = [str(ROOT / 'zvram'), '--validate', '--isolate-layers',
                    '--vulkan-virtual-mib', '128', '--vulkan-auto-idle-ms', '100',
                    '--vulkan-cold-mib', '128', '--vulkan-resident-mib', '64',
                    '--vulkan-headroom-mib', '64', '--', str(ROOT / 'build/zvram-vulkan-auto-check'),

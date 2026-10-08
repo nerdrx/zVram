@@ -33,16 +33,19 @@ zvram run --name vrchat --priority high -- %command%
 This selects experimental range paging with a launch cap and native-budget
 headroom. Test per game; tracked buffers only, with images and unknown access
 outside the narrow paging guarantee. The original `zvram --vulkan-virtual-gib
-96 -- %command%` remains available with telemetry and Stop, but does not enable
-live paging controls. To enable them in a Steam or terminal launch:
+96 -- %command%` remains available with telemetry and Stop, and enables
+live paging controls by default. A Steam or terminal launch needs no extra flag:
 
 ```text
-zvram --live-control --vulkan-virtual-gib 96 -- %command%
+zvram --vulkan-virtual-gib 96 -- %command%
 ```
 
-`--live-control` opts into experimental range paging, a normal-priority initial
+Vulkan launches default to experimental range paging, a normal-priority initial
 cap and 1536 MiB native-budget headroom. Explicit launch settings override its
-defaults. This changes paging behavior; test compatibility per application.
+defaults. `--no-live-control` disables these automatic defaults for virtual-only
+or explicitly configured expert modes. `--live-control` remains a compatibility
+alias for the default. HIP and explicit model spill mode keep their existing
+behavior. This changes paging behavior; test compatibility per application.
 Existing apps must restart once to load the updated layer and paging features.
 The GUI provides **Apply live** (or **Save live cap** on a detected external app).
 In the TUI, `p` selects a live preset and `e` sets MiB for an external app.

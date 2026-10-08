@@ -75,7 +75,7 @@ def main():
         command += ["--prefer-vk-device", args.prefer_device]
     command += ["--", "env", "SDL_VIDEODRIVER=" + args.video_driver]
     if not args.native:
-        command += [str(root / "zvram"), "--build-dir", str(args.build_dir.resolve()),
+        command += [str(root / "zvram"), "--no-live-control", "--build-dir", str(args.build_dir.resolve()),
                     "--validate", "--isolate-layers", "--vulkan-virtual-mib", "128",
                     "--vulkan-auto-idle-ms", "100", "--vulkan-cold-mib", "64",
                     "--vulkan-selective-restore", "--vulkan-active-eviction",

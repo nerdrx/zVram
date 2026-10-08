@@ -15,7 +15,7 @@ BASE = ["--vulkan-virtual-gib", "96", "--vulkan-cold-mib", "64"]
 
 
 def run(launcher, *arguments, env=None):
-    return subprocess.run([sys.executable, str(launcher), *arguments],
+    return subprocess.run([sys.executable, str(launcher), '--no-live-control', *arguments],
                           text=True, capture_output=True, check=False, env=env)
 
 

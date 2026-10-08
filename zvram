@@ -23,7 +23,9 @@ if len(sys.argv) > 1 and sys.argv[1] in ("gui", "tui", "manage", "model", "run")
         sys.exit("zVram manager: " + str(exc))
 
 parser = argparse.ArgumentParser(description="zVram experimental GPU memory launcher")
-parser.add_argument("--live-control", action="store_true", help="enable experimental range paging and live residency caps from the manager")
+live_control = parser.add_mutually_exclusive_group()
+live_control.add_argument("--live-control", action="store_true", default=None, help="enable live residency controls (default for Vulkan)")
+live_control.add_argument("--no-live-control", action="store_false", dest="live_control", help="disable automatic paging defaults; keep explicit Vulkan settings")
 parser.add_argument("--build-dir", type=Path, help="use backend files from this CMake build directory (default: local build/)")
 parser.add_argument("--hip", action="store_true", help="use the HIP allocation spillover backend instead of the Vulkan layer")
 parser.add_argument("--hip-vmm", action="store_true", help="use HIP virtual memory for a single pointer backed by VRAM and RAM (experimental)")
@@ -63,6 +65,8 @@ parser.add_argument("--validate", action="store_true", help="enable Vulkan core 
 parser.add_argument("--isolate-layers", action="store_true", help="disable implicit layers for a controlled experiment")
 parser.add_argument("command", nargs=argparse.REMAINDER, help="-- application [arguments]")
 args = parser.parse_args()
+if args.live_control is None:
+    args.live_control = not args.hip
 if args.live_control:
     if args.hip:
         parser.error('--live-control currently requires the Vulkan backend')

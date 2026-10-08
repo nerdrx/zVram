@@ -114,6 +114,8 @@ def build_server_command(model_path, alias, port=8097, compressed=False,
     if not binary.is_file() or not os.access(binary, os.X_OK):
         raise ValueError('Vulkan llama-server is missing; put it on PATH or specify --server')
     command = [str(ROOT / 'zvram')]
+    if not compressed:
+        command.append('--no-live-control')  # Explicit spill mode promises no automatic snapshots.
     if build_dir:
         command += ['--build-dir', str(Path(build_dir).expanduser().resolve())]
     command += ['--vulkan-virtual-gib', str(virtual_gib)]

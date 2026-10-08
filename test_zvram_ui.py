@@ -70,7 +70,7 @@ def check_fields():
     assert "VRAM 100/24000 MiB" in system_status(FakeManager().status())
     assert "not physical residency" in profile_details({})
     details = profile_details(EXTERNAL)
-    assert "restart with zvram --live-control" in details and "Configured cap: unknown" in details
+    assert "restart through updated zVram" in details and "Configured cap: unknown" in details
     assert "Next launch" not in details and "not running" not in details
     assert "Configured cap: 1024 MiB" in profile_details(dict(EXTERNAL, active_resident_mib=1024))
     live = dict(EXTERNAL, live_capable=True, control_devices=[dict(device="2", current_limit_mib=1024, resident_mib=900, requested_mib=768, result=2, reason=7)])
@@ -124,7 +124,7 @@ def check_gui():
     window.table.selection_set(EXTERNAL["name"])
     root.update()
     assert window.fields["name"].get() == "vrchat.exe"
-    assert window.read_only and "restart with zvram --live-control" in window.details.get()
+    assert window.read_only and "restart through updated zVram" in window.details.get()
     assert window.controls["Stop app"].instate(["!disabled"])
     assert all(widget.instate(["disabled"]) for label, widget in window.controls.items() if label != "Stop app")
     assert all(widget.instate(["disabled"]) for widget in window.field_widgets.values())

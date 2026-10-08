@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(zvram VERSION 0.4.0 LANGUAGES CXX)
+project(zvram VERSION 0.4.1 LANGUAGES CXX)
 find_package(Vulkan REQUIRED)
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -124,7 +124,7 @@ add_test(NAME cpu-resident-bootstrap COMMAND zvram-resident-bootstrap-check)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/zvram ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-source COPYONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/ctest_launcher.py.in
-    ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py COPYONLY)
+    ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py @ONLY)
 file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 set(ZVRAM_TEST_LAUNCH ${Python3_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py)

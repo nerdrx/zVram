@@ -1,5 +1,8 @@
 """CPU protocol checks; fake endpoints never control an unrelated process."""
 import os
+import json
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -9,6 +12,31 @@ import zvram_control as control
 
 
 class ControlChecks(unittest.TestCase):
+    def test_launcher_defaults_and_opt_out(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            build = Path(temporary)
+            for filename in ('VK_LAYER_NX_zvram.json', 'libzvram_layer.so', 'libzvram_hip.so'):
+                (build / filename).touch()
+            env = {k: v for k, v in os.environ.items() if not k.startswith('ZVRAM_VULKAN_')}
+            launcher = Path(__file__).with_name('zvram')
+            def launch(*flags):
+                result = subprocess.run([sys.executable, str(launcher), '--build-dir', str(build), *flags,
+                                         '--', sys.executable, '-c',
+                                         'import os,json; print(json.dumps({k:v for k,v in os.environ.items() if k.startswith("ZVRAM_VULKAN_")}))'],
+                                        env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                return json.loads(result.stdout)
+            default = launch()
+            self.assertEqual(default['ZVRAM_VULKAN_ACTIVE_EVICTION'], '1')
+            self.assertEqual(default['ZVRAM_VULKAN_RANGE_MIB'], '32')
+            self.assertGreater(int(default['ZVRAM_VULKAN_RESIDENT_MIB']), 0)
+            self.assertEqual(launch('--live-control'), default)
+            self.assertEqual(launch('--no-live-control'), {'ZVRAM_VULKAN_CODEC': 'zstd'})
+            self.assertEqual(launch('--no-live-control', '--vulkan-virtual-gib', '96'),
+                             {'ZVRAM_VULKAN_VIRTUAL_MIB': '98304', 'ZVRAM_VULKAN_CODEC': 'zstd'})
+            self.assertEqual(launch('--hip'), {})
+            self.assertEqual(launch('--vulkan-resident-mib', '256')['ZVRAM_VULKAN_RESIDENT_MIB'], '256')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
