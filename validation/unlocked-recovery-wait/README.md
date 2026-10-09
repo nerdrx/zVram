@@ -84,3 +84,21 @@ conservative graphics gates passed in 1.20 seconds. Both normal/hook libraries
 and bootstrap targets built; all six test API names remain absent from the
 normal library. These are correctness and held-hook progress gates, not game
 latency/FPS measurements. Installed v0.4.19 remains unchanged.
+
+The first unhooked app-call pair passed five fresh 32 MiB transactions per mode
+(1.37 s baseline, 1.17 s unlocked), checking the exact child-one 4 MiB sample
+pattern, child-zero promotion, full initial/final bytes, and empty cleanup. A
+pre-recorded finite-range copy runs at 5 ms cadence for 200 ms after recovery
+unpause; setup, fence wait/reset, status and backing queries stay outside the
+timed call. No recovery wait hook is installed. Optional profile events expose
+same-process monotonic copy-phase intervals while retaining existing log lines.
+Those intervals include copy setup/submission/wait and unlocked lock reacquisition;
+they are not isolated GPU fence time.
+
+The initial pair is **inconclusive**: 195 baseline calls missed every copy-phase
+interval, while only one of 195 unlocked calls intersected. The approximately
+0.55–0.97 ms phases are shorter than the sampling cadence. No speedup is inferred
+from whole-window distributions. Raw logs and strict post-run correlation are
+in `unhooked-baseline.txt`, `unhooked-unlocked.txt`, `unhooked-summary.json`, and
+`analyze_unhooked.py`. The parser requires successful transactions and phase
+intersection in both modes before labeling a pair window-correlated.

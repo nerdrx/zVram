@@ -574,6 +574,45 @@ void printSubmitLatencySummary(const char* label, std::vector<std::uint64_t> sam
               << " max=" << samples.back() << '\n';
 }
 
+struct RecoverySubmitSample {
+    std::uint64_t startNs{}, endNs{};
+};
+
+std::uint64_t monotonicNanoseconds(std::chrono::steady_clock::time_point point) {
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(point.time_since_epoch()).count());
+}
+
+void printRecoverySubmitSamples(std::uint32_t transaction,
+                                std::uint64_t lastChild0StartNs,
+                                std::uint64_t lastChild0EndNs,
+                                std::uint64_t windowStartNs,
+                                const std::vector<RecoverySubmitSample>& samples) {
+    require(!samples.empty(), "recovery-submit sampler collected no samples");
+    std::vector<std::uint64_t> durations;
+    durations.reserve(samples.size());
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        const auto duration = samples[i].endNs - samples[i].startNs;
+        durations.push_back(duration);
+        std::cout << "recovery-submit-sample transaction=" << transaction << " index=" << i
+                  << " start-monotonic-ns=" << samples[i].startNs
+                  << " end-monotonic-ns=" << samples[i].endNs
+                  << " submit-ns=" << duration << '\n';
+    }
+    std::sort(durations.begin(), durations.end());
+    const auto percentile = [&durations](std::size_t percent) {
+        const auto index = ((durations.size() - 1) * percent + 99) / 100;
+        return durations[index];
+    };
+    std::cout << "recovery-submit-transaction=" << transaction
+              << " last-child0-submit-start-monotonic-ns=" << lastChild0StartNs
+              << " last-child0-submit-end-monotonic-ns=" << lastChild0EndNs
+              << " window-start-monotonic-ns=" << windowStartNs
+              << " count=" << durations.size() << " submit-ns-p50=" << percentile(50)
+              << " submit-ns-p95=" << percentile(95) << " submit-ns-max=" << durations.back()
+              << " (vkQueueSubmit call only; no GPU/FPS claim)\n";
+}
+
 struct TimelineWatchdog {
     VkDevice device{};
     VkSemaphore semaphore{};
@@ -1611,7 +1650,9 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                                    bool unlockedColdWaitFixture,
                                    bool unlockedCapRollbackFixture,
                                    GetWarmRecoveryWaiters getWarmRecoveryWaiters,
-                                   std::vector<std::uint64_t>* batchSubmitSamples = nullptr) {
+                                   std::vector<std::uint64_t>* batchSubmitSamples = nullptr,
+                                   bool recoverySubmitSamplerFixture = false,
+                                   std::uint32_t samplerTransaction = 0) {
     Buffer coldPeer; coldPeer.device = context.device;
     VkDeviceSize coldPeerBytes{};
     ZvramSnapshotStatsNX coldPeerPristine{};
@@ -1936,6 +1977,171 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             require(beforeRecovery.coldLogicalBytes == coldPeerBytes &&
                     beforeRecovery.coldStoredBytes == 0,
                     "pristine cold peer changed before the recovery wait gate");
+        }
+        if (recoverySubmitSamplerFixture) {
+            require(initialBackingType == nonlocalType,
+                    "submit sampler child zero did not start on the forced nonlocal type");
+            for (std::uint32_t child = 1; child < ChunkBytes / (4 * MiB); ++child) {
+                std::uint32_t type = UINT32_MAX;
+                check(getBackingType(context.device, resident.memory, child, &type),
+                      "query initial local child for submit sampler");
+                const auto childHeap = type < context.memory.memoryTypeCount
+                    ? context.memory.memoryTypes[type].heapIndex : UINT32_MAX;
+                require(childHeap < context.memory.memoryHeapCount &&
+                        (context.memory.memoryHeaps[childHeap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
+                        "submit sampler requires its seven non-target children to start local");
+            }
+            const auto samplerWarm = context.stats();
+            require(samplerWarm.residentBytes == ChunkBytes && samplerWarm.coldLogicalBytes == 0 &&
+                    samplerWarm.failures == 0,
+                    "submit sampler did not start with all 32 MiB resident");
+            check(readbackAndVerify(context, resident.handle, staging, -1, false, ChunkBytes),
+                  "verify initial full bytes before recovery-submit sampling");
+
+            struct SamplerResources {
+                VkDevice device{};
+                VkQueue queue{};
+                VkCommandPool pool{};
+                VkCommandBuffer command{};
+                VkFence fence{};
+                bool pending{};
+                ~SamplerResources() {
+                    if (pending) vkQueueWaitIdle(queue);
+                    if (fence) vkDestroyFence(device, fence, nullptr);
+                    if (pool) vkDestroyCommandPool(device, pool, nullptr);
+                }
+            } resources{context.device, context.queue};
+            VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+            poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            poolInfo.queueFamilyIndex = context.family;
+            check(vkCreateCommandPool(context.device, &poolInfo, nullptr, &resources.pool),
+                  "create recovery-submit sampler command pool");
+            VkCommandBufferAllocateInfo commandAllocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+            commandAllocation.commandPool = resources.pool;
+            commandAllocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            commandAllocation.commandBufferCount = 1;
+            check(vkAllocateCommandBuffers(context.device, &commandAllocation, &resources.command),
+                  "allocate recovery-submit sampler command buffer");
+            VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            check(vkCreateFence(context.device, &fenceInfo, nullptr, &resources.fence),
+                  "create recovery-submit sampler fence");
+            const auto recordSample = [&](VkDeviceSize offset, bool makeHostVisible) {
+                VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+                check(vkBeginCommandBuffer(resources.command, &begin),
+                      "begin recovery-submit sampler command buffer");
+                recordResidentChildRead(resources.command, offset);
+                if (makeHostVisible) {
+                    VkMemoryBarrier hostReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                    hostReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    hostReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+                    vkCmdPipelineBarrier(resources.command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_HOST_BIT, 0,
+                                         1, &hostReady, 0, nullptr, 0, nullptr);
+                }
+                check(vkEndCommandBuffer(resources.command),
+                      "end recovery-submit sampler command buffer");
+            };
+
+            // Touch child zero last while recovery is paused, so quiet-ms=50 elapses
+            // inside the following fixed sampling window. Keep sampler submits on child one.
+            recordSample(0, false);
+            VkSubmitInfo sampleSubmit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+            sampleSubmit.commandBufferCount = 1;
+            sampleSubmit.pCommandBuffers = &resources.command;
+            const auto lastChild0Start = std::chrono::steady_clock::now();
+            check(vkQueueSubmit(context.queue, 1, &sampleSubmit, resources.fence),
+                  "submit final child-zero use before recovery sampler");
+            const auto lastChild0End = std::chrono::steady_clock::now();
+            resources.pending = true;
+            const auto lastChild0StartNs = monotonicNanoseconds(lastChild0Start);
+            const auto lastChild0EndNs = monotonicNanoseconds(lastChild0End);
+            check(vkWaitForFences(context.device, 1, &resources.fence, VK_TRUE, UINT64_MAX),
+                  "wait for final child-zero use before recovery sampler");
+            resources.pending = false;
+            check(vkResetFences(context.device, 1, &resources.fence),
+                  "reset recovery-submit sampler fence after child-zero use");
+            check(vkResetCommandBuffer(resources.command, 0),
+                  "reset recovery-submit sampler command buffer");
+            recordSample(4 * MiB, true);
+
+            constexpr auto samplerPeriod = std::chrono::milliseconds(5);
+            constexpr auto samplerWindow = std::chrono::milliseconds(200);
+            std::vector<RecoverySubmitSample> samples;
+            samples.reserve(40);
+            const auto windowStart = std::chrono::steady_clock::now();
+            const auto windowStartNs = monotonicNanoseconds(windowStart);
+            recoveryPause.set(false);
+            const auto windowDeadline = windowStart + samplerWindow;
+            auto nextSample = windowStart;
+            bool firstSample = true;
+            while (nextSample < windowDeadline) {
+                std::this_thread::sleep_until(nextSample);
+                if (std::chrono::steady_clock::now() >= windowDeadline) break;
+                if (!firstSample)
+                    check(vkResetFences(context.device, 1, &resources.fence),
+                          "reset recovery-submit sampler fence");
+                firstSample = false;
+                const auto submitStart = std::chrono::steady_clock::now();
+                const VkResult submitResult = vkQueueSubmit(context.queue, 1, &sampleSubmit,
+                                                             resources.fence);
+                const auto submitEnd = std::chrono::steady_clock::now();
+                check(submitResult, "submit recovery-submit sampler copy");
+                samples.push_back({monotonicNanoseconds(submitStart),
+                                   monotonicNanoseconds(submitEnd)});
+                resources.pending = true;
+                check(vkWaitForFences(context.device, 1, &resources.fence, VK_TRUE, UINT64_MAX),
+                      "wait for recovery-submit sampler copy");
+                resources.pending = false;
+                nextSample += samplerPeriod;
+                const auto completedAt = std::chrono::steady_clock::now();
+                while (nextSample <= completedAt) nextSample += samplerPeriod;
+            }
+            require(!samples.empty(), "recovery-submit fixed window contained no queue submits");
+            const auto* sampleWords = static_cast<const std::uint32_t*>(staging.mapped);
+            const auto childOneBaseWord = static_cast<std::uint32_t>((4 * MiB) / sizeof(std::uint32_t));
+            for (std::uint32_t i = 0; i < (4 * MiB) / sizeof(std::uint32_t); ++i)
+                require(sampleWords[i] == initialWord(childOneBaseWord + i),
+                        "child-one staging bytes changed during submit sampling");
+            printRecoverySubmitSamples(samplerTransaction,
+                                       lastChild0StartNs, lastChild0EndNs,
+                                       windowStartNs, samples);
+            check(vkResetCommandBuffer(resources.command, 0),
+                  "release recorded buffer references after recovery-submit sampling");
+
+            std::uint32_t recoveredType = initialBackingType;
+            const auto recoveryDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+            while (std::chrono::steady_clock::now() < recoveryDeadline) {
+                check(getBackingType(context.device, resident.memory, 0, &recoveredType),
+                      "query child-zero backing after recovery-submit window");
+                if (recoveredType != initialBackingType) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+            const auto recoveredHeap = recoveredType < context.memory.memoryTypeCount
+                ? context.memory.memoryTypes[recoveredType].heapIndex : UINT32_MAX;
+            require(recoveredType != initialBackingType &&
+                    recoveredHeap < context.memory.memoryHeapCount &&
+                    (context.memory.memoryHeaps[recoveredHeap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
+                    "submit sampler recovery did not promote child zero to local backing");
+            const auto samplerRecovered = context.stats();
+            require(samplerRecovered.residentBytes == ChunkBytes &&
+                    samplerRecovered.coldLogicalBytes == 0 && samplerRecovered.coldStoredBytes == 0 &&
+                    samplerRecovered.freezes == samplerWarm.freezes &&
+                    samplerRecovered.restores == samplerWarm.restores &&
+                    samplerRecovered.failures == samplerWarm.failures,
+                    "submit sampler recovery changed residency or cold-storage accounting");
+            check(readbackAndVerify(context, resident.handle, staging, -1, false, ChunkBytes),
+                  "verify final full bytes after recovery-submit sampling");
+            vkDestroyBuffer(context.device, resident.handle, nullptr);
+            resident.handle = VK_NULL_HANDLE;
+            vkFreeMemory(context.device, resident.memory, nullptr);
+            resident.memory = VK_NULL_HANDLE;
+            const auto empty = context.stats();
+            require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 &&
+                    empty.coldStoredBytes == 0 && empty.failures == 0,
+                    "recovery-submit sampler cleanup retained pool state or errors");
+            std::cout << "PASS: recovery-submit sampling preserved child-one bytes, recovered child zero, "
+                         "verified all 32 MiB, and cleaned up transaction " << samplerTransaction << '\n';
+            return;
         }
         recoveryPause.set(false);
         if (unlockedCapRollbackFixture) {
@@ -3413,6 +3619,7 @@ int main(int argc, char** argv) try {
     bool unlockedCapRollbackFixture = false;
     bool directRecoveryBatchFixture = false;
     bool hotRecoveryFixture = false;
+    bool recoverySubmitSamplerFixture = false;
     bool asyncEncodeOverlapFixture = false, asyncPressureRaiseDiscardFixture = false;
     bool rangeCache = false;
     bool rangeCacheBootstrap = false;
@@ -3482,6 +3689,11 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--direct-recovery-batch-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
             directRecoveryBatchFixture=true; expectDirectRecovery=true;
+        }
+        else if (std::strcmp(argv[i], "--recovery-submit-sampler-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
+            expectDirectRecovery=true; recoverySubmitSamplerFixture=true;
+            finiteBarrierRecoveryFixture=true;
         }
         else if (std::strcmp(argv[i], "--hot-recovery-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true; hotRecoveryFixture=true;
@@ -3564,9 +3776,13 @@ int main(int argc, char** argv) try {
     require(!unlockedCapRollbackFixture ||
             (expectDirectRecovery && nativeAllocation && !bdaMode && !twoQueues && !twoFamilies && !exclusiveFamilies),
             "cap-rollback recovery fixture uses native single-queue memory");
+    require(!recoverySubmitSamplerFixture ||
+            (expectDirectRecovery && nativeAllocation && !bdaMode && !twoQueues && !twoFamilies && !exclusiveFamilies),
+            "recovery-submit sampler uses native single-queue memory");
     require(static_cast<unsigned>(unlockedRecoveryWaitFixture) +
             static_cast<unsigned>(unlockedColdRecoveryWaitFixture) +
-            static_cast<unsigned>(unlockedCapRollbackFixture) <= 1,
+            static_cast<unsigned>(unlockedCapRollbackFixture) +
+            static_cast<unsigned>(recoverySubmitSamplerFixture) <= 1,
             "choose one unlocked recovery wait fixture");
     require(!directRecoveryBatchFixture || (!twoQueues && !bdaMode && nativeAllocation),
             "direct recovery batch uses native single-queue backing");
@@ -3642,7 +3858,12 @@ int main(int argc, char** argv) try {
             std::cerr << "UNSUPPORTED: direct recovery fixture requires ZVRAM_TEST_ASYNC_HOOK pause control\n";
             return 77;
         }
-        if (directRecoveryBatchFixture) {
+        if (recoverySubmitSamplerFixture) {
+            for (std::uint32_t transaction = 0; transaction < 5; ++transaction)
+                coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
+                                              false, false, true, false, true, false, false,
+                                              nullptr, nullptr, true, transaction);
+        } else if (directRecoveryBatchFixture) {
             std::vector<std::uint64_t> submitSamples;
             for (unsigned int transaction = 0; transaction < 5; ++transaction)
                 coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,

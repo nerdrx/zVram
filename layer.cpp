@@ -231,6 +231,7 @@ struct SnapshotResources {
 };
 struct PendingWarmRecovery {
     bool active{};
+    bool unlockedWait{};
     VkDeviceMemory memory{};
     std::uint64_t allocationGeneration{},bindingGeneration{},childGeneration{};
     std::size_t child{};
@@ -3093,6 +3094,16 @@ bool finalizeWarmRecoveryLocked(Device& d,const PendingWarmRecovery& pending) {
              static_cast<unsigned long long>(phaseNs[5]/1000),
              static_cast<unsigned long long>(phaseNs[6]/1000),
              static_cast<unsigned long long>(phaseNs[7]/1000));
+    if(d.gpuProfileEnabled) {
+        const auto endCount=std::chrono::duration_cast<std::chrono::nanoseconds>(
+            pending.phaseLast.time_since_epoch()).count();
+        const auto endNs=endCount>0?static_cast<std::uint64_t>(endCount):0;
+        const auto startNs=endNs>=pending.phaseNs[4]?endNs-pending.phaseNs[4]:0;
+        logf("warm-recovery copy-phase bytes=%llu start-monotonic-ns=%llu end-monotonic-ns=%llu unlocked=%u",
+             static_cast<unsigned long long>(pending.size),
+             static_cast<unsigned long long>(startNs),
+             static_cast<unsigned long long>(endNs),pending.unlockedWait?1u:0u);
+    }
     logf("warm-recovery local-copy bytes=%llu memory-type=%u->%u duration-us=%llu",
          static_cast<unsigned long long>(pending.size),pending.oldType,pending.newType,
          static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::microseconds>(
@@ -3343,7 +3354,7 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
     pending.sourceView=memory.poolViews[child]; pending.destinationView=destinationView;
     pending.fence=copyFence; pending.oldType=oldType; pending.newType=replacementType;
     pending.size=size; pending.target=target; pending.started=recoveryStarted; pending.phaseNs=recoveryPhaseNs;
-    pending.phaseLast=phaseLast;
+    pending.phaseLast=phaseLast; pending.unlockedWait=unlockedWait;
     if(unlockedWait) {
         pending.active=true;
         d.pendingWarmRecovery=pending;
