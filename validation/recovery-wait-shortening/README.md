@@ -21,3 +21,17 @@ The initial six-gate run failed the two pending-queue checks (`native-ctest.txt`
 Recovery selection now exits before scanning pools when maintained tracked nonlocal bytes (`liveOther`) are zero. Eligible explicit nonlocal children necessarily contribute to that counter; unrelated host allocations can only keep the scan conservative. Output handles are cleared before this guard. CPU checks cover the zero counter and accurate two-pool accounting. Existing profiling adds phase diagnostics only when requested. No FPS or lock-latency improvement is claimed from this structural scan removal.
 
 An installed v0.4.17 cold full-buffer graphics fixture with 1 MiB ranges passed full bytes and exact pixels, but submission median was 12267 us/max 13634 us: unknown graphics restores all 32 children. This does not support changing the default range size. General graphics tracking and kernel-transparent GTT placement remain limitations; recovery/async/presentation defaults and user GPU settings remain unchanged.
+
+## Matched installed graphics range comparison
+
+The same installed v0.4.17 layer and source graphics fixture ran six cold full-buffer frames each, sequentially with 32/4/1 MiB ranges. Each case passed validation, every initial/frame buffer byte, exact pixels and cleanup. Fresh health guards required available RAM above 8 GiB, memory PSI avg10 <=1 and GPU busy <=80 percent; actual snapshots are stored with each command/log. Forced idle eviction intentionally makes every frame cold and does not represent ordinary pressure-only gaming.
+
+| Range | Submission median / maximum | Fence wait median / maximum |
+| --- | --- | --- |
+| 32 MiB | 8377 / 8575 us | 1351 / 1388 us |
+| 4 MiB | 9009 / 10098 us | 1325 / 1555 us |
+| 1 MiB | 12511 / 15795 us | 1328 / 1575 us |
+
+This one sequential component comparison shows the full-buffer restoration cost of smaller chunks; it is not a game FPS benchmark, stable universal gain, or native VRAM physical residency measurement. Individual small direct-recovery copies are cheaper, but unknown draws require all children. Defaults remain unchanged. Commands, raw health/output and parsed summary: `graphics-range-comparison/`.
+
+Read-only copy-completion review rejected replacing queueWaitIdle with a persistent fence: all layer submissions on that private queue are serialized under queueMutex, so later submissions cannot extend the waited tail; a fence would still cover earlier same-queue commands. It adds lifetime/failure state without an established benefit. No fence change was made.
