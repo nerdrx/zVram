@@ -27,3 +27,7 @@ rtk python3 validation/log-line-coalescing/check.py
 ```
 
 The final normal shared layer and resident-bootstrap harness rebuilt successfully. All13 normal CPU checks passed (5.54s), model-budget/parser checks passed, and normal production graphics conservative-fallback plus async live-cap GPU checks both passed (1.82s) with full32MiB integrity, pixels and clean teardown. Normal test API strings remain absent. The byte/proc-I/O proof is now required by Build and Release CI; it uses the compiler directly and does not depend on RTK being installed. `summary.json` contains the final raw five-sample helper results. This change preserves diagnostic events instead of rate-limiting or hiding them.
+
+## Published and installed verification
+
+v0.4.19 at76a1fe6 passed Release37922887019 and Build37922889505/37922887061/37922883829. Hub download/checksum/install succeeded. Archive SHA256 `eb98782e7a26b7d3c13ee26362eba2a4adc5ebc0d7c2ed5325a184b63b98d6aa` matched published SHA256SUMS; installed library matches archive, scripts match tag, test-hooks metadata is false and all four compile-only API names are absent. The packaged recovery-quiet0/async live-cap fixture passed byte-correct cap-lower/raise and zero resident/cold/failures at teardown. Evidence: `installed-0.4.19-payload.json`, `installed-0.4.19-live-cap.txt`.
