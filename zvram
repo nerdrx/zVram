@@ -51,7 +51,7 @@ parser.add_argument("--vulkan-bp16-gpu", action="store_true", help="restore BP16
 parser.add_argument("--vulkan-selective-restore", action="store_true", help="restore only allocations referenced by tracked Vulkan submissions; unknown access restores all (experimental)")
 parser.add_argument("--vulkan-active-eviction", action="store_true", help="compress unused whole Vulkan allocations while other tracked submissions remain active; requires selective restore (experimental)")
 parser.add_argument("--vulkan-async-compression", action="store_true", help="encode one eligible idle range of at most 32 MiB outside submission locks; requires active range paging (experimental)")
-parser.add_argument("--vulkan-buffer-presentation", action="store_true", help="retain buffer paging across base Vulkan presents with no pNext; requires active eviction (experimental, native images remain unpaged)")
+parser.add_argument("--vulkan-buffer-presentation", action="store_true", help="retain buffer paging across base presents and present-ID/region metadata; requires active eviction (experimental, native images remain unpaged)")
 parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residency and chunk native pools at this positive MiB granularity; requires active eviction (experimental)")
 parser.add_argument("--vulkan-resident-mib", type=int, help="limit eligible resident backing at tracked submission admission; requires range mode (experimental, not a global VRAM cap)")
 parser.add_argument("--vulkan-headroom-mib", type=int, help="tighten the backing cap using native memory_budget and this positive MiB reserve; requires lazy backing (experimental)")

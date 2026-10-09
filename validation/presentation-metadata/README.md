@@ -7,3 +7,7 @@ The opt-in buffer-presentation path accepts at most one `VkPresentIdKHR` and one
 Initial present-ID/combined hardware attempts failed device creation because the fixture feature2 chain did not explicitly enable supported sparse base features. Only fixture feature negotiation changed; production eligibility was retained. The corrected three metadata tests all passed in 2.99 seconds; the base regression passed separately. Unsupported extensions/features are reported as skips only with the exact clean marker and no timeout, PASS, FAIL or validation diagnostics.
 
 Reproduce: `ctest --test-dir build/async-race -R '^vulkan-graphics-present-metadata-' --output-on-failure -j1`.
+
+## Published package
+
+v0.4.12 release workflow 37882431062 succeeded. Hub checksum verification/install completed; installed launcher and manager match the tag, codec metadata has `test_hooks: false`, and both test setters are absent. All three metadata variants passed against the installed layer, using the source graphics fixture and launcher with its build directory set to the installed package. See `installed-*/result.json` and `installed-0.4.12-payload.json`. The only source launcher difference at testing was help text; runtime arguments were unchanged.
