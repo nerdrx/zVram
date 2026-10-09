@@ -2557,12 +2557,12 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
                     // Transfer exact-sized BP16 storage; keep copying when spare capacity would evade the quota.
                     if(d.snapshotCodec==zvram::snapshot::Codec::BP16 && encoded.size()==compressed && encoded.capacity()==compressed)
                         chunk.bytes=std::move(encoded);
-                    else { chunk.bytes.resize(compressed); std::memcpy(chunk.bytes.data(),encoded.data(),compressed); }
+                    else chunk.bytes.assign(encoded.begin(),encoded.begin()+compressed);
                     chunk.compressed=true;
                     chunk.byteShuffle=d.byteShuffle;
                     chunk.codec=d.snapshotCodec;
                 } else {
-                    chunk.bytes.resize(static_cast<std::size_t>(amount)); std::memcpy(chunk.bytes.data(),source,static_cast<std::size_t>(amount));
+                    chunk.bytes.assign(source,source+static_cast<std::size_t>(amount));
                 }
             }
             const auto prefix=stored+candidate.importedPaddingBytes;
