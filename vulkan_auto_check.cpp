@@ -144,7 +144,9 @@ struct Buffer {
     VkDevice device{};
     VkBuffer handle{};
     VkDeviceMemory memory{};
+    bool unsafe{};
     ~Buffer() {
+        if (unsafe) return;
         if (handle) vkDestroyBuffer(device, handle, nullptr);
         if (memory) vkFreeMemory(device, memory, nullptr);
     }
@@ -179,12 +181,17 @@ struct Context {
     bool pendingBind{};
     bool activeSubmit{};
     bool pressureTimeline{};
+    bool unsafePendingTestResources{};
     std::uint32_t secondFamily{};
     std::uint32_t chainIndex{};
     bool chainStarted{};
     VkDeviceAddress bufferAddress{};
 
     ~Context() {
+        if (unsafePendingTestResources) {
+            std::cerr << "WARNING: retaining Vulkan device after an undrained async candidate test submission\n";
+            return;
+        }
         if (device) vkDeviceWaitIdle(device);
         if (pipeline) vkDestroyPipeline(device, pipeline, nullptr);
         if (pipelineLayout) vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
@@ -492,7 +499,9 @@ struct Staging {
     VkBuffer buffer{};
     VkDeviceMemory memory{};
     void* mapped{};
+    bool unsafe{};
     ~Staging() {
+        if (unsafe) return;
         if (mapped) vkUnmapMemory(device, memory);
         if (buffer) vkDestroyBuffer(device, buffer, nullptr);
         if (memory) vkFreeMemory(device, memory, nullptr);
@@ -3139,6 +3148,307 @@ void asyncEncodeOverlapFixtureCheck(Context& context, SetAsyncEncodeHook setHook
                                  "raised cap discarded unnecessary pressure snapshot") << std::endl;
 }
 
+constexpr VkDeviceSize AsyncCandidateBytes = 4 * MiB;
+constexpr std::uint32_t AsyncCandidatePattern = 0x6b31a4d2u;
+
+void recordAsyncCandidateRead(VkCommandBuffer command, VkBuffer buffer, VkBuffer staging) {
+    VkMemoryBarrier priorWrites{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    priorWrites.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    priorWrites.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &priorWrites, 0, nullptr, 0, nullptr);
+    VkBufferMemoryBarrier sourceRead{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    sourceRead.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    sourceRead.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    sourceRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    sourceRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    sourceRead.buffer = buffer;
+    sourceRead.size = AsyncCandidateBytes;
+    VkBufferMemoryBarrier stagingReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    stagingReady.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+    stagingReady.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    stagingReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    stagingReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    stagingReady.buffer = staging;
+    stagingReady.size = AsyncCandidateBytes;
+    const VkBufferMemoryBarrier barriers[]{sourceRead, stagingReady};
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 2, barriers, 0, nullptr);
+    const VkBufferCopy copy{0, 0, AsyncCandidateBytes};
+    vkCmdCopyBuffer(command, buffer, staging, 1, &copy);
+    VkMemoryBarrier hostReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    hostReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    hostReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &hostReady, 0, nullptr, 0, nullptr);
+}
+
+void verifyAsyncCandidateBytes(const Staging& staging) {
+    const auto* words = static_cast<const std::uint32_t*>(staging.mapped);
+    for (std::size_t i = 0; i < AsyncCandidateBytes / sizeof(std::uint32_t); ++i)
+        require(words[i] == AsyncCandidatePattern, "async candidate read changed or lost full-range bytes");
+}
+
+struct AsyncCandidateReadState {
+    Context* context{};
+    VkBuffer buffer{}, staging{};
+    VkSemaphore hold{};
+    VkFence readFence{};
+    VkCommandBuffer readCommand{};
+    std::unique_ptr<TimelineWatchdog> watchdog;
+    bool held{};
+    std::atomic<unsigned int> calls{};
+    std::atomic<bool> submitted{}, finished{};
+    std::atomic<std::int64_t> candidateActivityNs{};
+    std::string error;
+};
+
+void asyncCandidateReadHook(void* userdata) noexcept {
+    auto& state = *static_cast<AsyncCandidateReadState*>(userdata);
+    if (state.calls.fetch_add(1, std::memory_order_relaxed) != 0) {
+        state.error = "async candidate read hook ran more than once";
+        state.finished.store(true, std::memory_order_release);
+        return;
+    }
+    try {
+        if (state.held) {
+            state.watchdog = std::make_unique<TimelineWatchdog>(state.context->device,
+                                                                state.hold, 1);
+            const std::uint64_t waitValue = 1;
+            VkTimelineSemaphoreSubmitInfo waitValues{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+            waitValues.waitSemaphoreValueCount = 1;
+            waitValues.pWaitSemaphoreValues = &waitValue;
+            VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+            submit.pNext = &waitValues;
+            submit.waitSemaphoreCount = 1;
+            submit.pWaitSemaphores = &state.hold;
+            submit.pWaitDstStageMask = &waitStage;
+            submit.commandBufferCount = 1;
+            submit.pCommandBuffers = &state.readCommand;
+            check(vkQueueSubmit(state.context->queue, 1, &submit, state.readFence),
+                  "submit held async candidate read");
+        } else {
+            check(state.context->submit([&](VkCommandBuffer command) {
+                recordAsyncCandidateRead(command, state.buffer, state.staging);
+            }), "submit completed async candidate read");
+        }
+        state.candidateActivityNs.store(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count(), std::memory_order_release);
+        state.submitted.store(true, std::memory_order_release);
+    } catch (const std::exception& error) {
+        state.error = error.what();
+    } catch (...) {
+        state.error = "unknown async candidate read callback failure";
+    }
+    state.finished.store(true, std::memory_order_release);
+}
+
+struct AsyncCandidateHeldGuard {
+    Context* context{};
+    AsyncCandidateReadState* state{};
+    Buffer* pool{};
+    Staging* staging{};
+    VkFence readFence{};
+    VkCommandBuffer command{};
+    void retainUnsafe() noexcept {
+        context->unsafePendingTestResources = true;
+        if (pool) pool->unsafe = true;
+        if (staging) staging->unsafe = true;
+    }
+    bool release() noexcept {
+        if (state && state->submitted.load(std::memory_order_acquire) && readFence) {
+            auto result = vkGetFenceStatus(context->device, readFence);
+            if (result == VK_NOT_READY) {
+                if (!state->watchdog) {
+                    std::cerr << "ERROR: held async candidate has no timeline watchdog\n";
+                    retainUnsafe();
+                    return false;
+                }
+                state->watchdog->signalOnce();
+                state->watchdog->cancelAndJoin();
+                result = state->watchdog->result.load(std::memory_order_acquire);
+                if (result != VK_SUCCESS && result != VK_ERROR_DEVICE_LOST) {
+                    std::cerr << "ERROR: could not host-signal held async candidate timeline\n";
+                    retainUnsafe();
+                    return false;
+                }
+                result = vkWaitForFences(context->device, 1, &readFence, VK_TRUE, 5'000'000'000ull);
+                if (result != VK_SUCCESS && result != VK_ERROR_DEVICE_LOST) {
+                    std::cerr << "ERROR: timed out draining held async candidate read fence\n";
+                    retainUnsafe();
+                    return false;
+                }
+                result = vkGetFenceStatus(context->device, readFence);
+            }
+            if (result != VK_SUCCESS && result != VK_ERROR_DEVICE_LOST) {
+                std::cerr << "ERROR: retaining async candidate resources without a completed/lost-device fence\n";
+                retainUnsafe();
+                return false;
+            }
+        }
+        if (command) vkFreeCommandBuffers(context->device, context->commands, 1, &command);
+        if (readFence) vkDestroyFence(context->device, readFence, nullptr);
+        command = VK_NULL_HANDLE; readFence = VK_NULL_HANDLE;
+        if (context->unsafePendingTestResources) {
+            context->unsafePendingTestResources = false;
+            if (pool) pool->unsafe = false;
+            if (staging) staging->unsafe = false;
+        }
+        return true;
+    }
+    ~AsyncCandidateHeldGuard() {
+        if (!release()) std::cerr << "WARNING: retaining pending Vulkan objects through process exit\n";
+    }
+};
+
+void asyncCandidateReadFixtureCheck(Context& context, SetAsyncEncodeHook setHook, bool held) {
+    require(!held || context.pendingTimeline,
+            "held async candidate read requires an enabled timeline semaphore");
+    Buffer pool; pool.device = context.device;
+    VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    info.size = AsyncCandidateBytes;
+    // Use the exposed virtual type deliberately; nativeAllocation would bypass snapshot tracking.
+    info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device, &info, nullptr, &pool.handle), "create async candidate buffer");
+    VkMemoryRequirements requirements{};
+    vkGetBufferMemoryRequirements(context.device, pool.handle, &requirements);
+    require(requirements.size == AsyncCandidateBytes &&
+            (requirements.memoryTypeBits & (1u << context.virtualType)),
+            "async candidate fixture requires one exact 4 MiB virtual child");
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize = requirements.size;
+    allocation.memoryTypeIndex = context.virtualType;
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &pool.memory),
+          "allocate async candidate buffer");
+    check(vkBindBufferMemory(context.device, pool.handle, pool.memory, 0), "bind async candidate buffer");
+
+    Staging staging; staging.device = context.device;
+    info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device, &info, nullptr, &staging.buffer),
+          "create async candidate staging buffer");
+    vkGetBufferMemoryRequirements(context.device, staging.buffer, &requirements);
+    allocation.allocationSize = requirements.size;
+    allocation.memoryTypeIndex = hostCoherentType(context, requirements.memoryTypeBits);
+    require(allocation.memoryTypeIndex != UINT32_MAX, "no async candidate host-coherent type");
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &staging.memory),
+          "allocate async candidate staging memory");
+    check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0),
+          "bind async candidate staging buffer");
+    check(vkMapMemory(context.device, staging.memory, 0, AsyncCandidateBytes, 0, &staging.mapped),
+          "map async candidate staging buffer");
+    check(context.submit([&](VkCommandBuffer command) {
+        vkCmdFillBuffer(command, pool.handle, 0, AsyncCandidateBytes, AsyncCandidatePattern);
+        VkBufferMemoryBarrier written{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        written.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        written.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        written.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        written.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        written.buffer = pool.handle;
+        written.size = AsyncCandidateBytes;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &written, 0, nullptr);
+    }), "initialize async candidate bytes");
+
+    AsyncCandidateReadState state{};
+    state.context = &context; state.buffer = pool.handle; state.staging = staging.buffer; state.held = held;
+    AsyncCandidateHeldGuard heldGuard{&context, &state, &pool, &staging};
+    if (held) {
+        state.hold = context.pendingTimeline;
+        VkCommandBufferAllocateInfo commandAllocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        commandAllocation.commandPool = context.commands;
+        commandAllocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        commandAllocation.commandBufferCount = 1;
+        check(vkAllocateCommandBuffers(context.device, &commandAllocation, &heldGuard.command),
+              "allocate held async candidate command buffer");
+        state.readCommand = heldGuard.command;
+        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        check(vkBeginCommandBuffer(state.readCommand, &begin), "begin held async candidate command buffer");
+        recordAsyncCandidateRead(state.readCommand, pool.handle, staging.buffer);
+        check(vkEndCommandBuffer(state.readCommand), "end held async candidate command buffer");
+        VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        check(vkCreateFence(context.device, &fenceInfo, nullptr, &heldGuard.readFence),
+              "create held async candidate read fence");
+        state.readFence = heldGuard.readFence;
+    }
+    const auto initial = context.stats();
+    require(initial.residentBytes == AsyncCandidateBytes && initial.coldLogicalBytes == 0 &&
+            initial.failures == 0, "async candidate fixture did not start resident and warm");
+    AsyncHookRegistrationGuard hookGuard{context.device, setHook};
+    check(setHook(context.device, asyncCandidateReadHook, &state), "register async candidate read hook");
+    check(context.submit([&](VkCommandBuffer command) {
+        recordAsyncCandidateRead(command, pool.handle, staging.buffer);
+    }), "refresh async candidate idle deadline");
+    const auto callbackDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(6);
+    while (!state.finished.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < callbackDeadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    const bool callbackFinished = state.finished.load(std::memory_order_acquire);
+    check(hookGuard.clear(), "drain async candidate read hook");
+    require(callbackFinished, "async candidate read hook did not run");
+    require(state.error.empty() && state.calls.load() == 1 && state.submitted.load(),
+            state.error.empty() ? "async candidate read hook did not submit exactly once" : state.error.c_str());
+    const auto resolvedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    const auto activityNs = state.candidateActivityNs.load(std::memory_order_acquire);
+    require(activityNs > 0 && resolvedNs >= activityNs && resolvedNs - activityNs < 500'000'000,
+            "first async candidate decision exceeded the renewed idle interval");
+
+    if (held) {
+        const auto pending = context.stats();
+        require(pending.freezes == initial.freezes && pending.residentBytes == AsyncCandidateBytes &&
+                pending.coldLogicalBytes == 0 && pending.failures == initial.failures &&
+                vkGetFenceStatus(context.device, state.readFence) == VK_NOT_READY,
+                "in-flight matching read did not hold the candidate resident");
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        const auto stillPending = context.stats();
+        require(stillPending.freezes == initial.freezes && stillPending.residentBytes == AsyncCandidateBytes &&
+                stillPending.coldLogicalBytes == 0 &&
+                vkGetFenceStatus(context.device, state.readFence) == VK_NOT_READY,
+                "matching read fence unexpectedly completed or candidate froze while held");
+        require(state.watchdog != nullptr, "held candidate read lacks its timeline watchdog");
+        state.watchdog->signalOnce();
+        state.watchdog->cancelAndJoin();
+        check(state.watchdog->result.load(std::memory_order_acquire),
+              "host-signal held candidate timeline");
+        check(vkWaitForFences(context.device, 1, &heldGuard.readFence, VK_TRUE, 5'000'000'000ull),
+              "wait held candidate read fence");
+        require(heldGuard.release(), "failed to drain held async candidate read safely");
+        verifyAsyncCandidateBytes(staging);
+        const auto completed = context.stats();
+        require(completed.freezes == initial.freezes && completed.residentBytes == AsyncCandidateBytes &&
+                completed.coldLogicalBytes == 0 && completed.failures == initial.failures,
+                "held candidate was not retained after its reference completed");
+    } else {
+        verifyAsyncCandidateBytes(staging);
+        const auto cold = context.stats();
+        require(cold.freezes == initial.freezes + 1 && cold.residentBytes == 0 &&
+                cold.coldLogicalBytes == AsyncCandidateBytes && cold.failures == initial.failures,
+                "completed matching read did not let the first candidate commit");
+        check(context.submit([&](VkCommandBuffer command) {
+            recordAsyncCandidateRead(command, pool.handle, staging.buffer);
+        }), "restore completed async candidate snapshot");
+        verifyAsyncCandidateBytes(staging);
+        const auto restored = context.stats();
+        require(restored.restores == cold.restores + 1 && restored.residentBytes == AsyncCandidateBytes &&
+                restored.coldLogicalBytes == 0 && restored.failures == initial.failures,
+                "completed async candidate snapshot did not restore with full bytes");
+    }
+    require(heldGuard.release(), "async candidate fixture could not prove read resources complete");
+    const auto beforeFree = context.stats();
+    require(beforeFree.residentBytes == AsyncCandidateBytes && beforeFree.coldLogicalBytes == 0 &&
+            beforeFree.failures == 0, "async candidate cleanup began with unexpected backing");
+    vkDestroyBuffer(context.device, pool.handle, nullptr); pool.handle = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, pool.memory, nullptr); pool.memory = VK_NULL_HANDLE;
+    const auto empty = context.stats();
+    require(!empty.residentBytes && !empty.coldLogicalBytes && !empty.coldStoredBytes && !empty.failures,
+            "async candidate cleanup retained backing or errors");
+    std::cout << "PASS: async candidate read interaction preserved bytes and cleanup ("
+              << (held ? "held reference" : "completed read") << ')' << std::endl;
+}
+
 void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
                       bool cacheQuota = false, bool cacheBootstrap = false,
                       bool compressedInitial = false, bool pressureOnlyFixture = false,
@@ -3979,6 +4289,7 @@ int main(int argc, char** argv) try {
     bool recoverySubmitSamplerFixture = false;
     bool recoverySubmitColdPeerSamplerFixture = false;
     bool asyncEncodeOverlapFixture = false, asyncPressureRaiseDiscardFixture = false;
+    bool asyncCandidateReadFixture = false, asyncCandidateHeldReadFixture = false;
     bool rangeCache = false;
     bool rangeCacheBootstrap = false;
     bool rangeCacheQuota = false, rangeCacheUnknown = false;
@@ -4072,6 +4383,12 @@ int main(int argc, char** argv) try {
         }
         else if (std::strcmp(argv[i], "--async-pressure-raise-discard-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; asyncPressureRaiseDiscardFixture=true;
+        }
+        else if (std::strcmp(argv[i], "--async-candidate-read-fixture") == 0) {
+            asyncCandidateReadFixture=true;
+        }
+        else if (std::strcmp(argv[i], "--async-candidate-held-read-fixture") == 0) {
+            asyncCandidateHeldReadFixture=true;
         }
         else if (std::strcmp(argv[i], "--range-cache") == 0) {
             rangeSubmit=true; rangePressure=true; rangeCache=true;
@@ -4169,9 +4486,16 @@ int main(int argc, char** argv) try {
             "pressure-only live-cap fixture uses synthetic single-queue backing");
     require(!(asyncEncodeOverlapFixture && asyncPressureRaiseDiscardFixture),
             "choose one deterministic async overlap fixture");
+    require(static_cast<unsigned>(asyncEncodeOverlapFixture) +
+            static_cast<unsigned>(asyncPressureRaiseDiscardFixture) +
+            static_cast<unsigned>(asyncCandidateReadFixture) +
+            static_cast<unsigned>(asyncCandidateHeldReadFixture) <= 1,
+            "choose one deterministic async fixture");
     require(!(asyncEncodeOverlapFixture || asyncPressureRaiseDiscardFixture) ||
             (!nativeAllocation && !twoQueues && !twoFamilies && !exclusiveFamilies),
             "async overlap fixtures use synthetic single-queue backing");
+    require(!asyncCandidateReadFixture || !twoQueues,
+            "completed async candidate read fixture uses one application queue");
     require(!rangeCompressed || (!rangePressure && !rangeCache),
             "compressible range initialization requires the independent range-submit check");
     require(!(rangeCacheQuota && rangeCacheUnknown),
@@ -4211,7 +4535,8 @@ int main(int argc, char** argv) try {
     require(!suballocation || !nativeAllocation || suballocationAuto,
             "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
-                       pendingWait, pendingBind, activeSubmit, rangePressure && twoQueues, robustCore,
+                       pendingWait, pendingBind, activeSubmit,
+                       (rangePressure && twoQueues) || asyncCandidateHeldReadFixture, robustCore,
                        coldCycleRecoveryFixture && bdaMode);
     if (coldCycleRecoveryFixture) {
         const auto forceType = reinterpret_cast<ForceNextBackingType>(
@@ -4267,14 +4592,17 @@ int main(int argc, char** argv) try {
         }
         return 0;
     }
-    if (asyncEncodeOverlapFixture || asyncPressureRaiseDiscardFixture) {
+    if (asyncEncodeOverlapFixture || asyncPressureRaiseDiscardFixture ||
+        asyncCandidateReadFixture || asyncCandidateHeldReadFixture) {
         const auto setHook = reinterpret_cast<SetAsyncEncodeHook>(
             vkGetDeviceProcAddr(context.device, "vkZVramSetAsyncEncodeHookNX"));
         if (!setHook) {
             std::cerr << "UNSUPPORTED: async overlap fixture requires ZVRAM_TEST_ASYNC_HOOK layer build\n";
             return 77;
         }
-        asyncEncodeOverlapFixtureCheck(context, setHook, asyncEncodeOverlapFixture);
+        if (asyncCandidateReadFixture || asyncCandidateHeldReadFixture)
+            asyncCandidateReadFixtureCheck(context, setHook, asyncCandidateHeldReadFixture);
+        else asyncEncodeOverlapFixtureCheck(context, setHook, asyncEncodeOverlapFixture);
         return 0;
     }
     if(controlHoldMilliseconds) {
