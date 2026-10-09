@@ -2698,7 +2698,8 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
             group.failedBudgetSubmissionGeneration==d.gpuSubmissionGeneration) ||
            d.minSavingsPercent>=100 || !rawSize || rawSize>kAsyncSnapshotMaxRaw ||
            rawSize>d.snapshot.stagingSize || d.activeRefs.busy(handle,child)) return false;
-        try { raw.resize(static_cast<std::size_t>(rawSize)); }
+        // Allocate before alias handoff without zeroing bytes the readback will replace.
+        try { raw.reserve(static_cast<std::size_t>(rawSize)); }
         catch(const std::bad_alloc&) { ++d.snapshotFailures; d.lastSnapshotError=VK_ERROR_OUT_OF_HOST_MEMORY; return true; }
         const auto backing=memory.children[child];
         auto result=bindChildAppsLocked(d.handle,d,memory,child,true);
@@ -2711,7 +2712,11 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
             ++d.snapshotFailures; d.lastSnapshotError=result; return true;
         }
         result=copyChunkLocked(d,memory.poolViews[child],d.snapshot.stagingBuffer,0,0,rawSize,false);
-        if(result==VK_SUCCESS) std::memcpy(raw.data(),d.snapshot.mapped,raw.size());
+        if(result==VK_SUCCESS) {
+            const auto* source=static_cast<const std::uint8_t*>(d.snapshot.mapped);
+            try { raw.assign(source,source+static_cast<std::size_t>(rawSize)); }
+            catch(const std::bad_alloc&) { result=VK_ERROR_OUT_OF_HOST_MEMORY; }
+        }
         VkSparseMemoryBind unbindView{}; unbindView.size=rawSize;
         const auto unbindResult=bindSparseLocked(d.handle,d,memory.poolViews[child],&unbindView,1);
         if(unbindResult!=VK_SUCCESS) {

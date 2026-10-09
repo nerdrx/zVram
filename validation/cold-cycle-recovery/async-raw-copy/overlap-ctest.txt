@@ -1,0 +1,16 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+    Start 53: vulkan-async-encode-overlap-admission
+1/2 Test #53: vulkan-async-encode-overlap-admission ........   Passed    0.41 sec
+    Start 54: vulkan-async-encode-overlap-pressure-raise
+2/2 Test #54: vulkan-async-encode-overlap-pressure-raise ...   Passed    0.37 sec
+
+100% tests passed out of 2
+
+Label Time Summary:
+async-overlap    =   0.78 sec*proc (2 tests)
+hardware         =   0.78 sec*proc (2 tests)
+pressure         =   0.78 sec*proc (2 tests)
+test-hook        =   0.78 sec*proc (2 tests)
+vulkan           =   0.78 sec*proc (2 tests)
+
+Total Test time (real) =   0.79 sec
