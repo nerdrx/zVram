@@ -54,6 +54,7 @@ class ModelIntegrationTest(unittest.TestCase):
             command, _ = m.build_server_command(blob, 'tiny', server=server)
             self.assertIn('--live-control', command)
             self.assertNotIn('--no-live-control', command)
+            self.assertEqual(command[command.index('--vulkan-resident-mib') + 1], '19456')
             command, _ = m.build_server_command(blob, 'tiny', server=server, live_control=False)
             self.assertIn('--no-live-control', command)
             command, _ = m.build_server_command(blob, 'tiny', server=server, compressed=True, live_control=False)

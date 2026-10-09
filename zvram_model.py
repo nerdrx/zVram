@@ -119,6 +119,8 @@ def build_server_command(model_path, alias, port=8097, compressed=False,
     # Model launches follow the launcher's live-management default. Plain spill
     # remains an explicit opt-out; BP16 paging already supplies its own settings.
     command.append('--live-control' if live_control or compressed else '--no-live-control')
+    if live_control and not compressed:
+        command += ['--vulkan-range-mib', '32', '--vulkan-resident-mib', str(resident_mib)]
     if build_dir:
         command += ['--build-dir', str(Path(build_dir).expanduser().resolve())]
     command += ['--vulkan-virtual-gib', str(virtual_gib)]
@@ -246,9 +248,9 @@ def main():
                 name = args.name or re.sub(r'[^A-Za-z0-9_.-]', '-', args.alias)
                 profile = {'name': name, 'priority': 'normal', 'mode': 'native' if args.mode == 'native' else 'wrapped',
                            'command': command, 'env': overrides, 'ignore_swap_guard': args.ignore_swap_guard}
-                if args.compressed:
+                if args.mode != 'native' and (args.compressed or args.live_control):
                     profile['resident_mib'] = args.resident_mib
-                    profile['min_available_mib'] = 16384
+                    profile['min_available_mib'] = 16384 if args.compressed else 4096
                 Manager().save_profile(profile)
                 print(json.dumps({'profile': name, 'started': False}))
             else:
