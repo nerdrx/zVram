@@ -1,0 +1,18 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+    Start 66: vulkan-cold-cycle-native-recovery-bda
+1/2 Test #66: vulkan-cold-cycle-native-recovery-bda ..............   Passed    1.11 sec
+    Start 68: vulkan-cold-cycle-native-hot-recovery-two-queues
+2/2 Test #68: vulkan-cold-cycle-native-hot-recovery-two-queues ...   Passed    1.30 sec
+
+100% tests passed out of 2
+
+Label Time Summary:
+bda                  =   1.11 sec*proc (1 test)
+cold-cycle           =   2.41 sec*proc (2 tests)
+hardware             =   2.41 sec*proc (2 tests)
+hot-recovery         =   1.30 sec*proc (1 test)
+native-allocation    =   2.41 sec*proc (2 tests)
+test-hook            =   2.41 sec*proc (2 tests)
+vulkan               =   2.41 sec*proc (2 tests)
+
+Total Test time (real) =   2.41 sec

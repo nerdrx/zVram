@@ -1,0 +1,136 @@
+{
+  "rows": [
+    {
+      "bytes": 33554432,
+      "view-us": 41,
+      "allocate-us": 54,
+      "alias-unbind-us": 634,
+      "private-bind-us": 62,
+      "copy-wait-us": 8823,
+      "private-unbind-us": 80,
+      "app-rebind-us": 75,
+      "release-us": 39
+    },
+    {
+      "bytes": 33554432,
+      "view-us": 42,
+      "allocate-us": 51,
+      "alias-unbind-us": 55,
+      "private-bind-us": 31,
+      "copy-wait-us": 5559,
+      "private-unbind-us": 30,
+      "app-rebind-us": 25,
+      "release-us": 25
+    },
+    {
+      "bytes": 33554432,
+      "view-us": 36,
+      "allocate-us": 48,
+      "alias-unbind-us": 63,
+      "private-bind-us": 48,
+      "copy-wait-us": 9291,
+      "private-unbind-us": 35,
+      "app-rebind-us": 37,
+      "release-us": 26
+    },
+    {
+      "bytes": 33554432,
+      "view-us": 38,
+      "allocate-us": 51,
+      "alias-unbind-us": 74,
+      "private-bind-us": 45,
+      "copy-wait-us": 9638,
+      "private-unbind-us": 81,
+      "app-rebind-us": 42,
+      "release-us": 35
+    },
+    {
+      "bytes": 33554432,
+      "view-us": 32,
+      "allocate-us": 47,
+      "alias-unbind-us": 62,
+      "private-bind-us": 34,
+      "copy-wait-us": 6112,
+      "private-unbind-us": 46,
+      "app-rebind-us": 35,
+      "release-us": 30
+    },
+    {
+      "bytes": 1048576,
+      "view-us": 34,
+      "allocate-us": 57,
+      "alias-unbind-us": 60,
+      "private-bind-us": 26,
+      "copy-wait-us": 466,
+      "private-unbind-us": 25,
+      "app-rebind-us": 23,
+      "release-us": 22
+    },
+    {
+      "bytes": 1048576,
+      "view-us": 34,
+      "allocate-us": 42,
+      "alias-unbind-us": 55,
+      "private-bind-us": 26,
+      "copy-wait-us": 392,
+      "private-unbind-us": 27,
+      "app-rebind-us": 26,
+      "release-us": 23
+    },
+    {
+      "bytes": 1048576,
+      "view-us": 45,
+      "allocate-us": 60,
+      "alias-unbind-us": 88,
+      "private-bind-us": 46,
+      "copy-wait-us": 439,
+      "private-unbind-us": 41,
+      "app-rebind-us": 32,
+      "release-us": 31
+    },
+    {
+      "bytes": 1048576,
+      "view-us": 63,
+      "allocate-us": 61,
+      "alias-unbind-us": 101,
+      "private-bind-us": 64,
+      "copy-wait-us": 416,
+      "private-unbind-us": 43,
+      "app-rebind-us": 36,
+      "release-us": 34
+    },
+    {
+      "bytes": 1048576,
+      "view-us": 33,
+      "allocate-us": 49,
+      "alias-unbind-us": 58,
+      "private-bind-us": 28,
+      "copy-wait-us": 395,
+      "private-unbind-us": 58,
+      "app-rebind-us": 27,
+      "release-us": 31
+    }
+  ],
+  "median_phase_us": {
+    "33554432": {
+      "view-us": 38,
+      "allocate-us": 51,
+      "alias-unbind-us": 63,
+      "private-bind-us": 45,
+      "copy-wait-us": 8823,
+      "private-unbind-us": 46,
+      "app-rebind-us": 37,
+      "release-us": 30
+    },
+    "1048576": {
+      "view-us": 34,
+      "allocate-us": 57,
+      "alias-unbind-us": 60,
+      "private-bind-us": 28,
+      "copy-wait-us": 416,
+      "private-unbind-us": 41,
+      "app-rebind-us": 27,
+      "release-us": 31
+    }
+  }
+}

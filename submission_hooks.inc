@@ -406,6 +406,10 @@ VkResult admitTrackedSubmit(Device& d,const char* name,std::uint32_t count,const
             if(!p->second.children[use.child]) incoming+=size;
         }
         if(d.residentBytes<=limit-incoming) return VK_SUCCESS;
+        if(d.pendingWarmRecovery.active) {
+            d.pendingRecoveryAdmissionWait=true;
+            return VK_NOT_READY; // queueCall releases both locks and retries after the copy fence.
+        }
         if(!d.autoEnabled) {
             logf("resident admission refused: automatic paging disabled and full backing exceeds limit");
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;

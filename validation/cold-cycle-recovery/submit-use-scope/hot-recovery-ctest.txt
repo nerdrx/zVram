@@ -1,0 +1,14 @@
+First hot-recovery single-queue test passed in 0.09 seconds.
+2/2 Test #67: vulkan-cold-cycle-native-hot-recovery-two-queues ...   Passed    1.30 sec
+
+100% tests passed out of 2
+
+Label Time Summary:
+cold-cycle           =   1.39 sec*proc (2 tests)
+hardware             =   1.39 sec*proc (2 tests)
+hot-recovery         =   1.39 sec*proc (2 tests)
+native-allocation    =   1.39 sec*proc (2 tests)
+test-hook            =   1.39 sec*proc (2 tests)
+vulkan               =   1.39 sec*proc (2 tests)
+
+Total Test time (real) =   1.39 sec

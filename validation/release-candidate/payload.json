@@ -1,0 +1,19 @@
+{
+  "source": "1d4938e",
+  "candidate_version": "0.4.20-dev.1d4938e",
+  "archive": "/tmp/zvram-candidate-1d4938e/zvram-0.4.20-dev.1d4938e-linux-x86_64.tar.gz",
+  "archive_sha256": "ec9864d1b419a0168f68f3988f3dd3ed1c92caf9a22c04a790aaeaa0bd70ca63",
+  "library_sha256": "47aa344f60d52b04ed3682b02d3c4aa32516efadcd8ac94052fd7a247be0f063",
+  "capabilities": {
+    "gdeflate": true,
+    "gdeflate_gpu": true,
+    "bp16": true,
+    "bp16_gpu": true,
+    "test_hooks": false
+  },
+  "normal_six_test_api_names_absent": true,
+  "script_bytes_match_source": true,
+  "library_bytes_match_build": true,
+  "installed": false,
+  "published": false
+}

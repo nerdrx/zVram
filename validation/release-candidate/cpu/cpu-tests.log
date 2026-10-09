@@ -1,0 +1,35 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/gdeflate-codec
+      Start   1: cpu-live-control
+ 1/15 Test   #1: cpu-live-control .................   Passed    0.00 sec
+      Start   2: cpu-bp16-codec
+ 2/15 Test   #2: cpu-bp16-codec ...................   Passed    0.02 sec
+      Start   3: cpu-resident-budget
+ 3/15 Test   #3: cpu-resident-budget ..............   Passed    0.00 sec
+      Start   4: cpu-resident-bootstrap
+ 4/15 Test   #4: cpu-resident-bootstrap ...........   Passed    0.00 sec
+      Start  12: cpu-vulkan-ram-guard
+ 5/15 Test  #12: cpu-vulkan-ram-guard .............   Passed    0.27 sec
+      Start  13: cpu-vulkan-compression-options
+ 6/15 Test  #13: cpu-vulkan-compression-options ...   Passed    3.01 sec
+      Start  14: cpu-vulkan-model-budget
+ 7/15 Test  #14: cpu-vulkan-model-budget ..........   Passed    2.37 sec
+      Start  15: cpu-compression-policy
+ 8/15 Test  #15: cpu-compression-policy ...........   Passed    0.01 sec
+      Start  16: cpu-clean-cache-policy
+ 9/15 Test  #16: cpu-clean-cache-policy ...........   Passed    0.00 sec
+      Start  17: cpu-snapshot-decode
+10/15 Test  #17: cpu-snapshot-decode ..............   Passed    0.04 sec
+      Start  18: cpu-gdeflate-envelope
+11/15 Test  #18: cpu-gdeflate-envelope ............   Passed    0.00 sec
+      Start  19: cpu-snapshot-pipeline
+12/15 Test  #19: cpu-snapshot-pipeline ............   Passed    0.01 sec
+      Start  21: cpu-active-refs
+13/15 Test  #21: cpu-active-refs ..................   Passed    0.00 sec
+      Start 128: cpu-gdeflate-codec
+14/15 Test #128: cpu-gdeflate-codec ...............   Passed    0.73 sec
+      Start 129: cpu-gdeflate-snapshot
+15/15 Test #129: cpu-gdeflate-snapshot ............   Passed    0.00 sec
+
+100% tests passed out of 15
+
+Total Test time (real) =   6.49 sec

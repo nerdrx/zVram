@@ -1,0 +1,6 @@
+{
+  "source": "50ff9e7",
+  "library_sha256": "a5cf51bf79988eff37ffb0dc8a2cec9c44c1d923debfa923184aacbc27ea70e9",
+  "manifest": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/read-only-barrier-before/VK_LAYER_NX_zvram.json",
+  "scope": "test-only preserved normal backend; not installed"
+}

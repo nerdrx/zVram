@@ -1,0 +1,2 @@
+PASS: normal build test_hooks=false; all six compile-only API names absent
+PASS: hook build packaging rejected

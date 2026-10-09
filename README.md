@@ -4,9 +4,54 @@
 
 zVram tests GPU memory beyond local VRAM: segmented Vulkan allocations, lossless idle snapshots for eligible Vulkan/HIP allocations, and an explicit managed buffer pool.
 
-**Status: experimental v0.2.0.** The managed pool controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing, plus opt-in automatic compression of idle, tracked VMM allocations on one exact ROCm HIP dispatch ABI. The VMM/GTT provider passed a 40 GiB single-pointer integrity check using 20 GiB each of VRAM and GTT. An official 39.73 GB InternLM2.5-20B F16 GGUF also loaded through HIP VMM/GTT with a 36,798.77 MiB GPU model buffer and all 49/49 layers offloaded; the native full-GPU HIP request OOMed. A separate native CPU/GPU HIP run offloaded 24/49 layers and matched VMM output. The same model also completed through the zVram Vulkan virtual heap and matched native Vulkan output. With llama.cpp's own n-gram self-drafting, a repeated-text prompt measured 6.33 versus 1.10 tokens/s and matched output; an ordinary code explanation measured 1.45 versus 1.43 tokens/s but diverged in output. These short sequential runs show workload-specific app behavior, not a zVram or general speedup. A 40 GiB GPU model buffer and broad app compatibility remain unverified. Idle compression is not transparent active-working-set paging.
+**Status: experimental v0.4.1.** The managed pool controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing, plus opt-in automatic compression of idle, tracked VMM allocations on one exact ROCm HIP dispatch ABI. The VMM/GTT provider passed a 40 GiB single-pointer integrity check using 20 GiB each of VRAM and GTT. An official 39.73 GB InternLM2.5-20B F16 GGUF also loaded through HIP VMM/GTT with a 36,798.77 MiB GPU model buffer and all 49/49 layers offloaded; the native full-GPU HIP request OOMed. A separate native CPU/GPU HIP run offloaded 24/49 layers and matched VMM output. The same model also completed through the zVram Vulkan virtual heap and matched native Vulkan output. With llama.cpp's own n-gram self-drafting, a repeated-text prompt measured 6.33 versus 1.10 tokens/s and matched output; an ordinary code explanation measured 1.45 versus 1.43 tokens/s but diverged in output. These short sequential runs show workload-specific app behavior, not a zVram or general speedup. A 40 GiB GPU model buffer and broad app compatibility remain unverified. Idle compression is not transparent active-working-set paging.
+
+## Install and update with NX Hub
+
+Refresh NX Hub, select **zVram**, and install **Vulkan launcher and manager
+(Linux x86_64)**. Hub also handles later release updates and adds the zVram
+Manager desktop entry. From the Hub CLI:
+
+```sh
+nx refresh --force
+nx install zvram
+nx update zvram
+zvram gui
+```
+
+Requires Linux x86_64, glibc 2.39 or newer, Python 3.9+, Tk, libzstd, and a
+working Vulkan driver. Keep `~/.local/bin` on PATH for terminal and Steam use.
+The package includes the Vulkan layer, compiled shaders, GUI and TUI. HIP
+remains an optional source build. Model serving also requires a Vulkan-enabled
+`llama-server` on PATH or an explicit `zvram model setup --server /path/to/llama-server`.
+Models are not bundled.
+
+Profiles and logs live in `~/.local/state/zvram`, outside the installed package.
+Hub updates preserve this state and existing model files. Reopen the manager
+after updating before starting new jobs. Running jobs retain their loaded
+backend; stop and relaunch them to use the updated version.
+
+Release tags build a versioned runtime archive, `nx-app.json`, and SHA-256
+checksums. To reproduce packaging locally:
+
+```sh
+python3 scripts/package.py --build-dir build --output dist --version 0.4.1
+```
 
 ## What works today
+
+### Userspace manager and Novum Xenium bridge
+
+`zvram gui` opens the NX-themed manager; `zvram tui` opens its terminal interface.
+Detect external zVram launches and manage foreground launch profiles, live residency caps on capable Vulkan devices, launch-time presets, process logs,
+and physical GPU/system memory telemetry. Only managed zVram launches are
+affected. Other apps keep normal driver behavior; no root service is needed.
+See [manager usage and limits](docs/manager.md).
+
+`zvram model list` discovers existing local GGUF models. The bridge serves one
+through a separate loopback Vulkan llama-server and registers a dedicated
+Novum Xenium provider. It does not wrap an already-running Ollama process.
+See the [Novum integration handoff](docs/novum-xenium-integration.md).
 
 | Component | Behavior |
 |---|---|
@@ -94,9 +139,15 @@ The BP16 restore-batching and combined-remap prototypes were removed from the cu
 
 With range residency and an immediate `--vulkan-resident-mib` cap, `--vulkan-lazy-backing` starts pristine eligible chunks unallocated and allocates/binds them before admitted use. It does not copy undefined initial bytes; after initialization, chunks use the normal lossless snapshot path. Restore preflight refuses requests whose tracked working set would exceed the cap. Lazy backing rejects `--vulkan-resident-after-cold`, which would delay admission. A CPU production-path harness passed checks for zero-allocation startup, exact-cap restore, pre-allocation refusal one byte over cap, disjoint binding while cold, initial-bind rollback, allocation retry, and sticky sparse-failure accounting, plus conservative unknown-submit admission/restore. Tiny hardware and small-model gates passed; game and 40 GiB behavior remain unverified. Allocation or bind failure can prevent paging; swapchain presentation uses the conservative fallback by default, and explicit app sparse submissions remain unsupported, so treat this as experimental for controlled compute/offscreen use. This is not a global VRAM cap.
 
-`--vulkan-buffer-presentation` opts into keeping buffer paging across base Vulkan presents with a null `pNext`; it requires active eviction. Native swapchain images stay unpaged, and extension chains keep the conservative full-restore/disable fallback. A hidden Gamescope X11 fixture passed three cold-restore draw/readback frames with exact pixels and a full 32 MiB check. A native headless Gamescope Wayland control timed out with `VK_ERROR_OUT_OF_DATE_KHR` without loading the layer, so evidence is X11-only. This is fixture correctness, not game compatibility or frame-time evidence. See [the supported path and limits](VALIDATION.md#base-buffer-presentation-opt-in).
+`--vulkan-buffer-presentation` opts into keeping buffer paging across base Vulkan presents and allowlisted present-ID/region metadata; it requires active eviction. Native swapchain images stay unpaged. At most one `VkPresentIdKHR` and one `VkPresentRegionsKHR` with matching swapchain counts are forwarded unchanged; other chains keep the conservative full-restore/disable fallback. A hidden Gamescope X11 fixture passed three cold-restore draw/readback frames with exact pixels and a full 32 MiB check. A native headless Gamescope Wayland control timed out with `VK_ERROR_OUT_OF_DATE_KHR` without loading the layer, so evidence is X11-only. This is fixture correctness, not game compatibility or frame-time evidence. See [the supported path and limits](VALIDATION.md#base-buffer-presentation-opt-in).
 
 `--vulkan-async-compression` opts into worker-only compression for at most one eligible idle range of up to 32 MiB; it requires active range paging and is disabled by default. Admission-triggered compression stays synchronous. The worker captures GPU data and restores application aliases under device and queue locks, then releases both locks during CPU encoding. Before committing the snapshot, it rechecks identity, binding/child generations, accepted-write epochs, pending references, the paging gate, and budget; stale candidates are discarded. Hidden X11 tests passed with async Zstd and with GDeflate using 32 CPU encoding workers plus direct GPU restore. These prove correctness only, not speed or frame time. Reproduce and see the limits in [the async-compression evidence](VALIDATION.md#asynchronous-idle-range-compression-opt-in).
+
+`--vulkan-recover-local` (or `ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1`) opts into recovery of completed explicit nonlocal backing after native VRAM headroom returns. It requires pressure-only active range paging with native-budget headroom. After one second without use, the worker can move one compatible child of up to 32 MiB directly into local memory with one GPU copy; configured caps still apply. Recovery creates no host snapshot, performs no compression and consumes no cold-storage quota. Oversized children and callback-owned pools are excluded before choosing the oldest candidate. Recovery is synchronous and can delay submissions, so it is disabled by default. This does not control device-local allocations transparently migrated by the kernel into GTT. See [direct-copy checks and latency limits](validation/direct-gpu-recovery/README.md).
+
+`--vulkan-recover-local-quiet-ms N` adjusts that unused-age delay while recovery is enabled (default 1000; accepts 0 through 4294967295 milliseconds). Setting 0 permits recovery between completed uses of frequently accessed buffers; pending GPU work remains protected. This changes eligibility, not transaction cost: recovery still holds submission locks and may cause a frame spike. The equivalent environment variable is `ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS`.
+
+An experimental `ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1` mode in the current source releases submission locks during the recovery copy-fence wait. It requires explicit local recovery and remains disabled by default. Exactly tracked, finite, resident and disjoint hot work can proceed even with unrelated cold data; matching, unknown, selected cold-restoration and mutation paths wait for safe completion. Sparse transitions still hold locks. The deterministic overlap and full-byte checks establish progress and correctness, not spike-free gaming. This prototype is not in installed v0.4.19; see [its evidence and teardown limits](validation/unlocked-recovery-wait/README.md).
 
 `--vulkan-headroom-mib N` further tightens the tracked backing cap using `VK_EXT_memory_budget` on a single native device-local heap. It requires lazy backing, immediate resident admission, an enabled Vulkan 1.1 or `VK_KHR_get_physical_device_properties2` instance path, and device support for `VK_EXT_memory_budget`. Unsupported setups are rejected. A tiny hardware test verified budget queries and pre-allocation refusal at a zero effective limit. This dynamic budget estimate is not reserved capacity or a global VRAM guarantee; see [the calculation and limits](VALIDATION.md#vulkan-memory-budget-headroom-opt-in).
 
@@ -150,7 +201,7 @@ python3 check_vulkan_idle_model.py --binary /path/to/llama-completion \
 
 See [hardware evidence and limits](VALIDATION.md#automatic-vulkan-idle-snapshots).
 
-In automatic mode, eligible exact-size GPU-only native allocations use stable app-facing memory tokens and can be adopted into snapshots. A private sparse/transfer queue performs copies. In the default mode, completion markers postpone snapshots while app work is pending; opt-in active eviction can snapshot whole allocations unused by tracked pending submissions. Unknown access protects all candidates. The tested path supports ordinary and internally synchronized queues, BDA, and cross-family storage-buffer barriers. By default, app presentation or explicit sparse submissions keep the conservative restore-all/paging-disable behavior; `--vulkan-buffer-presentation` opts into only base presents with null `pNext`. Explicit application sparse submissions and extension-chain presents retain the fallback. Active eviction is allocation-granularity, not frame-by-frame compression or general image paging.
+In automatic mode, eligible exact-size GPU-only native allocations use stable app-facing memory tokens and can be adopted into snapshots. A private sparse/transfer queue performs copies. In the default mode, completion markers postpone snapshots while app work is pending; opt-in active eviction can snapshot whole allocations unused by tracked pending submissions. Unknown access protects all candidates. The tested path supports ordinary and internally synchronized queues, BDA, and cross-family storage-buffer barriers. By default, app presentation or explicit sparse submissions keep the conservative restore-all/paging-disable behavior; `--vulkan-buffer-presentation` opts into base presents plus allowlisted present-ID/region metadata. Explicit application sparse submissions and other presentation chains retain the fallback. Active eviction is allocation-granularity, not frame-by-frame compression or general image paging.
 
 Steam launch options can chain CPU affinity, using the installed `zvram` command:
 
@@ -405,3 +456,7 @@ runs completed at 1.09323773 and 1.10252711 tokens/s with exact matching output,
 49/49 layers, and zero GPU restore fallback. The repeat reports 4,097 GPU
 encodes, zero encoder fallback, and zero final copy bytes. These sequential runs
 do not isolate causality. [Latest run, first run, tests, and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md).
+
+### Current selective graphics limit
+
+A 4 MiB descriptor in a 32 MiB buffer still causes all eight chunks to restore on the first draw: render-pass/draw/pipeline tracking remains conservative. The next five fixture draws reuse the restored buffer without additional restores. Exact pixels and full initial/final buffer checks pass, but this does **not** demonstrate selective graphics residency or game FPS gains. No draw guard was relaxed. See [strict failure and conservative regression evidence](validation/cold-cycle-recovery/graphics-tracking-limit/README.md).

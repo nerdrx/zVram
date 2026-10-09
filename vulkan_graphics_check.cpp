@@ -85,7 +85,12 @@ struct Fixture {
     VkExtent2D extent{Width,Height}; std::vector<VkImage> swapImages;
     std::vector<VkImageView> swapViews; std::vector<VkFramebuffer> swapFramebuffers;
     std::vector<VkSemaphore> acquireSemaphores, renderSemaphores;
-    bool presenting{}, nativeAllocation{};
+    std::vector<std::uint64_t> submitCallMicros, fenceWaitCallMicros;
+    VkDeviceSize descriptorRange{BufferBytes};
+    bool presenting{}, nativeAllocation{}, presentIdMetadata{}, presentRegionsMetadata{};
+    bool unsupported{};
+    std::string unsupportedReason;
+    std::uint64_t nextPresentId{1};
     bool abandon{}, validationOn{}; GetStats getStats{};
 
     ~Fixture() {
@@ -167,17 +172,25 @@ struct Fixture {
         check(vkBeginCommandBuffer(cmd,&bi),"begin command buffer"); return cmd;
     }
     void submit(VkCommandBuffer cmd, VkSemaphore waitSemaphore=VK_NULL_HANDLE,
-                VkSemaphore signalSemaphore=VK_NULL_HANDLE) {
+                VkSemaphore signalSemaphore=VK_NULL_HANDLE, bool sampleCalls=false) {
         check(vkEndCommandBuffer(cmd),"end command buffer"); check(vkResetFences(device,1,&fence),"reset fence");
         const VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         if(waitSemaphore) { si.waitSemaphoreCount=1; si.pWaitSemaphores=&waitSemaphore; si.pWaitDstStageMask=&waitStage; }
         si.commandBufferCount=1; si.pCommandBuffers=&cmd;
         if(signalSemaphore) { si.signalSemaphoreCount=1; si.pSignalSemaphores=&signalSemaphore; }
+        const auto submitStart=std::chrono::steady_clock::now();
         const auto submitted=vkQueueSubmit(queue,1,&si,fence);
+        if(sampleCalls) submitCallMicros.push_back(static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now()-submitStart).count()));
         if (submitted==VK_ERROR_DEVICE_LOST) abandon=true;
         check(submitted,"submit graphics fixture");
+        const auto waitStart=std::chrono::steady_clock::now();
         const auto r=vkWaitForFences(device,1,&fence,VK_TRUE,3'000'000'000ull);
+        if(sampleCalls) fenceWaitCallMicros.push_back(static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now()-waitStart).count()));
         if (r==VK_TIMEOUT || r==VK_ERROR_DEVICE_LOST) abandon=true;
         check(r,"wait for graphics fixture");
         vkFreeCommandBuffers(device,pool,1,&cmd);
@@ -196,7 +209,7 @@ struct Fixture {
         } while(std::chrono::steady_clock::now()<until);
         throw std::runtime_error("32 MiB buffer did not return to cold state before timeout");
     }
-    void init(bool native
+    void init(bool native, bool requestPresentId=false, bool requestPresentRegions=false
 #ifdef ZVRAM_GRAPHICS_SDL2
               , bool present=false, SDL_Window* window=nullptr
 #endif
@@ -207,6 +220,10 @@ struct Fixture {
 #else
         (void)native;
 #endif
+        presentIdMetadata=requestPresentId;
+        presentRegionsMetadata=requestPresentRegions;
+        require((!requestPresentId&&!requestPresentRegions)||presenting,
+                "presentation metadata requires SDL presentation");
         VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO}; app.apiVersion=VK_API_VERSION_1_1;
         std::uint32_t layerCount=0, extCount=0;
         check(vkEnumerateInstanceLayerProperties(&layerCount,nullptr),"enumerate layers");
@@ -247,9 +264,29 @@ struct Fixture {
 #endif
         std::uint32_t n=0; check(vkEnumeratePhysicalDevices(instance,&n,nullptr),"enumerate devices"); require(n,"no Vulkan device");
         std::vector<VkPhysicalDevice> devices(n); check(vkEnumeratePhysicalDevices(instance,&n,devices.data()),"enumerate devices");
+        bool metadataSupportedDevice=false;
         for(auto d:devices) {
 #ifdef ZVRAM_GRAPHICS_SDL2
-            if(present) { std::uint32_t ec=0; check(vkEnumerateDeviceExtensionProperties(d,nullptr,&ec,nullptr),"query device extensions"); std::vector<VkExtensionProperties> ex(ec); check(vkEnumerateDeviceExtensionProperties(d,nullptr,&ec,ex.data()),"read device extensions"); if(std::none_of(ex.begin(),ex.end(),[](const auto& x){return std::strcmp(x.extensionName,VK_KHR_SWAPCHAIN_EXTENSION_NAME)==0;})) continue; }
+            if(present) {
+                std::uint32_t ec=0;
+                check(vkEnumerateDeviceExtensionProperties(d,nullptr,&ec,nullptr),"query device extensions");
+                std::vector<VkExtensionProperties> ex(ec);
+                check(vkEnumerateDeviceExtensionProperties(d,nullptr,&ec,ex.data()),"read device extensions");
+                const auto hasExtension=[&](const char* name) {
+                    return std::any_of(ex.begin(),ex.end(),[&](const auto& x){return std::strcmp(x.extensionName,name)==0;});
+                };
+                if(!hasExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME) ||
+                   (requestPresentId && !hasExtension(VK_KHR_PRESENT_ID_EXTENSION_NAME)) ||
+                   (requestPresentRegions && !hasExtension(VK_KHR_INCREMENTAL_PRESENT_EXTENSION_NAME))) continue;
+                if(requestPresentId) {
+                    VkPhysicalDevicePresentIdFeaturesKHR supported{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR};
+                    VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+                    features.pNext=&supported;
+                    vkGetPhysicalDeviceFeatures2(d,&features);
+                    if(!supported.presentId) continue;
+                }
+                metadataSupportedDevice=true;
+            }
 #endif
             std::uint32_t qn=0; vkGetPhysicalDeviceQueueFamilyProperties(d,&qn,nullptr); std::vector<VkQueueFamilyProperties> q(qn); vkGetPhysicalDeviceQueueFamilyProperties(d,&qn,q.data());
             for(std::uint32_t i=0;i<qn;++i) if(q[i].queueCount && (q[i].queueFlags&VK_QUEUE_GRAPHICS_BIT)) {
@@ -260,17 +297,39 @@ struct Fixture {
             }
             if(physical) break;
         }
+#ifdef ZVRAM_GRAPHICS_SDL2
+        if(present && (requestPresentId||requestPresentRegions) && !metadataSupportedDevice) {
+            unsupported=true;
+            unsupportedReason="requested extension or feature is unavailable";
+            return;
+        }
+#endif
         require(physical,"no graphics queue");
         VkPhysicalDeviceProperties selectedProperties{}; vkGetPhysicalDeviceProperties(physical,&selectedProperties);
         std::cout<<"graphics-device="<<selectedProperties.deviceName<<" type="<<static_cast<unsigned>(selectedProperties.deviceType)<<'\n';
         VkPhysicalDeviceMemoryProperties mp{}; vkGetPhysicalDeviceMemoryProperties(physical,&mp);
         const VkDeviceQueueCreateInfo qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,nullptr,0,queueFamily,1,&queuePriority};
-#ifdef ZVRAM_GRAPHICS_SDL2
-        const char* swapExt=VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-#endif
         VkDeviceCreateInfo di{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; di.queueCreateInfoCount=1; di.pQueueCreateInfos=&qi;
 #ifdef ZVRAM_GRAPHICS_SDL2
-        if(present) { di.enabledExtensionCount=1; di.ppEnabledExtensionNames=&swapExt; }
+        std::vector<const char*> enabledDeviceExtensions;
+        if(present) enabledDeviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        if(requestPresentId) enabledDeviceExtensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+        if(requestPresentRegions) enabledDeviceExtensions.push_back(VK_KHR_INCREMENTAL_PRESENT_EXTENSION_NAME);
+        if(present) {
+            di.enabledExtensionCount=static_cast<std::uint32_t>(enabledDeviceExtensions.size());
+            di.ppEnabledExtensionNames=enabledDeviceExtensions.data();
+        }
+        VkPhysicalDevicePresentIdFeaturesKHR enabledPresentId{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR};
+        VkPhysicalDeviceFeatures2 enabledFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+        if(requestPresentId) {
+            VkPhysicalDeviceFeatures supportedBase{};
+            vkGetPhysicalDeviceFeatures(physical,&supportedBase);
+            enabledFeatures.features.sparseBinding=supportedBase.sparseBinding;
+            enabledFeatures.features.sparseResidencyBuffer=supportedBase.sparseResidencyBuffer;
+            enabledPresentId.presentId=VK_TRUE;
+            enabledFeatures.pNext=&enabledPresentId;
+            di.pNext=&enabledFeatures;
+        }
 #endif
         check(vkCreateDevice(physical,&di,nullptr,&device),"create device"); vkGetDeviceQueue(device,queueFamily,0,&queue);
         getStats=reinterpret_cast<GetStats>(vkGetDeviceProcAddr(device,"vkZVramGetSnapshotStatsNX"));
@@ -364,7 +423,7 @@ struct Fixture {
         VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1}; VkDescriptorPoolCreateInfo dp{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO}; dp.maxSets=1; dp.poolSizeCount=1; dp.pPoolSizes=&ps;
         check(vkCreateDescriptorPool(device,&dp,nullptr,&descriptorPool),"create descriptor pool");
         VkDescriptorSetAllocateInfo da{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO}; da.descriptorPool=descriptorPool; da.descriptorSetCount=1; da.pSetLayouts=&setLayout;
-        check(vkAllocateDescriptorSets(device,&da,&set),"allocate descriptor set"); VkDescriptorBufferInfo db{data,0,BufferBytes};
+        check(vkAllocateDescriptorSets(device,&da,&set),"allocate descriptor set"); VkDescriptorBufferInfo db{data,0,descriptorRange};
         VkWriteDescriptorSet wr{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET}; wr.dstSet=set; wr.dstBinding=0; wr.descriptorCount=1; wr.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; wr.pBufferInfo=&db;
         vkUpdateDescriptorSets(device,1,&wr,0,nullptr);
         VkPipelineLayoutCreateInfo pl{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO}; pl.setLayoutCount=1; pl.pSetLayouts=&setLayout;
@@ -392,7 +451,31 @@ struct Fixture {
         VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER}; barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_TRANSFER_READ_BIT; barrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; barrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; barrier.buffer=data; barrier.size=BufferBytes;
         vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&barrier,0,nullptr); submit(cmd);
     }
-    void drawAndVerify(const std::vector<std::uint32_t>& expected, unsigned frameIndex) {
+    void verifyFullBuffer(const std::vector<std::uint32_t>& expected) {
+        auto cmd=begin();
+        VkBufferMemoryBarrier dataBarrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        dataBarrier.srcAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_TRANSFER_WRITE_BIT;
+        dataBarrier.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+        dataBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; dataBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        dataBarrier.buffer=data; dataBarrier.size=BufferBytes;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&dataBarrier,0,nullptr);
+        VkBufferCopy copy{0,0,BufferBytes}; vkCmdCopyBuffer(cmd,data,readback,1,&copy);
+        VkBufferMemoryBarrier hostBarrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        hostBarrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; hostBarrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+        hostBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hostBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        hostBarrier.buffer=readback; hostBarrier.size=BufferBytes;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,
+                             0,0,nullptr,1,&hostBarrier,0,nullptr);
+        submit(cmd);
+        void* p{}; check(vkMapMemory(device,readbackMem,0,BufferBytes,0,&p),"map full-buffer verification");
+        const auto* words=static_cast<const std::uint32_t*>(p);
+        const bool matches=std::equal(expected.begin(),expected.end(),words);
+        vkUnmapMemory(device,readbackMem);
+        require(matches,"32 MiB full-buffer integrity mismatch");
+    }
+    void drawAndVerify(const std::vector<std::uint32_t>& expected, unsigned frameIndex,
+                       bool verifyFullBuffer=true) {
         std::uint32_t imageIndex=0; VkSemaphore acquired=VK_NULL_HANDLE, rendered=VK_NULL_HANDLE;
 #ifndef ZVRAM_GRAPHICS_SDL2
         (void)imageIndex; (void)frameIndex;
@@ -409,8 +492,10 @@ struct Fixture {
 #endif
         rp.renderArea={{0,0},{Width,Height}}; rp.clearValueCount=1; rp.pClearValues=&clear;
         vkCmdBeginRenderPass(cmd,&rp,VK_SUBPASS_CONTENTS_INLINE); vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline); vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipelineLayout,0,1,&set,0,nullptr); vkCmdDraw(cmd,3,1,0,0); vkCmdEndRenderPass(cmd);
-        VkBufferMemoryBarrier dataBarrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER}; dataBarrier.srcAccessMask=VK_ACCESS_SHADER_READ_BIT; dataBarrier.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT; dataBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; dataBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; dataBarrier.buffer=data; dataBarrier.size=BufferBytes;
-        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&dataBarrier,0,nullptr);
+        if(verifyFullBuffer) {
+            VkBufferMemoryBarrier dataBarrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER}; dataBarrier.srcAccessMask=VK_ACCESS_SHADER_READ_BIT; dataBarrier.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT; dataBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; dataBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; dataBarrier.buffer=data; dataBarrier.size=BufferBytes;
+            vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&dataBarrier,0,nullptr);
+        }
         VkBufferImageCopy imageCopy{}; imageCopy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; imageCopy.imageExtent={Width,Height,1};
 #ifdef ZVRAM_GRAPHICS_SDL2
         const VkImage target=presenting?swapImages[imageIndex]:image;
@@ -418,17 +503,34 @@ struct Fixture {
         const VkImage target=image;
 #endif
         vkCmdCopyImageToBuffer(cmd,target,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback,1,&imageCopy);
-        VkBufferCopy dataCopy{0,Width*Height*4,BufferBytes}; vkCmdCopyBuffer(cmd,data,readback,1,&dataCopy);
+        if(verifyFullBuffer) { VkBufferCopy dataCopy{0,Width*Height*4,BufferBytes}; vkCmdCopyBuffer(cmd,data,readback,1,&dataCopy); }
 #ifdef ZVRAM_GRAPHICS_SDL2
         if(presenting) { VkImageMemoryBarrier presentBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER}; presentBarrier.srcAccessMask=VK_ACCESS_TRANSFER_READ_BIT; presentBarrier.dstAccessMask=0; presentBarrier.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL; presentBarrier.newLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; presentBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; presentBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; presentBarrier.image=target; presentBarrier.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1}; vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0,0,nullptr,0,nullptr,1,&presentBarrier); }
 #endif
-        VkBufferMemoryBarrier hostBarrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER}; hostBarrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; hostBarrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT; hostBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hostBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hostBarrier.buffer=readback; hostBarrier.size=BufferBytes+Width*Height*4;
+        VkBufferMemoryBarrier hostBarrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER}; hostBarrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; hostBarrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT; hostBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hostBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hostBarrier.buffer=readback; hostBarrier.size=verifyFullBuffer?BufferBytes+Width*Height*4:Width*Height*4;
         vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&hostBarrier,0,nullptr);
-        submit(cmd,acquired,rendered);
+        submit(cmd,acquired,rendered,true);
 #ifdef ZVRAM_GRAPHICS_SDL2
-        if(presenting) { VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR}; pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&rendered; pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex; const auto pr=vkQueuePresentKHR(queue,&pi); if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) abandon=true; if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) check(pr,"present swapchain image"); }
+        if(presenting) {
+            VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+            pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&rendered;
+            pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex;
+            VkPresentIdKHR idInfo{VK_STRUCTURE_TYPE_PRESENT_ID_KHR};
+            const std::uint64_t presentId=nextPresentId++;
+            if(presentIdMetadata) { idInfo.swapchainCount=1; idInfo.pPresentIds=&presentId; }
+            VkRectLayerKHR rectangle{}; rectangle.offset={0,0}; rectangle.extent=extent; rectangle.layer=0;
+            VkPresentRegionKHR region{}; region.rectangleCount=1; region.pRectangles=&rectangle;
+            VkPresentRegionsKHR regionsInfo{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR};
+            if(presentRegionsMetadata) { regionsInfo.swapchainCount=1; regionsInfo.pRegions=&region; }
+            if(presentIdMetadata && presentRegionsMetadata) idInfo.pNext=&regionsInfo;
+            pi.pNext=presentIdMetadata ? static_cast<const void*>(&idInfo) :
+                     (presentRegionsMetadata ? static_cast<const void*>(&regionsInfo) : nullptr);
+            const auto pr=vkQueuePresentKHR(queue,&pi);
+            if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) abandon=true;
+            if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) check(pr,"present swapchain image");
+        }
 #endif
-        void* p{}; check(vkMapMemory(device,readbackMem,0,BufferBytes+Width*Height*4,0,&p),"map readback");
+        void* p{}; check(vkMapMemory(device,readbackMem,0,verifyFullBuffer?BufferBytes+Width*Height*4:Width*Height*4,0,&p),"map readback");
         const auto* pixels=static_cast<const std::uint8_t*>(p);
 #ifdef ZVRAM_GRAPHICS_SDL2
         const std::array<std::uint8_t,4> rgba=colorFormat==VK_FORMAT_B8G8R8A8_UNORM?std::array<std::uint8_t,4>{223,128,32,255}:std::array<std::uint8_t,4>{32,128,223,255};
@@ -436,14 +538,22 @@ struct Fixture {
         const std::array<std::uint8_t,4> rgba{32,128,223,255};
 #endif
         for(std::size_t i=0;i<Width*Height;++i) require(std::memcmp(pixels+i*4,rgba.data(),4)==0,"unexpected rendered pixel");
-        const auto* words=reinterpret_cast<const std::uint32_t*>(pixels+Width*Height*4);
-        require(std::equal(expected.begin(),expected.end(),words),"32 MiB native buffer readback mismatch"); vkUnmapMemory(device,readbackMem);
+        if(verifyFullBuffer) {
+            const auto* words=reinterpret_cast<const std::uint32_t*>(pixels+Width*Height*4);
+            require(std::equal(expected.begin(),expected.end(),words),"32 MiB native buffer readback mismatch");
+        }
+        vkUnmapMemory(device,readbackMem);
     }
 };
 }
 
+struct UnsupportedMetadata {};
+
 int main(int argc,char** argv) {
-    bool native=false, present=false, nativeAllocation=false, expectLazy=false; unsigned frames=3;
+    bool native=false, present=false, nativeAllocation=false, expectLazy=false, warmResidency=false;
+    std::string presentMetadata="none";
+    unsigned frames=3, frameDelayMs=0, descriptorWindowMiB=0;
+    bool framesSpecified=false, expectConservativeGraphics=false;
 #ifdef ZVRAM_GRAPHICS_SDL2
     SDL_Window* window=nullptr; bool sdlReady=false;
 #endif
@@ -452,12 +562,40 @@ int main(int argc,char** argv) {
             if(std::strcmp(argv[i],"--native")==0) native=true;
             else if(std::strcmp(argv[i],"--native-allocation")==0) nativeAllocation=true;
             else if(std::strcmp(argv[i],"--expect-lazy-backing")==0) expectLazy=true;
-            else if(std::strcmp(argv[i],"--frames")==0 && i+1<argc) { frames=static_cast<unsigned>(std::stoul(argv[++i])); require(frames>=2 && frames<=3,"--frames must be 2 or 3"); }
+            else if(std::strcmp(argv[i],"--frames")==0 && i+1<argc) { frames=static_cast<unsigned>(std::stoul(argv[++i])); framesSpecified=true; require(frames>=2 && frames<=120,"--frames must be 2..120"); }
+            else if(std::strcmp(argv[i],"--descriptor-window-mib")==0 && i+1<argc) descriptorWindowMiB=static_cast<unsigned>(std::stoul(argv[++i]));
+            else if(std::strcmp(argv[i],"--expect-conservative-graphics")==0) expectConservativeGraphics=true;
+            else if(std::strcmp(argv[i],"--warm-residency")==0) warmResidency=true;
+            else if(std::strcmp(argv[i],"--present-metadata")==0 && i+1<argc) presentMetadata=argv[++i];
+            else if(std::strcmp(argv[i],"--frame-delay-ms")==0 && i+1<argc) { frameDelayMs=static_cast<unsigned>(std::stoul(argv[++i])); require(frameDelayMs<=1000,"frame delay maximum is 1000 ms"); }
 #ifdef ZVRAM_GRAPHICS_SDL2
             else if(std::strcmp(argv[i],"--present")==0) present=true;
 #endif
-            else throw std::runtime_error("usage: vulkan-graphics-check [--native] [--native-allocation] [--expect-lazy-backing] [--present] [--frames 2|3]");
+            else throw std::runtime_error("usage: vulkan-graphics-check [--native] [--native-allocation] [--expect-lazy-backing] [--present] [--present-metadata id|regions|both] [--warm-residency] [--frame-delay-ms 0..1000] [--frames 2..120]");
         }
+        require(presentMetadata=="none" || presentMetadata=="id" ||
+                presentMetadata=="regions" || presentMetadata=="both",
+                "--present-metadata must be id, regions or both");
+        const bool requestPresentId=presentMetadata=="id" || presentMetadata=="both";
+        const bool requestPresentRegions=presentMetadata=="regions" || presentMetadata=="both";
+        const bool narrowWorkingSet=descriptorWindowMiB!=0;
+        if(narrowWorkingSet) {
+            require(descriptorWindowMiB==4,"--descriptor-window-mib supports only 4");
+            require(!native && !present && presentMetadata=="none" && !warmResidency && !expectLazy,
+                    "descriptor-window mode requires wrapped offscreen cold recovery");
+            require(!framesSpecified || frames==6,"descriptor-window mode requires exactly 6 frames");
+            frames=6;
+        }
+        require(!expectConservativeGraphics || narrowWorkingSet,
+                "--expect-conservative-graphics requires --descriptor-window-mib 4");
+#ifndef ZVRAM_GRAPHICS_SDL2
+        if(presentMetadata!="none") {
+            std::cerr<<"UNSUPPORTED: PRESENT_METADATA: requires SDL2 support\n";
+            return 77;
+        }
+#else
+        require(present || presentMetadata=="none","--present-metadata requires --present");
+#endif
         require(!expectLazy || !native,"lazy backing check requires zVram");
 #ifdef ZVRAM_GRAPHICS_SDL2
         if(present) { require(SDL_Init(SDL_INIT_VIDEO)==0,"initialize SDL2 video"); sdlReady=true; window=SDL_CreateWindow("zVram Vulkan graphics check",SDL_WINDOWPOS_UNDEFINED,SDL_WINDOWPOS_UNDEFINED,Width,Height,SDL_WINDOW_VULKAN|SDL_WINDOW_SHOWN); require(window,"create SDL Vulkan window"); SDL_PumpEvents(); }
@@ -468,11 +606,16 @@ int main(int argc,char** argv) {
         {
             Fixture f;
             f.nativeAllocation=nativeAllocation;
-            f.init(native
+            if(narrowWorkingSet) f.descriptorRange=4ull*1024*1024;
+            f.init(native,requestPresentId,requestPresentRegions
 #ifdef ZVRAM_GRAPHICS_SDL2
                    ,present,window
 #endif
                    );
+            if(f.unsupported) {
+                std::cerr<<"UNSUPPORTED: PRESENT_METADATA: "<<f.unsupportedReason<<'\n';
+                throw UnsupportedMetadata{};
+            }
             auto input=makeInput(); const auto initial=native?Stats{}:f.stats();
             if(expectLazy) {
                 require(initial.residentBytes==0 && initial.coldLogicalBytes==BufferBytes && initial.coldStoredBytes==0,
@@ -480,13 +623,87 @@ int main(int argc,char** argv) {
                 std::cout<<"PASS: lazy bootstrap resident=0 cold-logical="<<initial.coldLogicalBytes<<" cold-stored=0\n";
             }
             f.uploadInput(input);
-            if(!native) f.waitCold(initial.freezes);
-            for(unsigned i=0;i<frames;++i) {
-                const auto before=native?Stats{}:f.stats();
-                if(!native) require(before.coldLogicalBytes>=BufferBytes && before.residentBytes==0,"draw did not begin fully cold");
-                f.drawAndVerify(input,i);
-                if(!native) { const auto after=f.stats(); require(after.restores>before.restores,"graphics use did not restore cold buffer"); std::cout<<"frame="<<i<<" cold-bytes="<<after.coldStoredBytes<<'/'<<after.coldLogicalBytes<<" restores="<<after.restores<<'\n'; f.waitCold(before.freezes); }
+            if(narrowWorkingSet) f.verifyFullBuffer(input);
+            if(!native && !warmResidency) f.waitCold(initial.freezes);
+            if(narrowWorkingSet) {
+                const auto cold=f.stats();
+                require(cold.coldLogicalBytes==BufferBytes && cold.residentBytes==0,
+                        "narrow fixture did not begin with all 32 MiB cold");
             }
+            std::vector<double> frameTimes;
+            f.submitCallMicros.reserve(frames);
+            f.fenceWaitCallMicros.reserve(frames);
+            for(unsigned i=0;i<frames;++i) {
+                if(frameDelayMs) std::this_thread::sleep_for(std::chrono::milliseconds(frameDelayMs));
+                const auto before=native?Stats{}:f.stats();
+                if(narrowWorkingSet && i>0) {
+                    const auto expectedCold=expectConservativeGraphics?0:BufferBytes-4ull*1024*1024;
+                    const auto expectedResident=expectConservativeGraphics?BufferBytes:4ull*1024*1024;
+                    require(before.coldLogicalBytes==expectedCold && before.residentBytes==expectedResident,
+                            "graphics residency changed before measured draw");
+                }
+                else if(!native && !warmResidency) require(before.coldLogicalBytes>=BufferBytes && before.residentBytes==0,"draw did not begin fully cold");
+                if(!native && warmResidency) require(before.residentBytes>=BufferBytes && before.coldLogicalBytes==0 && before.freezes==initial.freezes,"warm graphics data was needlessly evicted");
+                const auto start=std::chrono::steady_clock::now();
+                f.drawAndVerify(input,i,!narrowWorkingSet);
+                frameTimes.push_back(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count());
+                if(narrowWorkingSet) {
+                    const auto after=f.stats();
+                    if(expectConservativeGraphics) {
+                        if(i==0) require(after.coldLogicalBytes==0 && after.residentBytes==BufferBytes &&
+                                         after.restores==initial.restores+BufferBytes/(4ull*1024*1024),
+                                         "first graphics draw did not conservatively restore all eight chunks");
+                        else require(after.coldLogicalBytes==0 && after.residentBytes==BufferBytes &&
+                                     after.restores==before.restores,
+                                     "conservatively restored graphics data was not reused");
+                        std::cout<<"conservative-frame="<<i<<" resident="<<after.residentBytes
+                                 <<" cold="<<after.coldLogicalBytes<<" restores="<<after.restores<<'\n';
+                    } else {
+                        require(after.coldLogicalBytes==BufferBytes-4ull*1024*1024 && after.residentBytes==4ull*1024*1024,
+                                "measured draw did not retain exactly its 4 MiB descriptor chunk");
+                        if(i==0) require(after.restores==before.restores+1,
+                                         "first narrow draw did not restore exactly one descriptor chunk");
+                        else require(after.restores==before.restores,
+                                     "warm narrow draw performed an unexpected restore");
+                        std::cout<<"narrow-frame="<<i<<" resident="<<after.residentBytes
+                                 <<" cold="<<after.coldLogicalBytes<<" restores="<<after.restores<<'\n';
+                    }
+                } else if(!native && !warmResidency) { const auto after=f.stats(); require(after.restores>before.restores,"graphics use did not restore cold buffer"); std::cout<<"frame="<<i<<" cold-bytes="<<after.coldStoredBytes<<'/'<<after.coldLogicalBytes<<" restores="<<after.restores<<'\n'; f.waitCold(before.freezes); }
+            }
+            if(narrowWorkingSet) {
+                const auto beforeIntegrityReadback=f.stats();
+                if(expectConservativeGraphics)
+                    require(beforeIntegrityReadback.coldLogicalBytes==0 && beforeIntegrityReadback.residentBytes==BufferBytes,
+                            "conservative residency changed before final integrity readback");
+                else require(beforeIntegrityReadback.coldLogicalBytes==BufferBytes-4ull*1024*1024 &&
+                             beforeIntegrityReadback.residentBytes==4ull*1024*1024,
+                             "narrow working-set accounting changed before final integrity readback");
+                f.verifyFullBuffer(input);
+            }
+            std::sort(frameTimes.begin(),frameTimes.end());
+            std::cout<<"draw-readback-ms p50="<<frameTimes[frameTimes.size()/2]<<" p95="<<frameTimes[(frameTimes.size()*95+99)/100-1]<<" max="<<frameTimes.back()<<'\n';
+            const auto printCallTimes=[](const char* name,std::vector<std::uint64_t>& samples) {
+                require(!samples.empty(),"graphics frame timing collected no samples");
+                std::sort(samples.begin(),samples.end());
+                const auto percentile=[&](std::size_t percent) {
+                    const auto rank=(samples.size()*percent+99)/100;
+                    return samples[std::max<std::size_t>(1,rank)-1];
+                };
+                std::cout<<name<<" count="<<samples.size()<<" p50-us="<<percentile(50)
+                         <<" p95-us="<<percentile(95)<<" max-us="<<samples.back()<<'\n';
+            };
+            if(narrowWorkingSet && f.submitCallMicros.size()>1 && f.fenceWaitCallMicros.size()>1) {
+                std::vector<std::uint64_t> firstSubmit{f.submitCallMicros.front()};
+                std::vector<std::uint64_t> warmSubmit(f.submitCallMicros.begin()+1,f.submitCallMicros.end());
+                std::vector<std::uint64_t> firstWait{f.fenceWaitCallMicros.front()};
+                std::vector<std::uint64_t> warmWait(f.fenceWaitCallMicros.begin()+1,f.fenceWaitCallMicros.end());
+                printCallTimes("first-vkQueueSubmit-call",firstSubmit);
+                printCallTimes("warm-vkQueueSubmit-call",warmSubmit);
+                printCallTimes("first-vkWaitForFences-call",firstWait);
+                printCallTimes("warm-vkWaitForFences-call",warmWait);
+            }
+            printCallTimes("vkQueueSubmit-call",f.submitCallMicros);
+            printCallTimes("vkWaitForFences-call",f.fenceWaitCallMicros);
             validationOn=f.validationOn;
         }
         require(validationErrors.load()==0,"Vulkan validation reported errors");
@@ -494,8 +711,16 @@ int main(int argc,char** argv) {
         if(window) SDL_DestroyWindow(window);
         if(sdlReady) SDL_Quit();
 #endif
-        std::cout<<"PASS: "<<frames<<(present?" presented":" offscreen")<<" draw/readback frames"<<(native?" (native mode)":" with cold restore")<<" validation="<<(validationOn?"on":"unavailable")<<"\n";
+        std::cout<<"PASS: "<<frames<<(present?" presented":" offscreen")<<" draw/readback frames"<<(native?" (native mode)":(warmResidency?" with warm residency":(expectConservativeGraphics?" with conservative graphics fallback":" with cold restore")))
+                 <<(presentMetadata!="none"?" metadata="+presentMetadata:"")
+                 <<" validation="<<(validationOn?"on":"unavailable")<<"\n";
         return 0;
+    } catch(const UnsupportedMetadata&) {
+#ifdef ZVRAM_GRAPHICS_SDL2
+        if(window) SDL_DestroyWindow(window);
+        if(sdlReady) SDL_Quit();
+#endif
+        return 77;
     } catch(const std::exception& e) {
 #ifdef ZVRAM_GRAPHICS_SDL2
         if(window) SDL_DestroyWindow(window);

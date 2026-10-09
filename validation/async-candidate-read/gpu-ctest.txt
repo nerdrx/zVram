@@ -1,0 +1,42 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+    Start 59: vulkan-async-candidate-read-completed
+1/2 Test #59: vulkan-async-candidate-read-completed ...   Passed    1.36 sec
+    Start 60: vulkan-async-candidate-read-held
+2/2 Test #60: vulkan-async-candidate-read-held ........***Timeout  60.07 sec
+[zvram] Vulkan snapshot transfer staging bytes=33554432
+[zvram] Vulkan snapshot decode max-workers=1
+[zvram] Vulkan snapshot lookahead staging bytes=33554432
+[zvram] automatic Vulkan snapshots enabled idle-ms=1000 cold-budget=4194304
+[zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+[zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+[zvram] background range snapshot compression uses off-lock transactions max-raw-bytes=33554432
+[zvram] Vulkan range residency enabled chunk-bytes=4194304
+[zvram] Vulkan resident admission enabled limit-bytes=4194304
+[zvram] Vulkan eviction policy=lru
+[zvram] Vulkan snapshot minimum savings percent=0
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] virtual allocate bytes=4194304 heap-capacity=8388608
+[zvram] snapshot state event=bootstrap-bind resident=4194304 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+Validation Error: [ VUID-vkQueueSubmit-pWaitSemaphores-03238 ] | MessageID = 0xb50452b0
+vkQueueSubmit(): pSubmits[0].pWaitSemaphores[0] queue (VkQueue 0x55b45853cab0) is waiting on semaphore (VkSemaphore 0x1b000000001b) that has no way to be signaled.
+The Vulkan spec states: All elements of the pWaitSemaphores member of all elements of pSubmits created with a VkSemaphoreType of VK_SEMAPHORE_TYPE_BINARY must reference a semaphore signal operation that has been submitted for execution and any semaphore signal operations on which it depends must have also been submitted for execution (https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html#VUID-vkQueueSubmit-pWaitSemaphores-03238)
+Objects: 2
+    [0] VkSemaphore 0x1b000000001b
+    [1] VkQueue 0x55b45853cab0
+
+
+
+50% tests passed, 1 tests failed out of 2
+
+Label Time Summary:
+async-candidate    =  61.43 sec*proc (2 tests)
+hardware           =  61.43 sec*proc (2 tests)
+test-hook          =  61.43 sec*proc (2 tests)
+vulkan             =  61.43 sec*proc (2 tests)
+
+Total Test time (real) =  61.43 sec
+
+The following tests FAILED:
+	 60 - vulkan-async-candidate-read-held (Timeout)        async-candidate hardware test-hook vulkan
+Errors while running CTest

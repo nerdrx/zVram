@@ -1,0 +1,6 @@
+-- Configuring done (0.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+[ 25%] Building CXX object CMakeFiles/zvram-vulkan-auto-check.dir/vulkan_auto_check.cpp.o
+[ 50%] Linking CXX executable zvram-vulkan-auto-check
+[100%] Built target zvram-vulkan-auto-check

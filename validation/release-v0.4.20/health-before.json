@@ -1,0 +1,24 @@
+{
+  "psi": "some avg10=0.13 avg60=0.14 avg300=0.07 total=604159048\nfull avg10=0.13 avg60=0.12 avg300=0.07 total=577666819\n",
+  "ram": [
+    "MemAvailable:   29920420 kB",
+    "SwapFree:       77681228 kB"
+  ],
+  "gpu": [
+    {
+      "gpu_busy_percent": "74",
+      "mem_info_vram_used": "4932128768",
+      "mem_info_vram_total": "25753026560",
+      "power_dpm_force_performance_level": "auto"
+    },
+    {
+      "gpu_busy_percent": "0",
+      "mem_info_vram_used": "16805888",
+      "mem_info_vram_total": "2147483648",
+      "power_dpm_force_performance_level": "auto"
+    }
+  ],
+  "apps": [
+    "3017762 ollama          /bin/ollama serve"
+  ]
+}

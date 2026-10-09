@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x86_64:
+    # Keep the runtime compatible with glibc 2.39 (Ubuntu 24.04) and newer.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install development packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan-dev libzstd-dev glslc spirv-tools
+      - name: Build release codecs
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DZVRAM_ENABLE_GDEFLATE=ON -DZVRAM_BUILD_HIP=OFF
+          cmake --build build -j 2
+      - name: Check CPU codecs and manager
+        run: |
+          ctest --test-dir build -R '^cpu-' --output-on-failure
+          python3 -m unittest test_zvram_manager test_zvram_model test_package test_zvram_control
+          python3 test_zvram_ui.py --tui
+          python3 validation/log-line-coalescing/check.py
+      - name: Package Hub release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 scripts/package.py --build-dir build --output dist --version "${RELEASE_TAG#v}"
+          cd dist
+          sha256sum --check SHA256SUMS
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          assets=("dist/zvram-${version}-linux-x86_64.tar.gz" "dist/zvram-${version}-linux-x86_64.tar.gz.sha256" dist/nx-app.json dist/SHA256SUMS)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" != true ]; then
+              echo 'Release is already published; use a new version tag instead of replacing assets.' >&2
+              exit 1
+            fi
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "zVram ${version}" --generate-notes "${assets[@]}"
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false

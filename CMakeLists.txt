@@ -1,11 +1,16 @@
 cmake_minimum_required(VERSION 3.20)
-project(zvram VERSION 0.2.0 LANGUAGES CXX)
+project(zvram VERSION 0.4.1 LANGUAGES CXX)
 find_package(Vulkan REQUIRED)
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 option(ZVRAM_ENABLE_GDEFLATE "Build the experimental GDeflate snapshot codec and optional GPU restore" OFF)
 option(ZVRAM_ENABLE_BP16_GPU_TESTS "Register opt-in BP16 GPU integrity tests" OFF)
+option(ZVRAM_TEST_ASYNC_HOOK "Build the async overlap hook for deterministic Vulkan tests only" OFF)
+set(ZVRAM_TEST_HOOK_CAPABILITY false)
+if(ZVRAM_TEST_ASYNC_HOOK)
+    set(ZVRAM_TEST_HOOK_CAPABILITY true)
+endif()
 set(ZVRAM_GDEFLATE_CAPABILITY false)
 set(ZVRAM_GDEFLATE_GPU_CAPABILITY false)
 configure_file(research/bp16/decode.spv bp16.spv COPYONLY)
@@ -37,7 +42,7 @@ if(ZVRAM_ENABLE_GDEFLATE)
     configure_file(research/gdeflate/GDeflate-bounded-wave32.spv gdeflate-wave32.spv COPYONLY)
 endif()
 file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
-    CONTENT "{\"gdeflate\":${ZVRAM_GDEFLATE_CAPABILITY},\"gdeflate_gpu\":${ZVRAM_GDEFLATE_GPU_CAPABILITY},\"bp16\":true,\"bp16_gpu\":true}\n")
+    CONTENT "{\"gdeflate\":${ZVRAM_GDEFLATE_CAPABILITY},\"gdeflate_gpu\":${ZVRAM_GDEFLATE_GPU_CAPABILITY},\"bp16\":true,\"bp16_gpu\":true,\"test_hooks\":${ZVRAM_TEST_HOOK_CAPABILITY}}\n")
 add_library(zvram_layer SHARED layer.cpp)
 set_property(TARGET zvram_layer APPEND PROPERTY LINK_DEPENDS
     ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
@@ -50,6 +55,9 @@ add_custom_command(TARGET zvram_layer POST_BUILD
     VERBATIM)
 target_include_directories(zvram_layer PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_compile_features(zvram_layer PRIVATE cxx_std_17)
+if(ZVRAM_TEST_ASYNC_HOOK)
+    target_compile_definitions(zvram_layer PRIVATE ZVRAM_TEST_ASYNC_HOOK=1)
+endif()
 target_link_libraries(zvram_layer PRIVATE Threads::Threads PkgConfig::ZSTD)
 target_link_options(zvram_layer PRIVATE -Wl,-Bsymbolic)
 configure_file(layer.json.in ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_NX_zvram.json @ONLY)
@@ -114,14 +122,17 @@ target_compile_features(zvram-resident-bootstrap-check PRIVATE cxx_std_17)
 target_link_libraries(zvram-resident-bootstrap-check PRIVATE Threads::Threads PkgConfig::ZSTD)
 add_executable(zvram-resident-budget-check resident_budget_check.cpp)
 target_compile_features(zvram-resident-budget-check PRIVATE cxx_std_17)
+add_executable(zvram-live-control-check live_control_check.cpp)
+target_compile_features(zvram-live-control-check PRIVATE cxx_std_17)
 enable_testing()
+add_test(NAME cpu-live-control COMMAND zvram-live-control-check)
 add_test(NAME cpu-bp16-codec COMMAND zvram-bp16-codec-check)
 add_test(NAME cpu-resident-budget COMMAND zvram-resident-budget-check)
 add_test(NAME cpu-resident-bootstrap COMMAND zvram-resident-bootstrap-check)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/zvram ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-source COPYONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/ctest_launcher.py.in
-    ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py COPYONLY)
+    ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py @ONLY)
 file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 set(ZVRAM_TEST_LAUNCH ${Python3_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py)
@@ -135,6 +146,28 @@ add_test(NAME vulkan-graphics-native-allocation-cold-restore COMMAND ${graphics_
     --vulkan-selective-restore --vulkan-active-eviction -- $<TARGET_FILE:zvram-vulkan-graphics-check> --native-allocation)
 set_tests_properties(vulkan-graphics-cold-restore vulkan-graphics-active-cold-restore vulkan-graphics-native-allocation-cold-restore
     PROPERTIES TIMEOUT 45 LABELS "hardware;graphics")
+add_test(NAME vulkan-graphics-narrow-descriptor-conservative-fallback COMMAND ${graphics_check_launch}
+    --vulkan-range-mib 4 --vulkan-selective-restore --vulkan-active-eviction --
+    $<TARGET_FILE:zvram-vulkan-graphics-check> --native-allocation --descriptor-window-mib 4
+    --expect-conservative-graphics)
+set_tests_properties(vulkan-graphics-narrow-descriptor-conservative-fallback
+    PROPERTIES TIMEOUT 45 LABELS "hardware;graphics;range-residency;validation")
+find_program(ZVRAM_GAMESCOPE_EXECUTABLE gamescope)
+find_file(ZVRAM_RADEON_ICD_PATH radeon_icd.json
+    PATHS /usr/share/vulkan/icd.d /etc/vulkan/icd.d /usr/local/share/vulkan/icd.d)
+if(SDL2_FOUND AND ZVRAM_GAMESCOPE_EXECUTABLE AND ZVRAM_RADEON_ICD_PATH)
+    foreach(present_metadata id regions both)
+        add_test(NAME vulkan-graphics-present-metadata-${present_metadata}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_graphics_presentation.py
+                --binary $<TARGET_FILE:zvram-vulkan-graphics-check>
+                --icd ${ZVRAM_RADEON_ICD_PATH} --build-dir ${CMAKE_CURRENT_BINARY_DIR}
+                --native-allocation --present-metadata ${present_metadata}
+                --output-dir ${CMAKE_CURRENT_BINARY_DIR}/presentation-metadata-${present_metadata})
+        set_tests_properties(vulkan-graphics-present-metadata-${present_metadata} PROPERTIES
+            TIMEOUT 25 SKIP_RETURN_CODE 77
+            LABELS "hardware;graphics;presentation;metadata;gamescope")
+    endforeach()
+endif()
 add_test(NAME cpu-vulkan-ram-guard COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_ram_guard.py)
 set_tests_properties(cpu-vulkan-ram-guard PROPERTIES TIMEOUT 10)
 add_test(NAME cpu-vulkan-compression-options COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_compression_options.py)
@@ -268,6 +301,318 @@ foreach(range_pressure_mode synthetic native)
         endif()
     endforeach()
 endforeach()
+foreach(range_pressure_mode synthetic native)
+    set(async_range_pressure_flags --range-pressure --two-queues)
+    if(range_pressure_mode STREQUAL "native")
+        list(APPEND async_range_pressure_flags --native-allocation)
+    endif()
+    set(test_name vulkan-range-pressure-${range_pressure_mode}-two-queues-async-config)
+    add_test(NAME ${test_name}
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 32 --vulkan-eviction-trigger pressure
+            --vulkan-async-compression --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${async_range_pressure_flags})
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
+        LABELS "hardware;vulkan;pressure;async-config;two-queues"
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
+add_test(NAME vulkan-pressure-only-idle-regression
+    COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+        --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+        --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+        --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure --
+        $<TARGET_FILE:zvram-vulkan-auto-check> --pressure-only-fixture)
+set_tests_properties(vulkan-pressure-only-idle-regression PROPERTIES TIMEOUT 30
+    LABELS "hardware;vulkan;pressure")
+add_test(NAME vulkan-pressure-only-live-cap-idle-regression
+    COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+        --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+        --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+        --vulkan-resident-mib 96 --vulkan-eviction-trigger pressure --
+        $<TARGET_FILE:zvram-vulkan-auto-check> --pressure-only-live-cap-fixture)
+set_tests_properties(vulkan-pressure-only-live-cap-idle-regression PROPERTIES TIMEOUT 30
+    LABELS "hardware;vulkan;pressure;live-control")
+add_test(NAME vulkan-pressure-only-live-cap-async-regression
+    COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+        --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+        --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+        --vulkan-resident-mib 96 --vulkan-eviction-trigger pressure
+        --vulkan-async-compression --
+        $<TARGET_FILE:zvram-vulkan-auto-check> --pressure-only-live-cap-fixture)
+set_tests_properties(vulkan-pressure-only-live-cap-async-regression PROPERTIES TIMEOUT 30
+    LABELS "hardware;vulkan;pressure;live-control;async")
+if(ZVRAM_TEST_ASYNC_HOOK)
+    foreach(async_overlap_mode admission pressure-raise)
+        if(async_overlap_mode STREQUAL "admission")
+            set(async_overlap_fixture --async-encode-overlap-fixture)
+        else()
+            set(async_overlap_fixture --async-pressure-raise-discard-fixture)
+        endif()
+        add_test(NAME vulkan-async-encode-overlap-${async_overlap_mode}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 96
+                --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+                --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+                --vulkan-eviction-policy lru --vulkan-min-savings-percent 0
+                --vulkan-async-compression --
+                $<TARGET_FILE:zvram-vulkan-auto-check> ${async_overlap_fixture})
+        set_tests_properties(vulkan-async-encode-overlap-${async_overlap_mode} PROPERTIES
+            TIMEOUT 30 LABELS "hardware;vulkan;pressure;async-overlap;test-hook")
+    endforeach()
+    add_test(NAME vulkan-async-candidate-read-completed
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 8 --vulkan-auto-idle-ms 1000 --vulkan-cold-mib 4
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 4 --vulkan-eviction-trigger idle
+            --vulkan-async-compression --vulkan-min-savings-percent 0 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --async-candidate-read-fixture)
+    add_test(NAME vulkan-async-candidate-read-held
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 8 --vulkan-auto-idle-ms 1000 --vulkan-cold-mib 4
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 4 --vulkan-eviction-trigger idle
+            --vulkan-async-compression --vulkan-min-savings-percent 0 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --async-candidate-held-read-fixture)
+    add_test(NAME vulkan-async-candidate-write-completed
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 8 --vulkan-auto-idle-ms 1000 --vulkan-cold-mib 4
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 4 --vulkan-eviction-trigger idle
+            --vulkan-async-compression --vulkan-min-savings-percent 0 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --async-candidate-write-fixture)
+    set_tests_properties(vulkan-async-candidate-read-completed vulkan-async-candidate-read-held
+        vulkan-async-candidate-write-completed
+        PROPERTIES TIMEOUT 30
+        ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;async-candidate;test-hook")
+    foreach(cold_cycle_queue_mode single two-queues)
+        set(cold_cycle_queue_flags)
+        set(cold_cycle_idle_ms 100)
+        if(cold_cycle_queue_mode STREQUAL "two-queues")
+            list(APPEND cold_cycle_queue_flags --two-queues)
+            # Give the fixture time to park a tracked second-queue use before
+            # the idle cold-cycle window expires.
+            set(cold_cycle_idle_ms 1000)
+        endif()
+        set(cold_cycle_test vulkan-cold-cycle-recovery-${cold_cycle_queue_mode})
+        add_test(NAME ${cold_cycle_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms ${cold_cycle_idle_ms} --vulkan-cold-mib 64
+                --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+                --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+                --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
+                --expect-direct-recovery ${cold_cycle_queue_flags})
+        set_tests_properties(${cold_cycle_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;cold-cycle;test-hook")
+    endforeach()
+    foreach(cold_cycle_range_mib 8 4)
+        set(cold_cycle_test vulkan-cold-cycle-recovery-range-${cold_cycle_range_mib})
+        add_test(NAME ${cold_cycle_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+                --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib ${cold_cycle_range_mib} --vulkan-resident-mib 64
+                --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
+                --expect-direct-recovery)
+        set_tests_properties(${cold_cycle_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;cold-cycle;range-sensitivity;test-hook")
+    endforeach()
+    add_test(NAME vulkan-cold-cycle-native-type-refusal
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture --native-allocation
+            --expect-native-type-refusal)
+    set_tests_properties(vulkan-cold-cycle-native-type-refusal PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=0;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;negative-gate;test-hook")
+    foreach(native_cycle_mode single two-queues)
+        set(native_cycle_flags)
+        set(native_cycle_idle_ms 100)
+        if(native_cycle_mode STREQUAL "two-queues")
+            list(APPEND native_cycle_flags --two-queues)
+            set(native_cycle_idle_ms 1000)
+        endif()
+        set(native_cycle_test vulkan-cold-cycle-native-recovery-${native_cycle_mode})
+        add_test(NAME ${native_cycle_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms ${native_cycle_idle_ms}
+                --vulkan-cold-mib 64 --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib 4 --vulkan-resident-mib 64
+                --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
+                --native-allocation --expect-direct-recovery ${native_cycle_flags})
+        set_tests_properties(${native_cycle_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;cold-cycle;native-allocation;test-hook")
+    endforeach()
+    add_test(NAME vulkan-cold-cycle-native-recovery-bda
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
+            --native-allocation --bda --expect-direct-recovery)
+    set_tests_properties(vulkan-cold-cycle-native-recovery-bda PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;bda;test-hook")
+    add_test(NAME vulkan-cold-cycle-unlocked-wait-overlap
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --two-queues --unlocked-recovery-wait-fixture)
+    set_tests_properties(vulkan-cold-cycle-unlocked-wait-overlap PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        SKIP_REGULAR_EXPRESSION "UNSUPPORTED: no discrete AMD RADV GPU exposes two queues in one sparse/compute family"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;unlocked-wait;test-hook")
+    add_test(NAME vulkan-cold-cycle-unlocked-finite-barrier-wait-overlap
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --two-queues --unlocked-recovery-finite-barrier-fixture)
+    set_tests_properties(vulkan-cold-cycle-unlocked-finite-barrier-wait-overlap PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        SKIP_REGULAR_EXPRESSION "UNSUPPORTED: no discrete AMD RADV GPU exposes two queues in one sparse/compute family"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;unlocked-wait;finite-barrier;test-hook")
+    add_test(NAME vulkan-cold-cycle-submit-sampler-baseline
+        COMMAND ${CMAKE_COMMAND} -E env --unset=ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT
+            ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --recovery-submit-sampler-fixture)
+    set_tests_properties(vulkan-cold-cycle-submit-sampler-baseline PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=50;ZVRAM_VULKAN_GPU_PROFILE=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;submit-sampler;profile")
+    add_test(NAME vulkan-cold-cycle-submit-sampler-unlocked
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --recovery-submit-sampler-fixture)
+    set_tests_properties(vulkan-cold-cycle-submit-sampler-unlocked PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=50;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;ZVRAM_VULKAN_GPU_PROFILE=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;submit-sampler;profile;unlocked-wait")
+    add_test(NAME vulkan-cold-cycle-cold-peer-submit-sampler-baseline
+        COMMAND ${CMAKE_COMMAND} -E env --unset=ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT
+            ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --recovery-submit-cold-peer-sampler-fixture)
+    set_tests_properties(vulkan-cold-cycle-cold-peer-submit-sampler-baseline PROPERTIES TIMEOUT 30
+        ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=50;ZVRAM_VULKAN_GPU_PROFILE=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;submit-sampler;cold-peer;profile")
+    add_test(NAME vulkan-cold-cycle-cold-peer-submit-sampler-unlocked
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --recovery-submit-cold-peer-sampler-fixture)
+    set_tests_properties(vulkan-cold-cycle-cold-peer-submit-sampler-unlocked PROPERTIES TIMEOUT 30
+        ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=50;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;ZVRAM_VULKAN_GPU_PROFILE=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;submit-sampler;cold-peer;profile;unlocked-wait")
+    add_test(NAME vulkan-cold-cycle-unlocked-cold-peer-wait
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --unlocked-recovery-cold-wait-fixture)
+    set_tests_properties(vulkan-cold-cycle-unlocked-cold-peer-wait PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;unlocked-wait;cold-restore;test-hook")
+    add_test(NAME vulkan-cold-cycle-unlocked-cold-peer-hot-overlap
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --two-queues --unlocked-recovery-cold-peer-hot-fixture)
+    set_tests_properties(vulkan-cold-cycle-unlocked-cold-peer-hot-overlap PROPERTIES TIMEOUT 30
+        ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        SKIP_REGULAR_EXPRESSION "UNSUPPORTED: no discrete AMD RADV GPU exposes two queues in one sparse/compute family"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;unlocked-wait;cold-peer;hot-overlap;validation;test-hook")
+    add_test(NAME vulkan-cold-cycle-unlocked-late-cap-rollback
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --unlocked-recovery-cap-rollback-fixture)
+    set_tests_properties(vulkan-cold-cycle-unlocked-late-cap-rollback PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;late-cap;rollback;test-hook")
+    foreach(hot_cycle_mode single two-queues)
+        set(hot_cycle_flags)
+        set(hot_cycle_idle_ms 100)
+        if(hot_cycle_mode STREQUAL "two-queues")
+            list(APPEND hot_cycle_flags --two-queues)
+            set(hot_cycle_idle_ms 1000)
+        endif()
+        set(hot_cycle_test vulkan-cold-cycle-native-hot-recovery-${hot_cycle_mode})
+        add_test(NAME ${hot_cycle_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms ${hot_cycle_idle_ms}
+                --vulkan-cold-mib 64 --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib 4 --vulkan-resident-mib 64
+                --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --hot-recovery-fixture
+                --native-allocation --expect-direct-recovery ${hot_cycle_flags})
+        set_tests_properties(${hot_cycle_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;cold-cycle;native-allocation;hot-recovery;test-hook")
+    endforeach()
+    foreach(direct_range_mib 32 4 1)
+        set(direct_batch_test vulkan-direct-recovery-batch-range-${direct_range_mib})
+        add_test(NAME ${direct_batch_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+                --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib ${direct_range_mib} --vulkan-resident-mib 64
+                --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --direct-recovery-batch-fixture
+                --native-allocation)
+        set_tests_properties(${direct_batch_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=1000;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;direct-recovery;range-sensitivity;native-allocation;test-hook")
+    endforeach()
+endif()
+add_test(NAME vulkan-graphics-pressure-retention
+    COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+        --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+        --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+        --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure --
+        $<TARGET_FILE:zvram-vulkan-graphics-check> --native-allocation --warm-residency
+        --frames 3 --frame-delay-ms 150)
+set_tests_properties(vulkan-graphics-pressure-retention PROPERTIES TIMEOUT 15
+    LABELS "hardware;vulkan;graphics;pressure")
 foreach(batch_mode synthetic native)
     set(batch_flags)
     if(batch_mode STREQUAL "native")
@@ -316,6 +661,18 @@ foreach(range_cache_mode synthetic native)
     set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
+add_test(NAME vulkan-range-clean-cache-readonly-barrier
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/validation/read-only-transfer-barriers/check_log.py --run
+        ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+        --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
+        --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+        --vulkan-resident-mib 32 --vulkan-clean-cache --vulkan-min-savings-percent 100 --
+        $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+        --range-readonly-barrier-cache-fixture)
+set_tests_properties(vulkan-range-clean-cache-readonly-barrier PROPERTIES TIMEOUT 60
+    ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+    LABELS "hardware;vulkan;range;clean-cache;readonly-barrier;native-allocation")
 add_test(NAME vulkan-range-clean-cache-bootstrap
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_cache_bootstrap.py
         ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>)
@@ -728,3 +1085,14 @@ get_property(ZVRAM_TESTS DIRECTORY PROPERTY TESTS)
 set_tests_properties(${ZVRAM_TESTS} PROPERTIES TIMEOUT 60)
 set_tests_properties(vulkan-automatic-partial-freeze vulkan-automatic-partial-restore-retry PROPERTIES TIMEOUT 180)
 set_tests_properties(vulkan-graphics-cold-restore vulkan-graphics-active-cold-restore vulkan-graphics-native-allocation-cold-restore PROPERTIES TIMEOUT 45)
+if(ZVRAM_TEST_ASYNC_HOOK)
+    set_tests_properties(vulkan-cold-cycle-submit-sampler-baseline
+        vulkan-cold-cycle-submit-sampler-unlocked
+        vulkan-cold-cycle-cold-peer-submit-sampler-baseline
+        vulkan-cold-cycle-cold-peer-submit-sampler-unlocked
+        vulkan-cold-cycle-unlocked-cold-peer-hot-overlap
+        vulkan-cold-cycle-unlocked-cold-peer-wait
+        vulkan-async-candidate-read-completed
+        vulkan-async-candidate-read-held
+        vulkan-async-candidate-write-completed PROPERTIES TIMEOUT 30)
+endif()

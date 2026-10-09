@@ -1,0 +1,6 @@
+graphics-validation=on
+graphics-device=AMD Radeon RX 7900 XTX (RADV NAVI31) type=2
+draw-readback-ms p50=176.093 p95=184.24 max=184.24
+Vulkan validation error: loader_create_instance_chain: Failed to find 'vkGetInstanceProcAddr' in layer "liblsfg-vk-layer.so"
+Vulkan validation error: loader_create_device_chain: Failed to find 'vkGetInstanceProcAddr' in layer "liblsfg-vk-layer.so".  Skipping layer.
+FAIL: Vulkan validation reported errors

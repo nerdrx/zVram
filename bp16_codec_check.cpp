@@ -62,6 +62,32 @@ struct ImportedHostInputTestAccess {
         owner->poisoned_ = std::move(poisoned);
         return owner;
     }
+
+    static std::shared_ptr<std::atomic<bool>> sharePoisonAndSeedDecoder(
+            Decoder& decoder,const std::shared_ptr<Owner>& owner,
+            PFN_vkDestroyBuffer destroyBuffer,PFN_vkFreeMemory freeMemory,
+            PFN_vkUnmapMemory unmapMemory) {
+        auto poison=std::make_shared<std::atomic<bool>>(false);
+        owner->poisoned_=poison;
+        decoder.poisonState_=poison;
+        decoder.device_=fakeHandle<VkDevice>(41);
+        decoder.api_.destroyBuffer=destroyBuffer;
+        decoder.api_.freeMemory=freeMemory;
+        decoder.api_.unmapMemory=unmapMemory;
+        decoder.input_.buffer=fakeHandle<VkBuffer>(42);
+        decoder.input_.memory=fakeHandle<VkDeviceMemory>(43);
+        decoder.input_.mapped=reinterpret_cast<void*>(44);
+        decoder.initialized_=true;
+        return poison;
+    }
+    static bool poisoned(const Owner& owner) {
+        return owner.poisoned_ && owner.poisoned_->load(std::memory_order_acquire);
+    }
+private:
+    template<class H> static H fakeHandle(std::uintptr_t value) {
+        if constexpr(std::is_pointer_v<H>) return reinterpret_cast<H>(value);
+        else return static_cast<H>(value);
+    }
 };
 } // namespace zvram::gdeflate::gpu
 
@@ -210,6 +236,47 @@ void testImportedHostOwnerAccounting() {
     require(poisonedBudget->usedBytes() == 4096,
             "poisoned allocated-host owner released its budget reservation");
     std::free(poisonedHost); // The poisoned owner intentionally leaked this in production.
+
+    auto teardownBudget=std::make_shared<Budget>(4096);
+    require(teardownBudget->reserve(4096),"teardown poison budget reserve failed");
+    auto teardownOwner=zvram::gdeflate::gpu::ImportedHostInputTestAccess::make(
+        fakeHandle<VkDevice>(51),fakeHandle<VkBuffer>(52),fakeHandle<VkDeviceMemory>(53),
+        reinterpret_cast<void*>(54),true,fakeDestroyImportBuffer,fakeFreeImportMemory,
+        fakeUnmapAllocatedMemory,teardownBudget,4096);
+    Decoder teardownDecoder;
+    auto sharedPoison=zvram::gdeflate::gpu::ImportedHostInputTestAccess::sharePoisonAndSeedDecoder(
+        teardownDecoder,teardownOwner,fakeDestroyImportBuffer,fakeFreeImportMemory,
+        fakeUnmapAllocatedMemory);
+    const auto beforeDestroy=destroyedImportBuffers;
+    const auto beforeFree=freedImportMemory;
+    const auto beforeUnmap=unmappedAllocatedMemory;
+    teardownDecoder.abandonUnsafeDevice();
+    require(teardownDecoder.unsafe() && sharedPoison->load(std::memory_order_acquire) &&
+            zvram::gdeflate::gpu::ImportedHostInputTestAccess::poisoned(*teardownOwner),
+            "abandoning decoder did not poison shared imported owners");
+    teardownDecoder.destroy();
+    require(destroyedImportBuffers==beforeDestroy && freedImportMemory==beforeFree &&
+            unmappedAllocatedMemory==beforeUnmap && teardownBudget->usedBytes()==4096,
+            "abandoned decoder/owner destructor touched GPU resources or released reserved budget");
+    teardownDecoder.authorizeCleanupAfterIdleProof();
+    require(teardownDecoder.unsafe() && !sharedPoison->load(std::memory_order_acquire),
+            "idle proof authorization revived decoder or failed to release shared-owner poison");
+    teardownDecoder.destroy();
+    const auto afterAuthorizedDecoderCleanup=destroyedImportBuffers;
+    require(teardownDecoder.unsafe() && afterAuthorizedDecoderCleanup==beforeDestroy+1 &&
+            freedImportMemory==beforeFree+1 && unmappedAllocatedMemory==beforeUnmap+1,
+            "idle-proof cleanup did not release decoder handles exactly once");
+    teardownDecoder.destroy();
+    require(destroyedImportBuffers==afterAuthorizedDecoderCleanup && freedImportMemory==beforeFree+1,
+            "repeated idle-proof cleanup destroyed decoder handles twice");
+    teardownOwner.reset();
+    if(!(destroyedImportBuffers==beforeDestroy+2 && freedImportMemory==beforeFree+2 &&
+         unmappedAllocatedMemory==beforeUnmap+2 && teardownBudget->usedBytes()==0))
+        throw std::runtime_error("idle-proof owner cleanup counts: buffers="+
+            std::to_string(destroyedImportBuffers-beforeDestroy)+" frees="+
+            std::to_string(freedImportMemory-beforeFree)+" unmaps="+
+            std::to_string(unmappedAllocatedMemory-beforeUnmap)+" budget="+
+            std::to_string(teardownBudget->usedBytes()));
 
     Bytes raw(RawBytesPerBlock, 0), encoded;
     require(encodeFast(raw.data(), raw.size(), encoded), "tiny BP16 owner frame encode failed");

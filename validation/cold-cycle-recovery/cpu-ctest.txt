@@ -1,0 +1,261 @@
+Start testing: Oct 09 04:54 CEST
+----------------------------------------------------------
+1/122 Testing: cpu-live-control
+1/122 Test: cpu-live-control
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-live-control-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-live-control" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+PASS: private live control IPC, sequence, bounds, pending application and cleanup
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-live-control" end time: Oct 09 04:54 CEST
+"cpu-live-control" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/122 Testing: cpu-bp16-codec
+2/122 Test: cpu-bp16-codec
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-bp16-codec-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-bp16-codec" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+PASS: BP16 codec, upload worker partitions, and imported/allocated-host ownership, alignment, quota, and poison checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-bp16-codec" end time: Oct 09 04:54 CEST
+"cpu-bp16-codec" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/122 Testing: cpu-resident-budget
+3/122 Test: cpu-resident-budget
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-resident-budget-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-resident-budget" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+PASS: resident budget cap arithmetic and saturation
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-resident-budget" end time: Oct 09 04:54 CEST
+"cpu-resident-budget" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/122 Testing: cpu-resident-bootstrap
+4/122 Test: cpu-resident-bootstrap
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-resident-bootstrap-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-resident-bootstrap" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+[zvram] resident admission refused: submission working set exceeds limit-bytes=2097152 known=0
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=1048576 usage=0 tracked-local=0 reserve=1 effective-limit=1048575 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] snapshot state event=restore resident=1048576 cold-logical=0 cold-stored=0 freezes=0 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=4194304 usage=1048576 tracked-local=1048576 reserve=1 effective-limit=3145728 hard-limit=3145728
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=2097152 cold-logical=1048576 cold-stored=1048576 freezes=0 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=1048576 copy-ns=100 decode-bytes=1048576 decode-ns=25750 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=2621441 usage=1048576 tracked-local=2097152 reserve=1 effective-limit=2621440 hard-limit=3145728
+[zvram] snapshot cold bytes=1048576 stored=51 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=1048576 cold-logical=2097152 cold-stored=1048627 freezes=1 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=2097152 copy-ns=350 decode-bytes=1048576 decode-ns=25750 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=2 evicted-chunks=1 resident-before-restore=1048576 incoming-bytes=1048576 limit-bytes=2621440
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=2097152 cold-logical=1048576 cold-stored=51 freezes=1 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=3145728 copy-ns=370 decode-bytes=2097152 decode-ns=39750 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=2 restored-chunks=1 cold-pools-left=1
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=1048576 usage=0 tracked-local=0 reserve=1 effective-limit=1048575 hard-limit=1048576
+[zvram] resident admission refused: submission working set exceeds limit-bytes=1048575 known=0
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=10485760 usage=7340032 tracked-local=3145728 reserve=1048576 effective-limit=5242880 hard-limit=12582912
+[zvram] resident budget native-heap=0 budget=8388608 usage=7340032 tracked-local=0 reserve=1048576 effective-limit=0 hard-limit=2097152
+[zvram] snapshot state event=restore resident=2097152 cold-logical=0 cold-stored=0 freezes=0 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot state event=restore resident=2097152 cold-logical=0 cold-stored=0 freezes=0 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] access tracking fallback reason=vkCmdSetLineWidth command-count=1
+[zvram] snapshot app sparse bind batch count=2 unbind=0 view-release=1
+[zvram] snapshot cold bytes=1048576 stored=1048576 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=1048576 cold-stored=1048576 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=1048576 copy-ns=110 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=8388608 usage=0 tracked-local=0 reserve=1 effective-limit=2097152 hard-limit=2097152
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] cold-cycle local backing restored bytes=1048576 memory-type=1->0 duration-us=110
+[zvram] snapshot cold bytes=1048576 stored=1048576 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=1048576 cold-stored=1048576 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=1048576 copy-ns=410 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=8388608 usage=0 tracked-local=0 reserve=1 effective-limit=2097152 hard-limit=2097152
+[zvram] cold-cycle local recovery deferred result=-2; cold snapshot retained when available
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] cold-cycle local recovery deferred result=-2; cold snapshot retained when available
+[zvram] snapshot cold bytes=1048576 stored=1048576 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=1048576 cold-stored=1048576 freezes=1 restores=0 failures=1 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=2097152 copy-ns=100 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=8388608 usage=0 tracked-local=0 reserve=1 effective-limit=2097152 hard-limit=2097152
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] cold-cycle local backing restored bytes=1048576 memory-type=1->0 duration-us=107
+[zvram] snapshot cold bytes=1048576 stored=1048576 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=1048576 cold-stored=1048576 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=1048576 copy-ns=100 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=8388608 usage=0 tracked-local=0 reserve=1 effective-limit=2097152 hard-limit=2097152
+[zvram] cold-cycle local recovery deferred result=-2; cold snapshot retained when available
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot cold bytes=1048576 stored=1048576 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=1048576 cold-stored=1048576 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=1048576 copy-ns=90 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=8388608 usage=0 tracked-local=0 reserve=1 effective-limit=2097152 hard-limit=2097152
+[zvram] cold-cycle local recovery deferred result=-2; cold snapshot retained when available
+[zvram] cold-cycle local recovery deferred result=-2; cold snapshot retained when available
+[zvram] snapshot cold-budget refusal logical=1048576 encoded-prefix=0 cold=0 cache=0 limit=1048575 retained-resident=1
+[zvram] cold-cycle local recovery deferred result=-2; cold snapshot retained when available
+PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-resident-bootstrap" end time: Oct 09 04:54 CEST
+"cpu-resident-bootstrap" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/122 Testing: cpu-vulkan-ram-guard
+8/122 Test: cpu-vulkan-ram-guard
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_ram_guard.py"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-vulkan-ram-guard" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.35 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-vulkan-ram-guard" end time: Oct 09 04:54 CEST
+"cpu-vulkan-ram-guard" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/122 Testing: cpu-vulkan-compression-options
+9/122 Test: cpu-vulkan-compression-options
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_compression_options.py"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-vulkan-compression-options" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.67 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-vulkan-compression-options" end time: Oct 09 04:54 CEST
+"cpu-vulkan-compression-options" time elapsed: 00:00:02
+----------------------------------------------------------
+
+10/122 Testing: cpu-vulkan-model-budget
+10/122 Test: cpu-vulkan-model-budget
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/test_vulkan_model_budget.py"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-vulkan-model-budget" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.18 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-vulkan-model-budget" end time: Oct 09 04:54 CEST
+"cpu-vulkan-model-budget" time elapsed: 00:00:02
+----------------------------------------------------------
+
+11/122 Testing: cpu-compression-policy
+11/122 Test: cpu-compression-policy
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-compression-policy-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-compression-policy" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+COMPRESSION_POLICY_OK including uint64 boundary checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-compression-policy" end time: Oct 09 04:54 CEST
+"cpu-compression-policy" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/122 Testing: cpu-clean-cache-policy
+12/122 Test: cpu-clean-cache-policy
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-clean-cache-policy-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-clean-cache-policy" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-clean-cache-policy" end time: Oct 09 04:54 CEST
+"cpu-clean-cache-policy" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/122 Testing: cpu-snapshot-decode
+13/122 Test: cpu-snapshot-decode
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-snapshot-decode-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-snapshot-decode" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+PASS: serial/parallel mixed Zstd+BP16+RAW+stride2/4, odd tails, canaries, corruption, truncation, metadata, and bounds
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-snapshot-decode" end time: Oct 09 04:54 CEST
+"cpu-snapshot-decode" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/122 Testing: cpu-gdeflate-envelope
+14/122 Test: cpu-gdeflate-envelope
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-gdeflate-envelope-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-gdeflate-envelope" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+PASS: synthetic GDeflate envelope headers, metadata, bounds, alignment, and tile tables
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-gdeflate-envelope" end time: Oct 09 04:54 CEST
+"cpu-gdeflate-envelope" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/122 Testing: cpu-snapshot-pipeline
+15/122 Test: cpu-snapshot-pipeline
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-snapshot-pipeline-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-snapshot-pipeline" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+PASS: bounded decode-ahead (async), replacement, join, corruption and capacity checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-snapshot-pipeline" end time: Oct 09 04:54 CEST
+"cpu-snapshot-pipeline" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/122 Testing: cpu-active-refs
+17/122 Test: cpu-active-refs
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-active-refs-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"cpu-active-refs" start time: Oct 09 04:54 CEST
+Output:
+----------------------------------------------------------
+active refs checks passed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-active-refs" end time: Oct 09 04:54 CEST
+"cpu-active-refs" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 09 04:54 CEST

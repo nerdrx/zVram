@@ -1,0 +1,55 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 64
+    Start 64: vulkan-cold-cycle-native-recovery-single
+
+64: Test command: /usr/bin/python3.14 "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "4" "--vulkan-resident-mib" "64" "--vulkan-eviction-trigger" "pressure" "--vulkan-lazy-backing" "--vulkan-headroom-mib" "1" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-vulkan-auto-check" "--cold-cycle-recovery-fixture" "--native-allocation" "--expect-direct-recovery"
+64: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+64: Environment variables: 
+64:  ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1
+64:  VK_LOADER_LAYERS_DISABLE=~implicit~
+64: Test timeout computed to be: 60
+64: [zvram] Vulkan snapshot transfer staging bytes=33554432
+64: [zvram] Vulkan snapshot decode max-workers=1
+64: [zvram] Vulkan snapshot lookahead staging bytes=33554432
+64: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+64: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+64: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+64: [zvram] cold-cycle backing recovery enabled quiet-ms=1000 max-child-bytes=33554432; no in-place TTM migration
+64: [zvram] Vulkan range residency enabled chunk-bytes=4194304
+64: [zvram] Vulkan resident admission enabled limit-bytes=67108864
+64: [zvram] Vulkan eviction policy=lru
+64: [zvram] Vulkan snapshot minimum savings percent=0
+64: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+64: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=33554432 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+64: [zvram] native allocation segmented bytes=33554432 children=8
+64: [zvram] virtual free bytes=33554432
+64: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+64: [zvram] snapshot transfer profile copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0
+64: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=33554432 live-nonlocal=0 peak-nonlocal=0 allocation-failures=0
+64: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+64: error: query initial direct-recovery backing type failed: -8
+1/1 Test #64: vulkan-cold-cycle-native-recovery-single ...***Failed    0.19 sec
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+cold-cycle           =   0.19 sec*proc (1 test)
+hardware             =   0.19 sec*proc (1 test)
+native-allocation    =   0.19 sec*proc (1 test)
+test-hook            =   0.19 sec*proc (1 test)
+vulkan               =   0.19 sec*proc (1 test)
+
+Total Test time (real) =   0.19 sec
+
+The following tests FAILED:
+	 64 - vulkan-cold-cycle-native-recovery-single (Failed) cold-cycle hardware native-allocation test-hook vulkan
+Errors while running CTest
+Output from these tests are in: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/Testing/Temporary/LastTest.log
+Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.

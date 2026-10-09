@@ -1,0 +1,286 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config
+      Start  1: cpu-bp16-codec
+Could not find executable /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-bp16-codec-check
+Looked in the following places:
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-bp16-codec-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-bp16-codec-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-bp16-codec-check
+Unable to find executable: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-bp16-codec-check
+ 1/11 Test  #1: cpu-bp16-codec ...................***Not Run   0.00 sec
+      Start  2: cpu-resident-budget
+Could not find executable /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-budget-check
+Looked in the following places:
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-resident-budget-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-resident-budget-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-resident-budget-check
+Unable to find executable: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-budget-check
+ 2/11 Test  #2: cpu-resident-budget ..............***Not Run   0.00 sec
+      Start  3: cpu-resident-bootstrap
+Could not find executable /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-bootstrap-check
+Looked in the following places:
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-resident-bootstrap-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-resident-bootstrap-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-resident-bootstrap-check
+Unable to find executable: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-resident-bootstrap-check
+ 3/11 Test  #3: cpu-resident-bootstrap ...........***Not Run   0.00 sec
+      Start  7: cpu-vulkan-ram-guard
+ 4/11 Test  #7: cpu-vulkan-ram-guard .............   Passed    0.27 sec
+      Start  8: cpu-vulkan-compression-options
+ 5/11 Test  #8: cpu-vulkan-compression-options ...   Passed    2.93 sec
+      Start  9: cpu-vulkan-model-budget
+ 6/11 Test  #9: cpu-vulkan-model-budget ..........   Passed    2.24 sec
+      Start 10: cpu-compression-policy
+Could not find executable /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-compression-policy-check
+Looked in the following places:
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-compression-policy-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-compression-policy-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-compression-policy-check
+Unable to find executable: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-compression-policy-check
+ 7/11 Test #10: cpu-compression-policy ...........***Not Run   0.00 sec
+      Start 11: cpu-snapshot-decode
+Could not find executable /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-decode-check
+Looked in the following places:
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-snapshot-decode-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-snapshot-decode-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-snapshot-decode-check
+Unable to find executable: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-decode-check
+ 8/11 Test #11: cpu-snapshot-decode ..............***Not Run   0.00 sec
+      Start 12: cpu-gdeflate-envelope
+Could not find executable /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-gdeflate-envelope-check
+Looked in the following places:
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-gdeflate-envelope-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-gdeflate-envelope-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-gdeflate-envelope-check
+Unable to find executable: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-gdeflate-envelope-check
+ 9/11 Test #12: cpu-gdeflate-envelope ............***Not Run   0.00 sec
+      Start 13: cpu-snapshot-pipeline
+Could not find executable /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-pipeline-check
+Looked in the following places:
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-snapshot-pipeline-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-snapshot-pipeline-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-snapshot-pipeline-check
+Unable to find executable: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-snapshot-pipeline-check
+10/11 Test #13: cpu-snapshot-pipeline ............***Not Run   0.00 sec
+      Start 15: cpu-active-refs
+Could not find executable /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-active-refs-check
+Looked in the following places:
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-active-refs-check
+/home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Release/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Debug/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/MinSizeRel/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/RelWithDebInfo/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Deployment/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-active-refs-check
+home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/Development/zvram-active-refs-check
+Unable to find executable: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/bp16-gpu-config/zvram-active-refs-check
+11/11 Test #15: cpu-active-refs ..................***Not Run   0.00 sec
+
+27% tests passed, 8 tests failed out of 11
+
+Total Test time (real) =   5.44 sec
+
+The following tests FAILED:
+	  1 - cpu-bp16-codec (Not Run)
+	  2 - cpu-resident-budget (Not Run)
+	  3 - cpu-resident-bootstrap (Not Run)
+	 10 - cpu-compression-policy (Not Run)
+	 11 - cpu-snapshot-decode (Not Run)
+	 12 - cpu-gdeflate-envelope (Not Run)
+	 13 - cpu-snapshot-pipeline (Not Run)
+	 15 - cpu-active-refs (Not Run)
+Errors while running CTest

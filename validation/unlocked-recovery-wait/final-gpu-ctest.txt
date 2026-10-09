@@ -1,0 +1,18 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+    Start 67: vulkan-cold-cycle-unlocked-wait-overlap
+1/2 Test #67: vulkan-cold-cycle-unlocked-wait-overlap .....   Passed    0.12 sec
+    Start 68: vulkan-cold-cycle-unlocked-cold-peer-wait
+2/2 Test #68: vulkan-cold-cycle-unlocked-cold-peer-wait ...   Passed    0.08 sec
+
+100% tests passed out of 2
+
+Label Time Summary:
+cold-cycle           =   0.21 sec*proc (2 tests)
+cold-restore         =   0.08 sec*proc (1 test)
+hardware             =   0.21 sec*proc (2 tests)
+native-allocation    =   0.21 sec*proc (2 tests)
+test-hook            =   0.21 sec*proc (2 tests)
+unlocked-wait        =   0.21 sec*proc (2 tests)
+vulkan               =   0.21 sec*proc (2 tests)
+
+Total Test time (real) =   0.21 sec

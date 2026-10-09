@@ -1,0 +1,15 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+    Start 69: vulkan-range-clean-cache-readonly-barrier
+1/1 Test #69: vulkan-range-clean-cache-readonly-barrier ...   Passed    0.39 sec
+
+100% tests passed out of 1
+
+Label Time Summary:
+clean-cache          =   0.39 sec*proc (1 test)
+hardware             =   0.39 sec*proc (1 test)
+native-allocation    =   0.39 sec*proc (1 test)
+range                =   0.39 sec*proc (1 test)
+readonly-barrier     =   0.39 sec*proc (1 test)
+vulkan               =   0.39 sec*proc (1 test)
+
+Total Test time (real) =   0.39 sec

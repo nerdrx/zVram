@@ -1,0 +1,22 @@
+[
+  {
+    "label": "before-2",
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=9 max-us=10491 cap-ack=1 freeze-delta=1"
+  },
+  {
+    "label": "after-1",
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=15 max-us=9764 cap-ack=1 freeze-delta=1"
+  },
+  {
+    "label": "before-3",
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=11 max-us=12622 cap-ack=1 freeze-delta=1"
+  },
+  {
+    "label": "after-2",
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=3 p95-us=13 max-us=9768 cap-ack=1 freeze-delta=1"
+  }
+]

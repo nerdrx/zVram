@@ -507,7 +507,7 @@ def main():
     native = run_interactive("native", app, env, output, args.timeout, False,
                              args.min_available_mib,
                              max_swap_growth_mib=args.max_swap_growth_mib)
-    command = [str(launcher), "--vulkan-virtual-gib", "96", "--vulkan-auto-idle-ms",
+    command = [str(launcher), "--no-live-control", "--vulkan-virtual-gib", "96", "--vulkan-auto-idle-ms",
                str(args.idle_ms), "--vulkan-cold-mib", str(args.cold_mib)]
     if args.build_dir:
         command += ["--build-dir", str(args.build_dir.expanduser().resolve())]

@@ -1,0 +1,77 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 72
+    Start 72: vulkan-cold-cycle-unlocked-cold-peer-hot-overlap
+
+72: Test command: /usr/bin/python3.14 "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "4" "--vulkan-resident-mib" "64" "--vulkan-eviction-trigger" "pressure" "--vulkan-lazy-backing" "--vulkan-headroom-mib" "1" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-vulkan-auto-check" "--native-allocation" "--two-queues" "--unlocked-recovery-cold-peer-hot-fixture"
+72: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+72: Environment variables: 
+72:  VK_VALIDATION_VALIDATE_SYNC=1
+72:  ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1
+72:  ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0
+72:  ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1
+72:  VK_LOADER_LAYERS_DISABLE=~implicit~
+72: Test timeout computed to be: 30
+72: [zvram] Vulkan snapshot transfer staging bytes=33554432
+72: [zvram] Vulkan snapshot decode max-workers=1
+72: [zvram] Vulkan snapshot lookahead staging bytes=33554432
+72: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+72: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+72: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+72: [zvram] cold-cycle backing recovery enabled quiet-ms=0 max-child-bytes=33554432 unlocked-wait=1; no in-place TTM migration
+72: [zvram] Vulkan range residency enabled chunk-bytes=4194304
+72: [zvram] Vulkan resident admission enabled limit-bytes=67108864
+72: [zvram] Vulkan eviction policy=lru
+72: [zvram] Vulkan snapshot minimum savings percent=0
+72: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+72: [zvram] virtual allocate bytes=4194304 heap-capacity=134217728
+72: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=4194304 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=37748736 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] native allocation segmented bytes=33554432 children=8
+72: [zvram] resident budget native-heap=1 budget=21458866176 usage=8740864 tracked-local=0 reserve=1048576 effective-limit=67108864 hard-limit=67108864
+72: [zvram] snapshot state event=restore resident=4194304 cold-logical=33554432 cold-stored=0 freezes=0 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] snapshot state event=restore resident=8388608 cold-logical=29360128 cold-stored=0 freezes=0 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] snapshot state event=restore resident=12582912 cold-logical=25165824 cold-stored=0 freezes=0 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] snapshot state event=restore resident=16777216 cold-logical=20971520 cold-stored=0 freezes=0 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] snapshot state event=restore resident=20971520 cold-logical=16777216 cold-stored=0 freezes=0 restores=5 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] snapshot state event=restore resident=25165824 cold-logical=12582912 cold-stored=0 freezes=0 restores=6 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] snapshot state event=restore resident=29360128 cold-logical=8388608 cold-stored=0 freezes=0 restores=7 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] snapshot state event=restore resident=33554432 cold-logical=4194304 cold-stored=0 freezes=0 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] selective range restore selected-chunks=8 restored-chunks=8 cold-pools-left=1
+72: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+72: [zvram] access tracking fallback reason=vkCmdClearColorImage command-count=1
+72: [zvram] warm-recovery local-copy bytes=4194304 memory-type=2->0 duration-us=9115
+72: [zvram] selective restore fallback: untracked command, descriptor or address shader
+72: [zvram] snapshot state event=restore resident=37748736 cold-logical=0 cold-stored=0 freezes=0 restores=9 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=220471 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] virtual free bytes=33554432
+72: [zvram] virtual free bytes=4194304
+72: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=9 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=220471 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+72: [zvram] snapshot transfer profile copy-calls=1 copy-bytes=4194304 copy-ns=220471 decode-bytes=0 decode-ns=0
+72: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=37748992 live-nonlocal=0 peak-nonlocal=37748736 allocation-failures=0
+72: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+72: PASS: disjoint HOT submit proceeded while unrelated cold peer stayed cold; matching/unknown waited; bytes and cleanup verified
+1/1 Test #72: vulkan-cold-cycle-unlocked-cold-peer-hot-overlap ...   Passed    0.15 sec
+
+The following tests passed:
+	vulkan-cold-cycle-unlocked-cold-peer-hot-overlap
+
+100% tests passed out of 1
+
+Label Time Summary:
+cold-cycle           =   0.15 sec*proc (1 test)
+cold-peer            =   0.15 sec*proc (1 test)
+hardware             =   0.15 sec*proc (1 test)
+hot-overlap          =   0.15 sec*proc (1 test)
+native-allocation    =   0.15 sec*proc (1 test)
+test-hook            =   0.15 sec*proc (1 test)
+unlocked-wait        =   0.15 sec*proc (1 test)
+validation           =   0.15 sec*proc (1 test)
+vulkan               =   0.15 sec*proc (1 test)
+
+Total Test time (real) =   0.15 sec

@@ -1,0 +1,250 @@
+# Unlocked recovery copy wait prototype
+
+Experimental, default off: `ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1` requires
+explicit local recovery. The installed v0.4.19 release remains unchanged.
+
+The worker retains the old and replacement allocations, private views, and
+copy fence. It releases the device and queue locks only while waiting for the
+copy fence. Sparse alias transitions remain synchronous. On completion it
+revalidates allocation, child, binding, backing, and device-error state and
+rechecks the current cap before committing; a reduced cap can roll back.
+
+Known, disjoint hot submissions may proceed only when no cold data exists.
+Matching, unknown, cold-restoration, admission-eviction, and mutation paths
+join the pending transaction. Known-empty signals bypass restoration.
+Condition-variable waits release the device lock, allowing completion to run.
+
+The compile-only hook holds the worker after both locks are released. A
+compile-only waiter counter proves submissions reached the pending wait;
+pre-submit thread scheduling alone is not counted as proof. Fixtures cover
+disjoint progress and matching/unknown joins, then a separate pristine cold
+peer fill/restore. Each checks full data and accounting after release.
+
+Root's 13 normal CPU checks passed (`final-cpu-ctest.txt`), including pending
+admission retry, known-empty submits with cold groups, stale identity rejection,
+cap rollback, lock release/wakeup, and retained-resource teardown. Both normal
+and hook bootstrap checks passed. The selected 13 Python checks also passed.
+
+Both deterministic GPU overlap tests passed in 0.21 seconds
+(`final-gpu-ctest.txt`, `final-gpu-details.txt`). They verify the original full
+32 MiB pattern, the additional 4 MiB cold peer's fill pattern, actual pending
+waiter entry, and zero resident/cold/failure accounting at teardown. During the
+artificially held hook, the disjoint hot submission returned in 44 microseconds;
+matching and unknown submissions waited for release. That is a single
+call-progress observation, not unhooked recovery latency or a game benchmark.
+
+Three existing BDA/busy-two-queue/hot-pending-two-queue gates passed with unlocked
+wait enabled. The ordinary async stale-pressure regression passed separately.
+Its first mixed batch rejected an invalid unlocked-without-recovery setting;
+that configuration failure is preserved in the regression log.
+
+Initial fixture failures are preserved: omitted storage usage, an unsupported
+overlapping alias, extra-peer accounting, a legacy sampler with no samples,
+and whole-buffer barrier tracking plus a staging write hazard. The final probe
+uses a global write-to-transfer-read/write memory dependency and exact-range
+copies. No production tracking guard was weakened to obtain these passes.
+These are access/lifetime and lock-progress checks, not game FPS or a claim
+that spikes are eliminated. Sparse setup/finalization still waits under locks;
+general graphics access tracking and kernel-transparent GTT placement remain
+unchanged. Proven-idle teardown explicitly cleans retained resources and app
+destroy/free requests deferred during a gate. Synthetic error codes alone do
+not authorize cleanup: the driver must return success or device loss from its
+idle wait. Allocator policy matches ordinary destruction/free paths. The
+[Vulkan lost-device rules](https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html#devsandqueues-lost-device)
+require explicit child destruction and treat device loss as completion for
+determining whether resources remain in use. Other ambiguous wait errors do
+not establish safe completion and remain an abnormal teardown limitation.
+This prototype is not published or installed.
+
+A later deterministic hardware gate holds the pending copy, lowers the live
+cap from 64 to 32 MiB, and verifies rollback to child zero's original NONLOCAL
+backing. Seven local children plus an ordinary 4 MiB local allocation exactly
+fill the new cap; the replacement would exceed it. The gate passed in 0.31 s,
+with all 32 MiB bytes intact, no additional freeze/restore/failure, and zero
+tracked and driver-allocation accounting after cleanup (`late-cap-details.txt`).
+Both Build workflows for d791d90 passed. This adds rollback proof, not a
+release or a game-performance claim.
+
+Finite buffer barriers now retain their named child ranges in all four barrier
+wrappers: pipeline barriers and wait events, legacy and synchronization2. Only
+promoted buffers with a nonzero finite in-bounds range, no extension chain, and
+both queue families ignored are narrowed. Whole-size, ownership, unsupported,
+and invalid cases retain whole/unknown handling; write classification remains
+conservative. Vulkan specifies buffer-barrier access scopes over the named
+[legacy range](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferMemoryBarrier.html)
+and [synchronization2 range](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferMemoryBarrier2.html).
+The driver receives the original synchronization unchanged.
+
+The new finite-barrier overlap gate passed in 0.29 seconds with actual pending
+waiter entry, child-one hot progress, child-zero/unknown blocking, full 32 MiB
+integrity, and empty cleanup (`finite-barrier-gpu-details.txt`). Thirteen normal
+CPU checks passed in 5.71 seconds; wrapper tests cover binding offsets, write
+tracking, and boundary/fallback cases. Native clean-cache plus unchanged
+conservative graphics gates passed in 1.20 seconds. Both normal/hook libraries
+and bootstrap targets built; all six test API names remain absent from the
+normal library. These are correctness and held-hook progress gates, not game
+latency/FPS measurements. Installed v0.4.19 remains unchanged.
+
+The first unhooked app-call pair passed five fresh 32 MiB transactions per mode
+(1.37 s baseline, 1.17 s unlocked), checking the exact child-one 4 MiB sample
+pattern, child-zero promotion, full initial/final bytes, and empty cleanup. A
+pre-recorded finite-range copy runs at 5 ms cadence for 200 ms after recovery
+unpause; setup, fence wait/reset, status and backing queries stay outside the
+timed call. No recovery wait hook is installed. Optional profile events expose
+same-process monotonic copy-phase intervals while retaining existing log lines.
+Those intervals include copy setup/submission/wait and unlocked lock reacquisition;
+they are not isolated GPU fence time.
+
+The initial pair is **inconclusive**: 195 baseline calls missed every copy-phase
+interval, while only one of 195 unlocked calls intersected. The approximately
+0.55–0.97 ms phases are shorter than the sampling cadence. No speedup is inferred
+from whole-window distributions. Raw logs and strict post-run correlation are
+in `unhooked-baseline.txt`, `unhooked-unlocked.txt`, `unhooked-summary.json`, and
+`analyze_unhooked.py`. The parser requires successful transactions and phase
+intersection in both modes before labeling a pair window-correlated.
+
+A bounded refinement samples every 1 ms only 40–75 ms after the final child-zero
+submit, retaining 5 ms cadence elsewhere. Both modes use identical probes. The
+first refined pair passed byte checks but a buffered stdout header was split
+by stderr; its logs (`unhooked-burst-*.txt`) are preserved and rejected for
+comparison. Timestamp records now flush as complete short lines outside timing.
+
+The final pair passed five transactions per mode (1.18 s each), with 332 baseline
+and 330 unlocked calls, full bytes, no validation errors and empty cleanup. Four
+of five transaction pairs had actual call/copy-phase intersections on both
+sides; only those pairs qualify for overlap comparison. Their baseline calls
+were 451/431/1001/486 microseconds versus unlocked maxima 331/26/172/10
+microseconds, respectively. This is one window-correlated component pair. The
+whole-window p95 was **worse** unlocked: 90.5 versus 38.0 microseconds; p50 was
+15.7 versus 10.2 microseconds. Therefore this does not establish a broad or
+stable latency improvement, game FPS, or eliminated spikes. Sparse phases and
+lock reacquisition remain represented in the profile interval.
+
+`unhooked-final-{baseline,unlocked}.txt` and `unhooked-final-summary.json` retain
+the final observations. The parser verifies all five successful transactions,
+quiet eligibility, complete contiguous sample records and pair-specific
+intersection; unmatched pairs remain excluded. Installed v0.4.19 is unchanged
+and this prototype is still not recommended for release or default enablement.
+
+One reversed-order pair (unlocked first, baseline second) passed all five
+transactions per mode in 1.18 s each. Four pairs again intersected the real
+copy-phase window on both sides: baseline calls were 938/841/378/585
+microseconds versus unlocked calls 40/9/34/81 microseconds. Unmatched pairs
+remain excluded. Whole-window p95 was nearly equal (baseline 68.3, unlocked
+69.5 microseconds); medians were 12.9 and 15.5 microseconds. This supports
+shorter phase-correlated submit stalls in this small disjoint-copy workload,
+not a stable general latency/FPS gain. It also shows that the earlier p95
+difference is not consistently reproduced by this order check. No code or
+configuration changed between these runs. The read-only path audit found no
+environment-specific submit work when no recovery is pending.
+
+See `unhooked-reverse-{baseline,unlocked}.txt` and
+`unhooked-reverse-summary.json`. Memory PSI stayed zero; the initial background
+GPU snapshot was 60 percent, with no game/model runner. All bytes and cleanup
+checks passed. This bounded order check ends the current timing experiment;
+release/default decisions still require the outstanding teardown review.
+
+## Teardown queue-idle fallback follow-up
+
+A failed real `vkDeviceWaitIdle` can be followed by real `vkQueueWaitIdle`
+on each unique application/private-copy/sparse queue after the worker joins,
+under the existing locks. This is permitted only with a complete queue
+inventory; missing retrieved handles disable the fallback. Every wait must
+return success or real device loss before deferred/retained resources may be
+freed. A synthetic layer error never supplies this proof. The Vulkan
+[device-loss rules](https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html#devsandqueues-lost-device)
+treat a real device-loss result as success only for pending/in-use state.
+
+All 13 normal CPU CTests passed (5.81 seconds), and the rebuilt hook bootstrap
+passed. The gates cover complete all-success and real device-loss proof,
+partial error with no cleanup, later successful cleanup with copied callbacks,
+duplicate handles, incomplete/empty inventories and the ordinary device-idle
+success path. All six test APIs remain absent from the normal shared library.
+No GPU fault was reproduced or injected. See `queue-idle-fallback/`. The first
+root run caught a fixture assertion reading the last destroy callback after
+private-view destroys had correctly replaced it with null. The application
+callback assertion was moved directly after the application destroy, retaining
+all resource/count checks; the failed run is preserved. This follow-up does
+not resolve the abnormal case where both device and queue waits return other
+errors. In that case decoder destruction and native-device teardown remain
+an explicit unresolved limitation; this is not a release safety claim.
+
+## Decoder abandonment follow-up
+
+When neither device-idle nor complete queue-idle checks prove completion,
+explicitly poison the decoder and its shared imported/raw host-input owners
+before clearing the virtual-memory groups or calling native device destruction.
+This prevents their destructors from unmapping or destroying uncertain resources
+and from making Vulkan calls after device destruction. Existing shared poison
+state also retains imported host allocations and their budget reservations.
+It deliberately abandons resources; it does not establish safe child cleanup
+or repair the unresolved abnormal-device teardown. All 13 normal CPU CTests
+and both hook bootstrap/BP16 checks passed; the actual device-destroy observer
+checks poisoning before the native callback. See `decoder-abandonment/`.
+
+## Proven decoder cleanup follow-up
+
+After real device-idle or complete queue-idle proof, an already-poisoned
+decoder authorizes one destructor cleanup pass and clears only its shared
+owner-poison flag. Its private poison remains set, so runtime operations stay
+blocked. Child owners can unmap/destroy/free and release their budgets before
+native device destruction. Existing final profile/accounting logs still run
+before decoder reset; cleanup consumes its permission once and leaves the
+decoder unusable. A failed proof still takes the abandonment path.
+
+All 13 normal CPU CTests passed (6.35 seconds), plus both hook bootstrap/BP16
+checks (0.03 seconds). Actual device-destroy tests cover real success, device
+loss and unproven failure, including callback counts before native destruction
+and no later driver calls. Shared-owner tests verify retained resources before
+proof, exact-once decoder/owner cleanup afterward and budget release. Normal
+libraries contain none of the six test APIs. See `proven-decoder-cleanup/`.
+These are mocked lifecycle failures; no GPU device fault was reproduced. The
+unproven double-idle-error resource-retention/native-child cleanup limitation
+remains documented, and this follow-up does not change that policy.
+
+## Disjoint hot submission with unrelated cold data
+
+The pending-copy gate now classifies exact, finite, resident child references.
+Valid backing/view/type/heap metadata and disjointness from the pending recovery
+child are required. Those calls skip cold restoration for that invocation even
+when unrelated cold data exists. Selected cold children, whole-allocation uses,
+missing metadata, the recovery child and unknown accesses still wait.
+
+Resident admission remains unchanged. If the cap requires eviction, the call
+joins pending recovery before any poll/eviction and retries with the current
+cap. A late unknown-command flag keeps conservative accepted-use/write tracking,
+but cannot route this already-classified call into shared snapshot restoration.
+This remains part of the default-off unlocked-wait prototype, not a graphics
+tracking whitelist or a game-performance claim.
+
+All 13 normal CPU CTests passed (6.01 seconds), including actual queueCall
+late-unknown and admission-wait/retry cases. The admission fixture initially
+failed because mock backings retained invalid lazy memory-type metadata, then
+because its cold-byte counter did not match the manually configured hot state.
+Both failed logs are preserved under `hot-with-cold-peer/`; production guards
+were retained. Normal and hook layer/bootstrap builds passed; all six test APIs
+remain absent from the normal library.
+
+The new two-queue hardware gate passed with synchronization validation (0.15
+seconds): a finite child-one barrier/copy completed while the unrelated pristine
+4 MiB peer remained cold, with no additional restores/freezes. Actual waiter
+counts proved matching child-zero and unknown submissions joined recovery.
+After release, all original 32 MiB and the peer's 4 MiB fill pattern verified;
+resident/cold/error and driver live-allocation counters returned to zero.
+The selected-cold-peer wait and late-cap rollback regressions also passed
+(0.19 seconds combined). See `gpu-hot-overlap.txt` and `gpu-regressions.txt`.
+
+Before these small tests, memory PSI averages were zero, available RAM was about
+25 GiB, and no game/model runner was found (the Ollama daemon remained idle).
+Background GPU utilization was 61–62 percent; user applications and LACT auto
+settings were preserved. The held hook proves admission/progress and data
+safety, not natural GPU latency or FPS. Sparse phases remain synchronous;
+general graphics tracking and ambiguous double-idle teardown limits remain.
+
+The follow-up natural sampler adds the same unrelated pristine 4 MiB peer to
+both modes and preserves the old no-peer tests. One fresh pair captured all
+five recovery intervals: overlapping submit calls were 578–922 µs baseline
+versus 10–470 µs unlocked. All bytes, cold-peer state and cleanup passed with
+synchronization validation. Whole-window p95 was 98.611/101.780 µs; this is a
+narrow component observation, not stable overall latency or FPS evidence.
+See `natural-cold-peer/` for raw logs, strict peer-aware analysis and limits.
