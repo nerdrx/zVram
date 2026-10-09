@@ -78,7 +78,7 @@ if args.live_control:
     if args.vulkan_virtual_gib is None and args.vulkan_virtual_mib is None:
         args.vulkan_virtual_gib = 96
     defaults = dict(vulkan_auto_idle_ms=1000, vulkan_cold_mib=4096, vulkan_range_mib=32,
-                    vulkan_resident_mib=max(256, int(max((c['vram_total_mib'] for c in gpu_status()), default=8192) * .5)),
+                    vulkan_resident_mib=max(256, int(max((c['vram_total_mib'] for c in gpu_status()), default=8192))),
                     vulkan_headroom_mib=1536)
     for key, value in defaults.items():
         if getattr(args, key) is None:

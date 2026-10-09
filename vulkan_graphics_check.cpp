@@ -443,7 +443,7 @@ struct Fixture {
 }
 
 int main(int argc,char** argv) {
-    bool native=false, present=false, nativeAllocation=false, expectLazy=false; unsigned frames=3;
+    bool native=false, present=false, nativeAllocation=false, expectLazy=false, warmResidency=false; unsigned frames=3, frameDelayMs=0;
 #ifdef ZVRAM_GRAPHICS_SDL2
     SDL_Window* window=nullptr; bool sdlReady=false;
 #endif
@@ -452,11 +452,13 @@ int main(int argc,char** argv) {
             if(std::strcmp(argv[i],"--native")==0) native=true;
             else if(std::strcmp(argv[i],"--native-allocation")==0) nativeAllocation=true;
             else if(std::strcmp(argv[i],"--expect-lazy-backing")==0) expectLazy=true;
-            else if(std::strcmp(argv[i],"--frames")==0 && i+1<argc) { frames=static_cast<unsigned>(std::stoul(argv[++i])); require(frames>=2 && frames<=3,"--frames must be 2 or 3"); }
+            else if(std::strcmp(argv[i],"--frames")==0 && i+1<argc) { frames=static_cast<unsigned>(std::stoul(argv[++i])); require(frames>=2 && frames<=120,"--frames must be 2..120"); }
+            else if(std::strcmp(argv[i],"--warm-residency")==0) warmResidency=true;
+            else if(std::strcmp(argv[i],"--frame-delay-ms")==0 && i+1<argc) { frameDelayMs=static_cast<unsigned>(std::stoul(argv[++i])); require(frameDelayMs<=1000,"frame delay maximum is 1000 ms"); }
 #ifdef ZVRAM_GRAPHICS_SDL2
             else if(std::strcmp(argv[i],"--present")==0) present=true;
 #endif
-            else throw std::runtime_error("usage: vulkan-graphics-check [--native] [--native-allocation] [--expect-lazy-backing] [--present] [--frames 2|3]");
+            else throw std::runtime_error("usage: vulkan-graphics-check [--native] [--native-allocation] [--expect-lazy-backing] [--present] [--warm-residency] [--frame-delay-ms 0..1000] [--frames 2..120]");
         }
         require(!expectLazy || !native,"lazy backing check requires zVram");
 #ifdef ZVRAM_GRAPHICS_SDL2
@@ -480,13 +482,20 @@ int main(int argc,char** argv) {
                 std::cout<<"PASS: lazy bootstrap resident=0 cold-logical="<<initial.coldLogicalBytes<<" cold-stored=0\n";
             }
             f.uploadInput(input);
-            if(!native) f.waitCold(initial.freezes);
+            if(!native && !warmResidency) f.waitCold(initial.freezes);
+            std::vector<double> frameTimes;
             for(unsigned i=0;i<frames;++i) {
+                if(frameDelayMs) std::this_thread::sleep_for(std::chrono::milliseconds(frameDelayMs));
                 const auto before=native?Stats{}:f.stats();
-                if(!native) require(before.coldLogicalBytes>=BufferBytes && before.residentBytes==0,"draw did not begin fully cold");
+                if(!native && !warmResidency) require(before.coldLogicalBytes>=BufferBytes && before.residentBytes==0,"draw did not begin fully cold");
+                if(!native && warmResidency) require(before.residentBytes>=BufferBytes && before.coldLogicalBytes==0 && before.freezes==initial.freezes,"warm graphics data was needlessly evicted");
+                const auto start=std::chrono::steady_clock::now();
                 f.drawAndVerify(input,i);
-                if(!native) { const auto after=f.stats(); require(after.restores>before.restores,"graphics use did not restore cold buffer"); std::cout<<"frame="<<i<<" cold-bytes="<<after.coldStoredBytes<<'/'<<after.coldLogicalBytes<<" restores="<<after.restores<<'\n'; f.waitCold(before.freezes); }
+                frameTimes.push_back(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count());
+                if(!native && !warmResidency) { const auto after=f.stats(); require(after.restores>before.restores,"graphics use did not restore cold buffer"); std::cout<<"frame="<<i<<" cold-bytes="<<after.coldStoredBytes<<'/'<<after.coldLogicalBytes<<" restores="<<after.restores<<'\n'; f.waitCold(before.freezes); }
             }
+            std::sort(frameTimes.begin(),frameTimes.end());
+            std::cout<<"draw-readback-ms p50="<<frameTimes[frameTimes.size()/2]<<" p95="<<frameTimes[(frameTimes.size()*95+99)/100-1]<<" max="<<frameTimes.back()<<'\n';
             validationOn=f.validationOn;
         }
         require(validationErrors.load()==0,"Vulkan validation reported errors");
@@ -494,7 +503,7 @@ int main(int argc,char** argv) {
         if(window) SDL_DestroyWindow(window);
         if(sdlReady) SDL_Quit();
 #endif
-        std::cout<<"PASS: "<<frames<<(present?" presented":" offscreen")<<" draw/readback frames"<<(native?" (native mode)":" with cold restore")<<" validation="<<(validationOn?"on":"unavailable")<<"\n";
+        std::cout<<"PASS: "<<frames<<(present?" presented":" offscreen")<<" draw/readback frames"<<(native?" (native mode)":(warmResidency?" with warm residency":" with cold restore"))<<" validation="<<(validationOn?"on":"unavailable")<<"\n";
         return 0;
     } catch(const std::exception& e) {
 #ifdef ZVRAM_GRAPHICS_SDL2

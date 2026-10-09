@@ -1,4 +1,5 @@
 #include <vulkan/vulkan.h>
+#include "live_control.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -10,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -1384,10 +1386,159 @@ void pressureOnlyFixtureCheck(Context& context) {
     std::cout << "PASS: below-cap data stayed resident; pressure evicted it; removing pressure restored every byte" << std::endl;
 }
 
+bool readFixtureStatus(const std::string& path, std::unordered_map<std::string, std::uint64_t>& fields) {
+    std::ifstream input(path);
+    if (!input) return false;
+    std::string line;
+    while (std::getline(input, line)) {
+        const auto split = line.find('=');
+        std::uint64_t value{};
+        if (split == std::string::npos ||
+            !zvram::control::number(line.substr(split + 1), value)) return false;
+        fields[line.substr(0, split)] = value;
+    }
+    return input.eof();
+}
+
+void writeFixtureRequest(const std::string& directory, std::uintptr_t device,
+                         std::uint64_t sequence, std::uint64_t residentMiB) {
+    const auto name = std::to_string(device) + ".request";
+    const auto temporary = name + ".fixture-" + std::to_string(sequence);
+    const int fd = open((directory + "/" + temporary).c_str(),
+                        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    require(fd >= 0, "create live-control fixture request");
+    const auto contents = std::string("version=1\nseq=") + std::to_string(sequence) +
+                          "\nresident_mib=" + std::to_string(residentMiB) + "\n";
+    std::size_t written = 0;
+    while (written < contents.size()) {
+        const auto count = write(fd, contents.data() + written, contents.size() - written);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) break;
+        written += static_cast<std::size_t>(count);
+    }
+    const auto closeResult = close(fd);
+    const auto path = directory + "/" + name;
+    if (written != contents.size() || closeResult != 0 ||
+        rename((directory + "/" + temporary).c_str(), path.c_str()) != 0) {
+        unlink((directory + "/" + temporary).c_str());
+        throw std::runtime_error("publish live-control fixture request");
+    }
+}
+
+void pressureOnlyLiveCapFixtureCheck(Context& context) {
+    const auto* controlBase = std::getenv("ZVRAM_CONTROL_DIR");
+    require(controlBase && *controlBase, "live-control fixture has no private control directory");
+    const auto process = std::to_string(getpid()) + "-" + std::to_string(zvram::control::processStart());
+    const auto directory = std::string(controlBase) + "/" + process;
+    const auto device = reinterpret_cast<std::uintptr_t>(context.device);
+    const auto statusPath = directory + "/" + std::to_string(device) + ".status";
+
+    Buffer pool; pool.device = context.device;
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = 2 * ChunkBytes;
+    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                       VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device, &bufferInfo, nullptr, &pool.handle), "create live-cap fixture buffer");
+    VkMemoryRequirements req{};
+    vkGetBufferMemoryRequirements(context.device, pool.handle, &req);
+    require(req.size == 2 * ChunkBytes && (req.memoryTypeBits & (1u << context.virtualType)),
+            "live-cap fixture requires two exact virtual ranges");
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize = req.size; allocation.memoryTypeIndex = context.virtualType;
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &pool.memory), "allocate live-cap fixture buffer");
+    check(vkBindBufferMemory(context.device, pool.handle, pool.memory, 0), "bind live-cap fixture buffer");
+
+    Staging staging; staging.device = context.device;
+    bufferInfo.size = ChunkBytes;
+    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device, &bufferInfo, nullptr, &staging.buffer), "create live-cap fixture staging");
+    vkGetBufferMemoryRequirements(context.device, staging.buffer, &req);
+    allocation.allocationSize = req.size;
+    allocation.memoryTypeIndex = hostCoherentType(context, req.memoryTypeBits);
+    require(allocation.memoryTypeIndex != UINT32_MAX, "no live-cap fixture staging memory type");
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &staging.memory), "allocate live-cap fixture staging");
+    check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0), "bind live-cap fixture staging");
+    check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped), "map live-cap fixture staging");
+
+    upload(context, pool.handle, staging, 2 * ChunkBytes);
+    check(computeCycle(context, pool.handle, 0, 0, false, 2 * ChunkBytes), "initialize live-cap fixture ranges");
+    for (std::uint32_t chunk = 0; chunk < 2; ++chunk)
+        readbackAndVerify(context, pool.handle, staging, 0, false, ChunkBytes, 0, chunk);
+    const auto warm = context.stats();
+    require(warm.residentBytes == 2 * ChunkBytes && warm.coldLogicalBytes == 0 && warm.failures == 0,
+            "64 MiB live-cap fixture did not stay resident below its 96 MiB cap");
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    const auto afterIdle = context.stats();
+    require(afterIdle.residentBytes == warm.residentBytes && afterIdle.coldLogicalBytes == 0 &&
+            afterIdle.freezes == warm.freezes,
+            "pressure-only mode evicted live-cap fixture data without pressure");
+
+    std::unordered_map<std::string, std::uint64_t> status;
+    const auto statusDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < statusDeadline &&
+           (!readFixtureStatus(statusPath, status) || status["capable"] != 1 ||
+            status["current_limit_mib"] != 96)) {
+        status.clear();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    require(status["capable"] == 1 && status["current_limit_mib"] == 96,
+            "private live-control endpoint did not report the initial 96 MiB cap");
+    const auto lowerSequence = status["seq"] + 1;
+    writeFixtureRequest(directory, device, lowerSequence, 32);
+    bool sawPending = false, lowerApplied = false;
+    const auto lowerDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (std::chrono::steady_clock::now() < lowerDeadline) {
+        status.clear();
+        if (readFixtureStatus(statusPath, status) && status["seq"] == lowerSequence) {
+            if (status["result"] == 1 && status["ack"] < lowerSequence) sawPending = true;
+            if (status["result"] == 0 && status["ack"] == lowerSequence &&
+                status["current_limit_mib"] == 32) { lowerApplied = true; break; }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    // Pending can be shorter than the host poll interval; applied plus the
+    // residency assertion proves settlement without requiring that transient.
+    require(lowerApplied,
+            "idle live-cap request did not apply without application submissions");
+    std::cout << "live-cap pending-observed=" << sawPending << '\n';
+    auto pressured = context.stats();
+    require(pressured.residentBytes == ChunkBytes && pressured.coldLogicalBytes == ChunkBytes &&
+            pressured.failures == 0,
+            "lowered live cap did not leave exactly one range cold and one resident");
+
+    const auto raiseSequence = lowerSequence + 1;
+    writeFixtureRequest(directory, device, raiseSequence, 96);
+    bool raised = false;
+    const auto raiseDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < raiseDeadline) {
+        status.clear();
+        if (readFixtureStatus(statusPath, status) && status["seq"] == raiseSequence &&
+            status["ack"] == raiseSequence && status["result"] == 0 &&
+            status["current_limit_mib"] == 96) { raised = true; break; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    require(raised, "live-control fixture did not acknowledge cap raise");
+    const auto beforeRestore = context.stats();
+    for (std::uint32_t chunk = 0; chunk < 2; ++chunk)
+        readbackAndVerify(context, pool.handle, staging, 0, false, ChunkBytes, 0, chunk);
+    const auto restored = context.stats();
+    require(restored.restores > beforeRestore.restores && restored.residentBytes == 2 * ChunkBytes &&
+            restored.coldLogicalBytes == 0 && restored.failures == 0,
+            "raised live cap did not restore both full-byte ranges");
+    vkDestroyBuffer(context.device, pool.handle, nullptr); pool.handle = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, pool.memory, nullptr); pool.memory = VK_NULL_HANDLE;
+    const auto empty = context.stats();
+    require(!empty.residentBytes && !empty.coldLogicalBytes && !empty.coldStoredBytes && !empty.failures,
+            "live-cap fixture cleanup retained backing or errors");
+    std::cout << "PASS: idle private cap request settled one cold range; raised cap restored every byte" << std::endl;
+}
+
 void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
                       bool cacheQuota = false, bool cacheBootstrap = false,
-                      bool compressedInitial = false, bool pressureOnlyFixture = false) {
+                      bool compressedInitial = false, bool pressureOnlyFixture = false,
+                      bool pressureOnlyLiveCapFixture = false) {
     if (pressureOnlyFixture) { pressureOnlyFixtureCheck(context); return; }
+    if (pressureOnlyLiveCapFixture) { pressureOnlyLiveCapFixtureCheck(context); return; }
     const std::uint32_t chunkCount = cacheQuota ? 3u : 2u;
     const VkDeviceSize Bytes=static_cast<VkDeviceSize>(chunkCount)*ChunkBytes;
     Buffer pool; pool.device=context.device;
@@ -2069,6 +2220,7 @@ int main(int argc, char** argv) try {
     bool useZeroPattern = false;
     bool rangePressure = false;
     bool pressureOnlyFixture = false;
+    bool pressureOnlyLiveCapFixture = false;
     bool rangeCache = false;
     bool rangeCacheBootstrap = false;
     bool rangeCacheQuota = false, rangeCacheUnknown = false;
@@ -2109,6 +2261,9 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--pressure-only-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; pressureOnlyFixture=true;
         }
+        else if (std::strcmp(argv[i], "--pressure-only-live-cap-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; pressureOnlyLiveCapFixture=true;
+        }
         else if (std::strcmp(argv[i], "--range-cache") == 0) {
             rangeSubmit=true; rangePressure=true; rangeCache=true;
         }
@@ -2131,7 +2286,7 @@ int main(int argc, char** argv) try {
             require(controlHoldMilliseconds<=15000,"--control-hold-ms maximum is 15000");
         }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--pressure-only-fixture|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues] [--control-hold-ms 0..15000]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--pressure-only-fixture|--pressure-only-live-cap-fixture|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues] [--control-hold-ms 0..15000]");
     }
     require(!useZeroPattern || rangeCompressed,
             "--zero-pattern requires --range-compressed");
@@ -2164,6 +2319,8 @@ int main(int argc, char** argv) try {
             "range pressure manages its own pending timeline test");
     require(!pressureOnlyFixture || (!nativeAllocation && !twoQueues),
             "pressure-only fixture uses synthetic single-queue backing");
+    require(!pressureOnlyLiveCapFixture || (!nativeAllocation && !twoQueues && !twoFamilies && !exclusiveFamilies),
+            "pressure-only live-cap fixture uses synthetic single-queue backing");
     require(!rangeCompressed || (!rangePressure && !rangeCache),
             "compressible range initialization requires the independent range-submit check");
     require(!(rangeCacheQuota && rangeCacheUnknown),
@@ -2204,7 +2361,7 @@ int main(int argc, char** argv) try {
         std::this_thread::sleep_for(std::chrono::milliseconds(controlHoldMilliseconds));
     }
     if (rangeCacheUnknown) { rangeCacheUnknownCheck(context); return 0; }
-    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap, rangeCompressed, pressureOnlyFixture); return 0; }
+    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap, rangeCompressed, pressureOnlyFixture, pressureOnlyLiveCapFixture); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
     if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }

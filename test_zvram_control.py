@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from zvram_manager import Manager, identity
+from zvram_manager import Manager, identity, gpu_status
 import zvram_control as control
 
 
@@ -88,7 +88,10 @@ class ControlChecks(unittest.TestCase):
             self.assertEqual(default['ZVRAM_VULKAN_PRESSURE_ONLY'], '1')
             self.assertEqual(launch('--vulkan-eviction-trigger', 'idle')['ZVRAM_VULKAN_PRESSURE_ONLY'], '0')
             self.assertEqual(launch('--vulkan-auto-idle-ms', '60000')['ZVRAM_VULKAN_PRESSURE_ONLY'], '0')
-            self.assertGreater(int(default['ZVRAM_VULKAN_RESIDENT_MIB']), 0)
+            detected = max((c['vram_total_mib'] for c in gpu_status()), default=8192)
+            self.assertEqual(int(default['ZVRAM_VULKAN_RESIDENT_MIB']), max(256, int(detected)))
+            self.assertEqual(default['ZVRAM_VULKAN_HEADROOM_MIB'], '1536')
+            self.assertEqual(launch('--vulkan-resident-mib', '96')['ZVRAM_VULKAN_RESIDENT_MIB'], '96')
             self.assertEqual(launch('--live-control'), default)
             self.assertEqual(launch('--no-live-control'), {'ZVRAM_VULKAN_CODEC': 'zstd'})
             self.assertEqual(launch('--no-live-control', '--vulkan-virtual-gib', '96'),

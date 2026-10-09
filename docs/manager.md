@@ -48,6 +48,11 @@ alias for the default. HIP keeps its existing behavior.
 This changes paging behavior; test compatibility per application.
 Existing apps must restart once to load the updated layer and paging features.
 
+Plain launcher automatic setup uses detected VRAM as the hard ceiling and keeps
+a 1536 MiB native-budget reserve. This ceiling reserves no physical VRAM; other
+local usage reduces the effective admission budget. Explicit caps and manager
+priority presets still take precedence.
+
 Automatic live setup uses pressure-triggered background eviction: backing stays
 resident while it fits the current native budget and configured cap. This avoids
 compressing otherwise useful idle data solely because a timer elapsed. Explicit
