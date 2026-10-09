@@ -1,0 +1,15 @@
+First retention test passed in 0.62 seconds.
+2/3 Test #54: vulkan-pressure-only-live-cap-idle-regression ....   Passed    1.35 sec
+    Start 55: vulkan-pressure-only-live-cap-async-regression
+3/3 Test #55: vulkan-pressure-only-live-cap-async-regression ...   Passed    1.35 sec
+
+100% tests passed out of 3
+
+Label Time Summary:
+async           =   1.35 sec*proc (1 test)
+hardware        =   3.32 sec*proc (3 tests)
+live-control    =   2.70 sec*proc (2 tests)
+pressure        =   3.32 sec*proc (3 tests)
+vulkan          =   3.32 sec*proc (3 tests)
+
+Total Test time (real) =   3.32 sec

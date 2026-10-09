@@ -684,6 +684,68 @@ void checkPressureOnlyAsyncCommitRechecksCurrentCap() {
             "pressure-only recheck changed legacy idle-mode behavior");
 }
 
+void checkSubmitUseTimestampScope() {
+    Fixture f; auto& d=f.device; auto& memory=f.state();
+    const auto old=std::chrono::steady_clock::time_point{}+std::chrono::seconds(1);
+    const auto touched=old+std::chrono::seconds(1);
+    memory.coldGroups.resize(3);
+    memory.coldGroups[0].lastUse=memory.coldGroups[1].lastUse=memory.coldGroups[2].lastUse=old;
+    memory.lastUse=old;
+    require(memory.children.empty(),"timestamp fixture unexpectedly has resident children");
+    const auto emptyHandle=tokenHandle<VkDeviceMemory>(0xd001);
+    VirtualMemory empty{}; empty.lastUse=old;
+    d.virtualMemory.emplace(emptyHandle,std::move(empty));
+    const auto unrelatedHandle=tokenHandle<VkDeviceMemory>(0xd003);
+    VirtualMemory unrelated{}; unrelated.lastUse=old; unrelated.coldGroups.resize(2);
+    for(auto& group:unrelated.coldGroups) group.lastUse=old;
+    d.virtualMemory.emplace(unrelatedHandle,std::move(unrelated));
+
+    markSubmittedUseTimes(d,{{f.memory,1}},true,touched);
+    require(memory.lastUse==touched && memory.coldGroups[0].lastUse==old &&
+            memory.coldGroups[1].lastUse==touched && memory.coldGroups[2].lastUse==old &&
+            d.virtualMemory.at(unrelatedHandle).lastUse==old &&
+            std::all_of(d.virtualMemory.at(unrelatedHandle).coldGroups.begin(),
+                        d.virtualMemory.at(unrelatedHandle).coldGroups.end(),
+                        [&](const auto& group){return group.lastUse==old;}),
+            "known child use timestamped unrelated groups or missed its cold child");
+
+    memory.lastUse=old;
+    for(auto& group:memory.coldGroups) group.lastUse=old;
+    markSubmittedUseTimes(d,{{f.memory,SIZE_MAX}},true,touched);
+    require(memory.lastUse==touched && std::all_of(memory.coldGroups.begin(),memory.coldGroups.end(),
+            [&](const auto& group){return group.lastUse==touched;}),
+            "known wildcard use did not timestamp every group");
+
+    memory.lastUse=old;
+    for(auto& group:memory.coldGroups) group.lastUse=old;
+    markSubmittedUseTimes(d,{},true,touched);
+    require(memory.lastUse==old && d.virtualMemory.at(unrelatedHandle).lastUse==old &&
+            std::all_of(memory.coldGroups.begin(),memory.coldGroups.end(),
+                        [&](const auto& group){return group.lastUse==old;}),
+            "known empty use set mutated tracked timestamps");
+
+    markSubmittedUseTimes(d,{{f.memory,99},{emptyHandle,SIZE_MAX},
+                              {tokenHandle<VkDeviceMemory>(0xd002),0}},true,touched);
+    require(memory.lastUse==old && d.virtualMemory.at(emptyHandle).lastUse==old &&
+            d.virtualMemory.at(unrelatedHandle).lastUse==old &&
+            std::all_of(memory.coldGroups.begin(),memory.coldGroups.end(),
+            [&](const auto& group){return group.lastUse==old;}) &&
+            std::all_of(d.virtualMemory.at(unrelatedHandle).coldGroups.begin(),
+                        d.virtualMemory.at(unrelatedHandle).coldGroups.end(),
+                        [&](const auto& group){return group.lastUse==old;}),
+            "invalid, empty, or missing known use mutated timestamps");
+
+    markSubmittedUseTimes(d,{},false,touched);
+    require(memory.lastUse==touched && std::all_of(memory.coldGroups.begin(),memory.coldGroups.end(),
+            [&](const auto& group){return group.lastUse==touched;}) &&
+            d.virtualMemory.at(emptyHandle).lastUse==old &&
+            d.virtualMemory.at(unrelatedHandle).lastUse==touched &&
+            std::all_of(d.virtualMemory.at(unrelatedHandle).coldGroups.begin(),
+                        d.virtualMemory.at(unrelatedHandle).coldGroups.end(),
+                        [&](const auto& group){return group.lastUse==touched;}),
+            "unknown-use fallback did not timestamp every nonempty tracked memory");
+}
+
 void checkUnknownSubmitAdmission() {
     Fixture f(3*MiB,2*MiB); f.bind(0,3*MiB);
     // Unknown submit chains must admit the entire allocation conservatively.
@@ -1244,6 +1306,7 @@ int main() try {
     checkColdCycleRefusalPolicies();
     checkNativeBackingFallbackPolicy();
     checkPressureOnlyAsyncCommitRechecksCurrentCap();
+    checkSubmitUseTimestampScope();
     std::cout<<"PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry\n";
     return 0;
 } catch(const std::exception& e) {

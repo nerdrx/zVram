@@ -3741,6 +3741,28 @@ void bumpAcceptedWriteEpochs(Device& d,const char* name,Args... args) {
     for(const auto& use:writes) bump(use.memory,use.child);
 }
 
+void markSubmittedUseTimes(Device& d,const std::vector<ActiveRefs::Use>& uses,bool known,
+                           std::chrono::steady_clock::time_point now) {
+    auto mark=[now](VirtualMemory& memory,std::size_t child) {
+        if(memory.coldGroups.empty()) return;
+        if(child==SIZE_MAX) {
+            memory.lastUse=now;
+            for(auto& group:memory.coldGroups) group.lastUse=now;
+        } else if(child<memory.coldGroups.size()) {
+            memory.lastUse=now;
+            memory.coldGroups[child].lastUse=now;
+        }
+    };
+    if(!known) {
+        for(auto& pair:d.virtualMemory) mark(pair.second,SIZE_MAX);
+        return;
+    }
+    for(const auto& use:uses) {
+        const auto found=d.virtualMemory.find(use.memory);
+        if(found!=d.virtualMemory.end()) mark(found->second,use.child);
+    }
+}
+
 template<class Function,class... Args>
 VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     auto d=findDevice(reinterpret_cast<VkDevice>(queue)); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
@@ -3821,14 +3843,7 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
                 std::vector<ActiveRefs::Use> memories;
                 const bool known=queueMemories(*d,name,memories,args...);
                 d->activeRefs.recordRanges(queue,memories,known);
-                for(auto& pair:d->virtualMemory) {
-                    auto& memory=pair.second;
-                    const auto now=std::chrono::steady_clock::now();
-                    for(std::size_t i=0;i<memory.coldGroups.size();i++)
-                        if(!known || std::any_of(memories.begin(),memories.end(),[&](const auto& use){
-                            return use.memory==pair.first && (use.child==SIZE_MAX || use.child==i);
-                        })) { memory.coldGroups[i].lastUse=now; memory.lastUse=now; }
-                }
+                markSubmittedUseTimes(*d,memories,known,std::chrono::steady_clock::now());
             } catch(const std::bad_alloc&) {
                 d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
                 logf("active Vulkan eviction disabled: tracking allocation failed");
