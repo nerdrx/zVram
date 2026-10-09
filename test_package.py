@@ -42,6 +42,13 @@ class PackageChecks(unittest.TestCase):
             with self.assertRaises(ValueError):
                 package(build, root / "dist", "../bad")
 
+    def test_test_hook_build_refused(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "zvram-codecs.json").write_text('{"test_hooks":true}')
+            with self.assertRaisesRegex(ValueError, "Test-hook builds"):
+                package(root, root / "dist", "0.4.9")
+
     def test_missing_shader_refused(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

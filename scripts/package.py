@@ -18,6 +18,8 @@ def package(build_dir, output, version):
     build_dir, output = Path(build_dir).resolve(), Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     codecs = json.loads((build_dir / "zvram-codecs.json").read_text())
+    if codecs.get("test_hooks"):
+        raise ValueError("Test-hook builds cannot be packaged for installation")
     backend = ["libzvram_layer.so", "VK_LAYER_NX_zvram.json", "zvram-codecs.json"]
     if codecs.get("bp16_gpu"):
         backend += ["bp16.spv", "bp16-encode-analyze.spv", "bp16-encode-pack.spv"]

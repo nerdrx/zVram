@@ -250,6 +250,10 @@ struct Device {
     bool bufferPresentation{};
     bool asyncCompression{};
     bool asyncFreezePending{};
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+    void (*asyncEncodeTestHook)(void*){};
+    void* asyncEncodeTestUserdata{};
+#endif
     std::uint64_t nextVirtualIdentity{1};
     std::atomic<bool> selectiveRestore{false};
     bool reportedAccessFallback{};
@@ -2041,6 +2045,15 @@ VkResult residentAdmissionLimit(Device& d,VkDeviceSize& limit) {
     }
     return VK_SUCCESS;
 }
+bool pressureOnlyFreezeNeeded(Device& d,VkDeviceSize& target) {
+    if(!d.pressureOnly) return false;
+    pollLiveControl(d,true);
+    if(residentAdmissionLimit(d,target)!=VK_SUCCESS) return false;
+    const auto& live=d.liveControl.state;
+    if(live.result==1 && live.requestedMiB<=std::numeric_limits<VkDeviceSize>::max()/(1024ull*1024ull))
+        target=std::min<VkDeviceSize>(target,live.requestedMiB*1024ull*1024ull);
+    return d.residentBytes>target;
+}
 VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::size_t childOnly,
                           VkBuffer preparedBuffer,VkDeviceSize preparedBytes) {
     d.restoreBudgetRefused=false;
@@ -2656,16 +2669,31 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
     } // No map iterators or VirtualMemory/ColdGroup references survive the unlock.
     d.asyncFreezePending=true;
     VirtualMemory::ColdGroup candidate; VkDeviceSize stored=0; bool encoded=false;
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+    const auto testHook=d.asyncEncodeTestHook;
+    void* const testHookUserdata=d.asyncEncodeTestUserdata;
+#endif
     try {
         runAsyncEncoderUnlocked(deviceLock,queueLock,[&] {
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+            if(testHook) testHook(testHookUserdata);
+#endif
             encoded=encodeAsyncSnapshot(raw.data(),raw.size(),chunkLimit,minSavings,shuffle,codec,workers,candidate,stored);
         });
     } catch(...) { encoded=false; }
     d.asyncFreezePending=false;
-    if(!encoded || !asyncFreezeTokenValid(d,token)) {
-        if(!encoded) { ++d.snapshotFailures; d.lastSnapshotError=VK_ERROR_UNKNOWN; }
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+    d.activity.notify_all();
+#endif
+    if(!encoded) {
+        ++d.snapshotFailures; d.lastSnapshotError=VK_ERROR_UNKNOWN;
         return true;
     }
+    if(d.pressureOnly) {
+        VkDeviceSize currentTarget{};
+        if(!pressureOnlyFreezeNeeded(d,currentTarget)) return true;
+    }
+    if(!asyncFreezeTokenValid(d,token)) return true;
     auto found=d.virtualMemory.find(token.memory);
     if(found==d.virtualMemory.end()) return true;
     auto& current=found->second; auto& currentGroup=current.coldGroups[token.child];
@@ -3860,8 +3888,26 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetInstanceProcAddr(VkInstance ins
     if(!instance) { PFN_vkGetInstanceProcAddr next{}; { std::lock_guard<std::mutex> lock(mapsMutex); next=globalGipa; } return next?next(VK_NULL_HANDLE,name):nullptr; }
     return nullptr;
 }
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+VKAPI_ATTR VkResult VKAPI_CALL layerSetAsyncEncodeHook(VkDevice device,void (*hook)(void*),void* userdata) {
+    auto d=findDevice(device);
+    if(!d || !d->autoInitialized || !d->asyncCompression) return VK_ERROR_FEATURE_NOT_PRESENT;
+    std::unique_lock<std::mutex> deviceLock(d->mutex),queueLock(d->queueMutex);
+    d->asyncEncodeTestHook=hook; d->asyncEncodeTestUserdata=userdata;
+    if(!hook && d->snapshotWorker.get_id()!=std::this_thread::get_id()) {
+        queueLock.unlock();
+        d->activity.wait(deviceLock,[&] { return !d->asyncFreezePending; });
+    }
+    return VK_SUCCESS;
+}
+#endif
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,const char* name) {
     auto d=findDevice(device);
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+    if(name && std::strcmp(name,"vkZVramSetAsyncEncodeHookNX")==0)
+        return d && d->autoInitialized && d->asyncCompression
+            ?reinterpret_cast<PFN_vkVoidFunction>(layerSetAsyncEncodeHook):nullptr;
+#endif
     if(isTrackedCommand(name) || submissionHookLookup(name)) {
         auto next=d&&d->gdpa?d->gdpa(device,name):nullptr;
         if(!next || !d->selectiveRestore) return next;

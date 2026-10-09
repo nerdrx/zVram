@@ -342,6 +342,24 @@ void checkMergedRestoreMapping() {
     }
 }
 
+void checkPressureOnlyAsyncCommitRechecksCurrentCap() {
+    Fixture f(3*MiB,2*MiB); auto& d=f.device;
+    d.pressureOnly=true; d.residentBytes=MiB;
+    d.liveControl.state.result=1; d.liveControl.state.requestedMiB=1;
+    VkDeviceSize target{};
+    require(!pressureOnlyFreezeNeeded(d,target) && target==MiB,
+            "pressure-only post-encode check ignored a pending live cap at current residency");
+    d.liveControl.state.result=0; d.residentBytes=3*MiB;
+    require(pressureOnlyFreezeNeeded(d,target) && target==2*MiB,
+            "pressure-only post-encode check rejected a still-needed hard-cap eviction");
+    d.pressureOnly=true; d.budgetReserveBytes=1; d.budgetProperties=mockBudgetProperties;
+    d.budgetHeap=UINT32_MAX;
+    require(!pressureOnlyFreezeNeeded(d,target),
+            "pressure-only async commit proceeded after native-budget query failure");
+    d.pressureOnly=false;
+    require(!pressureOnlyFreezeNeeded(d,target),
+            "pressure-only recheck changed legacy idle-mode behavior");
+}
 void checkUnknownSubmitAdmission() {
     Fixture f(3*MiB,2*MiB); f.bind(0,3*MiB);
     // Unknown submit chains must admit the entire allocation conservatively.
@@ -842,6 +860,7 @@ int main() try {
     checkAllocationFailureRetry();
     checkBindFailureAccounting();
     checkMergedRestoreMapping();
+    checkPressureOnlyAsyncCommitRechecksCurrentCap();
     std::cout<<"PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry\n";
     return 0;
 } catch(const std::exception& e) {

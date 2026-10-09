@@ -6,6 +6,11 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 option(ZVRAM_ENABLE_GDEFLATE "Build the experimental GDeflate snapshot codec and optional GPU restore" OFF)
 option(ZVRAM_ENABLE_BP16_GPU_TESTS "Register opt-in BP16 GPU integrity tests" OFF)
+option(ZVRAM_TEST_ASYNC_HOOK "Build the async overlap hook for deterministic Vulkan tests only" OFF)
+set(ZVRAM_TEST_HOOK_CAPABILITY false)
+if(ZVRAM_TEST_ASYNC_HOOK)
+    set(ZVRAM_TEST_HOOK_CAPABILITY true)
+endif()
 set(ZVRAM_GDEFLATE_CAPABILITY false)
 set(ZVRAM_GDEFLATE_GPU_CAPABILITY false)
 configure_file(research/bp16/decode.spv bp16.spv COPYONLY)
@@ -37,7 +42,7 @@ if(ZVRAM_ENABLE_GDEFLATE)
     configure_file(research/gdeflate/GDeflate-bounded-wave32.spv gdeflate-wave32.spv COPYONLY)
 endif()
 file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
-    CONTENT "{\"gdeflate\":${ZVRAM_GDEFLATE_CAPABILITY},\"gdeflate_gpu\":${ZVRAM_GDEFLATE_GPU_CAPABILITY},\"bp16\":true,\"bp16_gpu\":true}\n")
+    CONTENT "{\"gdeflate\":${ZVRAM_GDEFLATE_CAPABILITY},\"gdeflate_gpu\":${ZVRAM_GDEFLATE_GPU_CAPABILITY},\"bp16\":true,\"bp16_gpu\":true,\"test_hooks\":${ZVRAM_TEST_HOOK_CAPABILITY}}\n")
 add_library(zvram_layer SHARED layer.cpp)
 set_property(TARGET zvram_layer APPEND PROPERTY LINK_DEPENDS
     ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
@@ -50,6 +55,9 @@ add_custom_command(TARGET zvram_layer POST_BUILD
     VERBATIM)
 target_include_directories(zvram_layer PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_compile_features(zvram_layer PRIVATE cxx_std_17)
+if(ZVRAM_TEST_ASYNC_HOOK)
+    target_compile_definitions(zvram_layer PRIVATE ZVRAM_TEST_ASYNC_HOOK=1)
+endif()
 target_link_libraries(zvram_layer PRIVATE Threads::Threads PkgConfig::ZSTD)
 target_link_options(zvram_layer PRIVATE -Wl,-Bsymbolic)
 configure_file(layer.json.in ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_NX_zvram.json @ONLY)
@@ -313,6 +321,25 @@ add_test(NAME vulkan-pressure-only-live-cap-async-regression
         $<TARGET_FILE:zvram-vulkan-auto-check> --pressure-only-live-cap-fixture)
 set_tests_properties(vulkan-pressure-only-live-cap-async-regression PROPERTIES TIMEOUT 30
     LABELS "hardware;vulkan;pressure;live-control;async")
+if(ZVRAM_TEST_ASYNC_HOOK)
+    foreach(async_overlap_mode admission pressure-raise)
+        if(async_overlap_mode STREQUAL "admission")
+            set(async_overlap_fixture --async-encode-overlap-fixture)
+        else()
+            set(async_overlap_fixture --async-pressure-raise-discard-fixture)
+        endif()
+        add_test(NAME vulkan-async-encode-overlap-${async_overlap_mode}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 96
+                --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+                --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+                --vulkan-eviction-policy lru --vulkan-min-savings-percent 0
+                --vulkan-async-compression --
+                $<TARGET_FILE:zvram-vulkan-auto-check> ${async_overlap_fixture})
+        set_tests_properties(vulkan-async-encode-overlap-${async_overlap_mode} PROPERTIES
+            TIMEOUT 30 LABELS "hardware;vulkan;pressure;async-overlap;test-hook")
+    endforeach()
+endif()
 add_test(NAME vulkan-graphics-pressure-retention
     COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
         --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64

@@ -1,0 +1,72 @@
+Start testing: Oct 09 04:09 CEST
+----------------------------------------------------------
+3/124 Testing: cpu-resident-budget
+3/124 Test: cpu-resident-budget
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-resident-budget-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+"cpu-resident-budget" start time: Oct 09 04:09 CEST
+Output:
+----------------------------------------------------------
+PASS: resident budget cap arithmetic and saturation
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-resident-budget" end time: Oct 09 04:09 CEST
+"cpu-resident-budget" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/124 Testing: cpu-resident-bootstrap
+4/124 Test: cpu-resident-bootstrap
+Command: "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-resident-bootstrap-check"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+"cpu-resident-bootstrap" start time: Oct 09 04:09 CEST
+Output:
+----------------------------------------------------------
+[zvram] resident admission refused: submission working set exceeds limit-bytes=2097152 known=0
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=1048576 usage=0 tracked-local=0 reserve=1 effective-limit=1048575 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] snapshot state event=restore resident=1048576 cold-logical=0 cold-stored=0 freezes=0 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=4194304 usage=1048576 tracked-local=1048576 reserve=1 effective-limit=3145728 hard-limit=3145728
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=2097152 cold-logical=1048576 cold-stored=1048576 freezes=0 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=1048576 copy-ns=310 decode-bytes=1048576 decode-ns=33780 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=2621441 usage=1048576 tracked-local=2097152 reserve=1 effective-limit=2621440 hard-limit=3145728
+[zvram] snapshot cold bytes=1048576 stored=51 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=1048576 cold-logical=2097152 cold-stored=1048627 freezes=1 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=2097152 copy-ns=360 decode-bytes=1048576 decode-ns=33780 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=2 evicted-chunks=1 resident-before-restore=1048576 incoming-bytes=1048576 limit-bytes=2621440
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=2097152 cold-logical=1048576 cold-stored=51 freezes=1 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=3145728 copy-ns=1060 decode-bytes=2097152 decode-ns=53740 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=2 restored-chunks=1 cold-pools-left=1
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=1048576 usage=0 tracked-local=0 reserve=1 effective-limit=1048575 hard-limit=1048576
+[zvram] resident admission refused: submission working set exceeds limit-bytes=1048575 known=0
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=2097152 usage=0 tracked-local=0 reserve=1 effective-limit=1048576 hard-limit=1048576
+[zvram] resident budget native-heap=0 budget=10485760 usage=7340032 tracked-local=3145728 reserve=1048576 effective-limit=5242880 hard-limit=12582912
+[zvram] resident budget native-heap=0 budget=8388608 usage=7340032 tracked-local=0 reserve=1048576 effective-limit=0 hard-limit=2097152
+[zvram] snapshot state event=restore resident=2097152 cold-logical=0 cold-stored=0 freezes=0 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot state event=restore resident=2097152 cold-logical=0 cold-stored=0 freezes=0 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] access tracking fallback reason=vkCmdSetLineWidth command-count=1
+[zvram] snapshot app sparse bind batch count=2 unbind=0 view-release=1
+[zvram] snapshot cold bytes=1048576 stored=1048576 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=1048576 cold-stored=1048576 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=1048576 copy-ns=50 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=8388608 usage=0 tracked-local=0 reserve=1 effective-limit=2097152 hard-limit=2097152
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] cold-cycle local backing restored bytes=1048576 memory-type=1->0
+[zvram] snapshot cold bytes=1048576 stored=1048576 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=1048576 cold-stored=1048576 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=1048576 copy-ns=50 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident budget native-heap=0 budget=8388608 usage=0 tracked-local=0 reserve=1 effective-limit=2097152 hard-limit=2097152
+[zvram] cold-cycle local recovery deferred result=-2; cold snapshot retained when available
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] cold-cycle local recovery deferred result=-2; cold snapshot retained when available
+PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"cpu-resident-bootstrap" end time: Oct 09 04:09 CEST
+"cpu-resident-bootstrap" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 09 04:09 CEST

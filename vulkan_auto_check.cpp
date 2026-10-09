@@ -64,6 +64,7 @@ struct ZvramSnapshotStatsNX {
 };
 using GetSnapshotStats = VkResult (VKAPI_PTR *)(VkDevice, ZvramSnapshotStatsNX*);
 using ArmRestoreFailure = VkResult (VKAPI_PTR *)(VkDevice, std::uint32_t);
+using SetAsyncEncodeHook = VkResult (VKAPI_PTR *)(VkDevice, void (*)(void*), void*);
 
 struct Buffer {
     VkDevice device{};
@@ -1543,6 +1544,186 @@ void pressureOnlyLiveCapFixtureCheck(Context& context) {
     std::cout << "PASS: idle private cap request settled one cold range; raised cap restored every byte" << std::endl;
 }
 
+struct AsyncOverlapState {
+    Context* context{};
+    VkBuffer buffer{};
+    Staging* staging{};
+    SetAsyncEncodeHook setHook{};
+    std::string controlDirectory;
+    std::uintptr_t deviceToken{};
+    std::uint64_t raiseSequence{};
+    bool restoreCold{};
+    std::atomic<bool> entered{}, finished{};
+    std::string error;
+    ZvramSnapshotStatsNX afterAdmission{};
+};
+
+struct AsyncHookRegistrationGuard {
+    VkDevice device{};
+    SetAsyncEncodeHook setHook{};
+    bool registered{true};
+
+    VkResult clear() noexcept {
+        if (!registered) return VK_SUCCESS;
+        const auto result = setHook(device, nullptr, nullptr);
+        if (result == VK_SUCCESS) registered = false;
+        return result;
+    }
+    ~AsyncHookRegistrationGuard() noexcept {
+        if (registered && clear() != VK_SUCCESS)
+            std::cerr << "WARNING: failed to unregister async overlap hook during cleanup\n";
+    }
+};
+
+void asyncOverlapHook(void* userdata) noexcept {
+    auto& state = *static_cast<AsyncOverlapState*>(userdata);
+    if (state.entered.exchange(true)) return;
+    try {
+        check(state.setHook(state.context->device, nullptr, nullptr), "disable async overlap hook");
+        if (state.restoreCold)
+            readbackAndVerify(*state.context, state.buffer, *state.staging, -1,
+                              false, ChunkBytes, 0, 2);
+        state.afterAdmission = state.context->stats();
+        writeFixtureRequest(state.controlDirectory, state.deviceToken, state.raiseSequence, 96);
+    } catch (const std::exception& error) {
+        state.error = error.what();
+        try { writeFixtureRequest(state.controlDirectory, state.deviceToken, state.raiseSequence, 96); }
+        catch (...) {}
+    } catch (...) {
+        state.error = "unknown async overlap callback failure";
+        try { writeFixtureRequest(state.controlDirectory, state.deviceToken, state.raiseSequence, 96); }
+        catch (...) {}
+    }
+    state.finished.store(true, std::memory_order_release);
+}
+
+void asyncEncodeOverlapFixtureCheck(Context& context, SetAsyncEncodeHook setHook, bool restoreCold) {
+    constexpr VkDeviceSize Bytes = 3 * ChunkBytes;
+    const auto* controlBase = std::getenv("ZVRAM_CONTROL_DIR");
+    require(controlBase && *controlBase, "async overlap fixture has no private control directory");
+    const auto process = std::to_string(getpid()) + "-" + std::to_string(zvram::control::processStart());
+    const auto controlDirectory = std::string(controlBase) + "/" + process;
+    const auto deviceToken = reinterpret_cast<std::uintptr_t>(context.device);
+    const auto statusPath = controlDirectory + "/" + std::to_string(deviceToken) + ".status";
+
+    Buffer pool; pool.device = context.device;
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = Bytes;
+    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                       VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device, &bufferInfo, nullptr, &pool.handle), "create async overlap buffer");
+    VkMemoryRequirements req{};
+    vkGetBufferMemoryRequirements(context.device, pool.handle, &req);
+    require(req.size == Bytes && (req.memoryTypeBits & (1u << context.virtualType)),
+            "async overlap fixture requires three exact virtual ranges");
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize = req.size; allocation.memoryTypeIndex = context.virtualType;
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &pool.memory), "allocate async overlap buffer");
+    check(vkBindBufferMemory(context.device, pool.handle, pool.memory, 0), "bind async overlap buffer");
+
+    Staging staging; staging.device = context.device;
+    bufferInfo.size = ChunkBytes;
+    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device, &bufferInfo, nullptr, &staging.buffer), "create async overlap staging");
+    vkGetBufferMemoryRequirements(context.device, staging.buffer, &req);
+    allocation.allocationSize = req.size;
+    allocation.memoryTypeIndex = hostCoherentType(context, req.memoryTypeBits);
+    require(allocation.memoryTypeIndex != UINT32_MAX, "no async overlap staging memory type");
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &staging.memory), "allocate async overlap staging");
+    check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0), "bind async overlap staging");
+    check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped), "map async overlap staging");
+
+    upload(context, pool.handle, staging, Bytes);
+    auto warm = context.stats();
+    require(warm.residentBytes == 2 * ChunkBytes && warm.coldLogicalBytes == ChunkBytes && warm.failures == 0,
+            "async overlap fixture did not establish two resident ranges and one cold range");
+    auto before = context.stats();
+    readbackAndVerify(context, pool.handle, staging, -1, false, ChunkBytes, 0, 0);
+    auto after = context.stats();
+    require(after.restores == before.restores + 1 && after.residentBytes == 2 * ChunkBytes &&
+            after.coldLogicalBytes == ChunkBytes,
+            "first range was not the expected oldest cold range");
+    before = after;
+    readbackAndVerify(context, pool.handle, staging, -1, false, ChunkBytes, 0, 1);
+    after = context.stats();
+    require(after.restores == before.restores + 1 && after.residentBytes == 2 * ChunkBytes &&
+            after.coldLogicalBytes == ChunkBytes,
+            "touching the second range did not leave the known third range cold");
+    warm = after;
+
+    std::unordered_map<std::string, std::uint64_t> status;
+    const auto statusDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < statusDeadline &&
+           (!readFixtureStatus(statusPath, status) || status["capable"] != 1 ||
+            status["current_limit_mib"] != 64)) {
+        status.clear();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    require(status["capable"] == 1 && status["current_limit_mib"] == 64,
+            "async overlap control endpoint did not report the initial 64 MiB cap");
+    AsyncOverlapState state{};
+    state.context = &context; state.buffer = pool.handle; state.staging = &staging;
+    state.setHook = setHook; state.controlDirectory = controlDirectory;
+    state.deviceToken = deviceToken; state.raiseSequence = status["seq"] + 2;
+    state.restoreCold = restoreCold;
+    check(setHook(context.device, asyncOverlapHook, &state), "register async overlap hook");
+    AsyncHookRegistrationGuard hookGuard{context.device, setHook};
+    const auto lowerSequence = status["seq"] + 1;
+    writeFixtureRequest(controlDirectory, deviceToken, lowerSequence, 32);
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    while (!state.finished.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    require(state.finished.load(std::memory_order_acquire), "async encoder hook did not reach its deterministic gate");
+    check(hookGuard.clear(), "drain async overlap hook");
+    require(state.error.empty(), state.error.empty() ? "async overlap callback failed" : state.error.c_str());
+
+    bool raised = false;
+    const auto raiseDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (std::chrono::steady_clock::now() < raiseDeadline) {
+        status.clear();
+        if (readFixtureStatus(statusPath, status) && status["seq"] == state.raiseSequence &&
+            status["ack"] == state.raiseSequence && status["result"] == 0 &&
+            status["current_limit_mib"] == 96) { raised = true; break; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    require(raised, "async overlap cap raise was not acknowledged after the callback");
+    const auto settled = context.stats();
+    if (restoreCold) {
+        require(state.afterAdmission.residentBytes == 2 * ChunkBytes &&
+                state.afterAdmission.coldLogicalBytes == ChunkBytes &&
+                state.afterAdmission.freezes == warm.freezes + 1 &&
+                state.afterAdmission.restores == warm.restores + 1,
+                "normal app submission did not synchronously evict the in-flight candidate and restore the cold range");
+        require(settled.residentBytes == 2 * ChunkBytes && settled.coldLogicalBytes == ChunkBytes &&
+                settled.freezes == state.afterAdmission.freezes && settled.restores == state.afterAdmission.restores &&
+                settled.failures == warm.failures,
+                "stale async candidate committed after synchronous admission invalidated its token");
+    } else {
+        require(state.afterAdmission.residentBytes == warm.residentBytes &&
+                state.afterAdmission.coldLogicalBytes == warm.coldLogicalBytes &&
+                state.afterAdmission.freezes == warm.freezes && state.afterAdmission.restores == warm.restores,
+                "raise-only hook changed residency before async encode resumed");
+        require(settled.residentBytes == warm.residentBytes && settled.coldLogicalBytes == warm.coldLogicalBytes &&
+                settled.freezes == warm.freezes && settled.restores == warm.restores &&
+                settled.failures == warm.failures,
+                "pressure snapshot committed after the live cap was raised during encoding");
+    }
+    for (std::uint32_t chunk = 0; chunk < 3; ++chunk)
+        readbackAndVerify(context, pool.handle, staging, -1, false, ChunkBytes, 0, chunk);
+    const auto restored = context.stats();
+    require(restored.residentBytes == Bytes && restored.coldLogicalBytes == 0 && restored.failures == 0,
+            "async overlap recovery did not preserve all three complete byte ranges");
+    vkDestroyBuffer(context.device, pool.handle, nullptr); pool.handle = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, pool.memory, nullptr); pool.memory = VK_NULL_HANDLE;
+    const auto empty = context.stats();
+    require(!empty.residentBytes && !empty.coldLogicalBytes && !empty.coldStoredBytes && !empty.failures,
+            "async overlap cleanup retained backing or errors");
+    std::cout << "PASS: deterministic unlocked encode overlap; "
+              << (restoreCold ? "normal admission restored cold data and invalidated the candidate" :
+                                 "raised cap discarded unnecessary pressure snapshot") << std::endl;
+}
+
 void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
                       bool cacheQuota = false, bool cacheBootstrap = false,
                       bool compressedInitial = false, bool pressureOnlyFixture = false,
@@ -2231,6 +2412,7 @@ int main(int argc, char** argv) try {
     bool rangePressure = false;
     bool pressureOnlyFixture = false;
     bool pressureOnlyLiveCapFixture = false;
+    bool asyncEncodeOverlapFixture = false, asyncPressureRaiseDiscardFixture = false;
     bool rangeCache = false;
     bool rangeCacheBootstrap = false;
     bool rangeCacheQuota = false, rangeCacheUnknown = false;
@@ -2274,6 +2456,12 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--pressure-only-live-cap-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; pressureOnlyLiveCapFixture=true;
         }
+        else if (std::strcmp(argv[i], "--async-encode-overlap-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; asyncEncodeOverlapFixture=true;
+        }
+        else if (std::strcmp(argv[i], "--async-pressure-raise-discard-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; asyncPressureRaiseDiscardFixture=true;
+        }
         else if (std::strcmp(argv[i], "--range-cache") == 0) {
             rangeSubmit=true; rangePressure=true; rangeCache=true;
         }
@@ -2296,7 +2484,7 @@ int main(int argc, char** argv) try {
             require(controlHoldMilliseconds<=15000,"--control-hold-ms maximum is 15000");
         }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--pressure-only-fixture|--pressure-only-live-cap-fixture|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues] [--control-hold-ms 0..15000]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--pressure-only-fixture|--pressure-only-live-cap-fixture|--async-encode-overlap-fixture|--async-pressure-raise-discard-fixture|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues] [--control-hold-ms 0..15000]");
     }
     require(!useZeroPattern || rangeCompressed,
             "--zero-pattern requires --range-compressed");
@@ -2331,6 +2519,11 @@ int main(int argc, char** argv) try {
             "pressure-only fixture uses synthetic single-queue backing");
     require(!pressureOnlyLiveCapFixture || (!nativeAllocation && !twoQueues && !twoFamilies && !exclusiveFamilies),
             "pressure-only live-cap fixture uses synthetic single-queue backing");
+    require(!(asyncEncodeOverlapFixture && asyncPressureRaiseDiscardFixture),
+            "choose one deterministic async overlap fixture");
+    require(!(asyncEncodeOverlapFixture || asyncPressureRaiseDiscardFixture) ||
+            (!nativeAllocation && !twoQueues && !twoFamilies && !exclusiveFamilies),
+            "async overlap fixtures use synthetic single-queue backing");
     require(!rangeCompressed || (!rangePressure && !rangeCache),
             "compressible range initialization requires the independent range-submit check");
     require(!(rangeCacheQuota && rangeCacheUnknown),
@@ -2366,6 +2559,16 @@ int main(int argc, char** argv) try {
             "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
                        pendingWait, pendingBind, activeSubmit, rangePressure && twoQueues, robustCore);
+    if (asyncEncodeOverlapFixture || asyncPressureRaiseDiscardFixture) {
+        const auto setHook = reinterpret_cast<SetAsyncEncodeHook>(
+            vkGetDeviceProcAddr(context.device, "vkZVramSetAsyncEncodeHookNX"));
+        if (!setHook) {
+            std::cerr << "UNSUPPORTED: async overlap fixture requires ZVRAM_TEST_ASYNC_HOOK layer build\n";
+            return 77;
+        }
+        asyncEncodeOverlapFixtureCheck(context, setHook, asyncEncodeOverlapFixture);
+        return 0;
+    }
     if(controlHoldMilliseconds) {
         std::cout<<"CONTROL_READY hold-ms="<<controlHoldMilliseconds<<std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(controlHoldMilliseconds));
