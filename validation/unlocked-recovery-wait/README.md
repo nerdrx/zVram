@@ -125,3 +125,21 @@ the final observations. The parser verifies all five successful transactions,
 quiet eligibility, complete contiguous sample records and pair-specific
 intersection; unmatched pairs remain excluded. Installed v0.4.19 is unchanged
 and this prototype is still not recommended for release or default enablement.
+
+One reversed-order pair (unlocked first, baseline second) passed all five
+transactions per mode in 1.18 s each. Four pairs again intersected the real
+copy-phase window on both sides: baseline calls were 938/841/378/585
+microseconds versus unlocked calls 40/9/34/81 microseconds. Unmatched pairs
+remain excluded. Whole-window p95 was nearly equal (baseline 68.3, unlocked
+69.5 microseconds); medians were 12.9 and 15.5 microseconds. This supports
+shorter phase-correlated submit stalls in this small disjoint-copy workload,
+not a stable general latency/FPS gain. It also shows that the earlier p95
+difference is not consistently reproduced by this order check. No code or
+configuration changed between these runs. The read-only path audit found no
+environment-specific submit work when no recovery is pending.
+
+See `unhooked-reverse-{baseline,unlocked}.txt` and
+`unhooked-reverse-summary.json`. Memory PSI stayed zero; the initial background
+GPU snapshot was 60 percent, with no game/model runner. All bytes and cleanup
+checks passed. This bounded order check ends the current timing experiment;
+release/default decisions still require the outstanding teardown review.
