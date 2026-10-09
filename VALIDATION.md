@@ -1,5 +1,9 @@
 # zVram v0.2.0 — hardware validation
 
+## Direct GPU backing recovery
+
+The current recovery path replaces the v0.4.16 host-snapshot round trip with one compatible GPU-to-GPU copy. Full-byte native, BDA, pending-two-queue, recent-use and default-refusal gates pass, along with CPU rollback/ambiguous-failure ownership and existing production pressure regressions. Five transactions per child size under a running game observed median recovery times of 4.671 ms (32 MiB), 1.033 ms (4 MiB), and 0.673 ms (1 MiB). Recovery remains synchronous and opt-in; sampler maxima are not latency guarantees or game FPS evidence. See [raw logs, baseline and scope](validation/direct-gpu-recovery/README.md).
+
 Measured on **2026-10-07**. These are prototype integrity and allocation-path checks, not performance benchmarks.
 
 | Environment | Value |

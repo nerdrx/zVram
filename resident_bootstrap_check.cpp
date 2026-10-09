@@ -18,6 +18,7 @@ int failSparseBinds{};
 unsigned failQueueWaitAt{};
 VkResult failQueueWaitResult{VK_ERROR_DEVICE_LOST};
 unsigned failSparseBindAt{};
+VkResult mockEndCommandResult{VK_SUCCESS};
 std::uint32_t mockPoolViewTypeBits{1};
 unsigned frees{};
 unsigned budgetQueries{};
@@ -39,6 +40,11 @@ unsigned trackedLabelForwards{};
 unsigned unsupportedCommandForwards{};
 struct CapturedBufferBind { VkBuffer buffer{}; std::vector<VkSparseMemoryBind> binds; };
 std::vector<std::vector<CapturedBufferBind>> sparseBindCalls;
+struct CapturedMemoryBarrier {
+    VkPipelineStageFlags srcStage{},dstStage{};
+    VkAccessFlags srcAccess{},dstAccess{};
+};
+std::vector<CapturedMemoryBarrier> capturedMemoryBarriers;
 
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
 void requireColdLogicalMatchesState(const Device& d,const char* message) {
@@ -136,10 +142,17 @@ VKAPI_ATTR VkResult VKAPI_CALL mockSubmit(VkQueue,std::uint32_t count,const VkSu
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockResetCommandPool(VkDevice,VkCommandPool,VkCommandPoolResetFlags) { return VK_SUCCESS; }
 VKAPI_ATTR VkResult VKAPI_CALL mockBeginCommandBuffer(VkCommandBuffer,const VkCommandBufferBeginInfo*) { return VK_SUCCESS; }
-VKAPI_ATTR VkResult VKAPI_CALL mockEndCommandBuffer(VkCommandBuffer) { return VK_SUCCESS; }
-VKAPI_ATTR void VKAPI_CALL mockPipelineBarrier(VkCommandBuffer,VkPipelineStageFlags,VkPipelineStageFlags,
-    VkDependencyFlags,std::uint32_t,const VkMemoryBarrier*,std::uint32_t,const VkBufferMemoryBarrier*,
-    std::uint32_t,const VkImageMemoryBarrier*) {}
+VKAPI_ATTR VkResult VKAPI_CALL mockEndCommandBuffer(VkCommandBuffer) {
+    const auto result=mockEndCommandResult; mockEndCommandResult=VK_SUCCESS; return result;
+}
+VKAPI_ATTR void VKAPI_CALL mockPipelineBarrier(VkCommandBuffer,VkPipelineStageFlags srcStage,
+    VkPipelineStageFlags dstStage,VkDependencyFlags,std::uint32_t memoryBarrierCount,
+    const VkMemoryBarrier* memoryBarriers,std::uint32_t,const VkBufferMemoryBarrier*,
+    std::uint32_t,const VkImageMemoryBarrier*) {
+    for(std::uint32_t i=0;i<memoryBarrierCount;i++)
+        capturedMemoryBarriers.push_back({srcStage,dstStage,memoryBarriers[i].srcAccessMask,
+                                         memoryBarriers[i].dstAccessMask});
+}
 VKAPI_ATTR void VKAPI_CALL mockCopyBuffer(VkCommandBuffer,VkBuffer,VkBuffer,std::uint32_t,const VkBufferCopy*) {}
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const char* name) {
     if(std::strcmp(name,"vkQueuePresentKHR")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockPresent);
@@ -176,7 +189,7 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr;
+        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr;
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
         mockHeapBudget=mockHeapUsage=mockNativeHeapSize=0;
         device.handle=handle; device.autoEnabled=true; device.lazyBacking=true;
@@ -485,81 +498,71 @@ void checkColdCyclePromotionAndFailureRetry() {
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
         require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
-                "cold-cycle did not restore the nonlocal child into local memory");
+                "direct recovery did not copy the nonlocal child into local memory");
         require(m.children[0] && m.childTypes[0]==0 && d.liveLocal==MiB && d.liveOther==0 &&
                 d.residentBytes==MiB && !m.coldGroups[0].cold && d.coldLogicalBytes==0 &&
-                d.minSavingsPercent==1,
-                "successful cold-cycle type or residency accounting mismatch");
+                d.freezeCount==0 && d.restoreCount==0 && d.snapshot.copyCalls==1 &&
+                d.snapshot.copyBytes==MiB && !d.gpuRestoreUnsafe && d.retainedWarmRecoveries.empty(),
+                "direct recovery changed cold counters or failed to commit one GPU copy");
         requireColdLogicalMatchesState(d,"successful cold-cycle left stale cold accounting");
-        require(m.backingMemoryTypeBits==3 && allocatedTypes.size()==1 && allocatedTypes[0]==0,
-                "cold-cycle did not constrain allocation to local types or restore original mask");
+        require(m.backingMemoryTypeBits==3 && allocatedTypes.size()==1 && allocatedTypes[0]==0 &&
+                frees==1 && bufferSizes.size()==m.poolViews.size(),
+                "direct recovery failed to preserve masks or retire only old backing and temporary view");
+        require(capturedMemoryBarriers.size()==2 &&
+                capturedMemoryBarriers[0].srcStage==VK_PIPELINE_STAGE_ALL_COMMANDS_BIT &&
+                capturedMemoryBarriers[0].dstStage==VK_PIPELINE_STAGE_TRANSFER_BIT &&
+                capturedMemoryBarriers[0].srcAccess==VK_ACCESS_MEMORY_WRITE_BIT &&
+                capturedMemoryBarriers[0].dstAccess==VK_ACCESS_TRANSFER_READ_BIT &&
+                capturedMemoryBarriers[1].srcStage==VK_PIPELINE_STAGE_TRANSFER_BIT &&
+                capturedMemoryBarriers[1].dstStage==VK_PIPELINE_STAGE_ALL_COMMANDS_BIT &&
+                capturedMemoryBarriers[1].srcAccess==VK_ACCESS_TRANSFER_WRITE_BIT &&
+                capturedMemoryBarriers[1].dstAccess==(VK_ACCESS_MEMORY_READ_BIT|VK_ACCESS_MEMORY_WRITE_BIT),
+                "direct recovery copy omitted source-write or destination-app visibility barriers");
     }
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        const auto attemptStarted=std::chrono::steady_clock::now();
         failAllocationTypes.insert(0);
         require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
-                "cold-cycle unexpectedly succeeded when local allocation was refused");
-        require(m.coldGroups[0].cold && m.coldGroups[0].storedBytes==MiB &&
-                m.coldGroups[0].chunks.size()==1 && d.coldLogicalBytes==MiB &&
-                !m.children[0] && m.backingMemoryTypeBits==3 && d.minSavingsPercent==1,
-                "local allocation refusal lost cold data or failed to restore the type mask");
-        requireColdLogicalMatchesState(d,"committed cold snapshot disagreed with aggregate state");
-        require(restoreColdLocked(c.f.handle,d,c.f.memory,0)==VK_SUCCESS && m.children[0] &&
-                m.childTypes[0]==1 && !m.coldGroups[0].cold,
-                "ordinary restore could not fall back to nonlocal memory after promotion refusal");
-        requireColdLogicalMatchesState(d,"fallback restore left stale cold accounting");
-        require(allocatedTypes.size()==3 && allocatedTypes[0]==0 &&
-                allocatedTypes[1]==0 && allocatedTypes[2]==1,
-                "cold-cycle did not restrict its attempt and permit normal restore fallback");
+                "direct recovery unexpectedly succeeded when local allocation was refused");
+        require(!m.coldGroups[0].cold && m.children[0]==c.nonlocal &&
+                m.backingMemoryTypeBits==3 && d.liveOther==MiB && d.liveLocal==0 &&
+                d.residentBytes==MiB && frees==0 && d.retainedWarmRecoveries.empty() &&
+                sparseBinds==0 && bufferSizes.size()==m.poolViews.size() &&
+                d.coldCycleBackoffUntil>=attemptStarted+std::chrono::milliseconds(250),
+                "allocation refusal mutated aliases, counters, or old backing ownership");
+        const auto attempted=allocations;
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && allocations==attempted,
+                "local allocation refusal retried before the 250ms recovery backoff expired");
+        require(bufferSizes.size()==m.poolViews.size(),
+                "local allocation backoff created another temporary sparse view");
         failAllocationTypes.clear();
     }
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
-        failQueueWaitAt=3; failQueueWaitResult=VK_ERROR_OUT_OF_DEVICE_MEMORY; // Freeze copy completion.
+        mockEndCommandResult=VK_ERROR_UNKNOWN; // Fail before queue submission; rollback is safe.
         require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
-                "cold-cycle ignored a failed snapshot copy");
+                "direct recovery ignored a pre-submit copy failure");
         require(m.children[0]==c.nonlocal && !m.coldGroups[0].cold &&
                 m.backingMemoryTypeBits==3 && d.liveOther==MiB && d.liveLocal==0 &&
                 d.residentBytes==MiB && d.coldBytes==0 && d.coldLogicalBytes==0 &&
-                d.gpuGateError==VK_SUCCESS && d.minSavingsPercent==1 && frees==0,
-                "pre-commit copy failure lost the original backing or changed accounting");
+                d.gpuGateError==VK_SUCCESS && !d.gpuRestoreUnsafe && frees==1 &&
+                d.retainedWarmRecoveries.empty() && bufferSizes.size()==m.poolViews.size(),
+                "pre-submit copy failure did not restore aliases and release temporary resources");
         requireColdLogicalMatchesState(d,"pre-commit failure changed cold accounting");
-        failQueueWaitAt=0; d.coldCycleBackoffUntil={};
-        require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
-                "original backing was not recoverable after snapshot-copy failure");
-        require(d.minSavingsPercent==1,"cold-cycle did not restore the compression policy after retry");
     }
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
-        failQueueWaitAt=6; failQueueWaitResult=VK_ERROR_OUT_OF_DEVICE_MEMORY; // Restore copy.
+        failQueueWaitAt=3; // App detach, two-view bind, then copy submit completes ambiguously.
         require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
-                "cold-cycle ignored a failed local restore copy");
-        require(m.children[0] && m.childTypes[0]==0 && m.coldGroups[0].cold &&
-                !m.coldGroups[0].restoreBound && m.coldGroups[0].storedBytes==MiB &&
-                m.backingMemoryTypeBits==3 && d.liveLocal==MiB && d.liveOther==0 &&
-                d.residentBytes==MiB && d.coldLogicalBytes==MiB && d.coldBytes==MiB &&
-                d.gpuGateError==VK_SUCCESS && d.minSavingsPercent==1,
-                "post-commit copy failure lost the cold snapshot or corrupted accounting");
-        requireColdLogicalMatchesState(d,"post-commit failure cold counter diverged from state");
-        failQueueWaitAt=0;
-        require(restoreColdLocked(c.f.handle,d,c.f.memory,0)==VK_SUCCESS &&
-                !m.coldGroups[0].cold && m.children[0] && m.childTypes[0]==0,
-                "ordinary restore could not recover after local restore-copy failure");
-        requireColdLogicalMatchesState(d,"post-failure recovery left stale cold accounting");
-    }
-    {
-        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
-        failSparseBindAt=sparseBinds+5; // Final app-alias transition after local copy.
-        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
-                "cold-cycle ignored an application rebind failure");
-        require(m.children[0] && m.childTypes[0]==0 && m.coldGroups[0].cold &&
-                m.coldGroups[0].restoreBound && m.coldGroups[0].storedBytes==MiB,
-                "failed app rebind did not retain the cold group and local child");
-        require(m.backingMemoryTypeBits==3 && d.liveLocal==MiB && d.liveOther==0 &&
-                d.residentBytes==MiB && d.coldLogicalBytes==MiB && d.coldBytes==MiB,
-                "failed app rebind corrupted masks or cold/resident accounting");
-        require(d.gpuGateError==VK_ERROR_OUT_OF_DEVICE_MEMORY && d.minSavingsPercent==1 && frees==1,
-                "failed app rebind did not preserve the backing behind the sticky gate");
+                "direct recovery ignored ambiguous copy completion");
+        const auto& retained=d.retainedWarmRecoveries.at(0);
+        require(m.children[0]==c.nonlocal && retained.oldBacking==c.nonlocal &&
+                retained.replacement && retained.sourceView==m.poolViews[0] && retained.destinationView &&
+                liveAllocations.count(c.nonlocal) && liveAllocations.count(retained.replacement) &&
+                bufferSizes.count(retained.destinationView) && d.gpuRestoreUnsafe &&
+                d.gpuGateError==VK_ERROR_DEVICE_LOST && frees==0,
+                "ambiguous copy completion did not retain every potentially referenced resource");
     }
 }
 
@@ -615,38 +618,28 @@ void checkColdCycleCandidateSkipsUnpromotableOldest() {
     }
 }
 
-void checkColdCycleCandidateBudgetBlockGenerations() {
-    for(bool advanceBudgetGeneration:{true,false}) {
-        ColdCycleFixture c; auto& d=c.f.device; auto& old=c.f.state();
-        d.coldCycleQuietMilliseconds=0;
-        const auto now=std::chrono::steady_clock::now();
-        old.coldGroups[0].lastUse=now-std::chrono::seconds(5);
-        auto& blocked=old.coldGroups[0];
-        blocked.budgetBlocked=true;
-        blocked.failedBudgetGeneration=d.coldBudgetGeneration;
-        blocked.failedBudgetSubmissionGeneration=d.gpuSubmissionGeneration;
-
-        const auto youngerHandle=tokenHandle<VkDeviceMemory>(advanceBudgetGeneration?0xc205:0xc206);
-        auto younger=old;
-        younger.children[0]=tokenHandle<VkDeviceMemory>(advanceBudgetGeneration?0xc207:0xc208);
-        younger.coldGroups[0].budgetBlocked=false;
-        younger.coldGroups[0].lastUse=now-std::chrono::seconds(2);
-        d.virtualMemory.emplace(youngerHandle,std::move(younger));
-
-        VkDeviceMemory candidate{}; std::size_t child{};
-        require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
-                candidate==youngerHandle && child==0,
-                "current-generation budget-blocked oldest child starved an eligible younger child");
-
-        if(advanceBudgetGeneration) ++d.coldBudgetGeneration;
-        else ++d.gpuSubmissionGeneration;
-        require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
-                candidate==c.f.memory && child==0,
-                advanceBudgetGeneration?
-                    "budget generation change did not re-enable the oldest recovery candidate":
-                    "submission generation change did not re-enable the oldest recovery candidate");
-    }
+void checkColdCycleIgnoresSnapshotBudgetBlock() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    d.coldCycleQuietMilliseconds=0; d.coldBudget=0;
+    auto& group=m.coldGroups[0]; group.budgetBlocked=true;
+    group.failedBudgetGeneration=d.coldBudgetGeneration;
+    group.failedBudgetSubmissionGeneration=d.gpuSubmissionGeneration;
+    require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && m.childTypes[0]==0 &&
+            d.coldBytes==0 && d.coldLogicalBytes==0 && d.freezeCount==0 && d.restoreCount==0,
+            "snapshot-quota block incorrectly prevented direct recovery copy");
 }
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+void checkColdCycleTestPause() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    d.testRecoveryPaused=true;
+    VkDeviceMemory candidate{}; std::size_t child{};
+    require(!selectColdCycleCandidate(d,2*MiB,std::chrono::steady_clock::now(),candidate,child) &&
+            candidate==VK_NULL_HANDLE && child==0 &&
+            !coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && allocations==0 && sparseBinds==0 &&
+            m.children[0]==c.nonlocal && d.liveOther==MiB && d.liveLocal==0,
+            "test-only pause did not hold recovery without changing the original backing");
+}
+#endif
 
 void checkColdCycleQuietEnvParsing() {
     constexpr const char* name="ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS";
@@ -682,28 +675,42 @@ void checkColdCycleQuietEnvParsing() {
 }
 
 void checkColdCycleSparseFailurePreservesBacking() {
-    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
-    failSparseBinds=1;
-    require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
-            "cold-cycle ignored injected application-unbind failure");
-    require(m.children[0]==c.nonlocal && !m.coldGroups[0].cold &&
-            m.backingMemoryTypeBits==3 && d.liveOther==MiB && frees==0,
-            "sparse failure lost original backing or failed to restore the type mask");
-    failSparseBinds=0;
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        m.bindings[0].alignment=0; // Reject before any VkQueueBindSparse call.
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && sparseBinds==0 &&
+                d.gpuGateError==VK_SUCCESS && !d.gpuRestoreUnsafe && m.children[0]==c.nonlocal &&
+                d.liveOther==MiB && d.liveLocal==0 && frees==1 && d.retainedWarmRecoveries.empty() &&
+                bufferSizes.size()==m.poolViews.size(),
+                "pre-driver alias-plan failure gated the device or leaked temporary recovery resources");
+    }
+    for(unsigned stage=1;stage<=4;stage++) {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        failSparseBindAt=stage; // app unbind, view bind, view unbind, app rebind
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+                "direct recovery ignored an injected sparse transition failure");
+        require(d.gpuRestoreUnsafe && d.gpuGateError==VK_ERROR_OUT_OF_DEVICE_MEMORY &&
+                d.retainedWarmRecoveries.size()==1 && frees==0,
+                "sparse failure did not gate and retain replacement ownership");
+        const auto& retained=d.retainedWarmRecoveries.front();
+        require(retained.oldBacking==c.nonlocal && retained.replacement && retained.sourceView &&
+                retained.destinationView && liveAllocations.count(retained.oldBacking) &&
+                liveAllocations.count(retained.replacement) && bufferSizes.count(retained.destinationView),
+                "sparse failure dropped an allocation or private view handle");
+        if(stage<4) require(m.children[0]==c.nonlocal,
+                            "pre-commit sparse failure replaced the original child handle");
+        else require(m.children[0]==retained.replacement,
+                     "ambiguous app rebind did not retain the possibly visible replacement");
+    }
 }
 
 void checkColdCycleRefusalPolicies() {
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
-        d.coldBudget=MiB-1;
-        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
-                "cold-cycle ignored insufficient raw snapshot quota");
-        require(m.children[0]==c.nonlocal && !m.coldGroups[0].cold &&
-                m.coldGroups[0].storedBytes==0 && m.coldGroups[0].chunks.empty() &&
-                d.residentBytes==MiB && d.liveOther==MiB && d.liveLocal==0 &&
-                d.coldBytes==0 && d.coldLogicalBytes==0 && frees==0 &&
-                m.backingMemoryTypeBits==3 && d.minSavingsPercent==1,
-                "raw quota refusal lost backing or changed masks, policy, or accounting");
+        d.coldBudget=0; // Warm copy has no host-side raw snapshot quota.
+        require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && m.childTypes[0]==0 &&
+                d.coldBytes==0 && d.coldLogicalBytes==0 && d.freezeCount==0 && d.restoreCount==0,
+                "direct warm promotion remained dependent on host cold-storage quota");
     }
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
@@ -1366,7 +1373,10 @@ int main() try {
     checkColdCycleActiveReferenceGuard();
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();
-    checkColdCycleCandidateBudgetBlockGenerations();
+    checkColdCycleIgnoresSnapshotBudgetBlock();
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+    checkColdCycleTestPause();
+#endif
     checkColdCycleQuietEnvParsing();
     checkColdCycleSparseFailurePreservesBacking();
     checkColdCycleRefusalPolicies();

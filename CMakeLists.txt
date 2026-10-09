@@ -378,7 +378,7 @@ if(ZVRAM_TEST_ASYNC_HOOK)
                 --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
                 --vulkan-lazy-backing --vulkan-headroom-mib 1 --
                 $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
-                ${cold_cycle_queue_flags})
+                --expect-direct-recovery ${cold_cycle_queue_flags})
         set_tests_properties(${cold_cycle_test} PROPERTIES TIMEOUT 30
             ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
             LABELS "hardware;vulkan;cold-cycle;test-hook")
@@ -391,7 +391,8 @@ if(ZVRAM_TEST_ASYNC_HOOK)
                 --vulkan-selective-restore --vulkan-active-eviction
                 --vulkan-range-mib ${cold_cycle_range_mib} --vulkan-resident-mib 64
                 --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
-                $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture)
+                $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
+                --expect-direct-recovery)
         set_tests_properties(${cold_cycle_test} PROPERTIES TIMEOUT 30
             ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
             LABELS "hardware;vulkan;cold-cycle;range-sensitivity;test-hook")
@@ -422,7 +423,7 @@ if(ZVRAM_TEST_ASYNC_HOOK)
                 --vulkan-range-mib 4 --vulkan-resident-mib 64
                 --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
                 $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
-                --native-allocation ${native_cycle_flags})
+                --native-allocation --expect-direct-recovery ${native_cycle_flags})
         set_tests_properties(${native_cycle_test} PROPERTIES TIMEOUT 30
             ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
             LABELS "hardware;vulkan;cold-cycle;native-allocation;test-hook")
@@ -434,7 +435,7 @@ if(ZVRAM_TEST_ASYNC_HOOK)
             --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
             --vulkan-lazy-backing --vulkan-headroom-mib 1 --
             $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
-            --native-allocation --bda)
+            --native-allocation --bda --expect-direct-recovery)
     set_tests_properties(vulkan-cold-cycle-native-recovery-bda PROPERTIES TIMEOUT 30
         ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
         LABELS "hardware;vulkan;cold-cycle;native-allocation;bda;test-hook")
@@ -453,10 +454,24 @@ if(ZVRAM_TEST_ASYNC_HOOK)
                 --vulkan-range-mib 4 --vulkan-resident-mib 64
                 --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
                 $<TARGET_FILE:zvram-vulkan-auto-check> --hot-recovery-fixture
-                --native-allocation ${hot_cycle_flags})
+                --native-allocation --expect-direct-recovery ${hot_cycle_flags})
         set_tests_properties(${hot_cycle_test} PROPERTIES TIMEOUT 30
             ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;VK_LOADER_LAYERS_DISABLE=~implicit~"
             LABELS "hardware;vulkan;cold-cycle;native-allocation;hot-recovery;test-hook")
+    endforeach()
+    foreach(direct_range_mib 32 4 1)
+        set(direct_batch_test vulkan-direct-recovery-batch-range-${direct_range_mib})
+        add_test(NAME ${direct_batch_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+                --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib ${direct_range_mib} --vulkan-resident-mib 64
+                --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --direct-recovery-batch-fixture
+                --native-allocation)
+        set_tests_properties(${direct_batch_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=1000;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;direct-recovery;range-sensitivity;native-allocation;test-hook")
     endforeach()
 endif()
 add_test(NAME vulkan-graphics-pressure-retention

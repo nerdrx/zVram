@@ -67,6 +67,22 @@ using GetSnapshotStats = VkResult (VKAPI_PTR *)(VkDevice, ZvramSnapshotStatsNX*)
 using ArmRestoreFailure = VkResult (VKAPI_PTR *)(VkDevice, std::uint32_t);
 using SetAsyncEncodeHook = VkResult (VKAPI_PTR *)(VkDevice, void (*)(void*), void*);
 using ForceNextBackingType = VkResult (VKAPI_PTR *)(VkDevice, std::uint32_t);
+using GetBackingType = VkResult (VKAPI_PTR *)(VkDevice, VkDeviceMemory, std::uint32_t, std::uint32_t*);
+using SetRecoveryPaused = VkResult (VKAPI_PTR *)(VkDevice, VkBool32);
+
+struct RecoveryPauseGuard {
+    VkDevice device{};
+    SetRecoveryPaused setPaused{};
+    bool paused{};
+    void set(bool value) {
+        if (!setPaused) return;
+        check(setPaused(device, value ? VK_TRUE : VK_FALSE), "set test recovery pause");
+        paused = value;
+    }
+    ~RecoveryPauseGuard() noexcept {
+        if (paused && setPaused) (void)setPaused(device, VK_FALSE);
+    }
+};
 
 struct Buffer {
     VkDevice device{};
@@ -431,7 +447,8 @@ struct EmptyQueueSubmitProbe {
     VkQueue queue{};
     bool drained{};
 
-    explicit EmptyQueueSubmitProbe(Context& context) : queue(context.queue) {}
+    explicit EmptyQueueSubmitProbe(Context& context, VkQueue target = VK_NULL_HANDLE)
+        : queue(target ? target : context.queue) {}
     EmptyQueueSubmitProbe(const EmptyQueueSubmitProbe&) = delete;
     EmptyQueueSubmitProbe& operator=(const EmptyQueueSubmitProbe&) = delete;
 
@@ -453,6 +470,55 @@ struct EmptyQueueSubmitProbe {
         if (!drained) (void)vkQueueWaitIdle(queue);
     }
 };
+
+struct TimedEmptySubmitSampler {
+    Context& context;
+    std::atomic<bool> stop{}, recording{};
+    std::thread thread;
+    std::vector<std::uint64_t> samples;
+    std::exception_ptr error;
+
+    explicit TimedEmptySubmitSampler(Context& value) : context(value) {}
+    ~TimedEmptySubmitSampler() noexcept {
+        stop.store(true, std::memory_order_release);
+        if (thread.joinable()) thread.join();
+    }
+    void start() {
+        require(!thread.joinable(), "empty-submit sampler already started");
+        thread=std::thread([this] {
+            EmptyQueueSubmitProbe probe(context);
+            auto next=std::chrono::steady_clock::now();
+            try {
+                while(!stop.load(std::memory_order_acquire) && samples.size()<5000) {
+                    const auto elapsed=probe.sampleMicros();
+                    if(recording.load(std::memory_order_acquire)) samples.push_back(elapsed);
+                    next+=std::chrono::milliseconds(1);
+                    const auto now=std::chrono::steady_clock::now();
+                    if(next<now) next=now;
+                    std::this_thread::sleep_until(next);
+                }
+                probe.drain();
+            } catch(...) { error=std::current_exception(); }
+        });
+    }
+    void finish() {
+        stop.store(true,std::memory_order_release);
+        if(thread.joinable()) thread.join();
+        if(error) std::rethrow_exception(error);
+    }
+};
+
+void printSubmitLatencySummary(const char* label, std::vector<std::uint64_t> samples) {
+    require(!samples.empty(), "direct recovery submit sampler collected no samples");
+    std::sort(samples.begin(), samples.end());
+    const auto percentile = [&samples](std::size_t percent) {
+        const auto index = ((samples.size() - 1) * percent + 99) / 100;
+        return samples[index];
+    };
+    std::cout << label << " resource-free queue-submit us count=" << samples.size()
+              << " p50=" << percentile(50) << " p95=" << percentile(95)
+              << " max=" << samples.back() << '\n';
+}
 
 struct TimelineWatchdog {
     VkDevice device{};
@@ -1425,7 +1491,11 @@ void pressureOnlyFixtureCheck(Context& context) {
 }
 
 void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceType,
-                                   bool expectNativeTypeRefusal, bool hotRecovery) {
+                                   GetBackingType getBackingType,
+                                   SetRecoveryPaused setRecoveryPaused,
+                                   bool expectNativeTypeRefusal, bool hotRecovery,
+                                   bool expectDirectRecovery,
+                                   std::vector<std::uint64_t>* batchSubmitSamples = nullptr) {
     Buffer resident; resident.device = context.device;
     VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     info.size = ChunkBytes;
@@ -1454,6 +1524,12 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
     }
     require(nonlocalType != UINT32_MAX,
             "cold-cycle fixture needs a compatible non-device-local backing type");
+    RecoveryPauseGuard recoveryPause{context.device, setRecoveryPaused};
+    if (expectDirectRecovery) {
+        require(setRecoveryPaused != nullptr,
+                "direct recovery fixture lacks the test-only recovery pause hook");
+        recoveryPause.set(true);
+    }
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     VkMemoryAllocateFlagsInfo addressFlags{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
     addressFlags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
@@ -1465,6 +1541,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
           "allocate cold-cycle virtual backing");
     check(vkBindBufferMemory(context.device, resident.handle, resident.memory, 0),
           "bind cold-cycle virtual backing");
+    std::uint32_t initialBackingType = UINT32_MAX;
     if (context.bdaMode) {
         VkBufferDeviceAddressInfo addressInfo{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
         addressInfo.buffer = resident.handle;
@@ -1493,6 +1570,12 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
           "map cold-cycle staging memory");
 
     const auto hotBaseline = context.stats();
+    std::unique_ptr<TimedEmptySubmitSampler> directSampler;
+    if (expectDirectRecovery && hotRecovery) {
+        directSampler = std::make_unique<TimedEmptySubmitSampler>(context);
+        directSampler->start();
+        directSampler->recording.store(true, std::memory_order_release);
+    }
     Buffer sink; sink.device = context.device;
     PendingSubmission pending{context.device, context.secondQueue, context.secondCommands,
                               VK_NULL_HANDLE, context.pendingTimeline};
@@ -1555,7 +1638,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         pending.submitted = true;
         watchdog = std::make_unique<TimelineWatchdog>(context.device, context.pendingTimeline, waitValue);
     };
-    if (hotRecovery && context.twoQueues) beginPendingUse();
+    if (context.twoQueues && (hotRecovery || expectDirectRecovery)) beginPendingUse();
 
     const VkResult uploadResult = upload(context, resident.handle, staging, ChunkBytes,
         expectNativeTypeRefusal ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_SUCCESS);
@@ -1581,10 +1664,25 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         return;
     }
     check(vkQueueWaitIdle(context.queue), "finish cold-cycle initial upload");
+    if (expectDirectRecovery) {
+        require(getBackingType != nullptr,
+                "direct recovery fixture lacks the test-only backing-type getter");
+        check(getBackingType(context.device, resident.memory, 0, &initialBackingType),
+              "query initial direct-recovery backing type after materialization");
+        const auto heap = context.memory.memoryTypes[initialBackingType].heapIndex;
+        require(heap < context.memory.memoryHeapCount &&
+                !(context.memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
+                "direct recovery fixture did not start with a nonlocal backing");
+        recoveryPause.set(false);
+    }
     auto hotWindowStart = std::chrono::steady_clock::now();
     const auto warm = context.stats();
     require(warm.residentBytes == ChunkBytes && warm.coldLogicalBytes == 0 && warm.failures == 0,
             "cold-cycle allocation did not start resident below cap");
+    if (expectDirectRecovery && context.twoQueues && !directSampler) {
+        directSampler = std::make_unique<TimedEmptySubmitSampler>(context);
+        directSampler->start();
+    }
     EmptyQueueSubmitProbe emptyProbe(context);
     if (context.twoQueues) {
         if (!pending.submitted) beginPendingUse();
@@ -1592,11 +1690,13 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         std::uint64_t maxEmptySubmitMicros = 0, emptySubmitSamples = 0;
         const auto busyDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1200);
         do {
-            maxEmptySubmitMicros = std::max(maxEmptySubmitMicros, emptyProbe.sampleMicros());
-            ++emptySubmitSamples;
+            if (!expectDirectRecovery) {
+                maxEmptySubmitMicros = std::max(maxEmptySubmitMicros, emptyProbe.sampleMicros());
+                ++emptySubmitSamples;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
         } while (std::chrono::steady_clock::now() < busyDeadline);
-        emptyProbe.drain();
+        if (!expectDirectRecovery) emptyProbe.drain();
         const auto busy = context.stats();
         std::uint64_t timelineValue{};
         check(vkGetSemaphoreCounterValue(context.device, context.pendingTimeline, &timelineValue),
@@ -1607,16 +1707,61 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             busy.freezes == (hotRecovery ? hotBaseline.freezes : warm.freezes) &&
             busy.failures == warm.failures &&
             (hotRecovery || busy.restores == warm.restores);
+        if (expectDirectRecovery && !directSampler->recording.load(std::memory_order_acquire))
+            directSampler->recording.store(true, std::memory_order_release);
         check(pending.finish(), "release and drain cold-cycle busy submission");
         watchdog->cancelAndJoin();
         if (hotRecovery) hotWindowStart = std::chrono::steady_clock::now();
         require(deferred,
                 "cold-cycle worker evicted a range while its second-queue use was pending");
+        if (expectDirectRecovery) {
+            std::uint32_t stillNonlocal = UINT32_MAX;
+            check(getBackingType(context.device, resident.memory, 0, &stillNonlocal),
+                  "query backing type after pending-use deferral");
+            require(stillNonlocal == initialBackingType,
+                    "direct recovery changed backing while a second-queue use was pending");
+        }
         std::cout << "cold-cycle busy gate resource-free queue submit lock-path max-us="
                   << maxEmptySubmitMicros << " samples=" << emptySubmitSamples << '\n';
     }
     ZvramSnapshotStatsNX cycled{};
-    if (hotRecovery) {
+    if (expectDirectRecovery) {
+        if (!directSampler) {
+            directSampler = std::make_unique<TimedEmptySubmitSampler>(context);
+            directSampler->start();
+            directSampler->recording.store(true, std::memory_order_release);
+        }
+        const auto directDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+        std::uint32_t recoveredType = initialBackingType;
+        while (std::chrono::steady_clock::now() < directDeadline) {
+            check(getBackingType(context.device, resident.memory, 0, &recoveredType),
+                  "query backing type while waiting for direct recovery");
+            if (recoveredType != initialBackingType) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        directSampler->recording.store(false, std::memory_order_release);
+        directSampler->finish();
+        if (batchSubmitSamples)
+            batchSubmitSamples->insert(batchSubmitSamples->end(), directSampler->samples.begin(),
+                                       directSampler->samples.end());
+        const auto recoveredHeap = recoveredType < context.memory.memoryTypeCount
+            ? context.memory.memoryTypes[recoveredType].heapIndex : UINT32_MAX;
+        require(recoveredType != initialBackingType &&
+                recoveredHeap < context.memory.memoryHeapCount &&
+                (context.memory.memoryHeaps[recoveredHeap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
+                "direct recovery did not move the child to a local backing type");
+        cycled = context.stats();
+        require(cycled.residentBytes == ChunkBytes && cycled.coldLogicalBytes == 0 &&
+                cycled.freezes == warm.freezes && cycled.restores == warm.restores &&
+                cycled.failures == warm.failures,
+                "direct recovery changed cold-storage accounting or lost resident bytes");
+        const auto elapsedMicros = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - hotWindowStart).count();
+        std::cout << "direct recovery detected-us=" << elapsedMicros << " backing-type="
+                  << initialBackingType << "->" << recoveredType << '\n';
+        if (!batchSubmitSamples)
+            printSubmitLatencySummary("direct recovery", directSampler->samples);
+    } else if (hotRecovery) {
         if (context.twoQueues) emptyProbe.drain();
         const auto deadline = hotWindowStart + std::chrono::milliseconds(1000);
         auto nextTouch = hotWindowStart;
@@ -2764,6 +2909,8 @@ int main(int argc, char** argv) try {
     bool pressureOnlyFixture = false;
     bool pressureOnlyLiveCapFixture = false;
     bool coldCycleRecoveryFixture = false;
+    bool expectDirectRecovery = false;
+    bool directRecoveryBatchFixture = false;
     bool hotRecoveryFixture = false;
     bool asyncEncodeOverlapFixture = false, asyncPressureRaiseDiscardFixture = false;
     bool rangeCache = false;
@@ -2785,6 +2932,7 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--bda") == 0) bdaMode = true;
         else if (std::strcmp(argv[i], "--native-allocation") == 0) nativeAllocation = true;
         else if (std::strcmp(argv[i], "--expect-native-type-refusal") == 0) expectNativeTypeRefusal = true;
+        else if (std::strcmp(argv[i], "--expect-direct-recovery") == 0) expectDirectRecovery = true;
         else if (std::strcmp(argv[i], "--two-queues") == 0) twoQueues = true;
         else if (std::strcmp(argv[i], "--two-families") == 0) twoFamilies = true;
         else if (std::strcmp(argv[i], "--exclusive-families") == 0) exclusiveFamilies = true;
@@ -2812,6 +2960,10 @@ int main(int argc, char** argv) try {
         }
         else if (std::strcmp(argv[i], "--cold-cycle-recovery-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
+        }
+        else if (std::strcmp(argv[i], "--direct-recovery-batch-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
+            directRecoveryBatchFixture=true; expectDirectRecovery=true;
         }
         else if (std::strcmp(argv[i], "--hot-recovery-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true; hotRecoveryFixture=true;
@@ -2883,6 +3035,10 @@ int main(int argc, char** argv) try {
             "cold-cycle fixture requires tracked buffer backing and native-only BDA");
     require(!expectNativeTypeRefusal || (coldCycleRecoveryFixture && nativeAllocation && !bdaMode),
             "native type refusal requires the native cold-cycle fixture");
+    require(!expectDirectRecovery || (coldCycleRecoveryFixture && !expectNativeTypeRefusal),
+            "direct recovery requires a positive cold-cycle fixture");
+    require(!directRecoveryBatchFixture || (!twoQueues && !bdaMode && nativeAllocation),
+            "direct recovery batch uses native single-queue backing");
     require(!hotRecoveryFixture || (nativeAllocation && !bdaMode && !expectNativeTypeRefusal),
             "hot recovery fixture requires native allocation without BDA or refusal mode");
     require(!pressureOnlyLiveCapFixture || (!nativeAllocation && !twoQueues && !twoFamilies && !exclusiveFamilies),
@@ -2935,7 +3091,34 @@ int main(int argc, char** argv) try {
             std::cerr << "UNSUPPORTED: cold-cycle fixture requires ZVRAM_TEST_ASYNC_HOOK layer build\n";
             return 77;
         }
-        coldCycleRecoveryFixtureCheck(context, forceType, expectNativeTypeRefusal, hotRecoveryFixture);
+        const auto getBackingType = expectDirectRecovery
+            ? reinterpret_cast<GetBackingType>(
+                vkGetDeviceProcAddr(context.device, "vkZVramGetBackingTypeNX"))
+            : nullptr;
+        const auto setRecoveryPaused = expectDirectRecovery
+            ? reinterpret_cast<SetRecoveryPaused>(
+                vkGetDeviceProcAddr(context.device, "vkZVramSetRecoveryPausedNX"))
+            : nullptr;
+        if (expectDirectRecovery && !getBackingType) {
+            std::cerr << "UNSUPPORTED: direct recovery fixture requires ZVRAM_TEST_ASYNC_HOOK getter\n";
+            return 77;
+        }
+        if (expectDirectRecovery && !setRecoveryPaused) {
+            std::cerr << "UNSUPPORTED: direct recovery fixture requires ZVRAM_TEST_ASYNC_HOOK pause control\n";
+            return 77;
+        }
+        if (directRecoveryBatchFixture) {
+            std::vector<std::uint64_t> submitSamples;
+            for (unsigned int transaction = 0; transaction < 5; ++transaction)
+                coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
+                                              false, false,
+                                              true, &submitSamples);
+            printSubmitLatencySummary("five direct-recovery transactions", std::move(submitSamples));
+        } else {
+            coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
+                                          expectNativeTypeRefusal, hotRecoveryFixture,
+                                          expectDirectRecovery);
+        }
         return 0;
     }
     if (asyncEncodeOverlapFixture || asyncPressureRaiseDiscardFixture) {

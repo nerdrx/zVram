@@ -1,5 +1,7 @@
 # Experimental cold-cycle recovery
 
+This page records the historical snapshot-based implementation through v0.4.16. The current source uses [direct GPU-copy recovery](../direct-gpu-recovery/README.md); the raw snapshot quota and timing results below describe the earlier path.
+
 Default off; included in Hub release v0.4.10. This prototype recovers completed eligible buffers whose backing explicitly uses a non-device-local Vulkan heap. It cannot identify or move device-local allocations that the kernel has transparently placed in GTT. Allocation type is not proof of physical residency.
 
 ## Correctness
