@@ -271,6 +271,14 @@ foreach(range_pressure_mode synthetic native)
         endif()
     endforeach()
 endforeach()
+add_test(NAME vulkan-pressure-only-idle-regression
+    COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+        --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+        --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+        --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure --
+        $<TARGET_FILE:zvram-vulkan-auto-check> --pressure-only-fixture)
+set_tests_properties(vulkan-pressure-only-idle-regression PROPERTIES TIMEOUT 30
+    LABELS "hardware;vulkan;pressure")
 foreach(batch_mode synthetic native)
     set(batch_flags)
     if(batch_mode STREQUAL "native")

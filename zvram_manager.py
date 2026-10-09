@@ -336,6 +336,7 @@ class Manager:
         resident = profile.get("resident_mib") or max(256, int(total * PRIORITIES[profile["priority"]]))
         if profile.get("mode") == "vulkan":
             command = [str(ROOT / "zvram"), "--vulkan-virtual-gib", "96", "--vulkan-auto-idle-ms", "1000",
+                       "--vulkan-eviction-trigger", "pressure",
                        "--vulkan-cold-mib", str(profile.get("cold_mib") or 4096),
                        "--vulkan-selective-restore", "--vulkan-active-eviction", "--vulkan-range-mib", "32",
                        "--vulkan-resident-mib", str(resident), "--vulkan-lazy-backing", "--vulkan-headroom-mib", "1536",

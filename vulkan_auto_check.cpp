@@ -1307,9 +1307,87 @@ void selectiveBindCheck(Context& context, bool api2) {
               << " independent pools froze cold, woke selectively, and preserved distinct full-byte patterns" << std::endl;
 }
 
+void pressureOnlyFixtureCheck(Context& context) {
+    auto makeBuffer = [&](Buffer& buffer, VkDeviceSize bytes, VkBufferUsageFlags usage) {
+        buffer.device = context.device;
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = bytes; info.usage = usage;
+        check(vkCreateBuffer(context.device, &info, nullptr, &buffer.handle), "create pressure-only buffer");
+        VkMemoryRequirements req{};
+        vkGetBufferMemoryRequirements(context.device, buffer.handle, &req);
+        require(req.size == bytes && (req.memoryTypeBits & (1u << context.virtualType)),
+                "pressure-only buffer has incompatible requirements");
+        VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        allocation.allocationSize = req.size; allocation.memoryTypeIndex = context.virtualType;
+        check(vkAllocateMemory(context.device, &allocation, nullptr, &buffer.memory), "allocate pressure-only buffer");
+        check(vkBindBufferMemory(context.device, buffer.handle, buffer.memory, 0), "bind pressure-only buffer");
+    };
+    Buffer original, pressure;
+    Staging staging; staging.device = context.device;
+    makeBuffer(original, ChunkBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+               VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+    VkBufferCreateInfo stagingInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    stagingInfo.size = ChunkBytes;
+    stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device, &stagingInfo, nullptr, &staging.buffer), "create pressure-only staging");
+    VkMemoryRequirements stagingReq{};
+    vkGetBufferMemoryRequirements(context.device, staging.buffer, &stagingReq);
+    VkMemoryAllocateInfo stagingAllocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    stagingAllocation.allocationSize = stagingReq.size;
+    stagingAllocation.memoryTypeIndex = hostCoherentType(context, stagingReq.memoryTypeBits);
+    require(stagingAllocation.memoryTypeIndex != UINT32_MAX, "no pressure-only staging memory type");
+    check(vkAllocateMemory(context.device, &stagingAllocation, nullptr, &staging.memory), "allocate pressure-only staging");
+    check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0), "bind pressure-only staging");
+    check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped), "map pressure-only staging");
+
+    upload(context, original.handle, staging, ChunkBytes);
+    check(computeCycle(context, original.handle, 0, 0, false, ChunkBytes), "initialize below-cap pressure-only allocation");
+    readbackAndVerify(context, original.handle, staging, 0, false, ChunkBytes);
+    const auto warm = context.stats();
+    require(warm.residentBytes == ChunkBytes && warm.coldLogicalBytes == 0 && warm.failures == 0,
+            "below-cap allocation did not remain resident");
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    const auto afterIdle = context.stats();
+    require(afterIdle.residentBytes == warm.residentBytes && afterIdle.coldLogicalBytes == 0 &&
+            afterIdle.freezes == warm.freezes && afterIdle.restores == warm.restores,
+            "pressure-only mode froze eligible data below the admission limit");
+
+    makeBuffer(pressure, 2 * ChunkBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+               VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+
+    upload(context, pressure.handle, staging, 2 * ChunkBytes);
+    check(computeCycle(context, pressure.handle, 0, 0, false, 2 * ChunkBytes), "initialize pressure-only pressure allocation");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    ZvramSnapshotStatsNX pressured{};
+    while (std::chrono::steady_clock::now() < deadline) {
+        pressured = context.stats();
+        if (pressured.residentBytes == 2 * ChunkBytes && pressured.coldLogicalBytes == ChunkBytes &&
+            pressured.failures == 0) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    require(pressured.residentBytes == 2 * ChunkBytes && pressured.coldLogicalBytes == ChunkBytes &&
+            pressured.failures == 0, "pressure-only mode did not evict within the resident admission limit");
+
+    vkDestroyBuffer(context.device, pressure.handle, nullptr); pressure.handle = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, pressure.memory, nullptr); pressure.memory = VK_NULL_HANDLE;
+    const auto beforeRestore = context.stats();
+    readbackAndVerify(context, original.handle, staging, 0, false, ChunkBytes);
+    const auto restored = context.stats();
+    require(restored.restores > beforeRestore.restores && restored.residentBytes == ChunkBytes &&
+            restored.coldLogicalBytes == 0 && restored.failures == 0,
+            "pressure removal did not restore original allocation and its full-byte pattern");
+    vkDestroyBuffer(context.device, original.handle, nullptr); original.handle = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, original.memory, nullptr); original.memory = VK_NULL_HANDLE;
+    const auto empty = context.stats();
+    require(!empty.residentBytes && !empty.coldLogicalBytes && !empty.coldStoredBytes && !empty.failures,
+            "pressure-only fixture cleanup retained backing or errors");
+    std::cout << "PASS: below-cap data stayed resident; pressure evicted it; removing pressure restored every byte" << std::endl;
+}
+
 void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
                       bool cacheQuota = false, bool cacheBootstrap = false,
-                      bool compressedInitial = false) {
+                      bool compressedInitial = false, bool pressureOnlyFixture = false) {
+    if (pressureOnlyFixture) { pressureOnlyFixtureCheck(context); return; }
     const std::uint32_t chunkCount = cacheQuota ? 3u : 2u;
     const VkDeviceSize Bytes=static_cast<VkDeviceSize>(chunkCount)*ChunkBytes;
     Buffer pool; pool.device=context.device;
@@ -1990,6 +2068,7 @@ int main(int argc, char** argv) try {
     bool rangeCompressed = false;
     bool useZeroPattern = false;
     bool rangePressure = false;
+    bool pressureOnlyFixture = false;
     bool rangeCache = false;
     bool rangeCacheBootstrap = false;
     bool rangeCacheQuota = false, rangeCacheUnknown = false;
@@ -2027,6 +2106,9 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--zero-pattern") == 0) useZeroPattern=true;
         else if (std::strcmp(argv[i], "--robust-core") == 0) robustCore=true;
         else if (std::strcmp(argv[i], "--range-pressure") == 0) { rangeSubmit=true; rangePressure=true; }
+        else if (std::strcmp(argv[i], "--pressure-only-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; pressureOnlyFixture=true;
+        }
         else if (std::strcmp(argv[i], "--range-cache") == 0) {
             rangeSubmit=true; rangePressure=true; rangeCache=true;
         }
@@ -2049,7 +2131,7 @@ int main(int argc, char** argv) try {
             require(controlHoldMilliseconds<=15000,"--control-hold-ms maximum is 15000");
         }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues] [--control-hold-ms 0..15000]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--pressure-only-fixture|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues] [--control-hold-ms 0..15000]");
     }
     require(!useZeroPattern || rangeCompressed,
             "--zero-pattern requires --range-compressed");
@@ -2080,6 +2162,8 @@ int main(int argc, char** argv) try {
             "range pressure requires descriptor-tracked range-submit mode");
     require(!rangePressure || !pendingWait,
             "range pressure manages its own pending timeline test");
+    require(!pressureOnlyFixture || (!nativeAllocation && !twoQueues),
+            "pressure-only fixture uses synthetic single-queue backing");
     require(!rangeCompressed || (!rangePressure && !rangeCache),
             "compressible range initialization requires the independent range-submit check");
     require(!(rangeCacheQuota && rangeCacheUnknown),
@@ -2120,7 +2204,7 @@ int main(int argc, char** argv) try {
         std::this_thread::sleep_for(std::chrono::milliseconds(controlHoldMilliseconds));
     }
     if (rangeCacheUnknown) { rangeCacheUnknownCheck(context); return 0; }
-    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap, rangeCompressed); return 0; }
+    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap, rangeCompressed, pressureOnlyFixture); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
     if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }

@@ -256,6 +256,7 @@ struct Device {
     VkSubmissionTracker submission;
     ActiveRefs activeRefs;
     bool activeEviction{};
+    bool pressureOnly{};
     VkDeviceSize rangeChunkBytes{};
     VkDeviceSize residentLimitBytes{};
     std::uint64_t gpuLocalOwnerCombinedLimitBytes{};
@@ -798,7 +799,9 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     }
     bool inject=supported && !policy;
     if(!supported) logf("AMD overallocation extension unavailable; passing device creation through unchanged");
-    const bool snapshotRequested=std::getenv("ZVRAM_VULKAN_AUTO_IDLE_MS") || std::getenv("ZVRAM_VULKAN_COLD_MIB");
+    const char* pressureOnlyEnv=std::getenv("ZVRAM_VULKAN_PRESSURE_ONLY");
+    const bool pressureOnlyRequested=pressureOnlyEnv && std::strcmp(pressureOnlyEnv,"1")==0;
+    const bool snapshotRequested=std::getenv("ZVRAM_VULKAN_AUTO_IDLE_MS") || std::getenv("ZVRAM_VULKAN_COLD_MIB") || pressureOnlyRequested;
     bool deviceGroupRequested=false;
     for(auto* p=static_cast<const VkBaseInStructure*>(ci->pNext);p;p=p->pNext)
         if(p->sType==VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO) deviceGroupRequested=true;
@@ -1279,6 +1282,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 const char* active=std::getenv("ZVRAM_VULKAN_ACTIVE_EVICTION");
                 d->activeEviction=d->selectiveRestore && active && std::strcmp(active,"1")==0;
                 if(d->activeEviction && rangeEnabled) d->rangeChunkBytes=rangeMiB*1024ull*1024ull;
+                d->pressureOnly=pressureOnlyRequested;
                 const char* clean=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE");
                 d->cleanCache=d->rangeChunkBytes && clean && std::strcmp(clean,"1")==0;
                 if(d->gpuRawHostInput && !d->cleanCache) {
@@ -1364,6 +1368,11 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                         autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
                         logf("lazy backing requires immediate resident admission");
                     }
+                }
+                if(d->pressureOnly && (!d->activeEviction || !d->rangeChunkBytes ||
+                   !d->residentLimitBytes || !d->residentAdmissionArmed)) {
+                    autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
+                    logf("pressure-only snapshots require active range eviction and immediate resident admission");
                 }
                 try {
                     handles=d->appQueues; handles.push_back(d->copyQueue);
@@ -2724,45 +2733,88 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
             d.lastActivity=std::chrono::steady_clock::now(); if(r!=VK_SUCCESS) { ++d.snapshotFailures; d.lastSnapshotError=r; }
             queueLock.unlock(); continue;
         }
-        bool haveAsyncCandidate=false;
-        VkDeviceMemory asyncMemory{}; std::size_t asyncChild{};
-        if(d.asyncCompression) {
-            const auto now=std::chrono::steady_clock::now();
-            for(const auto& pair:d.virtualMemory) {
-                const auto& memory=pair.second;
+        if(d.pressureOnly) {
+            VkDeviceSize target{};
+            if(residentAdmissionLimit(d,target)==VK_SUCCESS) {
+                const auto& live=d.liveControl.state;
+                if(live.result==1 && live.requestedMiB<=std::numeric_limits<VkDeviceSize>::max()/(1024ull*1024ull))
+                    target=std::min<VkDeviceSize>(target,live.requestedMiB*1024ull*1024ull);
+                if(d.residentBytes>target) {
+                    VkDeviceMemory candidateMemory{};
+                    std::size_t candidateChild{};
+                    auto oldest=std::chrono::steady_clock::time_point::max();
+                    for(const auto& pair:d.virtualMemory) {
+                        const auto& memory=pair.second;
+                        if(memory.children.size()!=memory.coldGroups.size() ||
+                           memory.children.size()!=memory.childSizes.size() ||
+                           memory.poolViews.size()!=memory.children.size()) continue;
+                        for(std::size_t i=0;i<memory.children.size();i++) {
+                            const auto& group=memory.coldGroups[i];
+                            if(!memory.children[i] || group.cold || d.activeRefs.busy(pair.first,i) ||
+                               (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration &&
+                                group.failedBudgetSubmissionGeneration==d.gpuSubmissionGeneration)) continue;
+                            if(group.lastUse<oldest) {
+                                oldest=group.lastUse;
+                                candidateMemory=pair.first;
+                                candidateChild=i;
+                            }
+                        }
+                    }
+                    if(candidateMemory) {
+                        bool consumed=false;
+                        // Candidate age policy matches the synchronous pressure path: completed
+                        // children are eligible immediately, without the legacy idle-age delay.
+                        if(d.asyncCompression && d.residentBytes>target)
+                            consumed=freezeChildAsyncLocked(d,candidateMemory,candidateChild,lock,queueLock);
+                        if(!consumed) {
+                            auto found=d.virtualMemory.find(candidateMemory);
+                            if(found!=d.virtualMemory.end() && d.residentBytes>target)
+                                (void)freezeChildLocked(d,found->second,candidateChild);
+                        }
+                    }
+                }
+            }
+        } else {
+            bool haveAsyncCandidate=false;
+            VkDeviceMemory asyncMemory{}; std::size_t asyncChild{};
+            if(d.asyncCompression) {
+                const auto now=std::chrono::steady_clock::now();
+                for(const auto& pair:d.virtualMemory) {
+                    const auto& memory=pair.second;
+                    if(memory.children.empty() || memory.children.size()!=memory.coldGroups.size() ||
+                       memory.children.size()!=memory.childSizes.size() ||
+                       memory.children.size()!=memory.childGenerations.size() ||
+                       memory.poolViews.size()!=memory.children.size()) continue;
+                    for(std::size_t i=0;i<memory.children.size();i++) {
+                        const auto& group=memory.coldGroups[i];
+                        if(!memory.children[i] || group.cold || group.pristine || !group.chunks.empty() ||
+                           (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration &&
+                            group.failedBudgetSubmissionGeneration==d.gpuSubmissionGeneration) ||
+                           !memory.childSizes[i] || memory.childSizes[i]>kAsyncSnapshotMaxRaw ||
+                           memory.childSizes[i]>d.snapshot.stagingSize || d.activeRefs.busy(pair.first,i) ||
+                           now<group.lastUse+std::chrono::milliseconds(d.idleMilliseconds)) continue;
+                        asyncMemory=pair.first; asyncChild=i; haveAsyncCandidate=true; break;
+                    }
+                    if(haveAsyncCandidate) break;
+                }
+            }
+            // Only value identifiers survive this scan; no map/vector references cross unlock.
+            if(haveAsyncCandidate && freezeChildAsyncLocked(d,asyncMemory,asyncChild,lock,queueLock)) {
+                d.lastActivity=std::chrono::steady_clock::now();
+                queueLock.unlock();
+                continue; // All map references were invalidated while the gates were released.
+            }
+            for(auto& pair:d.virtualMemory) {
+                auto& memory=pair.second;
+                if(d.activeEviction && !d.rangeChunkBytes && (d.activeRefs.busy(pair.first) ||
+                   std::chrono::steady_clock::now()<memory.lastUse+std::chrono::milliseconds(d.idleMilliseconds))) continue;
                 if(memory.children.empty() || memory.children.size()!=memory.coldGroups.size() ||
-                   memory.children.size()!=memory.childSizes.size() ||
-                   memory.children.size()!=memory.childGenerations.size() ||
                    memory.poolViews.size()!=memory.children.size()) continue;
                 for(std::size_t i=0;i<memory.children.size();i++) {
-                    const auto& group=memory.coldGroups[i];
-                    if(!memory.children[i] || group.cold || group.pristine || !group.chunks.empty() ||
-                       (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration &&
-                        group.failedBudgetSubmissionGeneration==d.gpuSubmissionGeneration) ||
-                       !memory.childSizes[i] || memory.childSizes[i]>kAsyncSnapshotMaxRaw ||
-                       memory.childSizes[i]>d.snapshot.stagingSize || d.activeRefs.busy(pair.first,i) ||
-                       now<group.lastUse+std::chrono::milliseconds(d.idleMilliseconds)) continue;
-                    asyncMemory=pair.first; asyncChild=i; haveAsyncCandidate=true; break;
+                    if(d.rangeChunkBytes && (d.activeRefs.busy(pair.first,i) ||
+                        std::chrono::steady_clock::now()<memory.coldGroups[i].lastUse+std::chrono::milliseconds(d.idleMilliseconds))) continue;
+                    (void)freezeChildLocked(d,memory,i);
                 }
-                if(haveAsyncCandidate) break;
-            }
-        }
-        // Only value identifiers survive this scan; no map/vector references cross unlock.
-        if(haveAsyncCandidate && freezeChildAsyncLocked(d,asyncMemory,asyncChild,lock,queueLock)) {
-            d.lastActivity=std::chrono::steady_clock::now();
-            queueLock.unlock();
-            continue; // All map references were invalidated while the gates were released.
-        }
-        for(auto& pair:d.virtualMemory) {
-            auto& memory=pair.second;
-            if(d.activeEviction && !d.rangeChunkBytes && (d.activeRefs.busy(pair.first) ||
-               std::chrono::steady_clock::now()<memory.lastUse+std::chrono::milliseconds(d.idleMilliseconds))) continue;
-            if(memory.children.empty() || memory.children.size()!=memory.coldGroups.size() ||
-               memory.poolViews.size()!=memory.children.size()) continue;
-            for(std::size_t i=0;i<memory.children.size();i++) {
-                if(d.rangeChunkBytes && (d.activeRefs.busy(pair.first,i) ||
-                    std::chrono::steady_clock::now()<memory.coldGroups[i].lastUse+std::chrono::milliseconds(d.idleMilliseconds))) continue;
-                (void)freezeChildLocked(d,memory,i);
             }
         }
         d.lastActivity=std::chrono::steady_clock::now();

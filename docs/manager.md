@@ -47,6 +47,17 @@ or explicitly configured expert modes. `--live-control` remains a compatibility
 alias for the default. HIP keeps its existing behavior.
 This changes paging behavior; test compatibility per application.
 Existing apps must restart once to load the updated layer and paging features.
+
+Automatic live setup uses pressure-triggered background eviction: backing stays
+resident while it fits the current native budget and configured cap. This avoids
+compressing otherwise useful idle data solely because a timer elapsed. Explicit
+`--vulkan-auto-idle-ms` expert/model workflows retain proactive idle snapshots;
+use `--vulkan-eviction-trigger pressure` or `idle` to choose explicitly.
+Pressure-only mode still evicts completed eligible data when a live cap is
+lowered. A freed native budget permits subsequent cold restores to allocate
+device-local backing first, within the cap. Warm allocations already placed in
+GTT and application staging buffers are not automatically relocated by this
+policy; their GTT counters do not establish that cold snapshots remain spilled.
 The GUI provides **Apply live** (or **Save live cap** on a detected external app).
 In the TUI, `p` selects a live preset and `e` sets MiB for an external app.
 

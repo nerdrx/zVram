@@ -38,6 +38,7 @@ virtual_size = parser.add_mutually_exclusive_group()
 virtual_size.add_argument("--vulkan-virtual-mib", type=int, help="set the experimental Vulkan logical heap size at launch, in positive MiB (requires sparse binding)")
 virtual_size.add_argument("--vulkan-virtual-gib", type=int, help="set the experimental Vulkan logical heap size at launch, in positive GiB (requires sparse binding)")
 parser.add_argument("--vulkan-auto-idle-ms", type=int, help="compress eligible idle Vulkan storage allocations after this delay (experimental)")
+parser.add_argument("--vulkan-eviction-trigger", choices=('pressure', 'idle'), help="pressure keeps backing resident while it fits; idle proactively snapshots cold data (default pressure for automatic live setup)")
 parser.add_argument("--vulkan-cold-mib", type=int, help="limit retained Vulkan snapshots in MiB; requires --vulkan-auto-idle-ms")
 parser.add_argument("--vulkan-min-savings-percent", type=int, help="minimum snapshot savings 0..100; 0 keeps any saving, 100 uses raw snapshots; requires automatic snapshots")
 parser.add_argument("--vulkan-byte-shuffle", type=int, choices=(2,4), help="losslessly reorder byte planes before Zstd; requires automatic snapshots (experimental)")
@@ -71,6 +72,9 @@ if args.live_control:
     if args.hip:
         parser.error('--live-control currently requires the Vulkan backend')
     from zvram_manager import gpu_status
+    if args.vulkan_eviction_trigger is None:
+        # Preserve explicit expert/model idle probes; ordinary apps avoid idle churn.
+        args.vulkan_eviction_trigger = 'pressure' if args.vulkan_auto_idle_ms is None else 'idle'
     if args.vulkan_virtual_gib is None and args.vulkan_virtual_mib is None:
         args.vulkan_virtual_gib = 96
     defaults = dict(vulkan_auto_idle_ms=1000, vulkan_cold_mib=4096, vulkan_range_mib=32,
@@ -105,6 +109,13 @@ if args.vulkan_min_savings_percent is not None and (
 if args.vulkan_cold_mib is not None:
     if args.vulkan_auto_idle_ms is None or not 0 < args.vulkan_cold_mib <= ((1 << 64) - 1) // (1024 * 1024):
         parser.error("--vulkan-cold-mib requires automatic snapshots and a positive size fitting 64-bit bytes")
+if args.vulkan_eviction_trigger is not None:
+    if args.hip or args.vulkan_auto_idle_ms is None:
+        parser.error('--vulkan-eviction-trigger requires Vulkan automatic paging')
+    if args.vulkan_eviction_trigger == 'pressure' and (
+            not args.vulkan_active_eviction or args.vulkan_range_mib is None or
+            args.vulkan_resident_mib is None or args.vulkan_resident_after_cold):
+        parser.error('pressure eviction requires active range paging with an immediate resident cap')
 if args.vulkan_byte_shuffle is not None and (args.hip or args.vulkan_auto_idle_ms is None):
     parser.error("--vulkan-byte-shuffle requires Vulkan automatic snapshots")
 if args.vulkan_codec is not None and (args.hip or args.vulkan_auto_idle_ms is None):
@@ -243,6 +254,8 @@ else:
     if args.vulkan_auto_idle_ms is not None:
         env["ZVRAM_VULKAN_AUTO_IDLE_MS"] = str(args.vulkan_auto_idle_ms)
         env["ZVRAM_VULKAN_COLD_MIB"] = str(args.vulkan_cold_mib)
+    if args.vulkan_eviction_trigger is not None:
+        env['ZVRAM_VULKAN_PRESSURE_ONLY'] = '1' if args.vulkan_eviction_trigger == 'pressure' else '0'
     if args.vulkan_min_savings_percent is not None:
         env["ZVRAM_VULKAN_MIN_SAVINGS_PERCENT"] = str(args.vulkan_min_savings_percent)
     if args.vulkan_byte_shuffle is not None:
