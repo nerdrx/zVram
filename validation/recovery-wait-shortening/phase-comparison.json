@@ -1,0 +1,26 @@
+{
+  "before": {
+    "33554432": {
+      "count": 5,
+      "median_us": 9589,
+      "max_us": 10007
+    },
+    "1048576": {
+      "count": 5,
+      "median_us": 717,
+      "max_us": 822
+    }
+  },
+  "after": {
+    "33554432": {
+      "count": 5,
+      "median_us": 9831,
+      "max_us": 10008
+    },
+    "1048576": {
+      "count": 5,
+      "median_us": 752,
+      "max_us": 1089
+    }
+  }
+}

@@ -1,6 +1,7 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_layer.h>
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -2866,6 +2867,15 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
        (d.memory.memoryHeaps[d.memory.memoryTypes[oldType].heapIndex].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT))
         return false;
     const auto recoveryStarted=std::chrono::steady_clock::now();
+    std::array<std::uint64_t,8> recoveryPhaseNs{};
+    auto phaseLast=recoveryStarted;
+    const auto markRecoveryPhase=[&](std::size_t phase) {
+        if(!d.gpuProfileEnabled) return;
+        const auto phaseNow=std::chrono::steady_clock::now();
+        recoveryPhaseNs[phase]=static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(phaseNow-phaseLast).count());
+        phaseLast=phaseNow;
+    };
     VkBuffer destinationView{}; VkMemoryRequirements destinationRequirements{};
     try { d.retainedWarmRecoveries.reserve(d.retainedWarmRecoveries.size()+1); }
     catch(const std::bad_alloc&) { return false; }
@@ -2873,6 +2883,7 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
         d.coldCycleBackoffUntil=std::chrono::steady_clock::now()+std::chrono::milliseconds(250);
         return false;
     }
+    markRecoveryPhase(0);
     std::uint32_t localTypes=memory.backingMemoryTypeBits&memory.poolViewMemoryTypeBits[child]&
         destinationRequirements.memoryTypeBits;
     for(std::uint32_t type=0;type<d.memory.memoryTypeCount && type<32;type++) {
@@ -2915,6 +2926,7 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
     d.retainedWarmRecoveries.push_back({oldBacking,replacement,memory.poolViews[child],
                                         destinationView,oldType,replacementType,size});
     trackBackingAllocation(d,replacementType,size);
+    markRecoveryPhase(1);
 
     // Every sparse failure is ambiguous: retain both allocations and the owned
     // destination view behind the device gate instead of guessing which binds stuck.
@@ -2931,6 +2943,7 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
         }
         gateWarmRecovery(d,result); return false;
     }
+    markRecoveryPhase(2);
     VkSparseMemoryBind sourceBind{}; sourceBind.size=size; sourceBind.memory=oldBacking;
     VkSparseMemoryBind destinationBind{}; destinationBind.size=size; destinationBind.memory=replacement;
     VkSparseBufferMemoryBindInfo viewBinds[2]{};
@@ -2938,9 +2951,11 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
     viewBinds[1]={destinationView,1,&destinationBind};
     result=bindSparseBatchLocked(d.handle,d,viewBinds,2);
     if(result!=VK_SUCCESS) { gateWarmRecovery(d,result); return false; }
+    markRecoveryPhase(3);
 
     bool submitted=false;
     result=copyChunkLocked(d,memory.poolViews[child],destinationView,0,0,size,false,true,&submitted);
+    markRecoveryPhase(4);
     if(result!=VK_SUCCESS) {
         if(submitted || result==VK_ERROR_DEVICE_LOST) { gateWarmRecovery(d,result); return false; }
         VkSparseMemoryBind unbind{}; unbind.size=size;
@@ -2967,9 +2982,11 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
     unbinds[1]={destinationView,1,&unbind};
     result=bindSparseBatchLocked(d.handle,d,unbinds,2);
     if(result!=VK_SUCCESS) { gateWarmRecovery(d,result); return false; }
+    markRecoveryPhase(5);
     memory.children[child]=replacement; memory.childTypes[child]=replacementType;
     result=bindChildAppsLocked(d.handle,d,memory,child,false);
     if(result!=VK_SUCCESS) { gateWarmRecovery(d,result); return false; }
+    markRecoveryPhase(6);
 
     if(d.autoInitialized) {
         if(d.activeEviction) {
@@ -2986,10 +3003,22 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
     d.free(d.handle,oldBacking,nullptr);
     d.retainedWarmRecoveries.pop_back();
     d.snapshot.destroyBuffer(d.handle,destinationView,nullptr);
+    markRecoveryPhase(7);
     logf("warm-recovery local-copy bytes=%llu memory-type=%u->%u duration-us=%llu",
          static_cast<unsigned long long>(size),oldType,replacementType,
          static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::microseconds>(
              std::chrono::steady_clock::now()-recoveryStarted).count()));
+    if(d.gpuProfileEnabled)
+        logf("warm-recovery phases bytes=%llu view-us=%llu allocate-us=%llu alias-unbind-us=%llu private-bind-us=%llu copy-wait-us=%llu private-unbind-us=%llu app-rebind-us=%llu release-us=%llu",
+             static_cast<unsigned long long>(size),
+             static_cast<unsigned long long>(recoveryPhaseNs[0]/1000),
+             static_cast<unsigned long long>(recoveryPhaseNs[1]/1000),
+             static_cast<unsigned long long>(recoveryPhaseNs[2]/1000),
+             static_cast<unsigned long long>(recoveryPhaseNs[3]/1000),
+             static_cast<unsigned long long>(recoveryPhaseNs[4]/1000),
+             static_cast<unsigned long long>(recoveryPhaseNs[5]/1000),
+             static_cast<unsigned long long>(recoveryPhaseNs[6]/1000),
+             static_cast<unsigned long long>(recoveryPhaseNs[7]/1000));
     return true;
 }
 bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
@@ -2997,6 +3026,7 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
                               VkDeviceMemory& candidateMemory,std::size_t& candidateChild) {
     candidateMemory=VK_NULL_HANDLE;
     candidateChild=0;
+    if(!d.liveOther) return false;
 #ifdef ZVRAM_TEST_ASYNC_HOOK
     if(d.testRecoveryPaused) return false;
 #endif

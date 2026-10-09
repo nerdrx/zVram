@@ -594,7 +594,10 @@ void checkColdCycleCandidateSkipsUnpromotableOldest() {
         const auto now=std::chrono::steady_clock::now();
         old.coldGroups[0].lastUse=now-std::chrono::seconds(5);
         old.hasAdoptedCallbacks=adoptedCallbacks;
-        if(!adoptedCallbacks) old.childSizes[0]=kAsyncSnapshotMaxRaw+1;
+        if(!adoptedCallbacks) {
+            old.childSizes[0]=kAsyncSnapshotMaxRaw+1;
+            d.liveOther=old.childSizes[0];
+        }
 
         const auto youngerHandle=tokenHandle<VkDeviceMemory>(adoptedCallbacks?0xc201:0xc202);
         auto younger=old;
@@ -604,6 +607,7 @@ void checkColdCycleCandidateSkipsUnpromotableOldest() {
         younger.childTypes[0]=1;
         younger.coldGroups[0].lastUse=now-std::chrono::seconds(2);
         d.virtualMemory.emplace(youngerHandle,std::move(younger));
+        d.liveOther+=MiB;
 
         VkDeviceMemory candidate{}; std::size_t child{};
         require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
@@ -612,10 +616,20 @@ void checkColdCycleCandidateSkipsUnpromotableOldest() {
                     "older callback-backed pool starved a younger promotable child":
                     "older oversized child starved a younger promotable child");
         d.virtualMemory.erase(youngerHandle);
+        d.liveOther-=MiB;
         require(!selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
                 candidate==VK_NULL_HANDLE && child==0,
                 "recovery selection retained a stale candidate when only refused pools remained");
     }
+}
+
+void checkColdCycleCandidateZeroLiveOther() {
+    ColdCycleFixture c; auto& d=c.f.device;
+    d.liveOther=0;
+    VkDeviceMemory candidate=tokenHandle<VkDeviceMemory>(0xc2ff); std::size_t child=99;
+    require(!selectColdCycleCandidate(d,64*MiB,std::chrono::steady_clock::now(),candidate,child) &&
+            candidate==VK_NULL_HANDLE && child==0,
+            "zero tracked nonlocal bytes did not clear recovery candidate outputs");
 }
 
 void checkColdCycleIgnoresSnapshotBudgetBlock() {
@@ -1373,6 +1387,7 @@ int main() try {
     checkColdCycleActiveReferenceGuard();
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();
+    checkColdCycleCandidateZeroLiveOther();
     checkColdCycleIgnoresSnapshotBudgetBlock();
 #ifdef ZVRAM_TEST_ASYNC_HOOK
     checkColdCycleTestPause();

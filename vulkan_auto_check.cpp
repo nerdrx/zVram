@@ -1709,9 +1709,6 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             (hotRecovery || busy.restores == warm.restores);
         if (expectDirectRecovery && !directSampler->recording.load(std::memory_order_acquire))
             directSampler->recording.store(true, std::memory_order_release);
-        check(pending.finish(), "release and drain cold-cycle busy submission");
-        watchdog->cancelAndJoin();
-        if (hotRecovery) hotWindowStart = std::chrono::steady_clock::now();
         require(deferred,
                 "cold-cycle worker evicted a range while its second-queue use was pending");
         if (expectDirectRecovery) {
@@ -1721,6 +1718,9 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             require(stillNonlocal == initialBackingType,
                     "direct recovery changed backing while a second-queue use was pending");
         }
+        check(pending.finish(), "release and drain cold-cycle busy submission");
+        watchdog->cancelAndJoin();
+        if (hotRecovery) hotWindowStart = std::chrono::steady_clock::now();
         std::cout << "cold-cycle busy gate resource-free queue submit lock-path max-us="
                   << maxEmptySubmitMicros << " samples=" << emptySubmitSamples << '\n';
     }
