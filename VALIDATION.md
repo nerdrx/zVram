@@ -1873,3 +1873,7 @@ comparator measured **0.85462257 tokens/s** versus **1.10252711** for GPU
 encoding; exact output and zero GPU restore fallback matched, but sequential
 uncontrolled runs do not isolate cause. [CPU comparator and provenance](validation/internlm-bp16-cpu-sync-cold26-owner26-resident19-lfu/README.md).
 [Latest repeat and provenance](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md) · [first run](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu/README.md) · [preflight diagnostic](validation/internlm-bp16-gpu-encode-cold26-preflight-abort/README.md).
+
+### Current selective graphics limit
+
+A 4 MiB descriptor in a 32 MiB buffer still causes all eight chunks to restore on the first draw: render-pass/draw/pipeline tracking remains conservative. The next five fixture draws reuse the restored buffer without additional restores. Exact pixels and full initial/final buffer checks pass, but this does **not** demonstrate selective graphics residency or game FPS gains. No draw guard was relaxed. See [strict failure and conservative regression evidence](validation/cold-cycle-recovery/graphics-tracking-limit/README.md).

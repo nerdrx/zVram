@@ -454,3 +454,7 @@ runs completed at 1.09323773 and 1.10252711 tokens/s with exact matching output,
 49/49 layers, and zero GPU restore fallback. The repeat reports 4,097 GPU
 encodes, zero encoder fallback, and zero final copy bytes. These sequential runs
 do not isolate causality. [Latest run, first run, tests, and limits](validation/internlm-bp16-gpu-encode-cold26-owner26-resident19-lfu-repeat/README.md).
+
+### Current selective graphics limit
+
+A 4 MiB descriptor in a 32 MiB buffer still causes all eight chunks to restore on the first draw: render-pass/draw/pipeline tracking remains conservative. The next five fixture draws reuse the restored buffer without additional restores. Exact pixels and full initial/final buffer checks pass, but this does **not** demonstrate selective graphics residency or game FPS gains. No draw guard was relaxed. See [strict failure and conservative regression evidence](validation/cold-cycle-recovery/graphics-tracking-limit/README.md).

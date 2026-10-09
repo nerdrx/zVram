@@ -146,6 +146,12 @@ add_test(NAME vulkan-graphics-native-allocation-cold-restore COMMAND ${graphics_
     --vulkan-selective-restore --vulkan-active-eviction -- $<TARGET_FILE:zvram-vulkan-graphics-check> --native-allocation)
 set_tests_properties(vulkan-graphics-cold-restore vulkan-graphics-active-cold-restore vulkan-graphics-native-allocation-cold-restore
     PROPERTIES TIMEOUT 45 LABELS "hardware;graphics")
+add_test(NAME vulkan-graphics-narrow-descriptor-conservative-fallback COMMAND ${graphics_check_launch}
+    --vulkan-range-mib 4 --vulkan-selective-restore --vulkan-active-eviction --
+    $<TARGET_FILE:zvram-vulkan-graphics-check> --native-allocation --descriptor-window-mib 4
+    --expect-conservative-graphics)
+set_tests_properties(vulkan-graphics-narrow-descriptor-conservative-fallback
+    PROPERTIES TIMEOUT 45 LABELS "hardware;graphics;range-residency;validation")
 find_program(ZVRAM_GAMESCOPE_EXECUTABLE gamescope)
 find_file(ZVRAM_RADEON_ICD_PATH radeon_icd.json
     PATHS /usr/share/vulkan/icd.d /etc/vulkan/icd.d /usr/local/share/vulkan/icd.d)
