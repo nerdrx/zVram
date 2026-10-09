@@ -24,7 +24,13 @@ The user explicitly authorized small bounded checks while playing Warframe. GPU 
 
 See `direct-summary.json`, `batch-32-details.txt` and `batch-small-details.txt`. Transaction timing includes view creation, allocation, sparse operations, copy/wait, alias rebinding and old-resource release. Sampler maxima can miss the exact transaction peak; these are observed components, not an upper latency bound. The baseline below had different GPU load, so this is not a controlled game speedup comparison. Smaller ranges add allocation/binding metadata and have not been benchmarked in a full game working set. General graphics still conservatively restores all tracked backing on unknown draws. No game FPS or zero-spike claim follows.
 
-## Baseline
+## Published package verification
+
+v0.4.17 at `6241c42` is published and installed through NX Hub. Release workflow `37914588358` and all three Build workflows (`37914588009`, `37914588319`, `37914594124`) passed. The downloaded archive SHA-256 is `f190a32258455ae6e97fb2bb14a142bedf48848b6104fcb4a29f7c3907af7128`; checksum files pass. Installed scripts match the tag, the installed library matches the release archive, codec metadata has `test_hooks=false`, and all four compile-only API names are absent. See `installed-0.4.17-payload.json`.
+
+The installed launcher/library with recovery, zero quiet delay and async compression enabled passed the bounded live-cap reduction/increase fixture: one 32 MiB snapshot eviction, cap raise, complete byte restoration, and zero resident/cold/failure accounting after cleanup. This checks the production package and ordinary snapshot compatibility; it does not force a nonlocal direct promotion without test hooks. See `installed-0.4.17-live-cap.txt`. Existing applications keep their loaded version; no user game was restarted.
+
+## Historical snapshot baseline
 
 Five sequential bounded checks per range size verified every byte using an isolated copy of the pre-change hook layer and binary in `/tmp/zvram-recovery-baseline-0.4.16`. The 32 MiB app buffer stays bounded; only one child is forced to explicit nonlocal backing. Background GPU busy was about 23–24 percent without a game/model process, and memory pressure averaged zero over 10 seconds. These are component observations under that desktop load, not isolated game FPS benchmarks.
 
