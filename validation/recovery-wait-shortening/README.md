@@ -35,3 +35,7 @@ The same installed v0.4.17 layer and source graphics fixture ran six cold full-b
 This one sequential component comparison shows the full-buffer restoration cost of smaller chunks; it is not a game FPS benchmark, stable universal gain, or native VRAM physical residency measurement. Individual small direct-recovery copies are cheaper, but unknown draws require all children. Defaults remain unchanged. Commands, raw health/output and parsed summary: `graphics-range-comparison/`.
 
 Read-only copy-completion review rejected replacing queueWaitIdle with a persistent fence: all layer submissions on that private queue are serialized under queueMutex, so later submissions cannot extend the waited tail; a fence would still cover earlier same-queue commands. It adds lifetime/failure state without an established benefit. No fence change was made.
+
+## Installed release verification
+
+v0.4.18 at 5b472dc published successfully (Release37922023131 and three Build workflows passed). Hub installed version was already current when checked. Archive SHA256 `75b3708a96719e589a8fb3a7ed9cf5a97351ea1005a9df847e4928080453529f` matched SHA256SUMS; installed library matched archive, launcher/manager matched tag, test hooks were false and all four test API strings absent. Installed recovery quiet0 + async live-cap fixture passed one32MiB eviction and byte-correct restoration after raising the cap; resident/cold/errors were zero at teardown. See `installed-0.4.18-payload.json` and `installed-0.4.18-live-cap.txt`.
