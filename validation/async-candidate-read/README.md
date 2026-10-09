@@ -45,3 +45,21 @@ replaced by the later global setting. `initial-held-timeout-ctest.txt` and
 `initial-held-timeout-details.txt` preserve the failed pair unchanged. No residual
 owned fixture process remained. The correction uses timeline host signaling and
 a final timeout override; it does not weaken validation or production guards.
+
+## Completed matching write
+
+The distinct `vulkan-async-candidate-write-completed` fixture runs a full-range
+fill of the SAME 4 MiB candidate after snapshot capture, while encoding is
+off-lock. A transfer-write to transfer-read dependency precedes copying the
+new pattern to staging, followed by host visibility and queue completion. Hook
+removal drains the first token decision, within 500 ms of the write completing.
+The test requires no freeze, 4 MiB still resident, zero cold bytes/failures, and
+every word equal to the new pattern. Thus a completed matching write cannot
+allow the earlier captured snapshot to commit. Existing read modes are retained.
+
+Root verification, 2026-10-09 18:24 UTC: PASS in 1.31 s on RX 7900 XTX/RADV,
+synchronization validation clean, all 4 MiB new bytes intact, final snapshot and
+driver live bytes/failures zero. Raw logs are `write-gpu-ctest.txt` and
+`write-gpu-details.txt`; the normal fixture compilation is `write-normal-build.txt`.
+The effective 30-second CTest timeout and 15-second outer bound remain. No
+production change, new test API, timing/FPS claim, release or installation.

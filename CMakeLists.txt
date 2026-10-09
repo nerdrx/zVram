@@ -375,7 +375,15 @@ if(ZVRAM_TEST_ASYNC_HOOK)
             --vulkan-resident-mib 4 --vulkan-eviction-trigger idle
             --vulkan-async-compression --vulkan-min-savings-percent 0 --
             $<TARGET_FILE:zvram-vulkan-auto-check> --async-candidate-held-read-fixture)
+    add_test(NAME vulkan-async-candidate-write-completed
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 8 --vulkan-auto-idle-ms 1000 --vulkan-cold-mib 4
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 4 --vulkan-eviction-trigger idle
+            --vulkan-async-compression --vulkan-min-savings-percent 0 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --async-candidate-write-fixture)
     set_tests_properties(vulkan-async-candidate-read-completed vulkan-async-candidate-read-held
+        vulkan-async-candidate-write-completed
         PROPERTIES TIMEOUT 30
         ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
         LABELS "hardware;vulkan;async-candidate;test-hook")
@@ -1085,5 +1093,6 @@ if(ZVRAM_TEST_ASYNC_HOOK)
         vulkan-cold-cycle-unlocked-cold-peer-hot-overlap
         vulkan-cold-cycle-unlocked-cold-peer-wait
         vulkan-async-candidate-read-completed
-        vulkan-async-candidate-read-held PROPERTIES TIMEOUT 30)
+        vulkan-async-candidate-read-held
+        vulkan-async-candidate-write-completed PROPERTIES TIMEOUT 30)
 endif()
