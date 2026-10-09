@@ -24,3 +24,9 @@ One local run returned median draw/readback times of 179.243 ms native, 183.257 
 The private live-cap fixture also passed: 64 MiB stayed resident under a 96 MiB cap; a request lowered the cap to 32 MiB without app submissions, leaving exactly one chunk cold. Raising it to 96 MiB allowed byte-correct restoration of both chunks. Pending status was observed in the run, but the test does not require catching that transient between host polls. The three-frame graphics retention CTest passed too.
 
 The plain launcher's automatic ceiling was subsequently changed from half the detected VRAM to all detected VRAM, retaining the 1536 MiB native budget reserve and dynamic budget clamp. Explicit user caps and manager priority presets remain unchanged. This affects new launches and is not a physical reservation or a warm-GTT migration mechanism. Launcher plumbing tests verify the ceiling, explicit override and reserve.
+
+## Optional async compression probe
+
+The live-cap fixture now samples stats-query wall latency during idle cap reduction. Both sync and async variants passed, including full-byte restoration; the async run logged a committed 32 MiB snapshot. In one paired run, the maximum query duration was 12,416 us sync and 5,776 us async (47 samples each). This measures a call sharing the device lock, not Vulkan submit latency or game frame times, and is not a robust speedup estimate. Both two-queue synthetic/native pressure checks also passed with async configured; their admission-triggered eviction does not establish concurrent async-worker safety. Full transcript: `async-live-cap-ctest.txt`.
+
+Async compression remains opt-in. Before changing its default, test a concurrent cold restore while background encoding is in flight, including token invalidation and bounded admission behavior. Off-lock encoding leaves the original backing resident until commit; it is not a reservation of soon-to-be-freed residency.

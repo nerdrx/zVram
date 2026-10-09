@@ -1486,8 +1486,16 @@ void pressureOnlyLiveCapFixtureCheck(Context& context) {
     const auto lowerSequence = status["seq"] + 1;
     writeFixtureRequest(directory, device, lowerSequence, 32);
     bool sawPending = false, lowerApplied = false;
+    std::uint64_t maxStatsQueryMicros = 0, statsQuerySamples = 0;
     const auto lowerDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (std::chrono::steady_clock::now() < lowerDeadline) {
+        const auto statsStart = std::chrono::steady_clock::now();
+        (void)context.stats();
+        const auto statsMicros = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - statsStart).count();
+        maxStatsQueryMicros = std::max<std::uint64_t>(maxStatsQueryMicros,
+            static_cast<std::uint64_t>(std::max<std::int64_t>(0, statsMicros)));
+        ++statsQuerySamples;
         status.clear();
         if (readFixtureStatus(statusPath, status) && status["seq"] == lowerSequence) {
             if (status["result"] == 1 && status["ack"] < lowerSequence) sawPending = true;
@@ -1500,7 +1508,9 @@ void pressureOnlyLiveCapFixtureCheck(Context& context) {
     // residency assertion proves settlement without requiring that transient.
     require(lowerApplied,
             "idle live-cap request did not apply without application submissions");
-    std::cout << "live-cap pending-observed=" << sawPending << '\n';
+    std::cout << "live-cap pending-observed=" << sawPending
+              << " stats-query-samples=" << statsQuerySamples
+              << " stats-query-max-us=" << maxStatsQueryMicros << '\n';
     auto pressured = context.stats();
     require(pressured.residentBytes == ChunkBytes && pressured.coldLogicalBytes == ChunkBytes &&
             pressured.failures == 0,

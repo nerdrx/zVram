@@ -271,6 +271,23 @@ foreach(range_pressure_mode synthetic native)
         endif()
     endforeach()
 endforeach()
+foreach(range_pressure_mode synthetic native)
+    set(async_range_pressure_flags --range-pressure --two-queues)
+    if(range_pressure_mode STREQUAL "native")
+        list(APPEND async_range_pressure_flags --native-allocation)
+    endif()
+    set(test_name vulkan-range-pressure-${range_pressure_mode}-two-queues-async-config)
+    add_test(NAME ${test_name}
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+            --vulkan-resident-mib 32 --vulkan-eviction-trigger pressure
+            --vulkan-async-compression --
+            $<TARGET_FILE:zvram-vulkan-auto-check> ${async_range_pressure_flags})
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
+        LABELS "hardware;vulkan;pressure;async-config;two-queues"
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
+endforeach()
 add_test(NAME vulkan-pressure-only-idle-regression
     COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
         --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
@@ -287,6 +304,15 @@ add_test(NAME vulkan-pressure-only-live-cap-idle-regression
         $<TARGET_FILE:zvram-vulkan-auto-check> --pressure-only-live-cap-fixture)
 set_tests_properties(vulkan-pressure-only-live-cap-idle-regression PROPERTIES TIMEOUT 30
     LABELS "hardware;vulkan;pressure;live-control")
+add_test(NAME vulkan-pressure-only-live-cap-async-regression
+    COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+        --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+        --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+        --vulkan-resident-mib 96 --vulkan-eviction-trigger pressure
+        --vulkan-async-compression --
+        $<TARGET_FILE:zvram-vulkan-auto-check> --pressure-only-live-cap-fixture)
+set_tests_properties(vulkan-pressure-only-live-cap-async-regression PROPERTIES TIMEOUT 30
+    LABELS "hardware;vulkan;pressure;live-control;async")
 add_test(NAME vulkan-graphics-pressure-retention
     COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
         --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
