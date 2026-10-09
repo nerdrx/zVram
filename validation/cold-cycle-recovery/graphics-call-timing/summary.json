@@ -1,0 +1,42 @@
+[
+  {
+    "name": "native",
+    "exit": 0,
+    "metrics": [
+      "draw-readback-ms p50=180.415 p95=192.77 max=192.77",
+      "vkQueueSubmit-call count=6 p50-us=16 p95-us=58 max-us=58",
+      "vkWaitForFences-call count=6 p50-us=1903 p95-us=2053 max-us=2053",
+      "PASS: 6 offscreen draw/readback frames (native mode) validation=on"
+    ]
+  },
+  {
+    "name": "warm32",
+    "exit": 0,
+    "metrics": [
+      "draw-readback-ms p50=196.599 p95=220.475 max=220.475",
+      "vkQueueSubmit-call count=6 p50-us=104 p95-us=129 max-us=129",
+      "vkWaitForFences-call count=6 p50-us=2018 p95-us=2080 max-us=2080",
+      "PASS: 6 offscreen draw/readback frames with warm residency validation=on"
+    ]
+  },
+  {
+    "name": "cold32",
+    "exit": 0,
+    "metrics": [
+      "draw-readback-ms p50=196.665 p95=207.914 max=207.914",
+      "vkQueueSubmit-call count=6 p50-us=11705 p95-us=13714 max-us=13714",
+      "vkWaitForFences-call count=6 p50-us=1348 p95-us=1366 max-us=1366",
+      "PASS: 6 offscreen draw/readback frames with cold restore validation=on"
+    ]
+  },
+  {
+    "name": "cold4",
+    "exit": 0,
+    "metrics": [
+      "draw-readback-ms p50=183.598 p95=186.832 max=186.832",
+      "vkQueueSubmit-call count=6 p50-us=8303 p95-us=10316 max-us=10316",
+      "vkWaitForFences-call count=6 p50-us=1357 p95-us=1420 max-us=1420",
+      "PASS: 6 offscreen draw/readback frames with cold restore validation=on"
+    ]
+  }
+]

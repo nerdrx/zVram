@@ -85,6 +85,7 @@ struct Fixture {
     VkExtent2D extent{Width,Height}; std::vector<VkImage> swapImages;
     std::vector<VkImageView> swapViews; std::vector<VkFramebuffer> swapFramebuffers;
     std::vector<VkSemaphore> acquireSemaphores, renderSemaphores;
+    std::vector<std::uint64_t> submitCallMicros, fenceWaitCallMicros;
     bool presenting{}, nativeAllocation{};
     bool abandon{}, validationOn{}; GetStats getStats{};
 
@@ -167,17 +168,25 @@ struct Fixture {
         check(vkBeginCommandBuffer(cmd,&bi),"begin command buffer"); return cmd;
     }
     void submit(VkCommandBuffer cmd, VkSemaphore waitSemaphore=VK_NULL_HANDLE,
-                VkSemaphore signalSemaphore=VK_NULL_HANDLE) {
+                VkSemaphore signalSemaphore=VK_NULL_HANDLE, bool sampleCalls=false) {
         check(vkEndCommandBuffer(cmd),"end command buffer"); check(vkResetFences(device,1,&fence),"reset fence");
         const VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         if(waitSemaphore) { si.waitSemaphoreCount=1; si.pWaitSemaphores=&waitSemaphore; si.pWaitDstStageMask=&waitStage; }
         si.commandBufferCount=1; si.pCommandBuffers=&cmd;
         if(signalSemaphore) { si.signalSemaphoreCount=1; si.pSignalSemaphores=&signalSemaphore; }
+        const auto submitStart=std::chrono::steady_clock::now();
         const auto submitted=vkQueueSubmit(queue,1,&si,fence);
+        if(sampleCalls) submitCallMicros.push_back(static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now()-submitStart).count()));
         if (submitted==VK_ERROR_DEVICE_LOST) abandon=true;
         check(submitted,"submit graphics fixture");
+        const auto waitStart=std::chrono::steady_clock::now();
         const auto r=vkWaitForFences(device,1,&fence,VK_TRUE,3'000'000'000ull);
+        if(sampleCalls) fenceWaitCallMicros.push_back(static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now()-waitStart).count()));
         if (r==VK_TIMEOUT || r==VK_ERROR_DEVICE_LOST) abandon=true;
         check(r,"wait for graphics fixture");
         vkFreeCommandBuffers(device,pool,1,&cmd);
@@ -424,7 +433,7 @@ struct Fixture {
 #endif
         VkBufferMemoryBarrier hostBarrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER}; hostBarrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; hostBarrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT; hostBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hostBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hostBarrier.buffer=readback; hostBarrier.size=BufferBytes+Width*Height*4;
         vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&hostBarrier,0,nullptr);
-        submit(cmd,acquired,rendered);
+        submit(cmd,acquired,rendered,true);
 #ifdef ZVRAM_GRAPHICS_SDL2
         if(presenting) { VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR}; pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&rendered; pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex; const auto pr=vkQueuePresentKHR(queue,&pi); if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) abandon=true; if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) check(pr,"present swapchain image"); }
 #endif
@@ -484,6 +493,8 @@ int main(int argc,char** argv) {
             f.uploadInput(input);
             if(!native && !warmResidency) f.waitCold(initial.freezes);
             std::vector<double> frameTimes;
+            f.submitCallMicros.reserve(frames);
+            f.fenceWaitCallMicros.reserve(frames);
             for(unsigned i=0;i<frames;++i) {
                 if(frameDelayMs) std::this_thread::sleep_for(std::chrono::milliseconds(frameDelayMs));
                 const auto before=native?Stats{}:f.stats();
@@ -496,6 +507,18 @@ int main(int argc,char** argv) {
             }
             std::sort(frameTimes.begin(),frameTimes.end());
             std::cout<<"draw-readback-ms p50="<<frameTimes[frameTimes.size()/2]<<" p95="<<frameTimes[(frameTimes.size()*95+99)/100-1]<<" max="<<frameTimes.back()<<'\n';
+            const auto printCallTimes=[](const char* name,std::vector<std::uint64_t>& samples) {
+                require(!samples.empty(),"graphics frame timing collected no samples");
+                std::sort(samples.begin(),samples.end());
+                const auto percentile=[&](std::size_t percent) {
+                    const auto rank=(samples.size()*percent+99)/100;
+                    return samples[std::max<std::size_t>(1,rank)-1];
+                };
+                std::cout<<name<<" count="<<samples.size()<<" p50-us="<<percentile(50)
+                         <<" p95-us="<<percentile(95)<<" max-us="<<samples.back()<<'\n';
+            };
+            printCallTimes("vkQueueSubmit-call",f.submitCallMicros);
+            printCallTimes("vkWaitForFences-call",f.fenceWaitCallMicros);
             validationOn=f.validationOn;
         }
         require(validationErrors.load()==0,"Vulkan validation reported errors");
