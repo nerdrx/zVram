@@ -16,7 +16,7 @@ def distribution(values):
             "p95_ns": percentile(95), "max_ns": values[-1]}
 
 
-def analyze(path, unlocked):
+def analyze(path, unlocked, cold_peer=False):
     text = Path(path).read_text()
     assert not re.search(r"VUID-|FAIL:|Validation Error", text), "fixture/validation failure"
     phases = [tuple(map(int, m)) for m in re.findall(
@@ -30,6 +30,12 @@ def analyze(path, unlocked):
         r"last-child0-submit-end-monotonic-ns=(\d+) window-start-monotonic-ns=(\d+) count=(\d+)", text)]
     assert len(phases) == len(transactions) == 5, "need five successful profiled transactions"
     assert len(re.findall(r"PASS: recovery-submit sampling preserved", text)) == 5
+    if cold_peer:
+        peers = [tuple(map(int, m)) for m in re.findall(
+            r"cold-peer-sampler transaction=(\d+) stayed-cold-during-window=(\d+) "
+            r"restored-bytes=(\d+) final-resident-bytes=(\d+)", text)]
+        assert sorted(peers) == [(i, 1, 4 * 1024 * 1024, 36 * 1024 * 1024)
+                                 for i in range(5)], "need five exact cold-peer proofs"
     assert sorted(t[0] for t in transactions) == list(range(5))
     results, all_calls, overlaps = [], [], []
     for phase, transaction in zip(sorted(phases, key=lambda p: p[1]), sorted(transactions)):
@@ -49,7 +55,8 @@ def analyze(path, unlocked):
         results.append({"transaction": number, "copy_phase_ns": phase_end - phase_start,
                         "all_calls": distribution(durations),
                         "intersecting_calls": distribution(intersecting)})
-    return {"path": str(path), "unlocked": bool(unlocked), "transactions": results,
+    return {"path": str(path), "unlocked": bool(unlocked), "cold_peer": cold_peer,
+            "transactions": results,
             "all_calls": distribution(all_calls), "intersecting_calls": distribution(overlaps)}
 
 
@@ -57,9 +64,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("baseline")
     parser.add_argument("unlocked")
+    parser.add_argument("--cold-peer", action="store_true",
+                        help="require a pristine 4 MiB cold-peer proof for every transaction")
     args = parser.parse_args()
-    baseline = analyze(args.baseline, 0)
-    unlocked = analyze(args.unlocked, 1)
+    baseline = analyze(args.baseline, 0, args.cold_peer)
+    unlocked = analyze(args.unlocked, 1, args.cold_peer)
     paired = [{"transaction": before["transaction"],
                "baseline_intersecting_calls": before["intersecting_calls"],
                "unlocked_intersecting_calls": after["intersecting_calls"]}

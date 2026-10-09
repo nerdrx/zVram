@@ -486,6 +486,29 @@ if(ZVRAM_TEST_ASYNC_HOOK)
     set_tests_properties(vulkan-cold-cycle-submit-sampler-unlocked PROPERTIES TIMEOUT 30
         ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=50;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;ZVRAM_VULKAN_GPU_PROFILE=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
         LABELS "hardware;vulkan;cold-cycle;native-allocation;submit-sampler;profile;unlocked-wait")
+    add_test(NAME vulkan-cold-cycle-cold-peer-submit-sampler-baseline
+        COMMAND ${CMAKE_COMMAND} -E env --unset=ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT
+            ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --recovery-submit-cold-peer-sampler-fixture)
+    set_tests_properties(vulkan-cold-cycle-cold-peer-submit-sampler-baseline PROPERTIES TIMEOUT 30
+        ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=50;ZVRAM_VULKAN_GPU_PROFILE=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;submit-sampler;cold-peer;profile")
+    add_test(NAME vulkan-cold-cycle-cold-peer-submit-sampler-unlocked
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --recovery-submit-cold-peer-sampler-fixture)
+    set_tests_properties(vulkan-cold-cycle-cold-peer-submit-sampler-unlocked PROPERTIES TIMEOUT 30
+        ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=50;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;ZVRAM_VULKAN_GPU_PROFILE=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;submit-sampler;cold-peer;profile;unlocked-wait")
     add_test(NAME vulkan-cold-cycle-unlocked-cold-peer-wait
         COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
@@ -1027,6 +1050,8 @@ set_tests_properties(vulkan-graphics-cold-restore vulkan-graphics-active-cold-re
 if(ZVRAM_TEST_ASYNC_HOOK)
     set_tests_properties(vulkan-cold-cycle-submit-sampler-baseline
         vulkan-cold-cycle-submit-sampler-unlocked
+        vulkan-cold-cycle-cold-peer-submit-sampler-baseline
+        vulkan-cold-cycle-cold-peer-submit-sampler-unlocked
         vulkan-cold-cycle-unlocked-cold-peer-hot-overlap
         vulkan-cold-cycle-unlocked-cold-peer-wait PROPERTIES TIMEOUT 30)
 endif()

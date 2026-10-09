@@ -240,3 +240,11 @@ Background GPU utilization was 61–62 percent; user applications and LACT auto
 settings were preserved. The held hook proves admission/progress and data
 safety, not natural GPU latency or FPS. Sparse phases remain synchronous;
 general graphics tracking and ambiguous double-idle teardown limits remain.
+
+The follow-up natural sampler adds the same unrelated pristine 4 MiB peer to
+both modes and preserves the old no-peer tests. One fresh pair captured all
+five recovery intervals: overlapping submit calls were 578–922 µs baseline
+versus 10–470 µs unlocked. All bytes, cold-peer state and cleanup passed with
+synchronization validation. Whole-window p95 was 98.611/101.780 µs; this is a
+narrow component observation, not stable overall latency or FPS evidence.
+See `natural-cold-peer/` for raw logs, strict peer-aware analysis and limits.

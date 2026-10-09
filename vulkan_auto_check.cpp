@@ -1669,13 +1669,14 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                                    std::vector<std::uint64_t>* batchSubmitSamples = nullptr,
                                    bool recoverySubmitSamplerFixture = false,
                                    std::uint32_t samplerTransaction = 0,
-                                   bool unlockedColdPeerHotWaitFixture = false) {
+                                   bool unlockedColdPeerHotWaitFixture = false,
+                                   bool coldPeerSubmitSamplerFixture = false) {
     Buffer coldPeer; coldPeer.device = context.device;
     VkDeviceSize coldPeerBytes{};
     ZvramSnapshotStatsNX coldPeerPristine{};
     ZvramSnapshotStatsNX coldPeerBeforeUse{};
     Buffer capGuard; capGuard.device = context.device;
-    if (unlockedColdWaitFixture || unlockedColdPeerHotWaitFixture) {
+    if (unlockedColdWaitFixture || unlockedColdPeerHotWaitFixture || coldPeerSubmitSamplerFixture) {
         VkBufferCreateInfo peerInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         peerInfo.size = 4 * MiB;
         peerInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -1997,7 +1998,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                     beforeRecovery.coldStoredBytes == 0,
                     "pristine cold peer changed before the recovery wait gate");
         }
-        if (unlockedColdPeerHotWaitFixture) {
+        if (unlockedColdPeerHotWaitFixture || coldPeerSubmitSamplerFixture) {
             coldPeerBeforeUse = context.stats();
             require(coldPeerBeforeUse.residentBytes == ChunkBytes &&
                     coldPeerBeforeUse.coldLogicalBytes == coldPeerBytes &&
@@ -2018,8 +2019,10 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                         "submit sampler requires its seven non-target children to start local");
             }
             const auto samplerWarm = context.stats();
-            require(samplerWarm.residentBytes == ChunkBytes && samplerWarm.coldLogicalBytes == 0 &&
-                    samplerWarm.failures == 0,
+            const auto expectedSamplerCold = coldPeerSubmitSamplerFixture ? coldPeerBytes : 0;
+            require(samplerWarm.residentBytes == ChunkBytes &&
+                    samplerWarm.coldLogicalBytes == expectedSamplerCold &&
+                    samplerWarm.coldStoredBytes == 0 && samplerWarm.failures == 0,
                     "submit sampler did not start with all 32 MiB resident");
             check(readbackAndVerify(context, resident.handle, staging, -1, false, ChunkBytes),
                   "verify initial full bytes before recovery-submit sampling");
@@ -2093,7 +2096,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             constexpr auto samplerPeriod = std::chrono::milliseconds(5);
             constexpr auto samplerWindow = std::chrono::milliseconds(200);
             std::vector<RecoverySubmitSample> samples;
-            samples.reserve(40);
+            samples.reserve(coldPeerSubmitSamplerFixture ? 80 : 40);
             const auto windowStart = std::chrono::steady_clock::now();
             const auto windowStartNs = monotonicNanoseconds(windowStart);
             recoveryPause.set(false);
@@ -2135,6 +2138,16 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             for (std::uint32_t i = 0; i < (4 * MiB) / sizeof(std::uint32_t); ++i)
                 require(sampleWords[i] == initialWord(childOneBaseWord + i),
                         "child-one staging bytes changed during submit sampling");
+            if (coldPeerSubmitSamplerFixture) {
+                const auto afterWindow = context.stats();
+                require(afterWindow.residentBytes == ChunkBytes &&
+                        afterWindow.coldLogicalBytes == coldPeerBytes &&
+                        afterWindow.coldStoredBytes == 0 &&
+                        afterWindow.restores == samplerWarm.restores &&
+                        afterWindow.freezes == samplerWarm.freezes &&
+                        afterWindow.failures == samplerWarm.failures,
+                        "sampler window changed the unrelated pristine cold peer");
+            }
             printRecoverySubmitSamples(samplerTransaction,
                                        lastChild0StartNs, lastChild0EndNs,
                                        windowStartNs, samples);
@@ -2157,17 +2170,72 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                     "submit sampler recovery did not promote child zero to local backing");
             const auto samplerRecovered = context.stats();
             require(samplerRecovered.residentBytes == ChunkBytes &&
-                    samplerRecovered.coldLogicalBytes == 0 && samplerRecovered.coldStoredBytes == 0 &&
+                    samplerRecovered.coldLogicalBytes == expectedSamplerCold &&
+                    samplerRecovered.coldStoredBytes == 0 &&
                     samplerRecovered.freezes == samplerWarm.freezes &&
                     samplerRecovered.restores == samplerWarm.restores &&
                     samplerRecovered.failures == samplerWarm.failures,
                     "submit sampler recovery changed residency or cold-storage accounting");
             check(readbackAndVerify(context, resident.handle, staging, -1, false, ChunkBytes),
                   "verify final full bytes after recovery-submit sampling");
+            if (coldPeerSubmitSamplerFixture) {
+                check(context.submit([&](VkCommandBuffer command) {
+                    VkBufferMemoryBarrier writable{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+                    writable.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+                    writable.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    writable.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    writable.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    writable.buffer = coldPeer.handle;
+                    writable.size = coldPeerBytes;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                         0, nullptr, 1, &writable, 0, nullptr);
+                    vkCmdFillBuffer(command, coldPeer.handle, 0, coldPeerBytes, 0x5a17c0deu);
+                }), "fill sampler cold peer after the timed window");
+                check(context.submit([&](VkCommandBuffer command) {
+                    VkMemoryBarrier stagingReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                    stagingReady.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT |
+                                                 VK_ACCESS_TRANSFER_WRITE_BIT;
+                    stagingReady.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    VkBufferMemoryBarrier readable{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+                    readable.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    readable.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    readable.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    readable.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    readable.buffer = coldPeer.handle;
+                    readable.size = coldPeerBytes;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                         1, &stagingReady, 1, &readable, 0, nullptr);
+                    VkBufferCopy copy{0, 0, coldPeerBytes};
+                    vkCmdCopyBuffer(command, coldPeer.handle, staging.buffer, 1, &copy);
+                    VkMemoryBarrier hostReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                    hostReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    hostReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_HOST_BIT, 0,
+                                         1, &hostReady, 0, nullptr, 0, nullptr);
+                }), "read back sampler cold peer after writing it");
+                const auto* peerWords = static_cast<const std::uint32_t*>(staging.mapped);
+                require(std::all_of(peerWords, peerWords + coldPeerBytes / sizeof(std::uint32_t),
+                                    [](std::uint32_t value) { return value == 0x5a17c0deu; }),
+                        "sampler cold peer fill bytes changed");
+                const auto peerUsed = context.stats();
+                require(peerUsed.residentBytes == ChunkBytes + coldPeerBytes &&
+                        peerUsed.coldLogicalBytes == 0 && peerUsed.coldStoredBytes == 0 &&
+                        peerUsed.failures == samplerWarm.failures,
+                        "sampler peer use did not restore to the expected 36 MiB resident state");
+            }
             vkDestroyBuffer(context.device, resident.handle, nullptr);
             resident.handle = VK_NULL_HANDLE;
             vkFreeMemory(context.device, resident.memory, nullptr);
             resident.memory = VK_NULL_HANDLE;
+            if (coldPeerSubmitSamplerFixture) {
+                vkDestroyBuffer(context.device, coldPeer.handle, nullptr);
+                coldPeer.handle = VK_NULL_HANDLE;
+                vkFreeMemory(context.device, coldPeer.memory, nullptr);
+                coldPeer.memory = VK_NULL_HANDLE;
+            }
             const auto empty = context.stats();
             require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 &&
                     empty.coldStoredBytes == 0 && empty.failures == 0,
@@ -2176,6 +2244,13 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             completion << "PASS: recovery-submit sampling preserved child-one bytes, recovered child zero, "
                           "verified all 32 MiB, and cleaned up transaction " << samplerTransaction;
             writeSamplerRecord(completion);
+            if (coldPeerSubmitSamplerFixture) {
+                std::ostringstream peerCompletion;
+                peerCompletion << "cold-peer-sampler transaction=" << samplerTransaction
+                               << " stayed-cold-during-window=1 restored-bytes=" << coldPeerBytes
+                               << " final-resident-bytes=" << ChunkBytes + coldPeerBytes;
+                writeSamplerRecord(peerCompletion);
+            }
             return;
         }
         recoveryPause.set(false);
@@ -3763,6 +3838,7 @@ int main(int argc, char** argv) try {
     bool directRecoveryBatchFixture = false;
     bool hotRecoveryFixture = false;
     bool recoverySubmitSamplerFixture = false;
+    bool recoverySubmitColdPeerSamplerFixture = false;
     bool asyncEncodeOverlapFixture = false, asyncPressureRaiseDiscardFixture = false;
     bool rangeCache = false;
     bool rangeCacheBootstrap = false;
@@ -3842,6 +3918,11 @@ int main(int argc, char** argv) try {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
             expectDirectRecovery=true; recoverySubmitSamplerFixture=true;
             finiteBarrierRecoveryFixture=true;
+        }
+        else if (std::strcmp(argv[i], "--recovery-submit-cold-peer-sampler-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
+            expectDirectRecovery=true; recoverySubmitSamplerFixture=true;
+            recoverySubmitColdPeerSamplerFixture=true; finiteBarrierRecoveryFixture=true;
         }
         else if (std::strcmp(argv[i], "--hot-recovery-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true; hotRecoveryFixture=true;
@@ -4015,7 +4096,8 @@ int main(int argc, char** argv) try {
             for (std::uint32_t transaction = 0; transaction < 5; ++transaction)
                 coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
                                               false, false, true, false, true, false, false,
-                                              nullptr, nullptr, true, transaction);
+                                              nullptr, nullptr, true, transaction, false,
+                                              recoverySubmitColdPeerSamplerFixture);
         } else if (directRecoveryBatchFixture) {
             std::vector<std::uint64_t> submitSamples;
             for (unsigned int transaction = 0; transaction < 5; ++transaction)
