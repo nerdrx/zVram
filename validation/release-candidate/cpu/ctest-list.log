@@ -1,0 +1,18 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/gdeflate-codec
+  Test   #1: cpu-live-control
+  Test   #2: cpu-bp16-codec
+  Test   #3: cpu-resident-budget
+  Test   #4: cpu-resident-bootstrap
+  Test  #12: cpu-vulkan-ram-guard
+  Test  #13: cpu-vulkan-compression-options
+  Test  #14: cpu-vulkan-model-budget
+  Test  #15: cpu-compression-policy
+  Test  #16: cpu-clean-cache-policy
+  Test  #17: cpu-snapshot-decode
+  Test  #18: cpu-gdeflate-envelope
+  Test  #19: cpu-snapshot-pipeline
+  Test  #21: cpu-active-refs
+  Test #128: cpu-gdeflate-codec
+  Test #129: cpu-gdeflate-snapshot
+
+Total Tests: 15

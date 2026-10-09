@@ -1,0 +1,7 @@
+1d4938e2b2ccc38f492c06d07095390c281eda57
+CMAKE_BUILD_TYPE:STRING=Release
+ZVRAM_ENABLE_GDEFLATE:BOOL=ON
+ZVRAM_TEST_ASYNC_HOOK:BOOL=OFF
+47aa344f60d52b04ed3682b02d3c4aa32516efadcd8ac94052fd7a247be0f063  build/gdeflate-codec/libzvram_layer.so
+87072b43a0e3f51d37686263be83e53a0d0acc1525b7db05fdf6cf6e34f0fc07  build/gdeflate-codec/zvram-resident-bootstrap-check
+1e575e13a9d1e36a4e2a4a9383dd75a7da6bb81593a43f8a5aa64598c7302279  build/gdeflate-codec/zvram-vulkan-auto-check

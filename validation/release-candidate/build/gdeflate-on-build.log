@@ -1,0 +1,40 @@
+-- Configuring done (0.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/gdeflate-codec
+[ 33%] Built target zvram-libdeflate-build
+[ 66%] Building CXX object CMakeFiles/zvram_layer.dir/layer.cpp.o
+[100%] Linking CXX shared library libzvram_layer.so
+[100%] Built target zvram_layer
+[ 50%] Building CXX object CMakeFiles/zvram-resident-bootstrap-check.dir/resident_bootstrap_check.cpp.o
+[100%] Linking CXX executable zvram-resident-bootstrap-check
+[100%] Built target zvram-resident-bootstrap-check
+[ 25%] Building CXX object CMakeFiles/zvram-vulkan-auto-check.dir/vulkan_auto_check.cpp.o
+[ 50%] Linking CXX executable zvram-vulkan-auto-check
+[100%] Built target zvram-vulkan-auto-check
+[ 50%] Building CXX object CMakeFiles/zvram-live-control-check.dir/live_control_check.cpp.o
+[100%] Linking CXX executable zvram-live-control-check
+[100%] Built target zvram-live-control-check
+[ 50%] Building CXX object CMakeFiles/zvram-bp16-codec-check.dir/bp16_codec_check.cpp.o
+[100%] Linking CXX executable zvram-bp16-codec-check
+[100%] Built target zvram-bp16-codec-check
+[100%] Built target zvram-resident-budget-check
+[ 50%] Building CXX object CMakeFiles/zvram-clean-cache-policy-check.dir/clean_cache_policy_check.cpp.o
+[100%] Linking CXX executable zvram-clean-cache-policy-check
+[100%] Built target zvram-clean-cache-policy-check
+[100%] Built target zvram-compression-policy-check
+[ 33%] Built target zvram-libdeflate-build
+[ 66%] Building CXX object CMakeFiles/zvram-snapshot-decode-check.dir/snapshot_decode_check.cpp.o
+[100%] Linking CXX executable zvram-snapshot-decode-check
+[100%] Built target zvram-snapshot-decode-check
+[100%] Built target zvram-gdeflate-envelope-check
+[ 33%] Built target zvram-libdeflate-build
+[ 66%] Building CXX object CMakeFiles/zvram-snapshot-pipeline-check.dir/snapshot_pipeline_check.cpp.o
+[100%] Linking CXX executable zvram-snapshot-pipeline-check
+[100%] Built target zvram-snapshot-pipeline-check
+[100%] Built target zvram-active-refs-check
+[ 33%] Built target zvram-libdeflate-build
+[100%] Built target zvram-gdeflate-codec-check
+[ 33%] Built target zvram-libdeflate-build
+[ 66%] Building CXX object CMakeFiles/zvram-gdeflate-snapshot-check.dir/gdeflate_snapshot_check.cpp.o
+[100%] Linking CXX executable zvram-gdeflate-snapshot-check
+[100%] Built target zvram-gdeflate-snapshot-check
