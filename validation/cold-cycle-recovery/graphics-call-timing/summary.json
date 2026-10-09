@@ -38,5 +38,15 @@
       "vkWaitForFences-call count=6 p50-us=1357 p95-us=1420 max-us=1420",
       "PASS: 6 offscreen draw/readback frames with cold restore validation=on"
     ]
+  },
+  {
+    "name": "warm4",
+    "exit": 0,
+    "metrics": [
+      "draw-readback-ms p50=184.618 p95=207.105 max=207.105",
+      "vkQueueSubmit-call count=6 p50-us=115 p95-us=175 max-us=175",
+      "vkWaitForFences-call count=6 p50-us=1959 p95-us=2024 max-us=2024",
+      "PASS: 6 offscreen draw/readback frames with warm residency validation=on"
+    ]
   }
 ]

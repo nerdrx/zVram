@@ -6,7 +6,10 @@ Six offscreen frames per mode, RX 7900 XTX / RADV, Vulkan validation on. zVram m
 | --- | --- | --- |
 | Native | 0.016 / 0.058 ms | 1.903 / 2.053 ms |
 | zVram warm 32 MiB | 0.104 / 0.129 ms | 2.018 / 2.080 ms |
+| zVram warm 4 MiB | 0.115 / 0.175 ms | 1.959 / 2.024 ms |
 | zVram forced-cold 32 MiB | 11.705 / 13.714 ms | 1.348 / 1.366 ms |
 | zVram forced-cold 4 MiB | 8.303 / 10.316 ms | 1.357 / 1.420 ms |
 
 Cold modes deliberately idle-evict all32MiB between frames; warm mode uses pressure-only retention. Both modes verify the complete32MiB buffer and every output pixel on every frame. These are CPU wall durations of API calls, not GPU timestamps, present latency, game frame times or FPS. The readback-heavy fixture differs from a game. The original draw-readback metric remains dominated by CPU validation (roughly180–220ms), so it must not be used to infer GPU frame rate. Smaller ranges still restore all eight4MiB children when this full-buffer draw needs them; reducing individual worker stalls does not eliminate total restore work. These bounded observations support testing the existing4MiB tuning option, not changing defaults. Raw logs and summary.json retain results.
+
+A separate six-frame warm4MiB check also passed full bytes/pixels with no eviction. Its small submit-call difference from warm32MiB is not a reliable general overhead estimate; larger allocation counts and working sets remain unmeasured.
