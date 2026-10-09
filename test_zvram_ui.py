@@ -230,26 +230,49 @@ def check_tui():
                                  env=dict(os.environ, TERM="xterm-256color"))
         os.close(slave)
         output = bytearray()
-        def feed(keys):
-            os.write(master, keys)
-            end = time.monotonic() + 0.15
-            while time.monotonic() < end:
-                if select.select([master], [], [], 0.03)[0]:
+        output_cursor = 0
+        def wait_for(text):
+            nonlocal output_cursor
+            expected = text.encode()
+            deadline = time.monotonic() + 5
+            while expected not in output[output_cursor:] and time.monotonic() < deadline:
+                if child.poll() is not None:
+                    break
+                if select.select([master], [], [], max(0, min(0.1, deadline-time.monotonic())))[0]:
                     try:
                         output.extend(os.read(master, 65536))
                     except OSError:
                         break
+            found = output.find(expected, output_cursor)
+            assert found >= 0, "TUI did not reach %r: %s" % (text, output.decode(errors="replace"))
+            output_cursor = found + len(expected)
+
+        def send(keys):
+            os.write(master, keys)
+
         try:
-            feed(b"")
-            feed(b"n")
-            for value in (b"tiny", b"low", b"", b"vulkan", b"/bin/true"):
-                feed(b"\x15" + value + b"\n")
-            feed(b"s")
-            feed(b"x")
-            feed(b"p")
-            feed(b"l")
-            feed(b" ")
-            feed(b"q")
+            wait_for("zVram Manager")
+            send(b"n")
+            for prompt, value in (
+                    ("Name:", b"tiny\n"),
+                    ("Priority [high/normal/low]:", b"\x15low\n"),
+                    ("Resident MiB [blank=default]:", b"\n"),
+                    ("Mode [native/vulkan/wrapped]:", b"\x15vulkan\n"),
+                    ("Command:", b"/bin/true\n")):
+                wait_for(prompt)
+                send(value)
+            wait_for("Saved; residency applies next launch")
+            send(b"s")
+            wait_for("test: start requested")
+            send(b"x")
+            wait_for("Stopped")
+            send(b"p")
+            wait_for("Priority saved")
+            send(b"l")
+            wait_for("Any key returns")
+            send(b" ")
+            wait_for("zVram Manager")
+            send(b"q")
             child.wait(timeout=5)
             assert child.returncode == 0, output.decode(errors="replace")
             profiles, calls = json.load(open(result))

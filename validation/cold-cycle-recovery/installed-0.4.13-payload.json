@@ -4,7 +4,7 @@
   "release_workflow": 37882853123,
   "build_workflow": {
     "id": 37882853134,
-    "status": "failed TUI profile startup test; investigation pending"
+    "status": "TUI fixed-delay harness race diagnosed; bounded output handshake fix validated locally, CI rerun pending"
   },
   "files": {
     "zvram": {

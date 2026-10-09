@@ -11,3 +11,5 @@ Commands: `ctest --test-dir build -R '^cpu-' --output-on-failure` and `ctest --t
 ## Installed v0.4.13
 
 Release workflow 37882853123 succeeded; Hub verified the tarball checksum and installed v0.4.13. Launcher/manager match the tag, both test setters are absent, and codec metadata disables test hooks. The installed async live-cap fixture passed: lowering the cap evicted one 32 MiB chunk, raising it restored every byte, and teardown reached zero resident/cold bytes and errors. See `installed-0.4.13-payload.json` and `installed-0.4.13-live-cap.txt`. A separate tag Build workflow failed the TUI profile fixture (`KeyError: tiny`) after all 19 Python unit tests passed; synchronization investigation is separate from the successful release gate and remains open.
+
+The TUI failure was traced to a fixed 150 ms key-feed schedule. The test now waits up to five seconds for the actual screen/prompt/action output, advancing an output cursor to avoid matching an old occurrence. Existing profile/action assertions are unchanged. Five consecutive agent TUI runs and a root rerun pass; all 19 Python unit tests pass. No production UI changes were needed.
