@@ -4230,7 +4230,8 @@ VKAPI_ATTR void VKAPI_CALL layerDestroyDevice(VkDevice device,const VkAllocation
       pollLiveControl(*d,true); d->liveControl.reset();
     }
     { std::lock_guard<std::mutex> lock(d->mutex); std::lock_guard<std::mutex> queueLock(d->queueMutex);
-      waitForDeviceTeardown(*d);
+      const bool teardownIdleProven=waitForDeviceTeardown(*d);
+      if(!teardownIdleProven && d->gpuDecoder) d->gpuDecoder->abandonUnsafeDevice();
       destroyDeferredPromotedBuffersAfterIdle(*d);
       releaseDeferredNativeFreesAfterIdle(*d);
       cleanupRetainedWarmRecoveriesAfterIdle(*d);

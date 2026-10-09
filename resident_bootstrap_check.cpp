@@ -59,6 +59,10 @@ std::uint32_t destroyedMockBuffers{},destroyedMockFences{};
 const void* lastDestroyedBufferUserData{};
 const void* lastFreedMemoryUserData{};
 std::unordered_map<VkDeviceMemory,const void*> freedMemoryUserData;
+Device* destroyObservedDevice{};
+bool destroyObservedDecoderUnsafe{};
+bool destroyObservedDecoderPresent{};
+unsigned destroyDeviceCalls{};
 
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
 void requireColdLogicalMatchesState(const Device& d,const char* message) {
@@ -118,6 +122,12 @@ VKAPI_ATTR VkResult VKAPI_CALL mockQueueWait(VkQueue queue) {
     return failQueueWaitAt==queueWaitCalls?failQueueWaitResult:VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockDeviceWait(VkDevice) { ++mockDeviceWaitCalls; return mockDeviceWaitResult; }
+VKAPI_ATTR void VKAPI_CALL mockDestroyDeviceObservingDecoder(VkDevice,const VkAllocationCallbacks*) {
+    ++destroyDeviceCalls;
+    destroyObservedDecoderPresent=destroyObservedDevice && bool(destroyObservedDevice->gpuDecoder);
+    destroyObservedDecoderUnsafe=destroyObservedDevice && destroyObservedDevice->gpuDecoder &&
+        destroyObservedDevice->gpuDecoder->unsafe();
+}
 VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDeviceMemoryProperties2* out) {
     ++budgetQueries;
     out->memoryProperties.memoryHeapCount=2;
@@ -2044,12 +2054,43 @@ void checkBindFailureAccounting() {
             m.coldGroups[0].cold && f.device.coldLogicalBytes==2*MiB,
             "blocked retry changed failed-bind resident/cold accounting");
 }
+
+void checkDecoderAbandonmentPrecedesNativeDeviceDestroy() {
+    for(const auto idleResult:{VK_SUCCESS,VK_ERROR_OUT_OF_HOST_MEMORY}) {
+        auto d=std::make_shared<Device>();
+        std::uintptr_t dispatchWord=0;
+        d->handle=reinterpret_cast<VkDevice>(&dispatchWord);
+        d->autoInitialized=true;
+        d->gpuRestoreUnsafe=idleResult!=VK_SUCCESS;
+        d->snapshot.deviceWaitIdle=mockDeviceWait;
+        d->destroy=mockDestroyDeviceObservingDecoder;
+        d->gpuDecoder=std::make_unique<zvram::gdeflate::gpu::Decoder>();
+        destroyObservedDevice=d.get();
+        destroyObservedDecoderUnsafe=false; destroyObservedDecoderPresent=false; destroyDeviceCalls=0;
+        mockDeviceWaitResult=idleResult;
+        {
+            std::lock_guard<std::mutex> lock(mapsMutex);
+            devices[key(d->handle)]=d;
+        }
+        layerDestroyDevice(d->handle,nullptr);
+        bool mapEntryRemains{};
+        { std::lock_guard<std::mutex> lock(mapsMutex); mapEntryRemains=devices.count(key(d->handle))!=0; }
+        require(destroyDeviceCalls==1 &&
+                (destroyObservedDecoderPresent==(idleResult!=VK_SUCCESS)) &&
+                (destroyObservedDecoderUnsafe==(idleResult!=VK_SUCCESS)) &&
+                !mapEntryRemains,
+                "device destruction did not poison decoder exactly when teardown idle was unproven");
+        destroyObservedDevice=nullptr;
+        d->gpuDecoder.reset();
+    }
+}
 } // namespace
 
 int main() try {
     checkGatedRecoveryTeardownCleanup();
     checkQueueIdleTeardownFallback();
     checkDeferredPromotedBufferDestroy();
+    checkDecoderAbandonmentPrecedesNativeDeviceDestroy();
     checkBootstrapAdmissionAndRestore();
     checkExactCapRestore();
     checkOneByteBelowCap();

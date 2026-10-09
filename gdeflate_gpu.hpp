@@ -272,6 +272,9 @@ public:
         return localOwnerBudget_ ? localOwnerBudget_->limitBytes() : 0;
     }
     Profile profile() const noexcept { return profile_; }
+    // Abandon GPU-backed state when completion is unproven; this prevents destructor driver calls,
+    // but does not free resources or prove they are no longer in use.
+    void abandonUnsafeDevice() noexcept { markPoisoned(); }
 
     // GDeflate requires shaderInt64, subgroup-size-control, computeFullSubgroups,
     // and a compute-capable private queue. BP16 needs the supplied device limits
@@ -979,6 +982,7 @@ public:
     }
 
 private:
+    friend class ImportedHostInputTestAccess;
     static constexpr std::size_t MaxInputBytes = 32u * 1024u * 1024u;
     static constexpr std::size_t MaxRawBytes = 32u * 1024u * 1024u;
     static constexpr std::size_t MaxEncodedBytes = 64u * 1024u * 1024u;

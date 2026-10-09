@@ -168,3 +168,14 @@ all resource/count checks; the failed run is preserved. This follow-up does
 not resolve the abnormal case where both device and queue waits return other
 errors. In that case decoder destruction and native-device teardown remain
 an explicit unresolved limitation; this is not a release safety claim.
+
+## Decoder abandonment follow-up
+
+When neither device-idle nor complete queue-idle checks prove completion,
+explicitly poison the decoder and its shared imported/raw host-input owners
+before clearing the virtual-memory groups or calling native device destruction.
+This prevents their destructors from unmapping or destroying uncertain resources
+and from making Vulkan calls after device destruction. Existing shared poison
+state also retains imported host allocations and their budget reservations.
+It deliberately abandons resources; it does not establish safe child cleanup
+or repair the unresolved abnormal-device teardown. CPU validation is pending.
