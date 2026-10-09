@@ -23,7 +23,7 @@ driver work and completion waits, not pure GPU execution. `compare.py` requires
 five complete unlocked transactions and five cold-peer proofs on each side.
 
 Independent implementation review passed. Normal/hook layer and bootstrap builds passed.
-The final normal CPU suite passed 13/13 in 6.28 seconds. Failure gates cover
+The original root 13-test log used a stale normal build directory and is not current harness proof. The corrected authoritative normal `build/` suite passes 13/13 in 5.50 seconds, including final-batch gates; see validation/read-only-transfer-barriers/cpu-ctest.txt. Failure gates cover
 plan refusal before driver submission, final sparse submission/completion errors,
 and post-bind visibility failure; they preserve old/new resources and gate access.
 The multi-alias fixture uses disjoint application ranges consistent with runtime

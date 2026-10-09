@@ -635,6 +635,18 @@ foreach(range_cache_mode synthetic native)
     set_tests_properties(${test_name} PROPERTIES TIMEOUT 60
         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 endforeach()
+add_test(NAME vulkan-range-clean-cache-readonly-barrier
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/validation/read-only-transfer-barriers/check_log.py --run
+        ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+        --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 60000 --vulkan-cold-mib 64
+        --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+        --vulkan-resident-mib 32 --vulkan-clean-cache --vulkan-min-savings-percent 100 --
+        $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+        --range-readonly-barrier-cache-fixture)
+set_tests_properties(vulkan-range-clean-cache-readonly-barrier PROPERTIES TIMEOUT 60
+    ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+    LABELS "hardware;vulkan;range;clean-cache;readonly-barrier;native-allocation")
 add_test(NAME vulkan-range-clean-cache-bootstrap
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_cache_bootstrap.py
         ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>)

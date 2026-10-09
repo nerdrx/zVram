@@ -3142,7 +3142,8 @@ void asyncEncodeOverlapFixtureCheck(Context& context, SetAsyncEncodeHook setHook
 void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
                       bool cacheQuota = false, bool cacheBootstrap = false,
                       bool compressedInitial = false, bool pressureOnlyFixture = false,
-                      bool pressureOnlyLiveCapFixture = false) {
+                      bool pressureOnlyLiveCapFixture = false,
+                      bool readOnlyBarrierCacheFixture = false) {
     if (pressureOnlyFixture) { pressureOnlyFixtureCheck(context); return; }
     if (pressureOnlyLiveCapFixture) { pressureOnlyLiveCapFixtureCheck(context); return; }
     const std::uint32_t chunkCount = cacheQuota ? 3u : 2u;
@@ -3242,6 +3243,144 @@ void rangeSubmitCheck(Context& context, bool pressure, bool cleanCache = false,
                     stats.failures == 0, "range pressure did not retain the expected resident chunks");
         };
         requirePressure();
+        if (readOnlyBarrierCacheFixture) {
+            require(cleanCache && !cacheQuota && chunkCount == 2,
+                    "read-only barrier cache proof requires two clean-cache ranges");
+            const auto marker = [](const char* name) {
+                std::ostringstream record;
+                record << name;
+                writeSamplerRecord(record);
+            };
+            const auto readRange = [&](std::uint32_t chunk, bool expectFill = false) {
+                const VkDeviceSize offset = static_cast<VkDeviceSize>(chunk) * ChunkBytes;
+                check(context.submit([&](VkCommandBuffer command) {
+                    VkMemoryBarrier sourceReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                    sourceReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT |
+                                                VK_ACCESS_TRANSFER_WRITE_BIT;
+                    sourceReady.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                         1, &sourceReady, 0, nullptr, 0, nullptr);
+                    VkBufferMemoryBarrier sourceRead{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+                    sourceRead.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    sourceRead.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    sourceRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    sourceRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    sourceRead.buffer = pool.handle;
+                    sourceRead.offset = offset;
+                    sourceRead.size = ChunkBytes;
+                    VkBufferMemoryBarrier stagingReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+                    stagingReady.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT |
+                                                 VK_ACCESS_TRANSFER_WRITE_BIT;
+                    stagingReady.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    stagingReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    stagingReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    stagingReady.buffer = staging.buffer;
+                    stagingReady.size = ChunkBytes;
+                    const VkBufferMemoryBarrier barriers[]{sourceRead, stagingReady};
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                         0, nullptr, 2, barriers, 0, nullptr);
+                    VkBufferCopy copy{offset, 0, ChunkBytes};
+                    vkCmdCopyBuffer(command, pool.handle, staging.buffer, 1, &copy);
+                    VkMemoryBarrier hostReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                    hostReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    hostReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_HOST_BIT, 0,
+                                         1, &hostReady, 0, nullptr, 0, nullptr);
+                }), "submit exact-range read-only cache copy");
+                const auto* words = static_cast<const std::uint32_t*>(staging.mapped);
+                for (std::uint32_t i = 0; i < ChunkWords; ++i) {
+                    if (expectFill) {
+                        require(words[i] == 0x5a17c0deu,
+                                "real write did not survive clean-cache invalidation and restore");
+                        continue;
+                    }
+                    auto expected = initialWord(chunk * ChunkWords + i);
+                    expected ^= mix32(i ^ cycleSalt(0, chunk));
+                    require(words[i] == expected,
+                            "read-only finite-barrier copy changed a range byte");
+                }
+            };
+
+            const auto oneColdDeadline = std::chrono::steady_clock::now() + ColdTimeout;
+            ZvramSnapshotStatsNX initialCold{};
+            while (std::chrono::steady_clock::now() < oneColdDeadline) {
+                initialCold = context.stats();
+                if (initialCold.residentBytes == ChunkBytes &&
+                    initialCold.coldLogicalBytes == ChunkBytes &&
+                    initialCold.failures == 0) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            require(initialCold.residentBytes == ChunkBytes &&
+                    initialCold.coldLogicalBytes == ChunkBytes && initialCold.failures == 0,
+                    "read-only barrier cache proof did not establish one cold cached range");
+
+            marker("READONLY_BARRIER_CACHE_READ_BEGIN");
+            auto before = context.stats();
+            readRange(0);
+            auto after = context.stats();
+            std::uint32_t coldChunk{};
+            if (after.restores == before.restores + 1) {
+                coldChunk = 1;
+            } else {
+                require(after.restores == before.restores,
+                        "initial read-only range probe restored an unexpected number of ranges");
+                before = after;
+                readRange(1);
+                after = context.stats();
+                require(after.restores == before.restores + 1,
+                        "read-only range probe failed to find the cold child");
+                coldChunk = 0;
+            }
+            requirePressure();
+            for (unsigned int cycle = 0; cycle < 4; ++cycle) {
+                before = context.stats();
+                readRange(coldChunk);
+                after = context.stats();
+                require(after.restores == before.restores + 1 && after.failures == 0,
+                        "finite read-only copy did not restore exactly its cold range");
+                requirePressure();
+                coldChunk = 1 - coldChunk;
+            }
+            marker("READONLY_BARRIER_CACHE_READ_END");
+
+            const auto writeChunk = coldChunk;
+            const auto otherChunk = 1 - writeChunk;
+            marker("READONLY_BARRIER_CACHE_WRITE_BEGIN");
+            check(context.submit([&](VkCommandBuffer command) {
+                VkMemoryBarrier writable{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                writable.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT |
+                                         VK_ACCESS_MEMORY_WRITE_BIT;
+                writable.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                     1, &writable, 0, nullptr, 0, nullptr);
+                vkCmdFillBuffer(command, pool.handle,
+                                static_cast<VkDeviceSize>(writeChunk) * ChunkBytes,
+                                ChunkBytes, 0x5a17c0deu);
+            }), "fill one cold range to invalidate its clean snapshot");
+            const auto verifyFill = [&] {
+                readRange(writeChunk, true);
+            };
+            verifyFill();
+            readRange(otherChunk);
+            verifyFill();
+            readRange(otherChunk);
+            verifyFill();
+            marker("READONLY_BARRIER_CACHE_WRITE_END");
+            requirePressure();
+
+            vkDestroyBuffer(context.device, pool.handle, nullptr); pool.handle = VK_NULL_HANDLE;
+            vkFreeMemory(context.device, pool.memory, nullptr); pool.memory = VK_NULL_HANDLE;
+            const auto empty = context.stats();
+            require(!empty.residentBytes && !empty.coldLogicalBytes && !empty.coldStoredBytes &&
+                    !empty.failures,
+                    "read-only barrier cache proof cleanup retained pool state or errors");
+            marker("PASS: finite-barrier read/write bytes and cleanup verified");
+            return;
+        }
         if (cleanCache) {
             std::cout << "CLEAN_CACHE_READBACK_PHASE_BEGIN" << std::endl;
             for (std::uint32_t pass = 0; pass < 3; ++pass) {
@@ -3843,6 +3982,7 @@ int main(int argc, char** argv) try {
     bool rangeCache = false;
     bool rangeCacheBootstrap = false;
     bool rangeCacheQuota = false, rangeCacheUnknown = false;
+    bool readOnlyBarrierCacheFixture = false;
     bool robustCore = false;
     bool concurrentWait = false;
     std::uint32_t controlHoldMilliseconds = 0;
@@ -3945,6 +4085,10 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--range-cache-unknown") == 0) {
             rangeSubmit=true; rangeCache=true; rangeCacheUnknown=true;
         }
+        else if (std::strcmp(argv[i], "--range-readonly-barrier-cache-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; rangeCache=true;
+            readOnlyBarrierCacheFixture=true;
+        }
         else if (std::strcmp(argv[i], "--control-hold-ms") == 0) {
             require(i+1<argc,"--control-hold-ms requires a value from 0 to 15000");
             const std::string value=argv[++i];
@@ -4032,6 +4176,11 @@ int main(int argc, char** argv) try {
             "compressible range initialization requires the independent range-submit check");
     require(!(rangeCacheQuota && rangeCacheUnknown),
             "choose only one clean-cache extension check");
+    require(!readOnlyBarrierCacheFixture ||
+            (rangeCache && rangePressure && !rangeCacheQuota && !rangeCacheBootstrap &&
+             !rangeCacheUnknown && !rangeCompressed && !pressureOnlyFixture &&
+             !pressureOnlyLiveCapFixture),
+            "read-only barrier cache proof requires the dedicated clean-cache range path");
     require(!(expectBudgetRefusal && exclusiveFamilies), "budget refusal mode does not use exclusive family transfers");
     require(!(pendingWait && pendingBind), "choose only one pending queue test");
     require(!concurrentWait || (pendingWait && twoQueues),
@@ -4133,7 +4282,7 @@ int main(int argc, char** argv) try {
         std::this_thread::sleep_for(std::chrono::milliseconds(controlHoldMilliseconds));
     }
     if (rangeCacheUnknown) { rangeCacheUnknownCheck(context); return 0; }
-    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap, rangeCompressed, pressureOnlyFixture, pressureOnlyLiveCapFixture); return 0; }
+    if (rangeSubmit) { rangeSubmitCheck(context, rangePressure, rangeCache, rangeCacheQuota, rangeCacheBootstrap, rangeCompressed, pressureOnlyFixture, pressureOnlyLiveCapFixture, readOnlyBarrierCacheFixture); return 0; }
     if (selectiveBind) { selectiveBindCheck(context, selectiveBindApi2); return 0; }
     if (selectiveSubmit) { selectiveSubmitCheck(context, selectiveSubmitApi2, selectiveSubmitUnknown, activeSubmit); return 0; }
     if (suballocation) { suballocationCheck(context, suballocationAuto, suballocationApi2); return 0; }

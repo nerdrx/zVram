@@ -2032,18 +2032,19 @@ struct BarrierRangeFixture {
         devices.erase(key(f.handle));
     }
     void begin() { f.device.submission.beginCommand(command); }
-    void expectChild(std::uint32_t expected,const char* message) {
+    void expectChild(std::uint32_t expected,const char* message,bool mayWrite=false) {
         std::vector<VkSubmissionTracker::BufferRange> ranges;
         std::vector<ActiveRefs::Use> uses;
         const char* reason=nullptr;
         require(f.device.submission.collectRanges(1,&command,ranges,&reason) && !reason && ranges.size()==1,
                 "finite barrier did not produce one known tracked range");
-        require(ranges[0].mayWrite,"barrier stopped conservatively tracking writes");
+        require(ranges[0].mayWrite==mayWrite,"barrier access masks produced incorrect write classification");
         require(commandMemories(f.device,{command},uses,false) && uses.size()==1 &&
                 uses[0].memory==f.memory && uses[0].child==expected,message);
         uses.clear();
-        require(commandMemories(f.device,{command},uses,true) && uses.size()==1 &&
-                uses[0].child==expected,"writes-only tracking omitted a barrier target");
+        const bool knownWrites=commandMemories(f.device,{command},uses,true);
+        require(knownWrites && (mayWrite ? uses.size()==1 && uses[0].child==expected : uses.empty()),
+                "writes-only tracking disagreed with barrier access classification");
     }
     void expectWhole(const char* message) {
         std::vector<VkSubmissionTracker::BufferRange> ranges;
@@ -2053,8 +2054,12 @@ struct BarrierRangeFixture {
                 "fallback barrier did not retain a known whole-buffer range");
         require(ranges[0].offset==0 && ranges[0].size==VK_WHOLE_SIZE,
                 "fallback barrier narrowed an unsupported range");
+        require(ranges[0].mayWrite,"fallback barrier was incorrectly classified as read-only");
         require(commandMemories(f.device,{command},uses,false) && uses.size()==2 &&
                 uses[0].child==0 && uses[1].child==1,message);
+        uses.clear();
+        require(commandMemories(f.device,{command},uses,true) && uses.size()==2,
+                "fallback barrier stopped tracking writes conservatively");
     }
     void expectUnknown(const char* message) {
         std::vector<VkSubmissionTracker::BufferRange> ranges;
@@ -2352,6 +2357,118 @@ void checkFiniteBufferBarrierTracking() {
     }
 }
 
+void issueBarrierAccess(BarrierRangeFixture& x,unsigned api,VkAccessFlags2 src,VkAccessFlags2 dst,
+                        bool extension=false) {
+    const VkEvent event=tokenHandle<VkEvent>(0xb220);
+    VkBaseInStructure ext{static_cast<VkStructureType>(0x7ffffffe),nullptr};
+    if(api<2) {
+        VkBufferMemoryBarrier b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        b.srcAccessMask=static_cast<VkAccessFlags>(src);
+        b.dstAccessMask=static_cast<VkAccessFlags>(dst);
+        b.srcQueueFamilyIndex=b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        b.buffer=x.buffer; b.offset=4*MiB; b.size=4*MiB;
+        if(extension) b.pNext=&ext;
+        if(api==0) layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        else layerCmdWaitEvents(x.command,1,&event,0,0,0,nullptr,1,&b,0,nullptr);
+    } else {
+        VkBufferMemoryBarrier2 b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+        b.srcAccessMask=src; b.dstAccessMask=dst;
+        b.srcQueueFamilyIndex=b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        b.buffer=x.buffer; b.offset=4*MiB; b.size=4*MiB;
+        if(extension) b.pNext=&ext;
+        VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dep.bufferMemoryBarrierCount=1; dep.pBufferMemoryBarriers=&b;
+        if(api==2) layerCmdPipelineBarrier2(x.command,&dep);
+        else layerCmdWaitEvents2(x.command,1,&event,&dep);
+    }
+}
+void seedBarrierCleanCache(BarrierRangeFixture& x) {
+    auto& d=x.f.device; auto& m=x.f.state();
+    d.cleanCache=true; d.asyncCompression=true; d.cacheBytes=17; d.cacheInvalidations=0;
+    m.cacheStoredBytes=17;
+    for(auto& group:m.coldGroups) { group.cold=false; group.pristine=false; }
+    auto& target=m.coldGroups[1]; target.storedBytes=17; target.logicalBytes=4*MiB;
+    target.writeEpoch=9; target.chunks.emplace_back(); target.chunks.back().bytes.resize(17);
+}
+void acceptedBarrierSubmit(BarrierRangeFixture& x) {
+    auto& d=x.f.device;
+    VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submit.commandBufferCount=1; submit.pCommandBuffers=&x.command;
+    const auto* info=static_cast<const VkSubmitInfo*>(&submit);
+    const auto queue=reinterpret_cast<VkQueue>(x.f.handle);
+    const auto oldInfo=applicationSubmitInfo;
+    const auto oldUnknown=unknownCommandProc.exchange(false);
+    applicationSubmitInfo=info;
+    invalidateAcceptedWrites(d,"vkQueueSubmit",std::uint32_t{1},info,VkFence{});
+    bumpAcceptedWriteEpochs(d,"vkQueueSubmit",std::uint32_t{1},info,VkFence{});
+    applicationSubmitInfo=oldInfo;
+    unknownCommandProc.store(oldUnknown);
+    (void)queue;
+}
+void checkBarrierReadWriteClassification() {
+    for(unsigned api=0;api<4;api++) {
+        BarrierRangeFixture x; auto& d=x.f.device; auto& m=x.f.state();
+        seedBarrierCleanCache(x);
+        const auto read=(api%2)?VkAccessFlags2{0}:VK_ACCESS_2_TRANSFER_READ_BIT;
+        issueBarrierAccess(x,api,api==2?VK_ACCESS_2_TRANSFER_READ_BIT:0,read);
+        x.expectChild(1,"read barrier did not retain a selected child",false);
+        std::vector<ActiveRefs::Use> refs,writes;
+        const bool knownRefs=commandMemories(d,{x.command},refs,false);
+        const bool knownWrites=commandMemories(d,{x.command},writes,true);
+        require(knownRefs && refs.size()==1 && refs[0].child==1 && knownWrites && writes.empty(),
+                "read-only barrier lost references or entered writes-only tracking");
+        acceptedBarrierSubmit(x);
+        require(d.cacheBytes==17 && m.coldGroups[1].storedBytes==17 &&
+                d.cacheInvalidations==0 && m.coldGroups[1].writeEpoch==9,
+                "accepted transfer-read barrier invalidated clean data or bumped the write epoch");
+    }
+    const VkAccessFlags2 writes[]{VK_ACCESS_2_TRANSFER_WRITE_BIT,VK_ACCESS_2_SHADER_WRITE_BIT,
+        VK_ACCESS_2_HOST_WRITE_BIT,static_cast<VkAccessFlags2>(1ull<<63)};
+    for(unsigned api=0;api<4;api++) {
+        BarrierRangeFixture x; auto& d=x.f.device; auto& m=x.f.state();
+        seedBarrierCleanCache(x);
+        issueBarrierAccess(x,api,0,writes[api]);
+        x.expectChild(1,"write-capable barrier did not retain its child",true);
+        acceptedBarrierSubmit(x);
+        require(d.cacheBytes==0 && m.coldGroups[1].storedBytes==0 &&
+                d.cacheInvalidations==1 && m.coldGroups[1].writeEpoch==10,
+                "accepted write-capable barrier preserved cache or failed to bump its epoch");
+    }
+    {
+        BarrierRangeFixture x; auto& d=x.f.device; auto& m=x.f.state();
+        seedBarrierCleanCache(x);
+        issueBarrierAccess(x,2,VK_ACCESS_2_UNIFORM_READ_BIT,0);
+        x.expectChild(1,"non-allowlisted read access was incorrectly treated as read-only",true);
+        acceptedBarrierSubmit(x);
+        require(d.cacheBytes==0 && d.cacheInvalidations==1 && m.coldGroups[1].writeEpoch==10,
+                "non-allowlisted read access did not conservatively invalidate cache and bump epoch");
+    }
+    {
+        BarrierRangeFixture x; auto& d=x.f.device; auto& m=x.f.state();
+        seedBarrierCleanCache(x);
+        issueBarrierAccess(x,0,VkAccessFlags2{0},VkAccessFlags2{0});
+        d.submission.bufferRange(x.command,x.buffer,4*MiB,4*MiB,true); // Later fill/copy destination.
+        std::vector<ActiveRefs::Use> writes;
+        require(commandMemories(d,{x.command},writes,true) && writes.size()==1 && writes[0].child==1,
+                "later write access was suppressed by an earlier read-only barrier");
+        acceptedBarrierSubmit(x);
+        require(d.cacheBytes==0 && d.cacheInvalidations==1 && m.coldGroups[1].writeEpoch==10,
+                "accepted independent copy/fill write failed to invalidate clean data");
+    }
+    {
+        BarrierRangeFixture x; auto& d=x.f.device; auto& m=x.f.state();
+        seedBarrierCleanCache(x); m.coldGroups[0].storedBytes=13; m.cacheStoredBytes+=13; d.cacheBytes+=13;
+        m.coldGroups[0].logicalBytes=4*MiB; m.coldGroups[0].chunks.emplace_back();
+        m.coldGroups[0].chunks.back().bytes.resize(13); m.coldGroups[0].writeEpoch=4;
+        issueBarrierAccess(x,2,0,VkAccessFlags2{0},true);
+        x.expectUnknown("extension barrier did not preserve unknown-access fallback");
+        acceptedBarrierSubmit(x);
+        require(d.cacheBytes==0 && d.cacheInvalidations==2 && m.coldGroups[0].writeEpoch==5 &&
+                m.coldGroups[1].writeEpoch==10,
+                "accepted unknown barrier did not conservatively invalidate cache and bump epochs");
+    }
+}
+
 void checkAllocationFailureRetry() {
     Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); auto& m=f.state();
     failAllocations=1;
@@ -2445,6 +2562,7 @@ int main() try {
     checkAsyncEncoderReleasesBothGates();
     checkNoActionCommandHooksStaySelective();
     checkFiniteBufferBarrierTracking();
+    checkBarrierReadWriteClassification();
     checkPendingKnownHotQueueCallSkipsColdRestore();
     checkPendingAdmissionWaitRetriesThroughQueueCall();
     checkAllocationFailureRetry();

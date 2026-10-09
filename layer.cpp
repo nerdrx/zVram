@@ -4669,6 +4669,13 @@ bool finiteTrackedBarrierRange(const Device& d,VkBuffer buffer,VkDeviceSize offs
         size<=found->second.size-offset;
 }
 template<class Barrier>
+bool barrierMayWrite(const Barrier& barrier) {
+    constexpr VkAccessFlags2 transferRead=VK_ACCESS_2_TRANSFER_READ_BIT;
+    const auto src=static_cast<VkAccessFlags2>(barrier.srcAccessMask);
+    const auto dst=static_cast<VkAccessFlags2>(barrier.dstAccessMask);
+    return (src&~transferRead)!=0 || (dst&~transferRead)!=0;
+}
+template<class Barrier>
 void recordBarrierBuffer(VkSubmissionTracker& tracker,VkCommandBuffer commandBuffer,
                          const Device& d,const Barrier& barrier) {
     if(barrier.pNext) {
@@ -4678,7 +4685,7 @@ void recordBarrierBuffer(VkSubmissionTracker& tracker,VkCommandBuffer commandBuf
     if(barrier.srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED &&
        barrier.dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED &&
        finiteTrackedBarrierRange(d,barrier.buffer,barrier.offset,barrier.size))
-        tracker.bufferRange(commandBuffer,barrier.buffer,barrier.offset,barrier.size,true);
+        tracker.bufferRange(commandBuffer,barrier.buffer,barrier.offset,barrier.size,barrierMayWrite(barrier));
     else
         tracker.buffer(commandBuffer,barrier.buffer);
 }

@@ -1,0 +1,46 @@
+[zvram] Vulkan snapshot transfer staging bytes=33554432
+[zvram] Vulkan snapshot decode max-workers=1
+[zvram] Vulkan snapshot lookahead staging bytes=33554432
+[zvram] automatic Vulkan snapshots enabled idle-ms=60000 cold-budget=67108864
+[zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+[zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+[zvram] Vulkan range residency enabled chunk-bytes=33554432
+[zvram] Vulkan resident admission enabled limit-bytes=33554432
+[zvram] Vulkan eviction policy=lru
+[zvram] Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget
+[zvram] Vulkan snapshot minimum savings percent=100
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] snapshot state event=bootstrap-bind resident=67108864 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] native allocation segmented bytes=67108864 children=2
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=33554432 copy-ns=4774522 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=33554432 incoming-bytes=0 limit-bytes=33554432
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=67108864 copy-ns=8779111 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=2 restores=1 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=100663296 copy-ns=13387942 decode-bytes=33554432 decode-ns=2645673 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=40 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=1 wait-ns=40
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=3 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=1 copy-calls=4 copy-bytes=134217728 copy-ns=16978599 decode-bytes=33554432 decode-ns=2645673 pipeline-prefetches=0 pipeline-restores=1 pipeline-wait-ns=40 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=3 restores=2 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=1 copy-calls=5 copy-bytes=167772160 copy-ns=21267989 decode-bytes=67108864 decode-ns=4617142 pipeline-prefetches=0 pipeline-restores=1 pipeline-wait-ns=60 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=2 wait-ns=60
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=4 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=2 copy-calls=6 copy-bytes=201326592 copy-ns=24477964 decode-bytes=67108864 decode-ns=4617142 pipeline-prefetches=0 pipeline-restores=2 pipeline-wait-ns=60 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=4 restores=3 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=2 copy-calls=7 copy-bytes=234881024 copy-ns=28572063 decode-bytes=100663296 decode-ns=6750872 pipeline-prefetches=0 pipeline-restores=2 pipeline-wait-ns=90 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=3 wait-ns=90
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+READONLY_BARRIER_CACHE_READ_BEGIN
+[zvram] resident admission refused: submission working set exceeds limit-bytes=33554432 known=1
+[zvram] virtual free bytes=67108864
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=4 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=3 copy-calls=7 copy-bytes=234881024 copy-ns=28572063 decode-bytes=100663296 decode-ns=6750872 pipeline-prefetches=0 pipeline-restores=3 pipeline-wait-ns=90 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot transfer profile copy-calls=7 copy-bytes=234881024 copy-ns=28572063 decode-bytes=100663296 decode-ns=6750872
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+error: submit command buffer failed: -2
