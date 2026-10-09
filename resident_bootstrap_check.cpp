@@ -7,6 +7,23 @@
 #include <stdexcept>
 #include <condition_variable>
 
+namespace zvram::gdeflate::gpu {
+class DecoderTeardownTestAccess {
+public:
+    static void seedPoisonedDecoder(Decoder& decoder,VkDevice device,VkBuffer buffer,
+                                    VkDeviceMemory memory,PFN_vkDestroyBuffer destroyBuffer,
+                                    PFN_vkFreeMemory freeMemory) {
+        decoder.device_=device;
+        decoder.api_.destroyBuffer=destroyBuffer;
+        decoder.api_.freeMemory=freeMemory;
+        decoder.input_.buffer=buffer;
+        decoder.input_.memory=memory;
+        decoder.initialized_=true;
+        decoder.markPoisoned();
+    }
+};
+}
+
 namespace {
 constexpr VkDeviceSize MiB = 1024ull * 1024ull;
 unsigned allocations{};
@@ -63,6 +80,7 @@ Device* destroyObservedDevice{};
 bool destroyObservedDecoderUnsafe{};
 bool destroyObservedDecoderPresent{};
 unsigned destroyDeviceCalls{};
+std::uint32_t destroyedBuffersAtNativeDeviceDestroy{},freesAtNativeDeviceDestroy{};
 
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
 void requireColdLogicalMatchesState(const Device& d,const char* message) {
@@ -127,6 +145,8 @@ VKAPI_ATTR void VKAPI_CALL mockDestroyDeviceObservingDecoder(VkDevice,const VkAl
     destroyObservedDecoderPresent=destroyObservedDevice && bool(destroyObservedDevice->gpuDecoder);
     destroyObservedDecoderUnsafe=destroyObservedDevice && destroyObservedDevice->gpuDecoder &&
         destroyObservedDevice->gpuDecoder->unsafe();
+    destroyedBuffersAtNativeDeviceDestroy=destroyedMockBuffers;
+    freesAtNativeDeviceDestroy=frees;
 }
 VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDeviceMemoryProperties2* out) {
     ++budgetQueries;
@@ -2056,17 +2076,21 @@ void checkBindFailureAccounting() {
 }
 
 void checkDecoderAbandonmentPrecedesNativeDeviceDestroy() {
-    for(const auto idleResult:{VK_SUCCESS,VK_ERROR_OUT_OF_HOST_MEMORY}) {
+    for(const auto idleResult:{VK_SUCCESS,VK_ERROR_DEVICE_LOST,VK_ERROR_OUT_OF_HOST_MEMORY}) {
         auto d=std::make_shared<Device>();
         std::uintptr_t dispatchWord=0;
         d->handle=reinterpret_cast<VkDevice>(&dispatchWord);
         d->autoInitialized=true;
-        d->gpuRestoreUnsafe=idleResult!=VK_SUCCESS;
+        d->gpuRestoreUnsafe=true;
         d->snapshot.deviceWaitIdle=mockDeviceWait;
         d->destroy=mockDestroyDeviceObservingDecoder;
         d->gpuDecoder=std::make_unique<zvram::gdeflate::gpu::Decoder>();
+        zvram::gdeflate::gpu::DecoderTeardownTestAccess::seedPoisonedDecoder(
+            *d->gpuDecoder,d->handle,tokenHandle<VkBuffer>(0xd001),
+            tokenHandle<VkDeviceMemory>(0xd002),mockDestroyBuffer,mockFree);
         destroyObservedDevice=d.get();
         destroyObservedDecoderUnsafe=false; destroyObservedDecoderPresent=false; destroyDeviceCalls=0;
+        const auto beforeBuffers=destroyedMockBuffers,beforeFrees=frees;
         mockDeviceWaitResult=idleResult;
         {
             std::lock_guard<std::mutex> lock(mapsMutex);
@@ -2075,13 +2099,19 @@ void checkDecoderAbandonmentPrecedesNativeDeviceDestroy() {
         layerDestroyDevice(d->handle,nullptr);
         bool mapEntryRemains{};
         { std::lock_guard<std::mutex> lock(mapsMutex); mapEntryRemains=devices.count(key(d->handle))!=0; }
+        const bool idleProven=idleResult==VK_SUCCESS || idleResult==VK_ERROR_DEVICE_LOST;
         require(destroyDeviceCalls==1 &&
-                (destroyObservedDecoderPresent==(idleResult!=VK_SUCCESS)) &&
-                (destroyObservedDecoderUnsafe==(idleResult!=VK_SUCCESS)) &&
+                (destroyObservedDecoderPresent==!idleProven) &&
+                (destroyObservedDecoderUnsafe==!idleProven) &&
+                destroyedBuffersAtNativeDeviceDestroy==beforeBuffers+(idleProven?1:0) &&
+                freesAtNativeDeviceDestroy==beforeFrees+(idleProven?1:0) &&
                 !mapEntryRemains,
-                "device destruction did not poison decoder exactly when teardown idle was unproven");
+                "device destroy did not clean poisoned decoder only after real idle proof");
         destroyObservedDevice=nullptr;
+        const auto afterNativeBuffers=destroyedMockBuffers,afterNativeFrees=frees;
         d->gpuDecoder.reset();
+        require(destroyedMockBuffers==afterNativeBuffers && frees==afterNativeFrees,
+                "decoder destructor made late driver calls after native device destroy");
     }
 }
 } // namespace

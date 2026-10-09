@@ -275,6 +275,13 @@ public:
     // Abandon GPU-backed state when completion is unproven; this prevents destructor driver calls,
     // but does not free resources or prove they are no longer in use.
     void abandonUnsafeDevice() noexcept { markPoisoned(); }
+    // Only call after native device/queue idle was proven; allows destructor cleanup,
+    // while keeping this decoder permanently unusable for runtime operations.
+    void authorizeCleanupAfterIdleProof() noexcept {
+        if (!poisoned_) return;
+        if (poisonState_) poisonState_->store(false, std::memory_order_release);
+        idleProofCleanupAllowed_ = true;
+    }
 
     // GDeflate requires shaderInt64, subgroup-size-control, computeFullSubgroups,
     // and a compute-capable private queue. BP16 needs the supplied device limits
@@ -977,12 +984,20 @@ public:
     }
 
     void destroy() noexcept {
-        if (poisoned_) return;
+        if (poisoned_) {
+            if (!idleProofCleanupAllowed_) return;
+            poisoned_ = false;
+            cleanup();
+            poisoned_ = true;
+            idleProofCleanupAllowed_ = false;
+            return;
+        }
         cleanup();
     }
 
 private:
     friend class ImportedHostInputTestAccess;
+    friend class DecoderTeardownTestAccess;
     static constexpr std::size_t MaxInputBytes = 32u * 1024u * 1024u;
     static constexpr std::size_t MaxRawBytes = 32u * 1024u * 1024u;
     static constexpr std::size_t MaxEncodedBytes = 64u * 1024u * 1024u;
@@ -1571,6 +1586,7 @@ private:
 
     void markPoisoned() noexcept {
         poisoned_ = true;
+        idleProofCleanupAllowed_ = false;
         if (poisonState_) poisonState_->store(true, std::memory_order_release);
     }
 
@@ -1626,6 +1642,7 @@ private:
         gpuProfileEnabled_ = false;
         timestampValidBits_ = 0;
         timestampPeriod_ = 0.0;
+        idleProofCleanupAllowed_ = false;
     }
 
     Functions api_{};
@@ -1658,6 +1675,7 @@ private:
     VkQueryPool queryPool_{};
     bool initialized_{};
     bool poisoned_{};
+    bool idleProofCleanupAllowed_{};
     bool profileEnabled_{};
     bool gpuProfileEnabled_{};
     bool bp16HostInput_{};

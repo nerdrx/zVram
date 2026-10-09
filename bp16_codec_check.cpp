@@ -255,10 +255,28 @@ void testImportedHostOwnerAccounting() {
             zvram::gdeflate::gpu::ImportedHostInputTestAccess::poisoned(*teardownOwner),
             "abandoning decoder did not poison shared imported owners");
     teardownDecoder.destroy();
-    teardownOwner.reset();
     require(destroyedImportBuffers==beforeDestroy && freedImportMemory==beforeFree &&
             unmappedAllocatedMemory==beforeUnmap && teardownBudget->usedBytes()==4096,
             "abandoned decoder/owner destructor touched GPU resources or released reserved budget");
+    teardownDecoder.authorizeCleanupAfterIdleProof();
+    require(teardownDecoder.unsafe() && !sharedPoison->load(std::memory_order_acquire),
+            "idle proof authorization revived decoder or failed to release shared-owner poison");
+    teardownDecoder.destroy();
+    const auto afterAuthorizedDecoderCleanup=destroyedImportBuffers;
+    require(teardownDecoder.unsafe() && afterAuthorizedDecoderCleanup==beforeDestroy+1 &&
+            freedImportMemory==beforeFree+1 && unmappedAllocatedMemory==beforeUnmap+1,
+            "idle-proof cleanup did not release decoder handles exactly once");
+    teardownDecoder.destroy();
+    require(destroyedImportBuffers==afterAuthorizedDecoderCleanup && freedImportMemory==beforeFree+1,
+            "repeated idle-proof cleanup destroyed decoder handles twice");
+    teardownOwner.reset();
+    if(!(destroyedImportBuffers==beforeDestroy+2 && freedImportMemory==beforeFree+2 &&
+         unmappedAllocatedMemory==beforeUnmap+2 && teardownBudget->usedBytes()==0))
+        throw std::runtime_error("idle-proof owner cleanup counts: buffers="+
+            std::to_string(destroyedImportBuffers-beforeDestroy)+" frees="+
+            std::to_string(freedImportMemory-beforeFree)+" unmaps="+
+            std::to_string(unmappedAllocatedMemory-beforeUnmap)+" budget="+
+            std::to_string(teardownBudget->usedBytes()));
 
     Bytes raw(RawBytesPerBlock, 0), encoded;
     require(encodeFast(raw.data(), raw.size(), encoded), "tiny BP16 owner frame encode failed");

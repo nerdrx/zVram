@@ -179,3 +179,23 @@ and from making Vulkan calls after device destruction. Existing shared poison
 state also retains imported host allocations and their budget reservations.
 It deliberately abandons resources; it does not establish safe child cleanup
 or repair the unresolved abnormal-device teardown. CPU validation is pending.
+
+## Proven decoder cleanup follow-up
+
+After real device-idle or complete queue-idle proof, an already-poisoned
+decoder authorizes one destructor cleanup pass and clears only its shared
+owner-poison flag. Its private poison remains set, so runtime operations stay
+blocked. Child owners can unmap/destroy/free and release their budgets before
+native device destruction. Existing final profile/accounting logs still run
+before decoder reset; cleanup consumes its permission once and leaves the
+decoder unusable. A failed proof still takes the abandonment path.
+
+All 13 normal CPU CTests passed (6.35 seconds), plus both hook bootstrap/BP16
+checks (0.03 seconds). Actual device-destroy tests cover real success, device
+loss and unproven failure, including callback counts before native destruction
+and no later driver calls. Shared-owner tests verify retained resources before
+proof, exact-once decoder/owner cleanup afterward and budget release. Normal
+libraries contain none of the six test APIs. See `proven-decoder-cleanup/`.
+These are mocked lifecycle failures; no GPU device fault was reproduced. The
+unproven double-idle-error resource-retention/native-child cleanup limitation
+remains documented, and this follow-up does not change that policy.
