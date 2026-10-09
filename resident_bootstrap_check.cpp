@@ -830,6 +830,21 @@ void checkColdCyclePromotionAndFailureRetry() {
         require(m.backingMemoryTypeBits==3 && allocatedTypes.size()==1 && allocatedTypes[0]==0 &&
                 frees==1 && bufferSizes.size()==m.poolViews.size(),
                 "direct recovery failed to preserve masks or retire only old backing and temporary view");
+        require(sparseBinds==3 && queueWaitCalls==4 && sparseBindCalls.size()==3 &&
+                sparseBindCalls.back().size()==m.bindings.size()+2,
+                "direct recovery did not use one final sparse batch and completion wait");
+        const auto& finalBatch=sparseBindCalls.back();
+        const auto& sourceRelease=finalBatch[0];
+        const auto& destinationRelease=finalBatch[1];
+        const auto& aliasBind=finalBatch[2];
+        require(sourceRelease.buffer==m.poolViews[0] && sourceRelease.binds.size()==1 &&
+                sourceRelease.binds[0].memory==VK_NULL_HANDLE && sourceRelease.binds[0].size==MiB &&
+                destinationRelease.buffer==sparseBindCalls[1][1].buffer &&
+                destinationRelease.binds.size()==1 && destinationRelease.binds[0].memory==VK_NULL_HANDLE &&
+                destinationRelease.binds[0].size==MiB && aliasBind.buffer==m.bindings[0].buffer &&
+                aliasBind.binds.size()==1 && aliasBind.binds[0].memory==m.children[0] &&
+                aliasBind.binds[0].size==MiB,
+                "final sparse batch did not unbind both private views and map the app alias to replacement");
         require(capturedMemoryBarriers.size()==2 &&
                 capturedMemoryBarriers[0].srcStage==VK_PIPELINE_STAGE_ALL_COMMANDS_BIT &&
                 capturedMemoryBarriers[0].dstStage==VK_PIPELINE_STAGE_TRANSFER_BIT &&
@@ -963,6 +978,48 @@ PendingWarmRecovery pendingWarmRecoveryFor(ColdCycleFixture& c) {
     pending.destinationView=tokenHandle<VkBuffer>(0xc2fe); pending.oldType=m.childTypes[0];
     pending.newType=0; pending.size=MiB; pending.fence=tokenHandle<VkFence>(0xc2fd);
     return pending;
+}
+
+void checkWarmRecoveryFinalPlanFailureRetainsOwnership() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    auto pending=pendingWarmRecoveryFor(c);
+    pending.replacement=tokenHandle<VkDeviceMemory>(0xc2e1);
+    liveAllocations.insert(pending.replacement);
+    bufferSizes[pending.destinationView]=MiB;
+    d.liveLocal=MiB;
+    d.retainedWarmRecoveries.push_back({pending.oldBacking,pending.replacement,pending.sourceView,
+        pending.destinationView,pending.oldType,pending.newType,pending.size});
+    m.bindings[0].alignment=0; // Fail final plan construction after the copy transaction.
+    require(!finalizeWarmRecoveryLocked(d,pending) && d.gpuRestoreUnsafe &&
+            d.gpuGateError==VK_ERROR_FEATURE_NOT_PRESENT && sparseBinds==0 && queueWaitCalls==0 &&
+            m.children[0]==c.nonlocal && m.childTypes[0]==pending.oldType && frees==0 &&
+            liveAllocations.count(pending.oldBacking) && liveAllocations.count(pending.replacement) &&
+            bufferSizes.count(pending.destinationView) && d.retainedWarmRecoveries.size()==1,
+            "final sparse-plan refusal freed or published resources before any driver call");
+}
+
+void checkWarmRecoveryVisibilityFailureRetainsOldBacking() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    auto pending=pendingWarmRecoveryFor(c);
+    pending.replacement=tokenHandle<VkDeviceMemory>(0xc2e2);
+    liveAllocations.insert(pending.replacement);
+    bufferSizes[pending.destinationView]=MiB;
+    d.liveLocal=MiB;
+    d.retainedWarmRecoveries.push_back({pending.oldBacking,pending.replacement,pending.sourceView,
+        pending.destinationView,pending.oldType,pending.newType,pending.size});
+    d.gdpa=mockGetDeviceProcAddr;
+    d.autoInitialized=true; d.activeEviction=true;
+    d.restoreGeneration=std::numeric_limits<std::uint64_t>::max();
+    const auto appQueue=tokenHandle<VkQueue>(0xc2e3);
+    const std::vector<VkQueue> queues{appQueue,d.copyQueue};
+    require(d.autoQueues.init(d.handle,d.gdpa,d.copyQueue,queues,true)==VK_SUCCESS,
+            "visibility-failure fixture failed to initialize automatic queues");
+    require(!finalizeWarmRecoveryLocked(d,pending) && d.gpuRestoreUnsafe &&
+            d.gpuGateError==VK_ERROR_UNKNOWN && sparseBinds==1 &&
+            m.children[0]==pending.replacement && m.childTypes[0]==pending.newType && frees==0 &&
+            liveAllocations.count(pending.oldBacking) && liveAllocations.count(pending.replacement) &&
+            bufferSizes.count(pending.destinationView) && d.retainedWarmRecoveries.size()==1,
+            "restore-visibility failure freed old backing or dropped retained recovery ownership");
 }
 
 void checkPendingWarmRecoveryTokenAndQueueGates() {
@@ -1305,9 +1362,9 @@ void checkColdCycleSparseFailurePreservesBacking() {
                 bufferSizes.size()==m.poolViews.size(),
                 "pre-driver alias-plan failure gated the device or leaked temporary recovery resources");
     }
-    for(unsigned stage=1;stage<=4;stage++) {
+    for(unsigned stage=1;stage<=3;stage++) {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
-        failSparseBindAt=stage; // app unbind, view bind, view unbind, app rebind
+        failSparseBindAt=stage; // app unbind, private-view bind, combined final batch
         require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
                 "direct recovery ignored an injected sparse transition failure");
         require(d.gpuRestoreUnsafe && d.gpuGateError==VK_ERROR_OUT_OF_DEVICE_MEMORY &&
@@ -1318,10 +1375,19 @@ void checkColdCycleSparseFailurePreservesBacking() {
                 retained.destinationView && liveAllocations.count(retained.oldBacking) &&
                 liveAllocations.count(retained.replacement) && bufferSizes.count(retained.destinationView),
                 "sparse failure dropped an allocation or private view handle");
-        if(stage<4) require(m.children[0]==c.nonlocal,
-                            "pre-commit sparse failure replaced the original child handle");
-        else require(m.children[0]==retained.replacement,
-                     "ambiguous app rebind did not retain the possibly visible replacement");
+        require(m.children[0]==c.nonlocal,
+                "failed sparse batch published the replacement child before completion");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        failQueueWaitAt=4; // app detach, private-view bind, copy, final combined sparse batch.
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && d.gpuRestoreUnsafe &&
+                d.gpuGateError==VK_ERROR_DEVICE_LOST && sparseBinds==3 && queueWaitCalls==4 &&
+                m.children[0]==c.nonlocal && d.retainedWarmRecoveries.size()==1 && frees==0 &&
+                liveAllocations.count(c.nonlocal) &&
+                liveAllocations.count(d.retainedWarmRecoveries[0].replacement) &&
+                bufferSizes.count(d.retainedWarmRecoveries[0].destinationView),
+                "final sparse completion failure freed or published potentially referenced resources");
     }
 }
 
@@ -1999,6 +2065,58 @@ struct BarrierRangeFixture {
     }
 };
 
+void checkWarmRecoveryFinalBatchMapsAllAliases() {
+    BarrierRangeFixture x;
+    auto& d=x.f.device; auto& m=x.f.state();
+    require(m.childSizes.size()>1 && m.poolViews.size()>1 && m.childTypes.size()>1,
+            "multi-alias recovery fixture did not create a second child");
+    d.memory.memoryTypeCount=2; d.memory.memoryHeapCount=2;
+    d.memory.memoryTypes[0].heapIndex=0; d.memory.memoryTypes[1].heapIndex=1;
+    d.memory.memoryHeaps[0].flags=VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+    d.memory.memoryHeaps[1].flags=0;
+    const auto child=std::size_t{1};
+    const auto oldBacking=tokenHandle<VkDeviceMemory>(0xb8a1);
+    const auto replacement=tokenHandle<VkDeviceMemory>(0xb8a2);
+    const auto destinationView=tokenHandle<VkBuffer>(0xb8a3);
+    m.children[child]=oldBacking; m.childTypes[child]=1;
+    m.backingMemoryTypeBits=3; m.poolViewMemoryTypeBits[child]=3;
+    const VkDeviceSize childBase=m.childSizes[0], childSize=m.childSizes[child];
+    require(childBase==4*MiB && childSize==4*MiB,
+            "multi-alias recovery fixture has unexpected child geometry");
+    m.bindings[0].memoryOffset=2*MiB; m.bindings[0].size=3*MiB;
+    m.bindings.push_back({tokenHandle<VkBuffer>(0xb8a4),5*MiB,2*MiB,4096});
+    m.bindings.push_back({tokenHandle<VkBuffer>(0xb8a5),7*MiB,2*MiB,4096});
+    liveAllocations.insert(oldBacking); liveAllocations.insert(replacement);
+    bufferSizes[destinationView]=childSize;
+    d.liveOther=childSize; d.liveLocal=childSize;
+    PendingWarmRecovery pending{};
+    pending.memory=x.f.memory; pending.allocationGeneration=m.identityGeneration;
+    pending.bindingGeneration=m.bindingGeneration; pending.childGeneration=m.childGenerations[child];
+    pending.child=child; pending.oldBacking=oldBacking; pending.replacement=replacement;
+    pending.sourceView=m.poolViews[child]; pending.destinationView=destinationView;
+    pending.oldType=1; pending.newType=0; pending.size=childSize;
+    d.retainedWarmRecoveries.push_back({oldBacking,replacement,pending.sourceView,destinationView,1,0,childSize});
+    require(finalizeWarmRecoveryLocked(d,pending) && sparseBinds==1 && queueWaitCalls==1 &&
+            m.children[child]==replacement && m.childTypes[child]==0 && frees==1 &&
+            d.retainedWarmRecoveries.empty() && sparseBindCalls.size()==1 &&
+            sparseBindCalls[0].size()==5,
+            "multi-alias recovery did not finish in one final sparse batch");
+    const auto& batch=sparseBindCalls[0];
+    require(batch[0].buffer==pending.sourceView && batch[0].binds[0].memory==VK_NULL_HANDLE &&
+            batch[0].binds[0].size==childSize && batch[1].buffer==destinationView &&
+            batch[1].binds[0].memory==VK_NULL_HANDLE && batch[1].binds[0].size==childSize &&
+            batch[2].buffer==m.bindings[0].buffer && batch[2].binds[0].memory==replacement &&
+            batch[2].binds[0].resourceOffset==2*MiB && batch[2].binds[0].memoryOffset==0 &&
+            batch[2].binds[0].size==MiB &&
+            batch[3].buffer==m.bindings[1].buffer && batch[3].binds[0].memory==replacement &&
+            batch[3].binds[0].resourceOffset==0 && batch[3].binds[0].memoryOffset==MiB &&
+            batch[3].binds[0].size==2*MiB &&
+            batch[4].buffer==m.bindings[2].buffer && batch[4].binds[0].memory==replacement &&
+            batch[4].binds[0].resourceOffset==0 && batch[4].binds[0].memoryOffset==3*MiB &&
+            batch[4].binds[0].size==MiB,
+            "combined batch lost an alias or mapped a cross-child offset incorrectly");
+}
+
 void checkPendingKnownHotQueueCallSkipsColdRestore() {
     for(const bool flipUnknown:{false,true}) {
         BarrierRangeFixture x;
@@ -2337,6 +2455,9 @@ int main() try {
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();
     checkColdCycleCandidateZeroLiveOther();
+    checkWarmRecoveryFinalPlanFailureRetainsOwnership();
+    checkWarmRecoveryVisibilityFailureRetainsOldBacking();
+    checkWarmRecoveryFinalBatchMapsAllAliases();
     checkPendingWarmRecoveryTokenAndQueueGates();
     checkPendingKnownEmptyQueueCallSkipsColdRestore();
     checkPendingAdmissionRequestsFullPreflightRetry();

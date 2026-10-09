@@ -1684,22 +1684,28 @@ VkResult bindSparseLocked(VkDevice d,Device& state,VkBuffer buffer,const VkSpars
     return result;
 }
 VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std::size_t childIndex,bool unbind,
-                             VkBuffer releaseView=VK_NULL_HANDLE,bool* nativeAttempted=nullptr) {
+                             VkBuffer releaseView=VK_NULL_HANDLE,bool* nativeAttempted=nullptr,
+                             VkBuffer secondReleaseView=VK_NULL_HANDLE,
+                             VkDeviceMemory backingOverride=VK_NULL_HANDLE) {
     if(nativeAttempted) *nativeAttempted=false;
     if(childIndex>=memory.children.size() || childIndex>=memory.childSizes.size()) return VK_ERROR_FEATURE_NOT_PRESENT;
-    if(releaseView && unbind) return VK_ERROR_FEATURE_NOT_PRESENT;
+    if((releaseView || secondReleaseView || backingOverride) && unbind) return VK_ERROR_FEATURE_NOT_PRESENT;
     struct Plan { VkBuffer buffer; VkSparseMemoryBind bind; };
     std::vector<Plan> plans;
-    try { plans.reserve(memory.bindings.size()+(releaseView?1:0)); }
+    try { plans.reserve(memory.bindings.size()+(releaseView?1:0)+(secondReleaseView?1:0)); }
     catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
     VkDeviceSize childBase=0;
     for(std::size_t i=0;i<childIndex;i++) childBase+=memory.childSizes[i];
     const VkDeviceSize childEnd=childBase+memory.childSizes[childIndex];
-    // Decode/copy has completed before this transition. Retire the private view
-    // and expose app aliases in one operation, followed by one completion wait.
+    // Decode/copy has completed before this transition. The caller can retire
+    // private views and expose app aliases in the same sparse batch.
     if(releaseView) {
         VkSparseMemoryBind release{}; release.size=memory.childSizes[childIndex];
         plans.push_back({releaseView,release});
+    }
+    if(secondReleaseView) {
+        VkSparseMemoryBind release{}; release.size=memory.childSizes[childIndex];
+        plans.push_back({secondReleaseView,release});
     }
     for(const auto& app:memory.bindings) {
         const VkDeviceSize appEnd=app.memoryOffset+app.size;
@@ -1710,8 +1716,9 @@ VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std
         VkSparseMemoryBind bind{};
         bind.resourceOffset=lo-app.memoryOffset; bind.size=hi-lo;
         if(!unbind) {
-            if(!memory.children[childIndex]) return VK_ERROR_FEATURE_NOT_PRESENT;
-            bind.memory=memory.children[childIndex]; bind.memoryOffset=lo-childBase;
+            const auto backing=backingOverride?backingOverride:memory.children[childIndex];
+            if(!backing) return VK_ERROR_FEATURE_NOT_PRESENT;
+            bind.memory=backing; bind.memoryOffset=lo-childBase;
         }
         plans.push_back({app.buffer,bind});
     }
@@ -1728,7 +1735,8 @@ VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std
     const auto result=bindSparseBatchLocked(device,d,buffers.data(),static_cast<std::uint32_t>(buffers.size()),nativeAttempted);
     if(result==VK_SUCCESS && buffers.size()>1)
         logf("snapshot app sparse bind batch count=%zu unbind=%u view-release=%u",
-            buffers.size()-(releaseView?1:0),unbind?1u:0u,releaseView?1u:0u);
+            buffers.size()-(releaseView?1:0)-(secondReleaseView?1:0),unbind?1u:0u,
+            (releaseView?1u:0u)+(secondReleaseView?1u:0u));
     return result;
 }
 VkResult createPoolViews(Device& d,VirtualMemory& memory,const std::vector<VkDeviceSize>& sizes) {
@@ -3122,17 +3130,13 @@ bool finalizeWarmRecoveryLocked(Device& d,const PendingWarmRecovery& pending) {
             std::chrono::duration_cast<std::chrono::nanoseconds>(now-phaseLast).count());
         phaseLast=now;
     };
-    VkResult result{};
-    VkSparseMemoryBind unbind{}; unbind.size=pending.size;
-    VkSparseBufferMemoryBindInfo unbinds[2]{};
-    unbinds[0]={pending.sourceView,1,&unbind};
-    unbinds[1]={pending.destinationView,1,&unbind};
-    result=bindSparseBatchLocked(d.handle,d,unbinds,2);
+    // Profile phase 5 includes the single combined private-view release and
+    // app-alias rebind batch; phase 6 is the in-memory child commit.
+    VkResult result=bindChildAppsLocked(d.handle,d,memory,child,false,
+        pending.sourceView,nullptr,pending.destinationView,pending.replacement);
     if(result!=VK_SUCCESS) { gateWarmRecovery(d,result); return false; }
     markPhase(5);
     memory.children[child]=pending.replacement; memory.childTypes[child]=pending.newType;
-    result=bindChildAppsLocked(d.handle,d,memory,child,false);
-    if(result!=VK_SUCCESS) { gateWarmRecovery(d,result); return false; }
     markPhase(6);
     if(d.autoInitialized) {
         if(d.activeEviction) {
