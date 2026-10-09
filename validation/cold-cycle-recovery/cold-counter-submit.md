@@ -7,3 +7,7 @@ The mutation audit covers positive-size lazy initialization, clean-cache reuse, 
 Both normal and compile-hook builds passed the bootstrap test. All 13 normal CPU checks and three bounded GPU pressure-only retention/live-cap sync/live-cap async checks passed. GPU tests preserve all data and clean accounting. This removes a map walk; no game FPS improvement has been measured.
 
 Commands: `ctest --test-dir build -R '^cpu-' --output-on-failure` and `ctest --test-dir build -R '^vulkan-pressure-only-(idle|live-cap-idle|live-cap-async)-regression$' --output-on-failure -j1`.
+
+## Installed v0.4.13
+
+Release workflow 37882853123 succeeded; Hub verified the tarball checksum and installed v0.4.13. Launcher/manager match the tag, both test setters are absent, and codec metadata disables test hooks. The installed async live-cap fixture passed: lowering the cap evicted one 32 MiB chunk, raising it restored every byte, and teardown reached zero resident/cold bytes and errors. See `installed-0.4.13-payload.json` and `installed-0.4.13-live-cap.txt`. A separate tag Build workflow failed the TUI profile fixture (`KeyError: tiny`) after all 19 Python unit tests passed; synchronization investigation is separate from the successful release gate and remains open.
