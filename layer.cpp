@@ -2876,6 +2876,8 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
             const auto size=memory.childSizes[i];
             if(!memory.children[i] || !size || size>kAsyncSnapshotMaxRaw || group.cold || group.pristine ||
                group.restoreBound || d.activeRefs.busy(pair.first,i) ||
+               (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration &&
+                group.failedBudgetSubmissionGeneration==d.gpuSubmissionGeneration) ||
                type>=d.memory.memoryTypeCount ||
                d.memory.memoryTypes[type].heapIndex>=d.memory.memoryHeapCount ||
                (d.memory.memoryHeaps[d.memory.memoryTypes[type].heapIndex].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) ||

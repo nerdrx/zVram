@@ -615,6 +615,39 @@ void checkColdCycleCandidateSkipsUnpromotableOldest() {
     }
 }
 
+void checkColdCycleCandidateBudgetBlockGenerations() {
+    for(bool advanceBudgetGeneration:{true,false}) {
+        ColdCycleFixture c; auto& d=c.f.device; auto& old=c.f.state();
+        d.coldCycleQuietMilliseconds=0;
+        const auto now=std::chrono::steady_clock::now();
+        old.coldGroups[0].lastUse=now-std::chrono::seconds(5);
+        auto& blocked=old.coldGroups[0];
+        blocked.budgetBlocked=true;
+        blocked.failedBudgetGeneration=d.coldBudgetGeneration;
+        blocked.failedBudgetSubmissionGeneration=d.gpuSubmissionGeneration;
+
+        const auto youngerHandle=tokenHandle<VkDeviceMemory>(advanceBudgetGeneration?0xc205:0xc206);
+        auto younger=old;
+        younger.children[0]=tokenHandle<VkDeviceMemory>(advanceBudgetGeneration?0xc207:0xc208);
+        younger.coldGroups[0].budgetBlocked=false;
+        younger.coldGroups[0].lastUse=now-std::chrono::seconds(2);
+        d.virtualMemory.emplace(youngerHandle,std::move(younger));
+
+        VkDeviceMemory candidate{}; std::size_t child{};
+        require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+                candidate==youngerHandle && child==0,
+                "current-generation budget-blocked oldest child starved an eligible younger child");
+
+        if(advanceBudgetGeneration) ++d.coldBudgetGeneration;
+        else ++d.gpuSubmissionGeneration;
+        require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+                candidate==c.f.memory && child==0,
+                advanceBudgetGeneration?
+                    "budget generation change did not re-enable the oldest recovery candidate":
+                    "submission generation change did not re-enable the oldest recovery candidate");
+    }
+}
+
 void checkColdCycleQuietEnvParsing() {
     constexpr const char* name="ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS";
     const char* previous=std::getenv(name);
@@ -1333,6 +1366,7 @@ int main() try {
     checkColdCycleActiveReferenceGuard();
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();
+    checkColdCycleCandidateBudgetBlockGenerations();
     checkColdCycleQuietEnvParsing();
     checkColdCycleSparseFailurePreservesBacking();
     checkColdCycleRefusalPolicies();
