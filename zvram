@@ -211,6 +211,10 @@ env = os.environ.copy()
 if not args.hip:
     import zvram_control
     env['ZVRAM_CONTROL_DIR'] = str(zvram_control.directory())
+    # Steam imports the layer but isolates /run/user; export only our private IPC directory.
+    exported = env['ZVRAM_CONTROL_DIR'].replace('\\', '\\\\').replace(':', '\\:')
+    existing = env.get('PRESSURE_VESSEL_FILESYSTEMS_RW', '')
+    env['PRESSURE_VESSEL_FILESYSTEMS_RW'] = existing + (':' if existing else '') + exported
 if args.hip:
     # The loader accepts spaces/colons in LD_PRELOAD, without escaping. Reject an ambiguous checkout path.
     library = str(build / "libzvram_hip.so")

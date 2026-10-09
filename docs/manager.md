@@ -69,6 +69,12 @@ or total physical VRAM. It is not cross-application driver scheduling.
 The private request/status files live under `$XDG_RUNTIME_DIR/zvram-control`,
 or the manager state directory's `control` subdirectory when unavailable.
 No service or elevated privileges are required. HIP live caps are unsupported.
+
+Steam's pressure-vessel runtime must also see that private control directory.
+The launcher adds it to `PRESSURE_VESSEL_FILESYSTEMS_RW`, preserving existing
+exports and escaping path separators. Loading the Vulkan layer alone does not
+make `/run/user/...` visible inside the container. Applications launched before
+this export fix need a restart to create their live endpoint.
 Discovery refreshes about every two seconds. A configured launch environment
 does not prove that the app has loaded the Vulkan layer; process details
 distinguish configured launches from a mapped zVram backend. Process inspection

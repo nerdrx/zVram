@@ -12,6 +12,27 @@ import zvram_control as control
 
 
 class ControlChecks(unittest.TestCase):
+    def test_launcher_exports_private_control_directory_for_steam(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            build = Path(temporary) / 'build'
+            build.mkdir()
+            for filename in ('VK_LAYER_NX_zvram.json', 'libzvram_layer.so'):
+                (build / filename).touch()
+            control_path = Path(temporary) / 'private:control'
+            control_path.mkdir(mode=0o700)
+            for previous in ('', '/existing/a:/existing/b'):
+                env = os.environ | {'ZVRAM_CONTROL_DIR': str(control_path),
+                                    'PRESSURE_VESSEL_FILESYSTEMS_RW': previous}
+                result = subprocess.run(
+                    [sys.executable, str(Path(__file__).with_name('zvram')), '--build-dir', str(build),
+                     '--no-live-control', '--', sys.executable, '-c',
+                     'import os,json; print(json.dumps([os.environ["ZVRAM_CONTROL_DIR"],os.environ["PRESSURE_VESSEL_FILESYSTEMS_RW"]]))'],
+                    env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                base, exported = json.loads(result.stdout)
+                self.assertEqual(base, str(control_path))
+                self.assertEqual(exported, previous + (':' if previous else '') + str(control_path).replace(':', '\\:'))
+
     def test_launcher_layer_paths_include_steam_import_and_native_dirs(self):
         with tempfile.TemporaryDirectory() as temporary:
             build = Path(temporary) / 'build'
