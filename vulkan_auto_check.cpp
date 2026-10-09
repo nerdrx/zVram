@@ -1596,6 +1596,11 @@ void pressureOnlyFixtureCheck(Context& context) {
     std::cout << "PASS: below-cap data stayed resident; pressure evicted it; removing pressure restored every byte" << std::endl;
 }
 
+bool readFixtureStatus(const std::string& path,
+                       std::unordered_map<std::string, std::uint64_t>& fields);
+void writeFixtureRequest(const std::string& directory, std::uintptr_t device,
+                         std::uint64_t sequence, std::uint64_t residentMiB);
+
 void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceType,
                                    GetBackingType getBackingType,
                                    SetRecoveryPaused setRecoveryPaused,
@@ -1603,12 +1608,14 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                                    bool expectDirectRecovery,
                                    bool unlockedWaitFixture,
                                    bool unlockedColdWaitFixture,
+                                   bool unlockedCapRollbackFixture,
                                    GetWarmRecoveryWaiters getWarmRecoveryWaiters,
                                    std::vector<std::uint64_t>* batchSubmitSamples = nullptr) {
     Buffer coldPeer; coldPeer.device = context.device;
     VkDeviceSize coldPeerBytes{};
     ZvramSnapshotStatsNX coldPeerPristine{};
     ZvramSnapshotStatsNX coldPeerBeforeUse{};
+    Buffer capGuard; capGuard.device = context.device;
     if (unlockedColdWaitFixture) {
         VkBufferCreateInfo peerInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         peerInfo.size = 4 * MiB;
@@ -1632,6 +1639,27 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         require(coldPeerPristine.coldLogicalBytes == coldPeerBytes &&
                 coldPeerPristine.coldStoredBytes == 0 && coldPeerPristine.residentBytes == 0,
                 "unwritten recovery peer did not remain a pristine cold child");
+    }
+    if (unlockedCapRollbackFixture) {
+        VkBufferCreateInfo guardInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        guardInfo.size = 4 * MiB;
+        guardInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        check(vkCreateBuffer(context.device, &guardInfo, nullptr, &capGuard.handle),
+              "create ordinary local cap-rollback guard buffer");
+        VkMemoryRequirements guardReq{};
+        vkGetBufferMemoryRequirements(context.device, capGuard.handle, &guardReq);
+        require(guardReq.size == 4 * MiB,
+                "cap-rollback guard must account for exactly 4 MiB of local memory");
+        const auto guardType = gpuOnlyNativeType(context, guardReq.memoryTypeBits);
+        require(guardType != UINT32_MAX,
+                "cap-rollback guard has no pure-local native memory type");
+        VkMemoryAllocateInfo guardAllocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        guardAllocation.allocationSize = guardReq.size;
+        guardAllocation.memoryTypeIndex = guardType;
+        check(vkAllocateMemory(context.device, &guardAllocation, nullptr, &capGuard.memory),
+              "allocate ordinary local cap-rollback guard memory");
+        check(vkBindBufferMemory(context.device, capGuard.handle, capGuard.memory, 0),
+              "bind ordinary local cap-rollback guard memory");
     }
     Buffer resident; resident.device = context.device;
     VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -1670,13 +1698,14 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                 "direct recovery fixture lacks the test-only recovery pause hook");
         recoveryPause.set(true);
     }
-    if (unlockedWaitFixture || unlockedColdWaitFixture) {
+    if (unlockedWaitFixture || unlockedColdWaitFixture || unlockedCapRollbackFixture) {
         require(expectDirectRecovery && !context.bdaMode &&
                 (unlockedWaitFixture ? (context.twoQueues && context.secondQueue)
-                                     : !context.twoQueues),
+                 : !context.twoQueues),
                 "unlocked recovery wait mode has incompatible application queues");
-        require(getWarmRecoveryWaiters != nullptr,
-                "unlocked recovery fixture lacks the test-only waiter-count getter");
+        if (unlockedWaitFixture || unlockedColdWaitFixture)
+            require(getWarmRecoveryWaiters != nullptr,
+                    "unlocked recovery fixture lacks the test-only waiter-count getter");
         waitHook.install();
     }
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
@@ -1828,6 +1857,10 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         return;
     }
     check(vkQueueWaitIdle(context.queue), "finish cold-cycle initial upload");
+    ZvramSnapshotStatsNX capRollbackBaseline{};
+    std::string capControlDirectory, capStatusPath;
+    std::uintptr_t capDeviceToken{};
+    std::uint64_t capRequestSequence{};
     if (expectDirectRecovery) {
         require(getBackingType != nullptr,
                 "direct recovery fixture lacks the test-only backing-type getter");
@@ -1837,6 +1870,43 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         require(heap < context.memory.memoryHeapCount &&
                 !(context.memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
                 "direct recovery fixture did not start with a nonlocal backing");
+        if (unlockedCapRollbackFixture) {
+            require(initialBackingType == nonlocalType,
+                    "cap-rollback child zero did not start on the forced nonlocal type");
+            for (std::uint32_t child = 1; child < ChunkBytes / (4 * MiB); ++child) {
+                std::uint32_t type = UINT32_MAX;
+                check(getBackingType(context.device, resident.memory, child, &type),
+                      "query initial local child for cap rollback");
+                const auto childHeap = type < context.memory.memoryTypeCount
+                    ? context.memory.memoryTypes[type].heapIndex : UINT32_MAX;
+                require(childHeap < context.memory.memoryHeapCount &&
+                        (context.memory.memoryHeaps[childHeap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
+                        "cap-rollback fixture requires the seven non-target children to start local");
+            }
+            capRollbackBaseline = context.stats();
+            require(capRollbackBaseline.residentBytes == ChunkBytes &&
+                    capRollbackBaseline.coldLogicalBytes == 0 && capRollbackBaseline.failures == 0,
+                    "cap-rollback fixture did not start with all 32 MiB resident");
+            const auto* controlBase = std::getenv("ZVRAM_CONTROL_DIR");
+            require(controlBase && *controlBase,
+                    "cap-rollback fixture has no private live-control directory");
+            const auto process = std::to_string(getpid()) + "-" +
+                                 std::to_string(zvram::control::processStart());
+            capControlDirectory = std::string(controlBase) + "/" + process;
+            capDeviceToken = reinterpret_cast<std::uintptr_t>(context.device);
+            capStatusPath = capControlDirectory + "/" + std::to_string(capDeviceToken) + ".status";
+            std::unordered_map<std::string, std::uint64_t> status;
+            const auto controlDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (std::chrono::steady_clock::now() < controlDeadline) {
+                status.clear();
+                if (readFixtureStatus(capStatusPath, status) && status["capable"] == 1 &&
+                    status["current_limit_mib"] == 64) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            require(status["capable"] == 1 && status["current_limit_mib"] == 64,
+                    "cap-rollback fixture did not publish its initial 64 MiB control cap");
+            capRequestSequence = status["seq"] + 1;
+        }
         if (unlockedWaitFixture) {
             check(context.submit([&](VkCommandBuffer command) {
                 recordResidentChildRead(command, 4 * MiB);
@@ -1849,6 +1919,61 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                     "pristine cold peer changed before the recovery wait gate");
         }
         recoveryPause.set(false);
+        if (unlockedCapRollbackFixture) {
+            require(waitHook.waitUntilEntered(std::chrono::seconds(5)),
+                    "recovery did not reach the cap-rollback fence-wait hook");
+            writeFixtureRequest(capControlDirectory, capDeviceToken, capRequestSequence, 32);
+            waitHook.release();
+            check(waitHook.clear(), "unregister cap-rollback wait hook");
+
+            std::unordered_map<std::string, std::uint64_t> status;
+            bool capApplied = false;
+            const auto capDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (std::chrono::steady_clock::now() < capDeadline) {
+                status.clear();
+                if (readFixtureStatus(capStatusPath, status) &&
+                    status["seq"] == capRequestSequence && status["ack"] == capRequestSequence &&
+                    status["result"] == 0 && status["current_limit_mib"] == 32) {
+                    capApplied = true;
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            require(capApplied, "late 32 MiB cap request was not acknowledged after the pending copy");
+            std::uint32_t rolledBackType = UINT32_MAX;
+            check(getBackingType(context.device, resident.memory, 0, &rolledBackType),
+                  "query child zero backing after late-cap rollback");
+            require(rolledBackType == initialBackingType,
+                    "late cap committed local replacement instead of retaining old nonlocal backing");
+            const auto rolledBack = context.stats();
+            require(rolledBack.residentBytes == ChunkBytes && rolledBack.coldLogicalBytes == 0 &&
+                    rolledBack.coldStoredBytes == 0 && rolledBack.freezes == capRollbackBaseline.freezes &&
+                    rolledBack.restores == capRollbackBaseline.restores &&
+                    rolledBack.failures == capRollbackBaseline.failures,
+                    "late-cap rollback changed residency, snapshots, or error accounting");
+            check(readbackAndVerify(context, resident.handle, staging, -1, false, ChunkBytes),
+                  "verify bytes after late-cap recovery rollback");
+            check(getBackingType(context.device, resident.memory, 0, &rolledBackType),
+                  "recheck child zero backing after rollback readback");
+            require(rolledBackType == initialBackingType,
+                    "old nonlocal backing changed during rollback readback");
+
+            vkDestroyBuffer(context.device, resident.handle, nullptr);
+            resident.handle = VK_NULL_HANDLE;
+            vkFreeMemory(context.device, resident.memory, nullptr);
+            resident.memory = VK_NULL_HANDLE;
+            vkDestroyBuffer(context.device, capGuard.handle, nullptr);
+            capGuard.handle = VK_NULL_HANDLE;
+            vkFreeMemory(context.device, capGuard.memory, nullptr);
+            capGuard.memory = VK_NULL_HANDLE;
+            const auto empty = context.stats();
+            require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 &&
+                    empty.coldStoredBytes == 0 && empty.failures == 0,
+                    "late-cap rollback cleanup retained pool state or errors");
+            std::cout << "PASS: late cap rolled back child-zero replacement, retained nonlocal backing, "
+                         "preserved all bytes, and cleaned up\n";
+            return;
+        }
         if (unlockedWaitFixture || unlockedColdWaitFixture) {
             require(waitHook.waitUntilEntered(std::chrono::seconds(5)),
                     "recovery did not reach the unlocked fence-wait test hook");
@@ -3261,6 +3386,7 @@ int main(int argc, char** argv) try {
     bool expectDirectRecovery = false;
     bool unlockedRecoveryWaitFixture = false;
     bool unlockedColdRecoveryWaitFixture = false;
+    bool unlockedCapRollbackFixture = false;
     bool directRecoveryBatchFixture = false;
     bool hotRecoveryFixture = false;
     bool asyncEncodeOverlapFixture = false, asyncPressureRaiseDiscardFixture = false;
@@ -3291,6 +3417,10 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--unlocked-recovery-cold-wait-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
             expectDirectRecovery=true; unlockedColdRecoveryWaitFixture=true;
+        }
+        else if (std::strcmp(argv[i], "--unlocked-recovery-cap-rollback-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
+            expectDirectRecovery=true; unlockedCapRollbackFixture=true;
         }
         else if (std::strcmp(argv[i], "--two-queues") == 0) twoQueues = true;
         else if (std::strcmp(argv[i], "--two-families") == 0) twoFamilies = true;
@@ -3402,7 +3532,12 @@ int main(int argc, char** argv) try {
     require(!unlockedColdRecoveryWaitFixture ||
             (expectDirectRecovery && nativeAllocation && !bdaMode && !twoQueues && !twoFamilies && !exclusiveFamilies),
             "cold-peer recovery wait fixture uses native single-queue memory");
-    require(!(unlockedRecoveryWaitFixture && unlockedColdRecoveryWaitFixture),
+    require(!unlockedCapRollbackFixture ||
+            (expectDirectRecovery && nativeAllocation && !bdaMode && !twoQueues && !twoFamilies && !exclusiveFamilies),
+            "cap-rollback recovery fixture uses native single-queue memory");
+    require(static_cast<unsigned>(unlockedRecoveryWaitFixture) +
+            static_cast<unsigned>(unlockedColdRecoveryWaitFixture) +
+            static_cast<unsigned>(unlockedCapRollbackFixture) <= 1,
             "choose one unlocked recovery wait fixture");
     require(!directRecoveryBatchFixture || (!twoQueues && !bdaMode && nativeAllocation),
             "direct recovery batch uses native single-queue backing");
@@ -3483,13 +3618,14 @@ int main(int argc, char** argv) try {
             for (unsigned int transaction = 0; transaction < 5; ++transaction)
                 coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
                                               false, false,
-                                              true, false, false, nullptr, &submitSamples);
+                                              true, false, false, false, nullptr, &submitSamples);
             printSubmitLatencySummary("five direct-recovery transactions", std::move(submitSamples));
         } else {
             coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
                                           expectNativeTypeRefusal, hotRecoveryFixture,
                                           expectDirectRecovery, unlockedRecoveryWaitFixture,
                                           unlockedColdRecoveryWaitFixture,
+                                          unlockedCapRollbackFixture,
                                           getWarmRecoveryWaiters);
         }
         return 0;

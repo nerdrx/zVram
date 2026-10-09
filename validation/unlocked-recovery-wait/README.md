@@ -55,3 +55,12 @@ require explicit child destruction and treat device loss as completion for
 determining whether resources remain in use. Other ambiguous wait errors do
 not establish safe completion and remain an abnormal teardown limitation.
 This prototype is not published or installed.
+
+A later deterministic hardware gate holds the pending copy, lowers the live
+cap from 64 to 32 MiB, and verifies rollback to child zero's original NONLOCAL
+backing. Seven local children plus an ordinary 4 MiB local allocation exactly
+fill the new cap; the replacement would exceed it. The gate passed in 0.31 s,
+with all 32 MiB bytes intact, no additional freeze/restore/failure, and zero
+tracked and driver-allocation accounting after cleanup (`late-cap-details.txt`).
+Both Build workflows for d791d90 passed. This adds rollback proof, not a
+release or a game-performance claim.
