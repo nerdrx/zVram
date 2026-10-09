@@ -584,6 +584,37 @@ void checkColdCycleHotCompletedChild() {
             "zero-quiet recovery did not promote a recent completed child");
 }
 
+void checkColdCycleCandidateSkipsUnpromotableOldest() {
+    for(bool adoptedCallbacks:{false,true}) {
+        ColdCycleFixture c; auto& d=c.f.device; auto& old=c.f.state();
+        d.coldCycleQuietMilliseconds=0;
+        const auto now=std::chrono::steady_clock::now();
+        old.coldGroups[0].lastUse=now-std::chrono::seconds(5);
+        old.hasAdoptedCallbacks=adoptedCallbacks;
+        if(!adoptedCallbacks) old.childSizes[0]=kAsyncSnapshotMaxRaw+1;
+
+        const auto youngerHandle=tokenHandle<VkDeviceMemory>(adoptedCallbacks?0xc201:0xc202);
+        auto younger=old;
+        younger.hasAdoptedCallbacks=false;
+        younger.children[0]=tokenHandle<VkDeviceMemory>(adoptedCallbacks?0xc203:0xc204);
+        younger.childSizes[0]=MiB;
+        younger.childTypes[0]=1;
+        younger.coldGroups[0].lastUse=now-std::chrono::seconds(2);
+        d.virtualMemory.emplace(youngerHandle,std::move(younger));
+
+        VkDeviceMemory candidate{}; std::size_t child{};
+        require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+                candidate==youngerHandle && child==0,
+                adoptedCallbacks?
+                    "older callback-backed pool starved a younger promotable child":
+                    "older oversized child starved a younger promotable child");
+        d.virtualMemory.erase(youngerHandle);
+        require(!selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+                candidate==VK_NULL_HANDLE && child==0,
+                "recovery selection retained a stale candidate when only refused pools remained");
+    }
+}
+
 void checkColdCycleQuietEnvParsing() {
     constexpr const char* name="ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS";
     const char* previous=std::getenv(name);
@@ -1301,6 +1332,7 @@ int main() try {
     checkColdCyclePromotionAndFailureRetry();
     checkColdCycleActiveReferenceGuard();
     checkColdCycleHotCompletedChild();
+    checkColdCycleCandidateSkipsUnpromotableOldest();
     checkColdCycleQuietEnvParsing();
     checkColdCycleSparseFailurePreservesBacking();
     checkColdCycleRefusalPolicies();

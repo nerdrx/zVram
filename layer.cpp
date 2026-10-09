@@ -2857,6 +2857,49 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
              std::chrono::steady_clock::now()-recoveryStarted).count()));
     return true;
 }
+bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
+                              std::chrono::steady_clock::time_point now,
+                              VkDeviceMemory& candidateMemory,std::size_t& candidateChild) {
+    candidateMemory=VK_NULL_HANDLE;
+    candidateChild=0;
+    auto oldest=std::chrono::steady_clock::time_point::max();
+    for(const auto& pair:d.virtualMemory) {
+        const auto& memory=pair.second;
+        if(!memory.trackPhysicalStats || memory.hasAdoptedCallbacks || memory.bindings.empty() ||
+           memory.children.size()!=memory.coldGroups.size() ||
+           memory.children.size()!=memory.childSizes.size() ||
+           memory.children.size()!=memory.childTypes.size() ||
+           memory.children.size()!=memory.poolViewMemoryTypeBits.size()) continue;
+        for(std::size_t i=0;i<memory.children.size();i++) {
+            const auto& group=memory.coldGroups[i];
+            const auto type=memory.childTypes[i];
+            const auto size=memory.childSizes[i];
+            if(!memory.children[i] || !size || size>kAsyncSnapshotMaxRaw || group.cold || group.pristine ||
+               group.restoreBound || d.activeRefs.busy(pair.first,i) ||
+               type>=d.memory.memoryTypeCount ||
+               d.memory.memoryTypes[type].heapIndex>=d.memory.memoryHeapCount ||
+               (d.memory.memoryHeaps[d.memory.memoryTypes[type].heapIndex].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) ||
+               now<group.lastUse+std::chrono::milliseconds(d.coldCycleQuietMilliseconds) ||
+               d.liveLocal>target || size>target-d.liveLocal) continue;
+            const auto compatible=memory.backingMemoryTypeBits&memory.poolViewMemoryTypeBits[i];
+            bool hasLocalType=false;
+            for(std::uint32_t candidate=0;candidate<d.memory.memoryTypeCount && candidate<32;candidate++) {
+                const auto heap=d.memory.memoryTypes[candidate].heapIndex;
+                if((compatible&(1u<<candidate)) && heap==d.budgetHeap &&
+                   heap<d.memory.memoryHeapCount &&
+                   (d.memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
+                    hasLocalType=true; break;
+                }
+            }
+            if(hasLocalType && group.lastUse<oldest) {
+                oldest=group.lastUse;
+                candidateMemory=pair.first;
+                candidateChild=i;
+            }
+        }
+    }
+    return candidateMemory!=VK_NULL_HANDLE;
+}
 } // namespace
 void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
     auto& d=*shared;
@@ -2939,43 +2982,8 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
                           d.liveLocal<=target) {
                     VkDeviceMemory candidateMemory{};
                     std::size_t candidateChild{};
-                    auto oldest=std::chrono::steady_clock::time_point::max();
-                    const auto now=std::chrono::steady_clock::now();
-                    for(const auto& pair:d.virtualMemory) {
-                        const auto& memory=pair.second;
-                        if(!memory.trackPhysicalStats || memory.bindings.empty() ||
-                           memory.children.size()!=memory.coldGroups.size() ||
-                           memory.children.size()!=memory.childSizes.size() ||
-                           memory.children.size()!=memory.childTypes.size() ||
-                           memory.children.size()!=memory.poolViewMemoryTypeBits.size()) continue;
-                        for(std::size_t i=0;i<memory.children.size();i++) {
-                            const auto& group=memory.coldGroups[i];
-                            const auto type=memory.childTypes[i];
-                            if(!memory.children[i] || !memory.childSizes[i] || group.cold || group.pristine ||
-                               group.restoreBound || d.activeRefs.busy(pair.first,i) ||
-                               type>=d.memory.memoryTypeCount ||
-                               d.memory.memoryTypes[type].heapIndex>=d.memory.memoryHeapCount ||
-                               (d.memory.memoryHeaps[d.memory.memoryTypes[type].heapIndex].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) ||
-                               now<group.lastUse+std::chrono::milliseconds(d.coldCycleQuietMilliseconds) ||
-                               d.liveLocal>target || memory.childSizes[i]>target-d.liveLocal) continue;
-                            const auto compatible=memory.backingMemoryTypeBits&memory.poolViewMemoryTypeBits[i];
-                            bool hasLocalType=false;
-                            for(std::uint32_t candidate=0;candidate<d.memory.memoryTypeCount && candidate<32;candidate++) {
-                                const auto heap=d.memory.memoryTypes[candidate].heapIndex;
-                                if((compatible&(1u<<candidate)) && heap==d.budgetHeap &&
-                                   heap<d.memory.memoryHeapCount &&
-                                   (d.memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
-                                    hasLocalType=true; break;
-                                }
-                            }
-                            if(hasLocalType && group.lastUse<oldest) {
-                                oldest=group.lastUse;
-                                candidateMemory=pair.first;
-                                candidateChild=i;
-                            }
-                        }
-                    }
-                    if(candidateMemory)
+                    if(selectColdCycleCandidate(d,target,std::chrono::steady_clock::now(),
+                                                candidateMemory,candidateChild))
                         (void)coldCyclePromoteLocked(d,candidateMemory,candidateChild,target);
                 }
             }
