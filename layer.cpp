@@ -1686,13 +1686,18 @@ VkResult bindSparseLocked(VkDevice d,Device& state,VkBuffer buffer,const VkSpars
 VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std::size_t childIndex,bool unbind,
                              VkBuffer releaseView=VK_NULL_HANDLE,bool* nativeAttempted=nullptr,
                              VkBuffer secondReleaseView=VK_NULL_HANDLE,
-                             VkDeviceMemory backingOverride=VK_NULL_HANDLE) {
+                             VkDeviceMemory backingOverride=VK_NULL_HANDLE,
+                             VkBuffer bindView=VK_NULL_HANDLE,VkDeviceMemory bindViewMemory=VK_NULL_HANDLE,
+                             VkBuffer secondBindView=VK_NULL_HANDLE,VkDeviceMemory secondBindViewMemory=VK_NULL_HANDLE) {
     if(nativeAttempted) *nativeAttempted=false;
     if(childIndex>=memory.children.size() || childIndex>=memory.childSizes.size()) return VK_ERROR_FEATURE_NOT_PRESENT;
     if((releaseView || secondReleaseView || backingOverride) && unbind) return VK_ERROR_FEATURE_NOT_PRESENT;
+    if(bool(bindView)!=bool(bindViewMemory) || bool(secondBindView)!=bool(secondBindViewMemory))
+        return VK_ERROR_FEATURE_NOT_PRESENT;
     struct Plan { VkBuffer buffer; VkSparseMemoryBind bind; };
     std::vector<Plan> plans;
-    try { plans.reserve(memory.bindings.size()+(releaseView?1:0)+(secondReleaseView?1:0)); }
+    try { plans.reserve(memory.bindings.size()+(releaseView?1:0)+(secondReleaseView?1:0)+
+                        (bindView?1:0)+(secondBindView?1:0)); }
     catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
     VkDeviceSize childBase=0;
     for(std::size_t i=0;i<childIndex;i++) childBase+=memory.childSizes[i];
@@ -1706,6 +1711,14 @@ VkResult bindChildAppsLocked(VkDevice device,Device& d,VirtualMemory& memory,std
     if(secondReleaseView) {
         VkSparseMemoryBind release{}; release.size=memory.childSizes[childIndex];
         plans.push_back({secondReleaseView,release});
+    }
+    if(bindView) {
+        VkSparseMemoryBind bind{}; bind.size=memory.childSizes[childIndex]; bind.memory=bindViewMemory;
+        plans.push_back({bindView,bind});
+    }
+    if(secondBindView) {
+        VkSparseMemoryBind bind{}; bind.size=memory.childSizes[childIndex]; bind.memory=secondBindViewMemory;
+        plans.push_back({secondBindView,bind});
     }
     for(const auto& app:memory.bindings) {
         const VkDeviceSize appEnd=app.memoryOffset+app.size;
@@ -3364,7 +3377,8 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
     // Every sparse failure is ambiguous: retain both allocations and the owned
     // destination view behind the device gate instead of guessing which binds stuck.
     bool aliasUnbindAttempted=false;
-    result=bindChildAppsLocked(d.handle,d,memory,child,true,VK_NULL_HANDLE,&aliasUnbindAttempted);
+    result=bindChildAppsLocked(d.handle,d,memory,child,true,VK_NULL_HANDLE,&aliasUnbindAttempted,
+        VK_NULL_HANDLE,VK_NULL_HANDLE,memory.poolViews[child],oldBacking,destinationView,replacement);
     if(result!=VK_SUCCESS) {
         if(!aliasUnbindAttempted) {
             d.retainedWarmRecoveries.pop_back();
@@ -3376,14 +3390,9 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
         }
         gateWarmRecovery(d,result); return false;
     }
+    // Phase 2 now measures the combined app-detach/private-view bind batch.
     markRecoveryPhase(2);
-    VkSparseMemoryBind sourceBind{}; sourceBind.size=size; sourceBind.memory=oldBacking;
-    VkSparseMemoryBind destinationBind{}; destinationBind.size=size; destinationBind.memory=replacement;
-    VkSparseBufferMemoryBindInfo viewBinds[2]{};
-    viewBinds[0]={memory.poolViews[child],1,&sourceBind};
-    viewBinds[1]={destinationView,1,&destinationBind};
-    result=bindSparseBatchLocked(d.handle,d,viewBinds,2);
-    if(result!=VK_SUCCESS) { gateWarmRecovery(d,result); return false; }
+    // Phase 3 is retained as a near-zero metadata/no-op phase for profile compatibility.
     markRecoveryPhase(3);
 
     const bool unlockedWait=d.unlockedWarmRecoveryWait && d.snapshot.createFence &&

@@ -830,16 +830,25 @@ void checkColdCyclePromotionAndFailureRetry() {
         require(m.backingMemoryTypeBits==3 && allocatedTypes.size()==1 && allocatedTypes[0]==0 &&
                 frees==1 && bufferSizes.size()==m.poolViews.size(),
                 "direct recovery failed to preserve masks or retire only old backing and temporary view");
-        require(sparseBinds==3 && queueWaitCalls==4 && sparseBindCalls.size()==3 &&
+        require(sparseBinds==2 && queueWaitCalls==3 && sparseBindCalls.size()==2 &&
                 sparseBindCalls.back().size()==m.bindings.size()+2,
                 "direct recovery did not use one final sparse batch and completion wait");
+        const auto& initialBatch=sparseBindCalls.front();
         const auto& finalBatch=sparseBindCalls.back();
+        require(initialBatch.size()==m.bindings.size()+2 &&
+                initialBatch[0].buffer==m.poolViews[0] && initialBatch[0].binds.size()==1 &&
+                initialBatch[0].binds[0].memory==c.nonlocal && initialBatch[0].binds[0].size==MiB &&
+                initialBatch[1].binds.size()==1 && initialBatch[1].binds[0].memory==finalBatch[2].binds[0].memory &&
+                initialBatch[1].binds[0].size==MiB &&
+                initialBatch[2].buffer==m.bindings[0].buffer && initialBatch[2].binds.size()==1 &&
+                initialBatch[2].binds[0].memory==VK_NULL_HANDLE && initialBatch[2].binds[0].size==MiB,
+                "initial sparse batch did not bind both private views while detaching every app alias");
         const auto& sourceRelease=finalBatch[0];
         const auto& destinationRelease=finalBatch[1];
         const auto& aliasBind=finalBatch[2];
         require(sourceRelease.buffer==m.poolViews[0] && sourceRelease.binds.size()==1 &&
                 sourceRelease.binds[0].memory==VK_NULL_HANDLE && sourceRelease.binds[0].size==MiB &&
-                destinationRelease.buffer==sparseBindCalls[1][1].buffer &&
+                destinationRelease.buffer==initialBatch[1].buffer &&
                 destinationRelease.binds.size()==1 && destinationRelease.binds[0].memory==VK_NULL_HANDLE &&
                 destinationRelease.binds[0].size==MiB && aliasBind.buffer==m.bindings[0].buffer &&
                 aliasBind.binds.size()==1 && aliasBind.binds[0].memory==m.children[0] &&
@@ -890,7 +899,7 @@ void checkColdCyclePromotionAndFailureRetry() {
     }
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
-        failQueueWaitAt=3; // App detach, two-view bind, then copy submit completes ambiguously.
+        failQueueWaitAt=2; // Combined initial setup, then copy submission completes ambiguously.
         require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
                 "direct recovery ignored ambiguous copy completion");
         const auto& retained=d.retainedWarmRecoveries.at(0);
@@ -900,6 +909,37 @@ void checkColdCyclePromotionAndFailureRetry() {
                 bufferSizes.count(retained.destinationView) && d.gpuRestoreUnsafe &&
                 d.gpuGateError==VK_ERROR_DEVICE_LOST && frees==0,
                 "ambiguous copy completion did not retain every potentially referenced resource");
+    }
+}
+
+void checkWarmRecoveryInitialBatchMapsDisjointAliases() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    constexpr VkDeviceSize quarter=MiB/4;
+    m.bindings[0].memoryOffset=0; m.bindings[0].size=quarter;
+    m.bindings.push_back({tokenHandle<VkBuffer>(0xc701),quarter,quarter,4096});
+    m.bindings.push_back({tokenHandle<VkBuffer>(0xc702),2*quarter,2*quarter,4096});
+    require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && sparseBinds==2 &&
+            queueWaitCalls==3 && sparseBindCalls.size()==2 &&
+            sparseBindCalls[0].size()==m.bindings.size()+2 &&
+            sparseBindCalls[1].size()==m.bindings.size()+2,
+            "recovery did not combine the initial setup and final alias remap into single batches");
+    const auto& setup=sparseBindCalls[0]; const auto& final=sparseBindCalls[1];
+    const auto replacement=final[2].binds[0].memory;
+    require(setup[0].buffer==m.poolViews[0] && setup[0].binds[0].memory==c.nonlocal &&
+            setup[0].binds[0].size==MiB && setup[1].buffer==final[1].buffer &&
+            setup[1].binds[0].memory==replacement && setup[1].binds[0].size==MiB,
+            "initial combined batch omitted either source or destination private bind");
+    for(std::size_t i=0;i<m.bindings.size();++i) {
+        const auto& unbind=setup[i+2]; const auto& bind=final[i+2];
+        const auto offset=m.bindings[i].memoryOffset;
+        const auto size=m.bindings[i].size;
+        require(unbind.buffer==m.bindings[i].buffer && unbind.binds.size()==1 &&
+                unbind.binds[0].memory==VK_NULL_HANDLE && unbind.binds[0].resourceOffset==0 &&
+                unbind.binds[0].size==size && bind.buffer==m.bindings[i].buffer &&
+                bind.binds.size()==1 && bind.binds[0].memory==replacement &&
+                bind.binds[0].resourceOffset==0 && bind.binds[0].memoryOffset==offset &&
+                bind.binds[0].size==size,
+                "combined sparse plan lost a disjoint alias or its child-relative offset");
     }
 }
 
@@ -1362,9 +1402,21 @@ void checkColdCycleSparseFailurePreservesBacking() {
                 bufferSizes.size()==m.poolViews.size(),
                 "pre-driver alias-plan failure gated the device or leaked temporary recovery resources");
     }
-    for(unsigned stage=1;stage<=3;stage++) {
+    {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
-        failSparseBindAt=stage; // app unbind, private-view bind, combined final batch
+        failQueueWaitAt=1; // Initial combined alias-detach/private-view-bind batch is ambiguous.
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) &&
+                d.gpuRestoreUnsafe && d.gpuGateError==VK_ERROR_DEVICE_LOST &&
+                sparseBinds==1 && queueWaitCalls==1 && m.children[0]==c.nonlocal &&
+                m.childTypes[0]==1 && d.retainedWarmRecoveries.size()==1 && frees==0 &&
+                liveAllocations.count(c.nonlocal) &&
+                liveAllocations.count(d.retainedWarmRecoveries[0].replacement) &&
+                bufferSizes.count(d.retainedWarmRecoveries[0].destinationView),
+                "initial combined sparse wait failure published or freed potentially referenced resources");
+    }
+    for(unsigned stage=1;stage<=2;stage++) {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        failSparseBindAt=stage; // combined initial setup, then combined final transition
         require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
                 "direct recovery ignored an injected sparse transition failure");
         require(d.gpuRestoreUnsafe && d.gpuGateError==VK_ERROR_OUT_OF_DEVICE_MEMORY &&
@@ -1380,9 +1432,9 @@ void checkColdCycleSparseFailurePreservesBacking() {
     }
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
-        failQueueWaitAt=4; // app detach, private-view bind, copy, final combined sparse batch.
+        failQueueWaitAt=3; // combined initial setup, copy, final combined sparse batch.
         require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && d.gpuRestoreUnsafe &&
-                d.gpuGateError==VK_ERROR_DEVICE_LOST && sparseBinds==3 && queueWaitCalls==4 &&
+                d.gpuGateError==VK_ERROR_DEVICE_LOST && sparseBinds==2 && queueWaitCalls==3 &&
                 m.children[0]==c.nonlocal && d.retainedWarmRecoveries.size()==1 && frees==0 &&
                 liveAllocations.count(c.nonlocal) &&
                 liveAllocations.count(d.retainedWarmRecoveries[0].replacement) &&
@@ -2569,6 +2621,7 @@ int main() try {
     checkBindFailureAccounting();
     checkMergedRestoreMapping();
     checkColdCyclePromotionAndFailureRetry();
+    checkWarmRecoveryInitialBatchMapsDisjointAliases();
     checkColdCycleActiveReferenceGuard();
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();

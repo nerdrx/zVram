@@ -1,0 +1,27 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+    Start 68: vulkan-cold-cycle-native-recovery-two-queues
+1/4 Test #68: vulkan-cold-cycle-native-recovery-two-queues .......   Passed    1.32 sec
+    Start 69: vulkan-cold-cycle-native-recovery-bda
+2/4 Test #69: vulkan-cold-cycle-native-recovery-bda ..............   Passed    1.12 sec
+    Start 77: vulkan-cold-cycle-unlocked-cold-peer-hot-overlap
+3/4 Test #77: vulkan-cold-cycle-unlocked-cold-peer-hot-overlap ...   Passed    0.11 sec
+    Start 78: vulkan-cold-cycle-unlocked-late-cap-rollback
+4/4 Test #78: vulkan-cold-cycle-unlocked-late-cap-rollback .......   Passed    0.10 sec
+
+100% tests passed out of 4
+
+Label Time Summary:
+bda                  =   1.12 sec*proc (1 test)
+cold-cycle           =   2.64 sec*proc (4 tests)
+cold-peer            =   0.11 sec*proc (1 test)
+hardware             =   2.64 sec*proc (4 tests)
+hot-overlap          =   0.11 sec*proc (1 test)
+late-cap             =   0.10 sec*proc (1 test)
+native-allocation    =   2.64 sec*proc (4 tests)
+rollback             =   0.10 sec*proc (1 test)
+test-hook            =   2.64 sec*proc (4 tests)
+unlocked-wait        =   0.11 sec*proc (1 test)
+validation           =   0.11 sec*proc (1 test)
+vulkan               =   2.64 sec*proc (4 tests)
+
+Total Test time (real) =   2.65 sec
