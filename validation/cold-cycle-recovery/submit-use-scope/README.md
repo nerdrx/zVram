@@ -7,3 +7,9 @@ CPU production-path gates verify targeted, wildcard, empty, invalid and unknown 
 This removes the nested full-map scan for known submissions. No real-game FPS or frame-time gain has been measured. CTest text archives contain captured completion output with the first passed result noted separately; the presentation directory contains the full raw log and source-build hashes.
 
 The separate TUI CI race fix is verified by successful Build workflows 37883520735 and 37883516442 at commit 53681a0. The original failed tag workflow remains recorded.
+
+## Published package
+
+v0.4.14 Build workflow 37884275644 and Release workflow 37884275648 succeeded. Hub checksum/install, installed launcher/manager tag matches, disabled test-hook metadata and absent test setters were verified. The installed async live-cap fixture restores every byte after cap increase and cleans all resident/cold/error counts; combined presentation metadata also passes all pixels and 32 MiB checks. Installed evidence and binary hashes are adjacent. No production defaults changed.
+
+The duplicate write-use parsing audit found that sharing failures would change the existing independent allocation-failure fallback behavior. That refactor was deferred without measured evidence that it dominates submit cost.
