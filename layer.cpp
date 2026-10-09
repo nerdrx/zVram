@@ -3775,7 +3775,8 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     } budgetSnapshotScope(*d);
     if(d->gpuGateError!=VK_SUCCESS) return d->gpuGateError;
     const auto admission=admitForQueue(*d,name,args...); if(admission!=VK_SUCCESS) return admission;
-    const bool hasCold=std::any_of(d->virtualMemory.begin(),d->virtualMemory.end(),[](const auto& pair){return pair.second.cold;});
+    // coldLogicalBytes is updated with the same locked cold-state commits, restores, and frees.
+    const bool hasCold=d->coldLogicalBytes!=0;
     // An idle wait executes no application memory accesses. Keep cold pools asleep.
     if(hasCold && std::strcmp(name,"vkQueueWaitIdle")!=0) {
         const auto r=restoreForQueueWithBudgetRetry(*d,name,args...); if(r!=VK_SUCCESS) return r;

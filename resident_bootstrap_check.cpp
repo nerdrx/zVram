@@ -41,6 +41,15 @@ struct CapturedBufferBind { VkBuffer buffer{}; std::vector<VkSparseMemoryBind> b
 std::vector<std::vector<CapturedBufferBind>> sparseBindCalls;
 
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
+void requireColdLogicalMatchesState(const Device& d,const char* message) {
+    VkDeviceSize expected=0;
+    bool anyCold=false;
+    for(const auto& pair:d.virtualMemory) if(pair.second.cold) {
+        anyCold=true;
+        expected+=pair.second.coldLogicalSize;
+    }
+    require((d.coldLogicalBytes!=0)==anyCold && d.coldLogicalBytes==expected,message);
+}
 
 VKAPI_ATTR VkResult VKAPI_CALL mockCreateBuffer(VkDevice,const VkBufferCreateInfo* info,
     const VkAllocationCallbacks*,VkBuffer* out) {
@@ -286,6 +295,7 @@ void checkBootstrapAdmissionAndRestore() {
     require(m.children.size()==4 && m.coldGroups.size()==4 && m.bindings.size()==1,
             "bootstrap did not create four cold range groups");
     require(m.cold && f.device.coldLogicalBytes==4*MiB,"bootstrap cold accounting mismatch");
+    requireColdLogicalMatchesState(f.device,"lazy bootstrap cold counter diverged from memory state");
     require(f.device.coldBytes==0 && f.device.cacheBytes==0 && m.coldStoredBytes==0 &&
             m.cacheStoredBytes==0 && f.device.freezeCount==0,
             "pristine bootstrap incorrectly counted stored or frozen bytes");
@@ -305,6 +315,7 @@ void checkBootstrapAdmissionAndRestore() {
     require(f.device.coldBytes==0 && f.device.cacheBytes==0 && m.coldStoredBytes==0 &&
             m.cacheStoredBytes==0 && f.device.freezeCount==0,
             "pristine materialization changed stored/cache/freeze counters");
+    requireColdLogicalMatchesState(f.device,"partial restore cold counter diverged from memory state");
     const auto allocsBefore=allocations;
     require(restoreColdLocked(f.handle,f.device,f.memory)==VK_ERROR_OUT_OF_DEVICE_MEMORY,
             "over-capacity restore-all was not refused");
@@ -320,6 +331,7 @@ void checkExactCapRestore() {
             "restore at exact resident cap was refused");
     require(allocations==3 && f.device.residentBytes==3*MiB && m.residentBytes==3*MiB &&
             !m.cold && f.device.coldLogicalBytes==0,"exact-cap restore accounting mismatch");
+    requireColdLogicalMatchesState(f.device,"full restore cold counter diverged from memory state");
     require(f.device.coldBytes==0 && f.device.cacheBytes==0 && m.coldStoredBytes==0 &&
             m.cacheStoredBytes==0 && f.device.freezeCount==0,
             "pristine exact-cap restore counted stored or frozen bytes");
@@ -332,6 +344,7 @@ void checkOneByteBelowCap() {
     require(allocations==0 && liveAllocations.empty() && f.device.residentBytes==0 &&
             m.cold && f.device.coldLogicalBytes==2*MiB,
             "one-byte-over-cap preflight allocated or changed accounting");
+    requireColdLogicalMatchesState(f.device,"restore refusal changed cold counter/state correspondence");
 }
 
 void checkBootstrapAlignmentRollback() {
@@ -477,6 +490,7 @@ void checkColdCyclePromotionAndFailureRetry() {
                 d.residentBytes==MiB && !m.coldGroups[0].cold && d.coldLogicalBytes==0 &&
                 d.minSavingsPercent==1,
                 "successful cold-cycle type or residency accounting mismatch");
+        requireColdLogicalMatchesState(d,"successful cold-cycle left stale cold accounting");
         require(m.backingMemoryTypeBits==3 && allocatedTypes.size()==1 && allocatedTypes[0]==0,
                 "cold-cycle did not constrain allocation to local types or restore original mask");
     }
@@ -489,9 +503,11 @@ void checkColdCyclePromotionAndFailureRetry() {
                 m.coldGroups[0].chunks.size()==1 && d.coldLogicalBytes==MiB &&
                 !m.children[0] && m.backingMemoryTypeBits==3 && d.minSavingsPercent==1,
                 "local allocation refusal lost cold data or failed to restore the type mask");
+        requireColdLogicalMatchesState(d,"committed cold snapshot disagreed with aggregate state");
         require(restoreColdLocked(c.f.handle,d,c.f.memory,0)==VK_SUCCESS && m.children[0] &&
                 m.childTypes[0]==1 && !m.coldGroups[0].cold,
                 "ordinary restore could not fall back to nonlocal memory after promotion refusal");
+        requireColdLogicalMatchesState(d,"fallback restore left stale cold accounting");
         require(allocatedTypes.size()==3 && allocatedTypes[0]==0 &&
                 allocatedTypes[1]==0 && allocatedTypes[2]==1,
                 "cold-cycle did not restrict its attempt and permit normal restore fallback");
@@ -507,6 +523,7 @@ void checkColdCyclePromotionAndFailureRetry() {
                 d.residentBytes==MiB && d.coldBytes==0 && d.coldLogicalBytes==0 &&
                 d.gpuGateError==VK_SUCCESS && d.minSavingsPercent==1 && frees==0,
                 "pre-commit copy failure lost the original backing or changed accounting");
+        requireColdLogicalMatchesState(d,"pre-commit failure changed cold accounting");
         failQueueWaitAt=0; d.coldCycleBackoffUntil={};
         require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
                 "original backing was not recoverable after snapshot-copy failure");
@@ -523,10 +540,12 @@ void checkColdCyclePromotionAndFailureRetry() {
                 d.residentBytes==MiB && d.coldLogicalBytes==MiB && d.coldBytes==MiB &&
                 d.gpuGateError==VK_SUCCESS && d.minSavingsPercent==1,
                 "post-commit copy failure lost the cold snapshot or corrupted accounting");
+        requireColdLogicalMatchesState(d,"post-commit failure cold counter diverged from state");
         failQueueWaitAt=0;
         require(restoreColdLocked(c.f.handle,d,c.f.memory,0)==VK_SUCCESS &&
                 !m.coldGroups[0].cold && m.children[0] && m.childTypes[0]==0,
                 "ordinary restore could not recover after local restore-copy failure");
+        requireColdLogicalMatchesState(d,"post-failure recovery left stale cold accounting");
     }
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
