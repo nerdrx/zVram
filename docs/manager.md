@@ -44,11 +44,18 @@ Vulkan launches default to experimental range paging, a normal-priority initial
 cap and 1536 MiB native-budget headroom. Explicit launch settings override its
 defaults. `--no-live-control` disables these automatic defaults for virtual-only
 or explicitly configured expert modes. `--live-control` remains a compatibility
-alias for the default. HIP and explicit model spill mode keep their existing
-behavior. This changes paging behavior; test compatibility per application.
+alias for the default. HIP keeps its existing behavior.
+This changes paging behavior; test compatibility per application.
 Existing apps must restart once to load the updated layer and paging features.
 The GUI provides **Apply live** (or **Save live cap** on a detected external app).
 In the TUI, `p` selects a live preset and `e` sets MiB for an external app.
+
+From 0.4.4, `zvram_model.py command` and `setup` also enable live management
+by default, including uncompressed model profiles. BP16 is not required.
+Pass `--no-live-control` for plain spill without live residency caps.
+`--compressed` always enables paging, even with that opt-out. Native mode
+remains unwrapped. An idle model router may have no Vulkan device yet;
+its model workers publish control endpoints after creating their devices.
 
 Live presets use 85%, 50% or 25% of each capable device's supported maximum.
 Lowering stays pending while tracked resident memory exceeds the request;

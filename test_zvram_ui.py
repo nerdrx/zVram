@@ -78,7 +78,7 @@ def check_fields():
     assert "Next launch" not in details and "not running" not in details
     assert 'layer is NOT loaded' in details
     assert table_state(EXTERNAL) == 'Layer missing'
-    assert table_state(dict(EXTERNAL, backend_loaded=True)) == 'Restart needed'
+    assert table_state(dict(EXTERNAL, backend_loaded=True)) == 'No endpoint'
     assert table_state(dict(EXTERNAL, backend_loaded=True, control_devices=[{'capable': False}])) == 'Paging off'
     assert table_state(dict(EXTERNAL, live_capable=True)) == 'Live control'
     assert 'Apply live requires a running app' in profile_details({'running': False})

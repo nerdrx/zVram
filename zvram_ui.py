@@ -44,7 +44,7 @@ def table_state(profile):
         return 'Live control'
     if not profile.get('backend_loaded', profile.get('state') == 'Layer loaded'):
         return 'Layer missing'
-    return 'Paging off' if profile.get('control_devices') else 'Restart needed'
+    return 'Paging off' if profile.get('control_devices') else 'No endpoint'
 
 
 def system_status(status):
@@ -62,11 +62,13 @@ def profile_details(profile):
         if not profile.get("live_capable"):
             if not profile.get('backend_loaded', profile.get('state') == 'Layer loaded'):
                 text += " · zVram layer is NOT loaded; inherited launch settings alone do not enable paging"
+                text += " · restart through updated zVram for live residency controls"
             elif profile.get('control_devices'):
                 text += " · paging was disabled at launch; it cannot be enabled on an existing Vulkan device"
+                text += " · restart with live management enabled"
             else:
-                text += " · loaded backend has no live control channel"
-            text += " · restart through updated zVram for live residency controls"
+                text += " · no live endpoint yet: an idle model router may have no Vulkan device; select its model worker once loaded"
+                text += " · older backends or a different control directory also need a corrected launch"
     elif profile.get("mode") == "native":
         text += " | Native: no zVram residency cap"
     else:

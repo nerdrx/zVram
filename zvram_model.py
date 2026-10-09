@@ -94,7 +94,7 @@ def build_server_command(model_path, alias, port=8097, compressed=False,
                          resident_mib=19456, cold_mib=26624,
                          clean_cache_mib=1024, headroom_mib=1536,
                          virtual_gib=96, context=4096, server=None, build_dir=None,
-                         mode='spill'):
+                         mode='spill', live_control=True):
     model = Path(model_path).expanduser().resolve()
     with model.open('rb') as stream:
         if stream.read(4) != b'GGUF':
@@ -104,6 +104,8 @@ def build_server_command(model_path, alias, port=8097, compressed=False,
     port = checked_port(port)
     if mode not in ('spill', 'native') or (mode == 'native' and compressed):
         raise ValueError('mode must be spill or native; native cannot use compressed paging')
+    if type(live_control) is not bool:
+        raise ValueError('live_control must be a boolean')
     values = (resident_mib, cold_mib, clean_cache_mib, headroom_mib, virtual_gib, context)
     if any(not isinstance(v, int) or v <= 0 for v in values):
         raise ValueError('memory sizes and context must be positive integers')
@@ -114,8 +116,9 @@ def build_server_command(model_path, alias, port=8097, compressed=False,
     if not binary.is_file() or not os.access(binary, os.X_OK):
         raise ValueError('Vulkan llama-server is missing; put it on PATH or specify --server')
     command = [str(ROOT / 'zvram')]
-    if not compressed:
-        command.append('--no-live-control')  # Explicit spill mode promises no automatic snapshots.
+    # Model launches follow the launcher's live-management default. Plain spill
+    # remains an explicit opt-out; BP16 paging already supplies its own settings.
+    command.append('--live-control' if live_control or compressed else '--no-live-control')
     if build_dir:
         command += ['--build-dir', str(Path(build_dir).expanduser().resolve())]
     command += ['--vulkan-virtual-gib', str(virtual_gib)]
@@ -208,6 +211,11 @@ def main():
     parser.add_argument('--port', type=int, default=8097)
     parser.add_argument('--compressed', action='store_true', help='experimental lossless paging profile')
     parser.add_argument('--mode', choices=('spill', 'native'), default='spill')
+    live = parser.add_mutually_exclusive_group()
+    live.add_argument('--live-control', dest='live_control', action='store_true', default=True,
+                      help='enable live VRAM management (default; uses automatic paging)')
+    live.add_argument('--no-live-control', dest='live_control', action='store_false',
+                      help='use plain spill without live VRAM management; BP16 still enables paging')
     parser.add_argument('--resident-mib', type=int, default=19456)
     parser.add_argument('--cold-mib', type=int, default=26624)
     parser.add_argument('--clean-cache-mib', type=int, default=1024)

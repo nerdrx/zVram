@@ -51,8 +51,15 @@ class ModelIntegrationTest(unittest.TestCase):
             self.assertEqual(env['ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB'], '26624')
             command, env = m.build_server_command(blob, 'tiny:f16', server=server, mode='native')
             self.assertEqual(command[0], str(server))
+            command, _ = m.build_server_command(blob, 'tiny', server=server)
+            self.assertIn('--live-control', command)
+            self.assertNotIn('--no-live-control', command)
+            command, _ = m.build_server_command(blob, 'tiny', server=server, live_control=False)
+            self.assertIn('--no-live-control', command)
+            command, _ = m.build_server_command(blob, 'tiny', server=server, compressed=True, live_control=False)
+            self.assertIn('--live-control', command)
             for options in ({'port': 0}, {'clean_cache_mib': 30000}, {'alias': 'x\ninjected'},
-                            {'mode': 'native', 'compressed': True}):
+                            {'mode': 'native', 'compressed': True}, {'live_control': 'yes'}):
                 kwargs = {'alias': 'tiny', 'server': server, **options}
                 with self.assertRaises(ValueError):
                     m.build_server_command(blob, **kwargs)
