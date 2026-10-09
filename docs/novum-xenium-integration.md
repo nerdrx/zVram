@@ -72,6 +72,12 @@ already-running loopback model provider; it does not gain host process-control
 permissions. A future host agent, if needed, should be a user service with an
 authenticated local IPC contract, not a privileged GPU daemon.
 
+For zVram 0.4.2 or later, expose a per-profile **Ignore swap-growth guard**
+checkbox (off by default). Pass `--ignore-swap-guard` to `zvram model setup`
+when checked. The manager persists the boolean `ignore_swap_guard` field;
+it bypasses only the system-wide swap-growth check, not available-RAM protection.
+Changes apply on the next launch. Older installations do not support the flag.
+
 Suggested desktop verbs: discover models, save a validated model profile,
 start a named profile, read its health/status, stop that owned profile, and
 register its verified provider. Use argv arrays and preserve the manager's

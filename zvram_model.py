@@ -214,6 +214,8 @@ def main():
     parser.add_argument('--headroom-mib', type=int, default=1536)
     parser.add_argument('--virtual-gib', type=int, default=96)
     parser.add_argument('--context', type=int, default=4096)
+    parser.add_argument('--ignore-swap-guard', action='store_true',
+                        help='disable the managed profile swap-growth guard; available-RAM guard stays enabled')
     parser.add_argument('--server', type=Path)
     parser.add_argument('--build-dir', type=Path)
     args = parser.parse_args()
@@ -227,7 +229,7 @@ def main():
             if not args.model:
                 parser.error('--model is required for command')
             options = vars(args).copy()
-            for key in ('action', 'model', 'name'):
+            for key in ('action', 'model', 'name', 'ignore_swap_guard'):
                 options.pop(key)
             command, env = build_server_command(args.model, **options)
             overrides = {k: v for k, v in env.items() if k.startswith(('ZVRAM_', 'GGML_'))}
@@ -235,7 +237,7 @@ def main():
                 from zvram_manager import Manager
                 name = args.name or re.sub(r'[^A-Za-z0-9_.-]', '-', args.alias)
                 profile = {'name': name, 'priority': 'normal', 'mode': 'native' if args.mode == 'native' else 'wrapped',
-                           'command': command, 'env': overrides}
+                           'command': command, 'env': overrides, 'ignore_swap_guard': args.ignore_swap_guard}
                 if args.compressed:
                     profile['resident_mib'] = args.resident_mib
                     profile['min_available_mib'] = 16384

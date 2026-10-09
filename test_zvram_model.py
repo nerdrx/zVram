@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -11,6 +12,17 @@ import zvram_model as m
 
 
 class ModelIntegrationTest(unittest.TestCase):
+    def test_setup_swap_guard_setting(self):
+        for ignore in (False, True):
+            argv = ['zvram_model.py', 'setup', '--model', '/unused/model.gguf', '--name', 'tiny']
+            if ignore:
+                argv.append('--ignore-swap-guard')
+            with patch.object(sys, 'argv', argv), patch.object(m, 'build_server_command', return_value=(['server'], {})) as build, \
+                    patch('zvram_manager.Manager') as manager, patch('builtins.print'):
+                m.main()
+            self.assertEqual(manager.return_value.save_profile.call_args.args[0]['ignore_swap_guard'], ignore)
+            self.assertNotIn('ignore_swap_guard', build.call_args.kwargs)
+
     def test_command_and_model_discovery(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

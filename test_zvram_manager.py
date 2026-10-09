@@ -120,6 +120,9 @@ class ManagerChecks(unittest.TestCase):
                     manager.save_profile(dict(name=name, command=["true"]))
             with self.assertRaises(ValueError):
                 manager.save_profile(dict(name="bad", command=["true"], resident_mib=0))
+            for value in ("false", 1, None):
+                with self.assertRaisesRegex(ValueError, "boolean"):
+                    manager.save_profile(dict(name="bad", command=["true"], ignore_swap_guard=value))
             manager.save_profile(dict(name="guard", command=["true"], min_available_mib=1024))
             with patch("zvram_manager.memory_status", return_value={"mem_available_mib": 100, "swap_used_mib": 0}):
                 with self.assertRaisesRegex(ValueError, "RAM"):
@@ -136,7 +139,7 @@ class ManagerChecks(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             manager = Manager(temp)
             profile = {"name": "pressure", "command": [sys.executable, "-c", "import time; time.sleep(60)"],
-                       "mode": "native", "priority": "normal", "min_available_mib": 1}
+                       "mode": "native", "priority": "normal", "min_available_mib": 1, "ignore_swap_guard": True}
             manager.save_profile(profile)
             job = {"token": "test-token", "identity": identity(os.getpid()), "profile": profile,
                    "command": profile["command"], "resident_mib": None, "min_available_mib": 1}
@@ -152,6 +155,30 @@ class ManagerChecks(unittest.TestCase):
             self.assertEqual(result["reason"], "Stopped: available RAM guard")
             self.assertEqual(result["returncode"], -signal.SIGTERM)
             self.assertIsNone(identity(result["child_pid"]))
+
+    def test_worker_swap_guard_opt_out(self):
+        for ignore in (False, True):
+            with self.subTest(ignore=ignore), tempfile.TemporaryDirectory() as temp:
+                manager = Manager(temp)
+                profile = manager.save_profile({"name": "swap", "command": [sys.executable, "-c", "import time; time.sleep(0.8)"],
+                                                "ignore_swap_guard": ignore})
+                self.assertEqual(manager.list_profiles()[0]["ignore_swap_guard"], ignore)
+                write_json(manager.job_path("swap"), {"token": "test", "identity": identity(os.getpid()),
+                           "profile": profile, "command": profile["command"], "min_available_mib": 1})
+                previous = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
+                calls = 0
+                def usage():
+                    nonlocal calls
+                    calls += 1
+                    return {"mem_available_mib": 20000, "swap_used_mib": 0 if calls == 1 else 5000}
+                try:
+                    with patch("zvram_manager.memory_status", side_effect=usage):
+                        manager.worker("swap", "test")
+                finally:
+                    for sig, handler in previous.items():
+                        signal.signal(sig, handler)
+                result = json.loads(manager.job_path("swap").read_text())
+                self.assertEqual(result["reason"], "Process exited (0)" if ignore else "Stopped: system swap growth guard")
 
 
 if __name__ == "__main__":

@@ -244,13 +244,15 @@ class Manager:
             value = profile.get(key)
             if value is not None and (type(value) is not int or not 0 < value <= 1048576):
                 raise ValueError(key + " must be positive MiB, at most 1048576")
+        if type(profile.get("ignore_swap_guard", False)) is not bool:
+            raise ValueError("ignore_swap_guard must be a boolean")
         env = profile.get("env", {})
         if not isinstance(env, dict) or not all(isinstance(k, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k)
                                                and isinstance(v, str) and "\0" not in v for k, v in env.items()):
             raise ValueError("Environment must contain valid string keys and values")
         # Persist only launch configuration, never process identity or telemetry from UI rows.
         profile = {k: v for k, v in profile.items() if k in
-                   ("name", "priority", "mode", "command", "resident_mib", "cold_mib", "env", "min_available_mib", "max_swap_growth_mib")}
+                   ("name", "priority", "mode", "command", "resident_mib", "cold_mib", "env", "min_available_mib", "max_swap_growth_mib", "ignore_swap_guard")}
         profile = {k: v for k, v in profile.items() if v is not None}
         with self.lock():
             profiles = read_json(self.profiles_path, {})
@@ -420,7 +422,7 @@ class Manager:
                     usage = memory_status()
                     if usage["mem_available_mib"] < job["min_available_mib"]:
                         stopping.append("Stopped: available RAM guard")
-                    if usage["swap_used_mib"] - baseline > profile.get("max_swap_growth_mib", 4096):
+                    if not profile.get("ignore_swap_guard", False) and usage["swap_used_mib"] - baseline > profile.get("max_swap_growth_mib", 4096):
                         stopping.append("Stopped: system swap growth guard")
                     time.sleep(0.5)
                 if child.poll() is None:
