@@ -53,7 +53,26 @@ template<class H> std::uintptr_t handleToken(H value) {
     else return static_cast<std::uintptr_t>(value);
 }
 bool verbose() { const char* p=std::getenv("ZVRAM_VERBOSE"); return p && std::strcmp(p,"1")==0; }
-void logf(const char* fmt,...) { std::fputs("[zvram] ",stderr); va_list ap; va_start(ap,fmt); std::vfprintf(stderr,fmt,ap); va_end(ap); std::fputc('\n',stderr); }
+void logf(const char* fmt,...) {
+    constexpr char prefix[]="[zvram] ";
+    constexpr std::size_t prefixBytes=sizeof(prefix)-1;
+    char line[2048];
+    std::memcpy(line,prefix,prefixBytes);
+    va_list ap; va_start(ap,fmt);
+    va_list formatted; va_copy(formatted,ap);
+    const int length=std::vsnprintf(line+prefixBytes,sizeof(line)-prefixBytes,fmt,formatted);
+    va_end(formatted);
+    constexpr std::size_t maxPayload=sizeof(line)-prefixBytes-1;
+    if(length>=0 && static_cast<std::size_t>(length)<=maxPayload) {
+        line[prefixBytes+static_cast<std::size_t>(length)]='\n';
+        std::fwrite(line,1,prefixBytes+static_cast<std::size_t>(length)+1,stderr);
+    } else {
+        std::fputs(prefix,stderr);
+        std::vfprintf(stderr,fmt,ap);
+        std::fputc('\n',stderr);
+    }
+    va_end(ap);
+}
 void logSnapshotState(const char* event,Device& d);
 
 struct PhysicalMemoryView {

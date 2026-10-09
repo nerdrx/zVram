@@ -28,6 +28,7 @@ jobs:
           ctest --test-dir build -R '^cpu-' --output-on-failure
           python3 -m unittest test_zvram_manager test_zvram_model test_package test_zvram_control
           python3 test_zvram_ui.py --tui
+          python3 validation/log-line-coalescing/check.py
       - name: Package Hub release
         env:
           RELEASE_TAG: ${{ github.ref_name }}

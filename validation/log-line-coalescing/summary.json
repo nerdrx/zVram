@@ -1,0 +1,46 @@
+{
+  "output_cases_exact": [
+    "common",
+    "boundary",
+    "above",
+    "long",
+    "width",
+    "unicode",
+    "negative"
+  ],
+  "benchmark_lines": 1000,
+  "median_old_syscw": 6000,
+  "median_new_syscw": 1000,
+  "median_old_elapsed_ns": 369362,
+  "median_new_elapsed_ns": 104231,
+  "syscw_samples": {
+    "old_ns": [
+      369362,
+      366061,
+      372462,
+      359911,
+      370722
+    ],
+    "new_ns": [
+      105961,
+      102940,
+      108371,
+      104231,
+      103581
+    ],
+    "old_syscw": [
+      6000,
+      6000,
+      6000,
+      6000,
+      6000
+    ],
+    "new_syscw": [
+      1000,
+      1000,
+      1000,
+      1000,
+      1000
+    ]
+  }
+}
