@@ -102,3 +102,26 @@ from whole-window distributions. Raw logs and strict post-run correlation are
 in `unhooked-baseline.txt`, `unhooked-unlocked.txt`, `unhooked-summary.json`, and
 `analyze_unhooked.py`. The parser requires successful transactions and phase
 intersection in both modes before labeling a pair window-correlated.
+
+A bounded refinement samples every 1 ms only 40–75 ms after the final child-zero
+submit, retaining 5 ms cadence elsewhere. Both modes use identical probes. The
+first refined pair passed byte checks but a buffered stdout header was split
+by stderr; its logs (`unhooked-burst-*.txt`) are preserved and rejected for
+comparison. Timestamp records now flush as complete short lines outside timing.
+
+The final pair passed five transactions per mode (1.18 s each), with 332 baseline
+and 330 unlocked calls, full bytes, no validation errors and empty cleanup. Four
+of five transaction pairs had actual call/copy-phase intersections on both
+sides; only those pairs qualify for overlap comparison. Their baseline calls
+were 451/431/1001/486 microseconds versus unlocked maxima 331/26/172/10
+microseconds, respectively. This is one window-correlated component pair. The
+whole-window p95 was **worse** unlocked: 90.5 versus 38.0 microseconds; p50 was
+15.7 versus 10.2 microseconds. Therefore this does not establish a broad or
+stable latency improvement, game FPS, or eliminated spikes. Sparse phases and
+lock reacquisition remain represented in the profile interval.
+
+`unhooked-final-{baseline,unlocked}.txt` and `unhooked-final-summary.json` retain
+the final observations. The parser verifies all five successful transactions,
+quiet eligibility, complete contiguous sample records and pair-specific
+intersection; unmatched pairs remain excluded. Installed v0.4.19 is unchanged
+and this prototype is still not recommended for release or default enablement.

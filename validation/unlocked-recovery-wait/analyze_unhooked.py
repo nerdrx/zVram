@@ -27,16 +27,20 @@ def analyze(path, unlocked):
         r"start-monotonic-ns=(\d+) end-monotonic-ns=(\d+) submit-ns=(\d+)", text)]
     transactions = [tuple(map(int, m)) for m in re.findall(
         r"recovery-submit-transaction=(\d+) last-child0-submit-start-monotonic-ns=(\d+) "
-        r"last-child0-submit-end-monotonic-ns=(\d+) window-start-monotonic-ns=(\d+)", text)]
+        r"last-child0-submit-end-monotonic-ns=(\d+) window-start-monotonic-ns=(\d+) count=(\d+)", text)]
     assert len(phases) == len(transactions) == 5, "need five successful profiled transactions"
     assert len(re.findall(r"PASS: recovery-submit sampling preserved", text)) == 5
+    assert sorted(t[0] for t in transactions) == list(range(5))
     results, all_calls, overlaps = [], [], []
     for phase, transaction in zip(sorted(phases, key=lambda p: p[1]), sorted(transactions)):
         size, phase_start, phase_end, mode = phase
-        number, last_start, last_end, window_start = transaction
+        number, last_start, last_end, window_start, expected_count = transaction
         assert size == 4 * 1024 * 1024 and mode == unlocked
         assert 0 < last_start <= last_end <= window_start <= phase_start < phase_end
+        assert phase_start >= last_start + 50_000_000, "copy phase preceded quiet eligibility"
         calls = [s for s in samples if s[0] == number]
+        assert len(calls) == expected_count, "missing or fragmented sample record"
+        assert sorted(s[1] for s in calls) == list(range(expected_count))
         assert calls and all(s[2] <= s[3] and s[4] == s[3] - s[2] for s in calls)
         durations = [s[4] for s in calls]
         intersecting = [s[4] for s in calls if s[2] < phase_end and phase_start < s[3]]
@@ -56,7 +60,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     baseline = analyze(args.baseline, 0)
     unlocked = analyze(args.unlocked, 1)
-    qualified = bool(baseline["intersecting_calls"] and unlocked["intersecting_calls"])
-    print(json.dumps({"status": "window-correlated" if qualified else "inconclusive-no-paired-overlap",
+    paired = [{"transaction": before["transaction"],
+               "baseline_intersecting_calls": before["intersecting_calls"],
+               "unlocked_intersecting_calls": after["intersecting_calls"]}
+              for before, after in zip(baseline["transactions"], unlocked["transactions"])
+              if before["intersecting_calls"] and after["intersecting_calls"]]
+    print(json.dumps({"status": "window-correlated-subset" if paired else "inconclusive-no-paired-overlap",
+                      "matched_pairs": paired, "all_five_pairs_observed": len(paired) == 5,
                       "scope": "vkQueueSubmit call only; profile includes copy setup/wait/reacquire, not pure GPU wait or FPS",
                       "baseline": baseline, "unlocked": unlocked}, indent=2))

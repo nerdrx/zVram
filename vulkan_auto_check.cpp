@@ -6,11 +6,13 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -583,6 +585,16 @@ std::uint64_t monotonicNanoseconds(std::chrono::steady_clock::time_point point) 
         std::chrono::duration_cast<std::chrono::nanoseconds>(point.time_since_epoch()).count());
 }
 
+void writeSamplerRecord(std::ostringstream& record) {
+    const auto line = record.str() + '\n';
+    require(line.size() <= 512, "recovery-submit sampler record exceeds the short-line limit");
+    std::cout.flush();
+    const auto written = std::fwrite(line.data(), 1, line.size(), stdout);
+    const auto flushed = std::fflush(stdout);
+    require(written == line.size() && flushed == 0,
+            "flush complete recovery-submit sampler record");
+}
+
 void printRecoverySubmitSamples(std::uint32_t transaction,
                                 std::uint64_t lastChild0StartNs,
                                 std::uint64_t lastChild0EndNs,
@@ -594,23 +606,27 @@ void printRecoverySubmitSamples(std::uint32_t transaction,
     for (std::size_t i = 0; i < samples.size(); ++i) {
         const auto duration = samples[i].endNs - samples[i].startNs;
         durations.push_back(duration);
-        std::cout << "recovery-submit-sample transaction=" << transaction << " index=" << i
-                  << " start-monotonic-ns=" << samples[i].startNs
-                  << " end-monotonic-ns=" << samples[i].endNs
-                  << " submit-ns=" << duration << '\n';
+        std::ostringstream record;
+        record << "recovery-submit-sample transaction=" << transaction << " index=" << i
+               << " start-monotonic-ns=" << samples[i].startNs
+               << " end-monotonic-ns=" << samples[i].endNs
+               << " submit-ns=" << duration;
+        writeSamplerRecord(record);
     }
     std::sort(durations.begin(), durations.end());
     const auto percentile = [&durations](std::size_t percent) {
         const auto index = ((durations.size() - 1) * percent + 99) / 100;
         return durations[index];
     };
-    std::cout << "recovery-submit-transaction=" << transaction
-              << " last-child0-submit-start-monotonic-ns=" << lastChild0StartNs
-              << " last-child0-submit-end-monotonic-ns=" << lastChild0EndNs
-              << " window-start-monotonic-ns=" << windowStartNs
-              << " count=" << durations.size() << " submit-ns-p50=" << percentile(50)
-              << " submit-ns-p95=" << percentile(95) << " submit-ns-max=" << durations.back()
-              << " (vkQueueSubmit call only; no GPU/FPS claim)\n";
+    std::ostringstream record;
+    record << "recovery-submit-transaction=" << transaction
+           << " last-child0-submit-start-monotonic-ns=" << lastChild0StartNs
+           << " last-child0-submit-end-monotonic-ns=" << lastChild0EndNs
+           << " window-start-monotonic-ns=" << windowStartNs
+           << " count=" << durations.size() << " submit-ns-p50=" << percentile(50)
+           << " submit-ns-p95=" << percentile(95) << " submit-ns-max=" << durations.back()
+           << " (vkQueueSubmit call only; no GPU/FPS claim)";
+    writeSamplerRecord(record);
 }
 
 struct TimelineWatchdog {
@@ -2072,6 +2088,8 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             const auto windowStartNs = monotonicNanoseconds(windowStart);
             recoveryPause.set(false);
             const auto windowDeadline = windowStart + samplerWindow;
+            const auto fastCadenceStart = lastChild0End + std::chrono::milliseconds(40);
+            const auto fastCadenceEnd = lastChild0End + std::chrono::milliseconds(75);
             auto nextSample = windowStart;
             bool firstSample = true;
             while (nextSample < windowDeadline) {
@@ -2092,9 +2110,14 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                 check(vkWaitForFences(context.device, 1, &resources.fence, VK_TRUE, UINT64_MAX),
                       "wait for recovery-submit sampler copy");
                 resources.pending = false;
-                nextSample += samplerPeriod;
                 const auto completedAt = std::chrono::steady_clock::now();
-                while (nextSample <= completedAt) nextSample += samplerPeriod;
+                const auto cadenceAt = [&](std::chrono::steady_clock::time_point point) {
+                    return point >= fastCadenceStart && point < fastCadenceEnd
+                        ? std::chrono::milliseconds(1) : samplerPeriod;
+                };
+                nextSample += cadenceAt(nextSample);
+                while (nextSample <= completedAt)
+                    nextSample += cadenceAt(nextSample);
             }
             require(!samples.empty(), "recovery-submit fixed window contained no queue submits");
             const auto* sampleWords = static_cast<const std::uint32_t*>(staging.mapped);
@@ -2139,8 +2162,10 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 &&
                     empty.coldStoredBytes == 0 && empty.failures == 0,
                     "recovery-submit sampler cleanup retained pool state or errors");
-            std::cout << "PASS: recovery-submit sampling preserved child-one bytes, recovered child zero, "
-                         "verified all 32 MiB, and cleaned up transaction " << samplerTransaction << '\n';
+            std::ostringstream completion;
+            completion << "PASS: recovery-submit sampling preserved child-one bytes, recovered child zero, "
+                          "verified all 32 MiB, and cleaned up transaction " << samplerTransaction;
+            writeSamplerRecord(completion);
             return;
         }
         recoveryPause.set(false);
