@@ -428,9 +428,49 @@ VkResult waitForPendingWarmRecovery(Device& d,std::unique_lock<std::mutex>& devi
     if(queueLock && !queueLock->owns_lock()) queueLock->lock();
     return result;
 }
-bool warmRecoveryBlocksUses(const Device& d,bool known,const std::vector<ActiveRefs::Use>& uses) {
+bool warmRecoveryUseMetadataValid(const Device& d,const std::vector<ActiveRefs::Use>& uses) {
+    for(const auto& use:uses) {
+        if(!use.memory || use.child==SIZE_MAX) return false;
+        const auto found=d.virtualMemory.find(use.memory);
+        if(found==d.virtualMemory.end()) return false;
+        const auto& memory=found->second; const auto child=use.child;
+        if(child>=memory.children.size() || child>=memory.childSizes.size() ||
+           child>=memory.childTypes.size() || child>=memory.childGenerations.size() ||
+           child>=memory.coldGroups.size() || child>=memory.poolViews.size() ||
+           child>=memory.poolViewMemoryTypeBits.size() || !memory.children[child] ||
+           !memory.poolViews[child] || !memory.childSizes[child] ||
+           memory.childTypes[child]>=d.memory.memoryTypeCount ||
+           memory.childTypes[child]>=32 ||
+           !(memory.poolViewMemoryTypeBits[child]&(1u<<memory.childTypes[child])) ||
+           d.memory.memoryTypes[memory.childTypes[child]].heapIndex>=d.memory.memoryHeapCount) return false;
+    }
+    return true;
+}
+bool warmRecoveryKnownHotUses(const Device& d,bool known,const std::vector<ActiveRefs::Use>& uses) {
+    if(!known || uses.empty() || !warmRecoveryUseMetadataValid(d,uses)) return false;
+    const auto target=d.virtualMemory.find(d.pendingWarmRecovery.memory);
+    const auto targetChild=d.pendingWarmRecovery.child;
+    if(!d.pendingWarmRecovery.active || target==d.virtualMemory.end() ||
+       targetChild>=target->second.children.size() || targetChild>=target->second.childGenerations.size() ||
+       targetChild>=target->second.coldGroups.size() || !target->second.children[targetChild] ||
+       target->second.children[targetChild]!=d.pendingWarmRecovery.oldBacking ||
+       target->second.childGenerations[targetChild]!=d.pendingWarmRecovery.childGeneration) return false;
+    for(const auto& use:uses) {
+        const auto& memory=d.virtualMemory.at(use.memory);
+        if(memory.coldGroups[use.child].cold ||
+           (use.memory==d.pendingWarmRecovery.memory && use.child==d.pendingWarmRecovery.child)) return false;
+    }
+    return true;
+}
+bool warmRecoveryBlocksUses(const Device& d,bool known,const std::vector<ActiveRefs::Use>& uses,
+                            bool knownHot=false) {
     if(!known) return true;
     if(uses.empty()) return false;
+    if(knownHot) return false;
+    if(!warmRecoveryUseMetadataValid(d,uses)) return true;
+    if(std::any_of(uses.begin(),uses.end(),[&](const auto& use) {
+        return d.virtualMemory.at(use.memory).coldGroups[use.child].cold;
+    })) return true;
     if(d.coldLogicalBytes) return true;
     return std::any_of(uses.begin(),uses.end(),[&](const auto& use) {
         return use.memory==d.pendingWarmRecovery.memory &&
@@ -4375,14 +4415,15 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     std::unique_lock<std::mutex> queueLock(d->queueMutex,std::defer_lock);
     if(d->virtualEnabled) { deviceLock.lock(); queueLock.lock(); }
     for(;;) {
-    bool pendingKnownEmpty=false;
+    bool pendingKnownEmpty=false,pendingKnownHot=false;
     if(d->pendingWarmRecovery.active) {
         std::vector<ActiveRefs::Use> uses;
         bool known=false;
         try { known=queueMemories(*d,name,uses,args...); }
         catch(const std::bad_alloc&) { known=false; }
         pendingKnownEmpty=known && uses.empty();
-        if(warmRecoveryBlocksUses(*d,known,uses)) {
+        pendingKnownHot=warmRecoveryKnownHotUses(*d,known,uses);
+        if(warmRecoveryBlocksUses(*d,known,uses,pendingKnownHot)) {
             const auto waitResult=waitForPendingWarmRecovery(*d,deviceLock,&queueLock);
             if(waitResult!=VK_SUCCESS) return waitResult;
             continue;
@@ -4424,7 +4465,7 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     // An idle wait executes no application memory accesses. Keep cold pools asleep.
     // An empty, known signal can safely advance queue ordering while a copy
     // fence is pending; avoid any cold-restore fallback touching shared pools.
-    if(hasCold && !pendingKnownEmpty && std::strcmp(name,"vkQueueWaitIdle")!=0) {
+    if(hasCold && !pendingKnownEmpty && !pendingKnownHot && std::strcmp(name,"vkQueueWaitIdle")!=0) {
         const auto r=restoreForQueueWithBudgetRetry(*d,name,args...); if(r!=VK_SUCCESS) return r;
     }
     const bool unsupportedOrdering=std::strcmp(name,"vkQueueBindSparse")==0 || std::strcmp(name,"vkQueuePresentKHR")==0;

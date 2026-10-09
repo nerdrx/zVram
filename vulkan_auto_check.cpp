@@ -1668,13 +1668,14 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                                    GetWarmRecoveryWaiters getWarmRecoveryWaiters,
                                    std::vector<std::uint64_t>* batchSubmitSamples = nullptr,
                                    bool recoverySubmitSamplerFixture = false,
-                                   std::uint32_t samplerTransaction = 0) {
+                                   std::uint32_t samplerTransaction = 0,
+                                   bool unlockedColdPeerHotWaitFixture = false) {
     Buffer coldPeer; coldPeer.device = context.device;
     VkDeviceSize coldPeerBytes{};
     ZvramSnapshotStatsNX coldPeerPristine{};
     ZvramSnapshotStatsNX coldPeerBeforeUse{};
     Buffer capGuard; capGuard.device = context.device;
-    if (unlockedColdWaitFixture) {
+    if (unlockedColdWaitFixture || unlockedColdPeerHotWaitFixture) {
         VkBufferCreateInfo peerInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         peerInfo.size = 4 * MiB;
         peerInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -1756,12 +1757,13 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                 "direct recovery fixture lacks the test-only recovery pause hook");
         recoveryPause.set(true);
     }
-    if (unlockedWaitFixture || unlockedColdWaitFixture || unlockedCapRollbackFixture) {
+    if (unlockedWaitFixture || unlockedColdWaitFixture || unlockedCapRollbackFixture ||
+        unlockedColdPeerHotWaitFixture) {
         require(expectDirectRecovery && !context.bdaMode &&
-                (unlockedWaitFixture ? (context.twoQueues && context.secondQueue)
-                 : !context.twoQueues),
+                ((unlockedWaitFixture || unlockedColdPeerHotWaitFixture)
+                    ? (context.twoQueues && context.secondQueue) : !context.twoQueues),
                 "unlocked recovery wait mode has incompatible application queues");
-        if (unlockedWaitFixture || unlockedColdWaitFixture)
+        if (unlockedWaitFixture || unlockedColdWaitFixture || unlockedColdPeerHotWaitFixture)
             require(getWarmRecoveryWaiters != nullptr,
                     "unlocked recovery fixture lacks the test-only waiter-count getter");
         waitHook.install();
@@ -1778,7 +1780,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
     check(vkBindBufferMemory(context.device, resident.handle, resident.memory, 0),
           "bind cold-cycle virtual backing");
     NativeImage unknownImage;
-    if (unlockedWaitFixture) {
+    if (unlockedWaitFixture || unlockedColdPeerHotWaitFixture) {
         createUnknownResourceImage(context, unknownImage);
     }
     std::uint32_t initialBackingType = UINT32_MAX;
@@ -1907,7 +1909,8 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         pending.submitted = true;
         watchdog = std::make_unique<TimelineWatchdog>(context.device, context.pendingTimeline, waitValue);
     };
-    if (context.twoQueues && !unlockedWaitFixture && (hotRecovery || expectDirectRecovery)) beginPendingUse();
+    if (context.twoQueues && !unlockedWaitFixture && !unlockedColdPeerHotWaitFixture &&
+        (hotRecovery || expectDirectRecovery)) beginPendingUse();
 
     const VkResult uploadResult = upload(context, resident.handle, staging, ChunkBytes,
         expectNativeTypeRefusal ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_SUCCESS);
@@ -1993,6 +1996,13 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             require(beforeRecovery.coldLogicalBytes == coldPeerBytes &&
                     beforeRecovery.coldStoredBytes == 0,
                     "pristine cold peer changed before the recovery wait gate");
+        }
+        if (unlockedColdPeerHotWaitFixture) {
+            coldPeerBeforeUse = context.stats();
+            require(coldPeerBeforeUse.residentBytes == ChunkBytes &&
+                    coldPeerBeforeUse.coldLogicalBytes == coldPeerBytes &&
+                    coldPeerBeforeUse.coldStoredBytes == 0 && coldPeerBeforeUse.failures == 0,
+                    "cold-peer hot-overlap fixture did not start with 32 MiB resident and a pristine 4 MiB peer");
         }
         if (recoverySubmitSamplerFixture) {
             require(initialBackingType == nonlocalType,
@@ -2224,7 +2234,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                          "preserved all bytes, and cleaned up\n";
             return;
         }
-        if (unlockedWaitFixture || unlockedColdWaitFixture) {
+        if (unlockedWaitFixture || unlockedColdWaitFixture || unlockedColdPeerHotWaitFixture) {
             require(waitHook.waitUntilEntered(std::chrono::seconds(5)),
                     "recovery did not reach the unlocked fence-wait test hook");
             struct AsyncProbe {
@@ -2280,12 +2290,23 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             };
             bool disjointProgress = false, matchingBlocked = false, unknownBlocked = false;
             bool matchingReachedSubmit = false, unknownReachedSubmit = false;
-            if (unlockedWaitFixture) {
+            if (unlockedWaitFixture || unlockedColdPeerHotWaitFixture) {
                 startProbe(disjointProbe, context.queue, [&](VkCommandBuffer command) {
                     recordResidentChildRead(command, 4 * MiB);
                 });
                 disjointProgress = waitFinished(disjointProbe, std::chrono::seconds(5));
                 if (disjointProgress) disjointProbe.thread.join();
+
+                if (unlockedColdPeerHotWaitFixture) {
+                    const auto afterHot = context.stats();
+                    require(afterHot.residentBytes == ChunkBytes &&
+                            afterHot.coldLogicalBytes == coldPeerBytes &&
+                            afterHot.coldStoredBytes == 0 &&
+                            afterHot.restores == coldPeerBeforeUse.restores &&
+                            afterHot.freezes == coldPeerBeforeUse.freezes &&
+                            afterHot.failures == coldPeerBeforeUse.failures,
+                            "disjoint hot submit woke or changed the unrelated cold peer");
+                }
 
                 startProbe(matchingProbe, context.queue, [&](VkCommandBuffer command) {
                     recordResidentChildRead(command, 0);
@@ -2329,16 +2350,18 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                 std::lock_guard<std::mutex> lock(waitHook.state.mutex);
                 hookTimedOut = waitHook.state.timedOut;
             }
-            if (unlockedWaitFixture) {
+            if (unlockedWaitFixture || unlockedColdPeerHotWaitFixture) {
                 require(disjointProgress && matchingBlocked && unknownBlocked && matchingFinished &&
                         unknownFinished && !hookTimedOut && disjointProbe.error.empty() &&
                         matchingProbe.error.empty() && unknownProbe.error.empty(),
                         "unlocked recovery wait did not admit disjoint work and defer unsafe submissions");
-                std::cout << "hook-held vkQueueSubmit call-only us (includes layer queueCall; excludes fence wait/pool setup): "
-                          << "disjoint=" << disjointProbe.submitCallMicros
-                          << " matching=" << matchingProbe.submitCallMicros
-                          << " unknown=" << unknownProbe.submitCallMicros << '\n';
-                std::cout << "overlap timings describe this held-hook gate only; they are not GPU latency or FPS measurements\n";
+                if (unlockedWaitFixture) {
+                    std::cout << "hook-held vkQueueSubmit call-only us (includes layer queueCall; excludes fence wait/pool setup): "
+                              << "disjoint=" << disjointProbe.submitCallMicros
+                              << " matching=" << matchingProbe.submitCallMicros
+                              << " unknown=" << unknownProbe.submitCallMicros << '\n';
+                    std::cout << "overlap timings describe this held-hook gate only; they are not GPU latency or FPS measurements\n";
+                }
             } else {
                 require(matchingReachedSubmit && matchingBlocked && matchingFinished &&
                         !hookTimedOut && matchingProbe.error.empty(),
@@ -2350,6 +2373,100 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                           << (finiteBarrierRecoveryFixture
                               ? " with a finite child-range buffer barrier\n"
                               : " with a global memory barrier\n");
+            } else if (unlockedColdPeerHotWaitFixture) {
+                const auto released = context.stats();
+                require((released.coldLogicalBytes == coldPeerBytes && released.residentBytes == ChunkBytes) ||
+                        (released.coldLogicalBytes == 0 && released.residentBytes == ChunkBytes + coldPeerBytes),
+                        "cold peer changed to an unexpected residency state after releasing pending recovery");
+                require(released.coldStoredBytes == 0 && released.failures == coldPeerBeforeUse.failures,
+                        "released cold peer retained snapshots or added errors");
+                check(context.submit([&](VkCommandBuffer command) {
+                    VkBufferMemoryBarrier writable{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+                    writable.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+                    writable.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    writable.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    writable.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    writable.buffer = coldPeer.handle;
+                    writable.size = coldPeerBytes;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                         0, nullptr, 1, &writable, 0, nullptr);
+                    vkCmdFillBuffer(command, coldPeer.handle, 0, coldPeerBytes, 0x5a17c0deu);
+                }), "initialize unrelated cold peer after pending recovery");
+                check(context.submit([&](VkCommandBuffer command) {
+                    VkMemoryBarrier stagingReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                    stagingReady.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT |
+                                                 VK_ACCESS_TRANSFER_WRITE_BIT;
+                    stagingReady.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    VkBufferMemoryBarrier readable{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+                    readable.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    readable.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    readable.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    readable.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    readable.buffer = coldPeer.handle;
+                    readable.size = coldPeerBytes;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                         1, &stagingReady, 1, &readable, 0, nullptr);
+                    VkBufferCopy copy{0, 0, coldPeerBytes};
+                    vkCmdCopyBuffer(command, coldPeer.handle, staging.buffer, 1, &copy);
+                    VkMemoryBarrier hostReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+                    hostReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    hostReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_HOST_BIT, 0,
+                                         1, &hostReady, 0, nullptr, 0, nullptr);
+                }), "read back unrelated cold peer after pending recovery");
+                const auto* peerWords = static_cast<const std::uint32_t*>(staging.mapped);
+                require(std::all_of(peerWords, peerWords + coldPeerBytes / sizeof(std::uint32_t),
+                                    [](std::uint32_t value) { return value == 0x5a17c0deu; }),
+                        "unrelated cold peer fill bytes changed after pending recovery");
+
+                std::uint32_t recoveredType = initialBackingType;
+                const auto recoveryDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+                while (std::chrono::steady_clock::now() < recoveryDeadline) {
+                    check(getBackingType(context.device, resident.memory, 0, &recoveredType),
+                          "query direct recovery backing after unrelated-cold overlap");
+                    if (recoveredType != initialBackingType) break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                }
+                const auto recoveredHeap = recoveredType < context.memory.memoryTypeCount
+                    ? context.memory.memoryTypes[recoveredType].heapIndex : UINT32_MAX;
+                require(recoveredType != initialBackingType &&
+                        recoveredHeap < context.memory.memoryHeapCount &&
+                        (context.memory.memoryHeaps[recoveredHeap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
+                        "direct recovery did not promote child zero after unrelated-cold overlap");
+                check(readbackAndVerify(context, resident.handle, staging, -1, false, ChunkBytes),
+                      "verify all original bytes after unrelated-cold overlap");
+                const auto finalStats = context.stats();
+                require(finalStats.residentBytes == ChunkBytes + coldPeerBytes &&
+                        finalStats.coldLogicalBytes == 0 && finalStats.coldStoredBytes == 0 &&
+                        finalStats.failures == coldPeerBeforeUse.failures,
+                        "unrelated-cold overlap final residency or errors are incorrect");
+
+                vkDestroyBuffer(context.device, resident.handle, nullptr);
+                resident.handle = VK_NULL_HANDLE;
+                vkFreeMemory(context.device, resident.memory, nullptr);
+                resident.memory = VK_NULL_HANDLE;
+                vkDestroyBuffer(context.device, coldPeer.handle, nullptr);
+                coldPeer.handle = VK_NULL_HANDLE;
+                vkFreeMemory(context.device, coldPeer.memory, nullptr);
+                coldPeer.memory = VK_NULL_HANDLE;
+                if (unknownImage.handle) {
+                    vkDestroyImage(context.device, unknownImage.handle, nullptr);
+                    unknownImage.handle = VK_NULL_HANDLE;
+                }
+                if (unknownImage.memory) {
+                    vkFreeMemory(context.device, unknownImage.memory, nullptr);
+                    unknownImage.memory = VK_NULL_HANDLE;
+                }
+                const auto empty = context.stats();
+                require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 &&
+                        empty.coldStoredBytes == 0 && empty.failures == 0,
+                        "unrelated-cold overlap cleanup retained pool state or errors");
+                std::cout << "PASS: disjoint HOT submit proceeded while unrelated cold peer stayed cold; "
+                             "matching/unknown waited; bytes and cleanup verified\n";
+                return;
             } else {
                 const auto coldAfterUse = context.stats();
                 require(coldAfterUse.coldLogicalBytes == 0 &&
@@ -3640,6 +3757,7 @@ int main(int argc, char** argv) try {
     bool expectDirectRecovery = false;
     bool unlockedRecoveryWaitFixture = false;
     bool finiteBarrierRecoveryFixture = false;
+    bool unlockedColdPeerHotWaitFixture = false;
     bool unlockedColdRecoveryWaitFixture = false;
     bool unlockedCapRollbackFixture = false;
     bool directRecoveryBatchFixture = false;
@@ -3673,6 +3791,11 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--unlocked-recovery-finite-barrier-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
             twoQueues=true; expectDirectRecovery=true; unlockedRecoveryWaitFixture=true;
+            finiteBarrierRecoveryFixture=true;
+        }
+        else if (std::strcmp(argv[i], "--unlocked-recovery-cold-peer-hot-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
+            twoQueues=true; expectDirectRecovery=true; unlockedColdPeerHotWaitFixture=true;
             finiteBarrierRecoveryFixture=true;
         }
         else if (std::strcmp(argv[i], "--unlocked-recovery-cold-wait-fixture") == 0) {
@@ -3801,10 +3924,14 @@ int main(int argc, char** argv) try {
     require(!unlockedCapRollbackFixture ||
             (expectDirectRecovery && nativeAllocation && !bdaMode && !twoQueues && !twoFamilies && !exclusiveFamilies),
             "cap-rollback recovery fixture uses native single-queue memory");
+    require(!unlockedColdPeerHotWaitFixture ||
+            (expectDirectRecovery && nativeAllocation && !bdaMode && twoQueues && !twoFamilies && !exclusiveFamilies),
+            "cold-peer hot-overlap fixture uses native two-queue memory");
     require(!recoverySubmitSamplerFixture ||
             (expectDirectRecovery && nativeAllocation && !bdaMode && !twoQueues && !twoFamilies && !exclusiveFamilies),
             "recovery-submit sampler uses native single-queue memory");
     require(static_cast<unsigned>(unlockedRecoveryWaitFixture) +
+            static_cast<unsigned>(unlockedColdPeerHotWaitFixture) +
             static_cast<unsigned>(unlockedColdRecoveryWaitFixture) +
             static_cast<unsigned>(unlockedCapRollbackFixture) +
             static_cast<unsigned>(recoverySubmitSamplerFixture) <= 1,
@@ -3871,7 +3998,8 @@ int main(int argc, char** argv) try {
             ? reinterpret_cast<SetRecoveryPaused>(
                 vkGetDeviceProcAddr(context.device, "vkZVramSetRecoveryPausedNX"))
             : nullptr;
-        const auto getWarmRecoveryWaiters = (unlockedRecoveryWaitFixture || unlockedColdRecoveryWaitFixture)
+        const auto getWarmRecoveryWaiters = (unlockedRecoveryWaitFixture || unlockedColdRecoveryWaitFixture ||
+                                             unlockedColdPeerHotWaitFixture)
             ? reinterpret_cast<GetWarmRecoveryWaiters>(
                 vkGetDeviceProcAddr(context.device, "vkZVramGetWarmRecoveryWaitersNX"))
             : nullptr;
@@ -3903,7 +4031,8 @@ int main(int argc, char** argv) try {
                                           finiteBarrierRecoveryFixture,
                                           unlockedColdRecoveryWaitFixture,
                                           unlockedCapRollbackFixture,
-                                          getWarmRecoveryWaiters);
+                                          getWarmRecoveryWaiters, nullptr, false, 0,
+                                          unlockedColdPeerHotWaitFixture);
         }
         return 0;
     }

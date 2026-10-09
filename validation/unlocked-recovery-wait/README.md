@@ -178,7 +178,9 @@ This prevents their destructors from unmapping or destroying uncertain resources
 and from making Vulkan calls after device destruction. Existing shared poison
 state also retains imported host allocations and their budget reservations.
 It deliberately abandons resources; it does not establish safe child cleanup
-or repair the unresolved abnormal-device teardown. CPU validation is pending.
+or repair the unresolved abnormal-device teardown. All 13 normal CPU CTests
+and both hook bootstrap/BP16 checks passed; the actual device-destroy observer
+checks poisoning before the native callback. See `decoder-abandonment/`.
 
 ## Proven decoder cleanup follow-up
 
@@ -199,3 +201,42 @@ libraries contain none of the six test APIs. See `proven-decoder-cleanup/`.
 These are mocked lifecycle failures; no GPU device fault was reproduced. The
 unproven double-idle-error resource-retention/native-child cleanup limitation
 remains documented, and this follow-up does not change that policy.
+
+## Disjoint hot submission with unrelated cold data
+
+The pending-copy gate now classifies exact, finite, resident child references.
+Valid backing/view/type/heap metadata and disjointness from the pending recovery
+child are required. Those calls skip cold restoration for that invocation even
+when unrelated cold data exists. Selected cold children, whole-allocation uses,
+missing metadata, the recovery child and unknown accesses still wait.
+
+Resident admission remains unchanged. If the cap requires eviction, the call
+joins pending recovery before any poll/eviction and retries with the current
+cap. A late unknown-command flag keeps conservative accepted-use/write tracking,
+but cannot route this already-classified call into shared snapshot restoration.
+This remains part of the default-off unlocked-wait prototype, not a graphics
+tracking whitelist or a game-performance claim.
+
+All 13 normal CPU CTests passed (6.01 seconds), including actual queueCall
+late-unknown and admission-wait/retry cases. The admission fixture initially
+failed because mock backings retained invalid lazy memory-type metadata, then
+because its cold-byte counter did not match the manually configured hot state.
+Both failed logs are preserved under `hot-with-cold-peer/`; production guards
+were retained. Normal and hook layer/bootstrap builds passed; all six test APIs
+remain absent from the normal library.
+
+The new two-queue hardware gate passed with synchronization validation (0.15
+seconds): a finite child-one barrier/copy completed while the unrelated pristine
+4 MiB peer remained cold, with no additional restores/freezes. Actual waiter
+counts proved matching child-zero and unknown submissions joined recovery.
+After release, all original 32 MiB and the peer's 4 MiB fill pattern verified;
+resident/cold/error and driver live-allocation counters returned to zero.
+The selected-cold-peer wait and late-cap rollback regressions also passed
+(0.19 seconds combined). See `gpu-hot-overlap.txt` and `gpu-regressions.txt`.
+
+Before these small tests, memory PSI averages were zero, available RAM was about
+25 GiB, and no game/model runner was found (the Ollama daemon remained idle).
+Background GPU utilization was 61–62 percent; user applications and LACT auto
+settings were preserved. The held hook proves admission/progress and data
+safety, not natural GPU latency or FPS. Sparse phases remain synchronous;
+general graphics tracking and ambiguous double-idle teardown limits remain.

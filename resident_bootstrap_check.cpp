@@ -81,6 +81,11 @@ bool destroyObservedDecoderUnsafe{};
 bool destroyObservedDecoderPresent{};
 unsigned destroyDeviceCalls{};
 std::uint32_t destroyedBuffersAtNativeDeviceDestroy{},freesAtNativeDeviceDestroy{};
+bool flipUnknownCommandOnBudgetQuery{};
+std::mutex admissionSignalMutex;
+std::condition_variable admissionSignal;
+std::atomic<bool> signalBudgetQuery{};
+bool budgetQueryEntered{};
 
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
 void requireColdLogicalMatchesState(const Device& d,const char* message) {
@@ -164,6 +169,11 @@ VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDevic
     }
     budget->heapBudget[0]=heapBudget; budget->heapUsage[0]=heapUsage;
     budget->heapBudget[1]=64*MiB; budget->heapUsage[1]=0;
+    if(flipUnknownCommandOnBudgetQuery) unknownCommandProc.store(true);
+    if(signalBudgetQuery.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> lock(admissionSignalMutex);
+        budgetQueryEntered=true; admissionSignal.notify_all();
+    }
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockPresent(VkQueue,const VkPresentInfoKHR* info) {
     ++presentCalls; forwardedPresent=info; return presentResult;
@@ -968,18 +978,48 @@ void checkPendingWarmRecoveryTokenAndQueueGates() {
     require(!pendingWarmRecoveryTokenValid(d,stale),"recovery token survived alias mutation");
     stale=valid; stale.oldBacking=tokenHandle<VkDeviceMemory>(0xc2fc);
     require(!pendingWarmRecoveryTokenValid(d,stale),"recovery token survived backing replacement");
+    auto& pendingMemory=c.f.state();
+    pendingMemory.children.push_back(tokenHandle<VkDeviceMemory>(0xc2fb));
+    pendingMemory.childSizes.push_back(MiB); pendingMemory.childTypes.push_back(1);
+    pendingMemory.childGenerations.push_back(2);
+    pendingMemory.poolViews.push_back(tokenHandle<VkBuffer>(0xc2f9));
+    pendingMemory.poolViewMemoryTypeBits.push_back(3);
+    pendingMemory.coldGroups.emplace_back();
     const std::vector<ActiveRefs::Use> empty{};
-    const std::vector<ActiveRefs::Use> hotDisjoint{{tokenHandle<VkDeviceMemory>(0xc2fb),0}};
+    const std::vector<ActiveRefs::Use> hotDisjoint{{c.f.memory,1}};
     const std::vector<ActiveRefs::Use> exact{{c.f.memory,0}};
     const std::vector<ActiveRefs::Use> whole{{c.f.memory,SIZE_MAX}};
     require(!warmRecoveryBlocksUses(d,true,empty) &&
-            !warmRecoveryBlocksUses(d,true,hotDisjoint) &&
+            warmRecoveryKnownHotUses(d,true,hotDisjoint) &&
+            !warmRecoveryBlocksUses(d,true,hotDisjoint,true) &&
             warmRecoveryBlocksUses(d,false,empty) &&
-            warmRecoveryBlocksUses(d,true,exact) && warmRecoveryBlocksUses(d,true,whole),
+            warmRecoveryBlocksUses(d,true,exact) && warmRecoveryBlocksUses(d,true,whole) &&
+            warmRecoveryBlocksUses(d,true,{{c.f.memory,2}}),
             "pending recovery queue-use gate mishandled empty, unknown, matching, or disjoint uses");
+    pendingMemory.coldGroups[1].cold=true;
+    require(!warmRecoveryKnownHotUses(d,true,hotDisjoint) &&
+            warmRecoveryBlocksUses(d,true,hotDisjoint),
+            "a selected cold child was allowed through a pending recovery");
+    pendingMemory.coldGroups[1].cold=false;
+    const auto childGenerations=pendingMemory.childGenerations;
+    pendingMemory.childGenerations.pop_back();
+    require(warmRecoveryBlocksUses(d,true,hotDisjoint),
+            "missing child metadata did not block a pending recovery submit");
+    pendingMemory.childGenerations=childGenerations;
+    const auto poolTypeBits=pendingMemory.poolViewMemoryTypeBits[1];
+    pendingMemory.poolViewMemoryTypeBits[1]=0;
+    require(warmRecoveryBlocksUses(d,true,hotDisjoint),
+            "incompatible pool-view memory type did not block a pending recovery submit");
+    pendingMemory.poolViewMemoryTypeBits[1]=poolTypeBits;
+    const auto childType=pendingMemory.childTypes[1];
+    pendingMemory.childTypes[1]=UINT32_MAX;
+    require(warmRecoveryBlocksUses(d,true,hotDisjoint),
+            "out-of-range child memory type did not block a pending recovery submit");
+    pendingMemory.childTypes[1]=childType;
     d.coldLogicalBytes=1;
-    require(!warmRecoveryBlocksUses(d,true,empty) && warmRecoveryBlocksUses(d,true,hotDisjoint),
-            "cold restore did not block nonempty submissions while preserving empty signals");
+    require(!warmRecoveryBlocksUses(d,true,empty) &&
+            !warmRecoveryBlocksUses(d,true,hotDisjoint,true),
+            "cold peer blocked a fully validated disjoint hot submission");
     const auto replacement=tokenHandle<VkDeviceMemory>(0xc2fa);
     d.retainedWarmRecoveries.push_back({valid.oldBacking,replacement,valid.sourceView,
                                         valid.destinationView,valid.oldType,valid.newType,valid.size});
@@ -1959,6 +1999,155 @@ struct BarrierRangeFixture {
     }
 };
 
+void checkPendingKnownHotQueueCallSkipsColdRestore() {
+    for(const bool flipUnknown:{false,true}) {
+        BarrierRangeFixture x;
+        auto& d=x.f.device; auto& memory=x.f.state();
+        d.activeEviction=true; d.autoEnabled=true; d.autoInitialized=true;
+        d.residentLimitBytes=16*MiB; d.residentAdmissionArmed=true;
+        d.budgetProperties=mockBudgetProperties; d.budgetHeap=0; d.budgetReserveBytes=1;
+        d.memory.memoryTypeCount=2; d.memory.memoryHeapCount=1;
+        d.memory.memoryHeaps[0].size=64*MiB; d.memory.memoryTypes[0].heapIndex=0;
+        d.memory.memoryTypes[1].heapIndex=0; d.physical=tokenHandle<VkPhysicalDevice>(0xd301);
+        mockNativeHeapSize=mockHeapBudget=64*MiB; mockHeapUsage=0;
+
+        memory.children[0]=tokenHandle<VkDeviceMemory>(0xd302);
+        memory.childTypes[0]=1; memory.poolViewMemoryTypeBits[0]=3;
+        memory.children[1]=tokenHandle<VkDeviceMemory>(0xd303);
+        memory.childTypes[1]=0;
+        for(auto& group:memory.coldGroups) { group.cold=false; group.pristine=false; }
+        memory.cold=false; memory.coldLogicalSize=0; memory.residentBytes=8*MiB;
+        d.residentBytes=8*MiB;
+
+        const auto coldHandle=tokenHandle<VkDeviceMemory>(0xd304);
+        VirtualMemory cold{}; cold.size=MiB; cold.identityGeneration=77;
+        cold.children={VK_NULL_HANDLE}; cold.childSizes={MiB}; cold.childTypes={0};
+        cold.childGenerations={1}; cold.poolViews={tokenHandle<VkBuffer>(0xd305)};
+        cold.poolViewMemoryTypeBits={1}; cold.coldGroups.resize(1); cold.cold=true;
+        cold.coldLogicalSize=MiB; cold.coldGroups[0].cold=true;
+        cold.coldGroups[0].pristine=true; cold.coldGroups[0].logicalBytes=MiB;
+        d.virtualMemory.emplace(coldHandle,std::move(cold)); d.coldLogicalBytes=MiB;
+
+        auto& pending=d.pendingWarmRecovery; pending.active=true; pending.memory=x.f.memory;
+        pending.child=0; pending.oldBacking=memory.children[0];
+        pending.allocationGeneration=memory.identityGeneration;
+        pending.bindingGeneration=memory.bindingGeneration;
+        pending.childGeneration=memory.childGenerations[0];
+
+        const auto queue=reinterpret_cast<VkQueue>(x.f.handle);
+        const std::vector<VkQueue> queues{queue,d.sparseQueue};
+        require(d.autoQueues.init(d.handle,d.gdpa,d.sparseQueue,queues,true)==VK_SUCCESS,
+                "hot pending queue fixture failed to initialize automatic queues");
+        d.restoreQueueGenerations.emplace_back(queue,d.restoreGeneration);
+        x.f.device.submission.bufferRange(x.command,x.buffer,4*MiB,4*MiB,true);
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount=1; submit.pCommandBuffers=&x.command;
+        const auto* info=static_cast<const VkSubmitInfo*>(&submit);
+        applicationSubmitInfo=info;
+        const auto oldUnknown=unknownCommandProc.exchange(false);
+        std::vector<ActiveRefs::Use> selected;
+        require(queueMemories(d,"vkQueueSubmit",selected,std::uint32_t{1},info,VkFence{}) &&
+                selected.size()==1 && selected[0].memory==x.f.memory && selected[0].child==1 &&
+                warmRecoveryKnownHotUses(d,true,selected),
+                "finite queue submit did not resolve to one validated disjoint hot child");
+        flipUnknownCommandOnBudgetQuery=flipUnknown;
+        const auto beforeAllocations=allocations,beforeSparse=sparseBinds;
+        const auto result=queueCall<PFN_vkQueueSubmit>(queue,"vkQueueSubmit",std::uint32_t{1},info,VkFence{});
+        flipUnknownCommandOnBudgetQuery=false;
+        unknownCommandProc.store(oldUnknown);
+        applicationSubmitInfo=nullptr;
+
+        const auto status=d.activeRefs.status(queue);
+        require(result==VK_SUCCESS && submitCalls==1 && pending.active &&
+                d.coldLogicalBytes==MiB && d.virtualMemory.at(coldHandle).cold &&
+                mockResetCommandPoolCalls==0 && allocations==beforeAllocations &&
+                sparseBinds==beforeSparse &&
+                (flipUnknown ? status.blocksAll && d.activeRefs.busy(x.f.memory,0)
+                             : !status.blocksAll && !d.activeRefs.busy(x.f.memory,0) &&
+                               d.activeRefs.busy(x.f.memory,1)),
+                flipUnknown ?
+                    "late unknown access lost conservative tracking or restored the cold peer during recovery":
+                    "validated disjoint hot submit restored/reset the cold peer during recovery");
+    }
+}
+
+void checkPendingAdmissionWaitRetriesThroughQueueCall() {
+    BarrierRangeFixture x;
+    auto& d=x.f.device; auto& memory=x.f.state();
+    d.activeEviction=true; d.autoEnabled=true; d.autoInitialized=true;
+    d.residentLimitBytes=8*MiB; d.residentAdmissionArmed=true;
+    d.budgetProperties=mockBudgetProperties; d.budgetHeap=0; d.budgetReserveBytes=1;
+    d.memory.memoryTypeCount=1; d.memory.memoryHeapCount=1;
+    d.memory.memoryHeaps[0].size=64*MiB; d.memory.memoryTypes[0].heapIndex=0;
+    d.physical=tokenHandle<VkPhysicalDevice>(0xd311);
+    mockNativeHeapSize=mockHeapBudget=64*MiB; mockHeapUsage=0;
+    memory.children[0]=tokenHandle<VkDeviceMemory>(0xd312);
+    memory.children[1]=tokenHandle<VkDeviceMemory>(0xd313);
+    memory.childTypes[0]=memory.childTypes[1]=0;
+    memory.poolViewMemoryTypeBits[0]=memory.poolViewMemoryTypeBits[1]=1;
+    for(auto& group:memory.coldGroups) { group.cold=false; group.pristine=false; }
+    memory.cold=false; memory.coldLogicalSize=0; memory.coldStoredBytes=0;
+    memory.residentBytes=8*MiB; d.coldLogicalBytes=d.coldBytes=0;
+    d.residentBytes=9*MiB; // Force the selected hot child to await the in-flight promotion.
+    d.pendingWarmRecovery.active=true; d.pendingWarmRecovery.memory=x.f.memory;
+    d.pendingWarmRecovery.child=0; d.pendingWarmRecovery.oldBacking=memory.children[0];
+    d.pendingWarmRecovery.childGeneration=memory.childGenerations[0];
+    d.pendingWarmRecovery.allocationGeneration=memory.identityGeneration;
+    d.pendingWarmRecovery.bindingGeneration=memory.bindingGeneration;
+    const auto queue=reinterpret_cast<VkQueue>(x.f.handle);
+    const std::vector<VkQueue> queues{queue,d.sparseQueue};
+    require(d.autoQueues.init(d.handle,d.gdpa,d.sparseQueue,queues,true)==VK_SUCCESS,
+            "pending admission retry fixture failed to initialize automatic queues");
+    d.restoreQueueGenerations.emplace_back(queue,d.restoreGeneration);
+    x.f.device.submission.bufferRange(x.command,x.buffer,4*MiB,4*MiB,true);
+    VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submit.commandBufferCount=1; submit.pCommandBuffers=&x.command;
+    const auto* info=static_cast<const VkSubmitInfo*>(&submit); applicationSubmitInfo=info;
+    const auto oldUnknown=unknownCommandProc.exchange(false);
+    std::vector<ActiveRefs::Use> selected;
+    const bool tracked=queueMemories(d,"vkQueueSubmit",selected,std::uint32_t{1},info,VkFence{});
+    const bool knownHot=warmRecoveryKnownHotUses(d,tracked,selected);
+    require(tracked && selected.size()==1 && selected[0].child==1 && knownHot,
+            "admission CV fixture did not classify a valid disjoint hot child");
+    {
+        std::lock_guard<std::mutex> lock(admissionSignalMutex);
+        budgetQueryEntered=false;
+    }
+    signalBudgetQuery=true;
+    std::atomic<VkResult> result{VK_ERROR_UNKNOWN};
+    std::atomic<bool> callerDone{};
+    std::thread caller([&] {
+        result=queueCall<PFN_vkQueueSubmit>(queue,"vkQueueSubmit",std::uint32_t{1},info,VkFence{});
+        callerDone.store(true,std::memory_order_release);
+    });
+    bool sawBudgetQuery=false;
+    {
+        std::unique_lock<std::mutex> lock(admissionSignalMutex);
+        sawBudgetQuery=admissionSignal.wait_for(lock,std::chrono::seconds(3),[]{return budgetQueryEntered;});
+    }
+    bool joinedPendingAdmission=false;
+    {
+        std::unique_lock<std::mutex> lock(d.mutex);
+        joinedPendingAdmission=sawBudgetQuery && d.pendingWarmRecovery.active &&
+            !callerDone.load(std::memory_order_acquire);
+        d.pendingWarmRecovery.active=false;
+        d.residentLimitBytes=16*MiB;
+        signalBudgetQuery.store(false,std::memory_order_release);
+    }
+    d.activity.notify_all(); caller.join();
+    unknownCommandProc.store(oldUnknown); applicationSubmitInfo=nullptr;
+    if(!(sawBudgetQuery && joinedPendingAdmission && result==VK_SUCCESS && submitCalls==1 &&
+         !d.pendingWarmRecovery.active && !d.pendingRecoveryAdmissionWait &&
+         d.residentLimitBytes==16*MiB && d.coldLogicalBytes==0))
+        throw std::runtime_error("queueCall cap retry: signaled="+std::to_string(sawBudgetQuery)+
+            " joined="+std::to_string(joinedPendingAdmission)+" result="+
+            std::to_string(result.load())+" submits="+std::to_string(submitCalls)+
+            " pending="+std::to_string(d.pendingWarmRecovery.active)+" admissionWait="+
+            std::to_string(d.pendingRecoveryAdmissionWait)+" limit="+
+            std::to_string(d.residentLimitBytes)+" cold="+std::to_string(d.coldLogicalBytes)+
+            " done="+std::to_string(callerDone.load()));
+}
+
 void checkFiniteBufferBarrierTracking() {
     const VkEvent event=tokenHandle<VkEvent>(0xb200);
     {
@@ -2138,6 +2327,8 @@ int main() try {
     checkAsyncEncoderReleasesBothGates();
     checkNoActionCommandHooksStaySelective();
     checkFiniteBufferBarrierTracking();
+    checkPendingKnownHotQueueCallSkipsColdRestore();
+    checkPendingAdmissionWaitRetriesThroughQueueCall();
     checkAllocationFailureRetry();
     checkBindFailureAccounting();
     checkMergedRestoreMapping();

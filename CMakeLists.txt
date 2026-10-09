@@ -497,6 +497,18 @@ if(ZVRAM_TEST_ASYNC_HOOK)
     set_tests_properties(vulkan-cold-cycle-unlocked-cold-peer-wait PROPERTIES TIMEOUT 30
         ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
         LABELS "hardware;vulkan;cold-cycle;native-allocation;unlocked-wait;cold-restore;test-hook")
+    add_test(NAME vulkan-cold-cycle-unlocked-cold-peer-hot-overlap
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --two-queues --unlocked-recovery-cold-peer-hot-fixture)
+    set_tests_properties(vulkan-cold-cycle-unlocked-cold-peer-hot-overlap PROPERTIES TIMEOUT 30
+        ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        SKIP_REGULAR_EXPRESSION "UNSUPPORTED: no discrete AMD RADV GPU exposes two queues in one sparse/compute family"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;unlocked-wait;cold-peer;hot-overlap;validation;test-hook")
     add_test(NAME vulkan-cold-cycle-unlocked-late-cap-rollback
         COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
             --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
@@ -1014,5 +1026,7 @@ set_tests_properties(vulkan-automatic-partial-freeze vulkan-automatic-partial-re
 set_tests_properties(vulkan-graphics-cold-restore vulkan-graphics-active-cold-restore vulkan-graphics-native-allocation-cold-restore PROPERTIES TIMEOUT 45)
 if(ZVRAM_TEST_ASYNC_HOOK)
     set_tests_properties(vulkan-cold-cycle-submit-sampler-baseline
-        vulkan-cold-cycle-submit-sampler-unlocked PROPERTIES TIMEOUT 30)
+        vulkan-cold-cycle-submit-sampler-unlocked
+        vulkan-cold-cycle-unlocked-cold-peer-hot-overlap
+        vulkan-cold-cycle-unlocked-cold-peer-wait PROPERTIES TIMEOUT 30)
 endif()
