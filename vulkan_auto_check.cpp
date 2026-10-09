@@ -1607,6 +1607,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                                    bool expectNativeTypeRefusal, bool hotRecovery,
                                    bool expectDirectRecovery,
                                    bool unlockedWaitFixture,
+                                   bool finiteBarrierRecoveryFixture,
                                    bool unlockedColdWaitFixture,
                                    bool unlockedCapRollbackFixture,
                                    GetWarmRecoveryWaiters getWarmRecoveryWaiters,
@@ -1752,12 +1753,30 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
           "map cold-cycle staging memory");
 
     const auto recordResidentChildRead = [&](VkCommandBuffer command, VkDeviceSize offset) {
-        VkMemoryBarrier ready{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
-        ready.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-        ready.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
-        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-                             1, &ready, 0, nullptr, 0, nullptr);
+        if (finiteBarrierRecoveryFixture) {
+            VkMemoryBarrier stagingReady{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+            stagingReady.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT |
+                                         VK_ACCESS_TRANSFER_WRITE_BIT;
+            stagingReady.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            VkBufferMemoryBarrier ready{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            ready.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+            ready.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            ready.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ready.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ready.buffer = resident.handle;
+            ready.offset = offset;
+            ready.size = 4 * MiB;
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                 1, &stagingReady, 1, &ready, 0, nullptr);
+        } else {
+            VkMemoryBarrier ready{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+            ready.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+            ready.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                 1, &ready, 0, nullptr, 0, nullptr);
+        }
         VkBufferCopy copy{offset, 0, 4 * MiB};
         vkCmdCopyBuffer(command, resident.handle, staging.buffer, 1, &copy);
     };
@@ -2088,6 +2107,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                           << "disjoint=" << disjointProbe.submitCallMicros
                           << " matching=" << matchingProbe.submitCallMicros
                           << " unknown=" << unknownProbe.submitCallMicros << '\n';
+                std::cout << "overlap timings describe this held-hook gate only; they are not GPU latency or FPS measurements\n";
             } else {
                 require(matchingReachedSubmit && matchingBlocked && matchingFinished &&
                         !hookTimedOut && matchingProbe.error.empty(),
@@ -2095,7 +2115,10 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             }
             check(waitHook.clear(), "unregister unlocked recovery wait hook");
             if (unlockedWaitFixture) {
-                std::cout << "verified disjoint HOT progress; matching and unknown submits waited for rebind\n";
+                std::cout << "verified disjoint HOT progress; matching and unknown submits waited for rebind"
+                          << (finiteBarrierRecoveryFixture
+                              ? " with a finite child-range buffer barrier\n"
+                              : " with a global memory barrier\n");
             } else {
                 const auto coldAfterUse = context.stats();
                 require(coldAfterUse.coldLogicalBytes == 0 &&
@@ -3385,6 +3408,7 @@ int main(int argc, char** argv) try {
     bool coldCycleRecoveryFixture = false;
     bool expectDirectRecovery = false;
     bool unlockedRecoveryWaitFixture = false;
+    bool finiteBarrierRecoveryFixture = false;
     bool unlockedColdRecoveryWaitFixture = false;
     bool unlockedCapRollbackFixture = false;
     bool directRecoveryBatchFixture = false;
@@ -3413,6 +3437,11 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--unlocked-recovery-wait-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
             twoQueues=true; expectDirectRecovery=true; unlockedRecoveryWaitFixture=true;
+        }
+        else if (std::strcmp(argv[i], "--unlocked-recovery-finite-barrier-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
+            twoQueues=true; expectDirectRecovery=true; unlockedRecoveryWaitFixture=true;
+            finiteBarrierRecoveryFixture=true;
         }
         else if (std::strcmp(argv[i], "--unlocked-recovery-cold-wait-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
@@ -3618,12 +3647,14 @@ int main(int argc, char** argv) try {
             for (unsigned int transaction = 0; transaction < 5; ++transaction)
                 coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
                                               false, false,
-                                              true, false, false, false, nullptr, &submitSamples);
+                                              true, false, false, false, false, nullptr,
+                                              &submitSamples);
             printSubmitLatencySummary("five direct-recovery transactions", std::move(submitSamples));
         } else {
             coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
                                           expectNativeTypeRefusal, hotRecoveryFixture,
                                           expectDirectRecovery, unlockedRecoveryWaitFixture,
+                                          finiteBarrierRecoveryFixture,
                                           unlockedColdRecoveryWaitFixture,
                                           unlockedCapRollbackFixture,
                                           getWarmRecoveryWaiters);

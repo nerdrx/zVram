@@ -4576,6 +4576,26 @@ auto isForcedBuffer(const std::shared_ptr<Device>& d) {
         return found!=d->promotedBuffers.end() && found->second.concurrentForced;
     };
 }
+bool finiteTrackedBarrierRange(const Device& d,VkBuffer buffer,VkDeviceSize offset,VkDeviceSize size) {
+    if(!buffer || !size || size==VK_WHOLE_SIZE) return false;
+    const auto found=d.promotedBuffers.find(buffer);
+    return found!=d.promotedBuffers.end() && offset<found->second.size &&
+        size<=found->second.size-offset;
+}
+template<class Barrier>
+void recordBarrierBuffer(VkSubmissionTracker& tracker,VkCommandBuffer commandBuffer,
+                         const Device& d,const Barrier& barrier) {
+    if(barrier.pNext) {
+        tracker.unknown(commandBuffer);
+        return;
+    }
+    if(barrier.srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED &&
+       barrier.dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED &&
+       finiteTrackedBarrierRange(d,barrier.buffer,barrier.offset,barrier.size))
+        tracker.bufferRange(commandBuffer,barrier.buffer,barrier.offset,barrier.size,true);
+    else
+        tracker.buffer(commandBuffer,barrier.buffer);
+}
 VKAPI_ATTR void VKAPI_CALL layerCmdPipelineBarrier(VkCommandBuffer commandBuffer,
     VkPipelineStageFlags srcStage,VkPipelineStageFlags dstStage,VkDependencyFlags flags,
     std::uint32_t memoryCount,const VkMemoryBarrier* memoryBarriers,
@@ -4583,7 +4603,11 @@ VKAPI_ATTR void VKAPI_CALL layerCmdPipelineBarrier(VkCommandBuffer commandBuffer
     std::uint32_t imageCount,const VkImageMemoryBarrier* imageBarriers) {
     auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
     auto fn=reinterpret_cast<PFN_vkCmdPipelineBarrier>(d->gdpa(d->handle,"vkCmdPipelineBarrier"));
-    trackSubmission(d,[&](auto& t){for(std::uint32_t i=0;i<bufferCount;i++) t.buffer(commandBuffer,bufferBarriers[i].buffer);});
+    trackSubmission(d,[&](auto& t){
+        if(bufferCount && !bufferBarriers) { t.unknown(commandBuffer); return; }
+        for(std::uint32_t i=0;i<bufferCount;i++)
+            recordBarrierBuffer(t,commandBuffer,*d,bufferBarriers[i]);
+    });
     if(!d->autoInitialized) { if(fn) fn(commandBuffer,srcStage,dstStage,flags,memoryCount,memoryBarriers,bufferCount,bufferBarriers,imageCount,imageBarriers); return; }
     auto forced=isForcedBuffer(d);
     zvram::cmdPipelineBarrier(fn,forced,commandBuffer,srcStage,dstStage,flags,memoryCount,memoryBarriers,
@@ -4596,7 +4620,11 @@ VKAPI_ATTR void VKAPI_CALL layerCmdWaitEvents(VkCommandBuffer commandBuffer,
     std::uint32_t imageCount,const VkImageMemoryBarrier* imageBarriers) {
     auto d=findDevice(reinterpret_cast<VkDevice>(commandBuffer)); if(!d) return;
     auto fn=reinterpret_cast<PFN_vkCmdWaitEvents>(d->gdpa(d->handle,"vkCmdWaitEvents"));
-    trackSubmission(d,[&](auto& t){for(std::uint32_t i=0;i<bufferCount;i++) t.buffer(commandBuffer,bufferBarriers[i].buffer);});
+    trackSubmission(d,[&](auto& t){
+        if(bufferCount && !bufferBarriers) { t.unknown(commandBuffer); return; }
+        for(std::uint32_t i=0;i<bufferCount;i++)
+            recordBarrierBuffer(t,commandBuffer,*d,bufferBarriers[i]);
+    });
     if(!d->autoInitialized) { if(fn) fn(commandBuffer,eventCount,events,srcStage,dstStage,memoryCount,memoryBarriers,bufferCount,bufferBarriers,imageCount,imageBarriers); return; }
     auto forced=isForcedBuffer(d);
     zvram::cmdWaitEvents(fn,forced,commandBuffer,eventCount,events,srcStage,dstStage,memoryCount,memoryBarriers,
@@ -4608,9 +4636,11 @@ VKAPI_ATTR void VKAPI_CALL layerCmdPipelineBarrier2(VkCommandBuffer commandBuffe
     if(!fn) fn=reinterpret_cast<PFN_vkCmdPipelineBarrier2>(d->gdpa(d->handle,"vkCmdPipelineBarrier2KHR"));
     trackSubmission(d,[&](auto& t){
         if(!dependency || dependency->pNext) { t.unknown(commandBuffer); return; }
+        if(dependency->bufferMemoryBarrierCount && !dependency->pBufferMemoryBarriers) {
+            t.unknown(commandBuffer); return;
+        }
         for(std::uint32_t i=0;i<dependency->bufferMemoryBarrierCount;i++) {
-            if(dependency->pBufferMemoryBarriers[i].pNext) t.unknown(commandBuffer);
-            t.buffer(commandBuffer,dependency->pBufferMemoryBarriers[i].buffer);
+            recordBarrierBuffer(t,commandBuffer,*d,dependency->pBufferMemoryBarriers[i]);
         }
     });
     if(!d->autoInitialized) { if(fn) fn(commandBuffer,dependency); return; }
@@ -4622,12 +4652,15 @@ VKAPI_ATTR void VKAPI_CALL layerCmdWaitEvents2(VkCommandBuffer commandBuffer,std
     auto fn=reinterpret_cast<PFN_vkCmdWaitEvents2>(d->gdpa(d->handle,"vkCmdWaitEvents2"));
     if(!fn) fn=reinterpret_cast<PFN_vkCmdWaitEvents2>(d->gdpa(d->handle,"vkCmdWaitEvents2KHR"));
     trackSubmission(d,[&](auto& t){
+        if(eventCount && !dependencies) { t.unknown(commandBuffer); return; }
         for(std::uint32_t n=0;n<eventCount;n++) {
             const auto& dep=dependencies[n];
             if(dep.pNext) t.unknown(commandBuffer);
+            if(dep.bufferMemoryBarrierCount && !dep.pBufferMemoryBarriers) {
+                t.unknown(commandBuffer); continue;
+            }
             for(std::uint32_t i=0;i<dep.bufferMemoryBarrierCount;i++) {
-                if(dep.pBufferMemoryBarriers[i].pNext) t.unknown(commandBuffer);
-                t.buffer(commandBuffer,dep.pBufferMemoryBarriers[i].buffer);
+                recordBarrierBuffer(t,commandBuffer,*d,dep.pBufferMemoryBarriers[i]);
             }
         }
     });

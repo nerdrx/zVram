@@ -64,3 +64,23 @@ with all 32 MiB bytes intact, no additional freeze/restore/failure, and zero
 tracked and driver-allocation accounting after cleanup (`late-cap-details.txt`).
 Both Build workflows for d791d90 passed. This adds rollback proof, not a
 release or a game-performance claim.
+
+Finite buffer barriers now retain their named child ranges in all four barrier
+wrappers: pipeline barriers and wait events, legacy and synchronization2. Only
+promoted buffers with a nonzero finite in-bounds range, no extension chain, and
+both queue families ignored are narrowed. Whole-size, ownership, unsupported,
+and invalid cases retain whole/unknown handling; write classification remains
+conservative. Vulkan specifies buffer-barrier access scopes over the named
+[legacy range](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferMemoryBarrier.html)
+and [synchronization2 range](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferMemoryBarrier2.html).
+The driver receives the original synchronization unchanged.
+
+The new finite-barrier overlap gate passed in 0.29 seconds with actual pending
+waiter entry, child-one hot progress, child-zero/unknown blocking, full 32 MiB
+integrity, and empty cleanup (`finite-barrier-gpu-details.txt`). Thirteen normal
+CPU checks passed in 5.71 seconds; wrapper tests cover binding offsets, write
+tracking, and boundary/fallback cases. Native clean-cache plus unchanged
+conservative graphics gates passed in 1.20 seconds. Both normal/hook libraries
+and bootstrap targets built; all six test API names remain absent from the
+normal library. These are correctness and held-hook progress gates, not game
+latency/FPS measurements. Installed v0.4.19 remains unchanged.

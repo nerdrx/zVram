@@ -39,6 +39,7 @@ std::unordered_set<VkDeviceMemory> liveAllocations;
 unsigned trackedSyncForwards{};
 unsigned trackedLabelForwards{};
 unsigned unsupportedCommandForwards{};
+unsigned pipelineBarrierForwards{},waitEventsForwards{},pipelineBarrier2Forwards{},waitEvents2Forwards{};
 struct CapturedBufferBind { VkBuffer buffer{}; std::vector<VkSparseMemoryBind> binds; };
 std::vector<std::vector<CapturedBufferBind>> sparseBindCalls;
 struct CapturedMemoryBarrier {
@@ -171,10 +172,21 @@ VKAPI_ATTR void VKAPI_CALL mockPipelineBarrier(VkCommandBuffer,VkPipelineStageFl
     VkPipelineStageFlags dstStage,VkDependencyFlags,std::uint32_t memoryBarrierCount,
     const VkMemoryBarrier* memoryBarriers,std::uint32_t,const VkBufferMemoryBarrier*,
     std::uint32_t,const VkImageMemoryBarrier*) {
+    ++pipelineBarrierForwards;
     for(std::uint32_t i=0;i<memoryBarrierCount;i++)
         capturedMemoryBarriers.push_back({srcStage,dstStage,memoryBarriers[i].srcAccessMask,
                                          memoryBarriers[i].dstAccessMask});
 }
+VKAPI_ATTR void VKAPI_CALL mockWaitEvents(VkCommandBuffer,std::uint32_t,const VkEvent*,
+    VkPipelineStageFlags,VkPipelineStageFlags,std::uint32_t,const VkMemoryBarrier*,
+    std::uint32_t,const VkBufferMemoryBarrier*,std::uint32_t,const VkImageMemoryBarrier*) {
+    ++waitEventsForwards;
+}
+VKAPI_ATTR void VKAPI_CALL mockPipelineBarrier2(VkCommandBuffer,const VkDependencyInfo*) {
+    ++pipelineBarrier2Forwards;
+}
+VKAPI_ATTR void VKAPI_CALL mockWaitEvents2(VkCommandBuffer,std::uint32_t,const VkEvent*,
+    const VkDependencyInfo*) { ++waitEvents2Forwards; }
 VKAPI_ATTR void VKAPI_CALL mockCopyBuffer(VkCommandBuffer,VkBuffer,VkBuffer,std::uint32_t,const VkBufferCopy*) {}
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const char* name) {
     if(std::strcmp(name,"vkQueuePresentKHR")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockPresent);
@@ -198,6 +210,11 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const ch
     if(std::strcmp(name,"vkBeginCommandBuffer")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockBeginCommandBuffer);
     if(std::strcmp(name,"vkEndCommandBuffer")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockEndCommandBuffer);
     if(std::strcmp(name,"vkCmdPipelineBarrier")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockPipelineBarrier);
+    if(std::strcmp(name,"vkCmdWaitEvents")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockWaitEvents);
+    if(std::strcmp(name,"vkCmdPipelineBarrier2")==0 || std::strcmp(name,"vkCmdPipelineBarrier2KHR")==0)
+        return reinterpret_cast<PFN_vkVoidFunction>(mockPipelineBarrier2);
+    if(std::strcmp(name,"vkCmdWaitEvents2")==0 || std::strcmp(name,"vkCmdWaitEvents2KHR")==0)
+        return reinterpret_cast<PFN_vkVoidFunction>(mockWaitEvents2);
     if(std::strcmp(name,"vkCmdCopyBuffer")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCopyBuffer);
     if(std::strcmp(name,"vkQueueBindSparse")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSparse);
     if(std::strcmp(name,"vkQueueWaitIdle")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockQueueWait);
@@ -213,6 +230,7 @@ struct Fixture {
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
         allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); freedMemoryUserData.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr; mockDeviceWaitCalls=mockResetCommandPoolCalls=destroyedMockBuffers=destroyedMockFences=0; lastDestroyedBufferUserData=lastFreedMemoryUserData=nullptr; mockDeviceWaitResult=VK_SUCCESS;
+        pipelineBarrierForwards=waitEventsForwards=pipelineBarrier2Forwards=waitEvents2Forwards=0;
         { std::lock_guard<std::mutex> fenceLock(mockFenceMutex); mockFenceWaitEntered=false; mockFenceWaitRelease=false; mockFenceWaitResult=VK_SUCCESS; }
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
         mockHeapBudget=mockHeapUsage=mockNativeHeapSize=0;
@@ -1725,6 +1743,152 @@ void checkNoActionCommandHooksStaySelective() {
     { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(f.handle)); }
 }
 
+struct BarrierRangeFixture {
+    Fixture f{16*MiB,16*MiB};
+    VkBuffer buffer{};
+    VkCommandBuffer command{};
+    explicit BarrierRangeFixture(VkDeviceSize bindOffset=0) {
+        auto& d=f.device;
+        d.rangeChunkBytes=4*MiB; d.narrowDescriptorRanges=true;
+        buffer=f.bind(bindOffset,8*MiB);
+        d.promotedBuffers[buffer]=PromotedBuffer{};
+        d.promotedBuffers[buffer].size=8*MiB;
+        d.promotedBuffers[buffer].memory=f.memory;
+        f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+        d.handle=f.handle; d.gdpa=mockGetDeviceProcAddr;
+        d.virtualEnabled=true; d.selectiveRestore=true;
+        command=reinterpret_cast<VkCommandBuffer>(&f.dispatchWord);
+        VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        allocate.commandPool=tokenHandle<VkCommandPool>(0xb100); allocate.commandBufferCount=1;
+        d.submission.allocateCommands(&allocate,&command);
+        d.submission.beginCommand(command);
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices[key(f.handle)]=std::shared_ptr<Device>(&d,[](Device*){});
+    }
+    ~BarrierRangeFixture() {
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices.erase(key(f.handle));
+    }
+    void begin() { f.device.submission.beginCommand(command); }
+    void expectChild(std::uint32_t expected,const char* message) {
+        std::vector<VkSubmissionTracker::BufferRange> ranges;
+        std::vector<ActiveRefs::Use> uses;
+        const char* reason=nullptr;
+        require(f.device.submission.collectRanges(1,&command,ranges,&reason) && !reason && ranges.size()==1,
+                "finite barrier did not produce one known tracked range");
+        require(ranges[0].mayWrite,"barrier stopped conservatively tracking writes");
+        require(commandMemories(f.device,{command},uses,false) && uses.size()==1 &&
+                uses[0].memory==f.memory && uses[0].child==expected,message);
+        uses.clear();
+        require(commandMemories(f.device,{command},uses,true) && uses.size()==1 &&
+                uses[0].child==expected,"writes-only tracking omitted a barrier target");
+    }
+    void expectWhole(const char* message) {
+        std::vector<VkSubmissionTracker::BufferRange> ranges;
+        std::vector<ActiveRefs::Use> uses;
+        const char* reason=nullptr;
+        require(f.device.submission.collectRanges(1,&command,ranges,&reason) && !reason && ranges.size()==1,
+                "fallback barrier did not retain a known whole-buffer range");
+        require(ranges[0].offset==0 && ranges[0].size==VK_WHOLE_SIZE,
+                "fallback barrier narrowed an unsupported range");
+        require(commandMemories(f.device,{command},uses,false) && uses.size()==2 &&
+                uses[0].child==0 && uses[1].child==1,message);
+    }
+    void expectUnknown(const char* message) {
+        std::vector<VkSubmissionTracker::BufferRange> ranges;
+        std::vector<ActiveRefs::Use> uses;
+        const char* reason=nullptr;
+        require(!f.device.submission.collectRanges(1,&command,ranges,&reason) && reason &&
+                !commandMemories(f.device,{command},uses,false),message);
+    }
+};
+
+void checkFiniteBufferBarrierTracking() {
+    const VkEvent event=tokenHandle<VkEvent>(0xb200);
+    {
+        BarrierRangeFixture x;
+        VkBufferMemoryBarrier b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        b.srcQueueFamilyIndex=b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        b.buffer=x.buffer; b.offset=4*MiB; b.size=4*MiB;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        x.expectChild(1,"legacy pipeline barrier did not select child 1");
+        require(pipelineBarrierForwards==1,"legacy pipeline barrier was not forwarded");
+    }
+    {
+        BarrierRangeFixture x(4*MiB);
+        VkBufferMemoryBarrier b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        b.srcQueueFamilyIndex=b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        b.buffer=x.buffer; b.offset=0; b.size=4*MiB;
+        layerCmdWaitEvents(x.command,1,&event,0,0,0,nullptr,1,&b,0,nullptr);
+        x.expectChild(1,"legacy wait-events range ignored buffer binding offset");
+        require(waitEventsForwards==1,"legacy wait-events was not forwarded");
+    }
+    {
+        BarrierRangeFixture x;
+        VkBufferMemoryBarrier2 b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+        b.srcQueueFamilyIndex=b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        b.buffer=x.buffer; b.offset=0; b.size=4*MiB;
+        VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dep.bufferMemoryBarrierCount=1; dep.pBufferMemoryBarriers=&b;
+        layerCmdPipelineBarrier2(x.command,&dep);
+        x.expectChild(0,"sync2 pipeline barrier did not select child 0");
+        require(pipelineBarrier2Forwards==1,"sync2 pipeline barrier was not forwarded");
+    }
+    {
+        BarrierRangeFixture x;
+        VkBufferMemoryBarrier2 b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+        b.srcQueueFamilyIndex=b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        b.buffer=x.buffer; b.offset=4*MiB; b.size=4*MiB;
+        VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dep.bufferMemoryBarrierCount=1; dep.pBufferMemoryBarriers=&b;
+        layerCmdWaitEvents2(x.command,1,&event,&dep);
+        x.expectChild(1,"sync2 wait-events range did not select child 1");
+        require(waitEvents2Forwards==1,"sync2 wait-events was not forwarded");
+    }
+    {
+        BarrierRangeFixture x;
+        VkBufferMemoryBarrier b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        b.srcQueueFamilyIndex=b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        b.buffer=x.buffer; b.offset=0; b.size=VK_WHOLE_SIZE;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        x.expectWhole("whole-size barrier did not conservatively select all children");
+        x.begin(); b.offset=UINT64_MAX-4; b.size=16;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        x.expectWhole("overflowing barrier range was not widened");
+        x.begin(); b.offset=4*MiB; b.size=8*MiB;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        x.expectWhole("out-of-buffer barrier range was not widened");
+        x.begin(); b.offset=8*MiB; b.size=1;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        x.expectWhole("barrier beginning at buffer end was not widened");
+        x.begin(); b.offset=0; b.size=0;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        x.expectWhole("zero-size barrier was not widened");
+        x.begin(); b.offset=0; b.size=4*MiB; b.dstQueueFamilyIndex=0;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        x.expectWhole("queue-family ownership transfer was narrowed");
+        x.begin(); b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        VkBaseInStructure ext{static_cast<VkStructureType>(0x7ffffffe),nullptr}; b.pNext=&ext;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        x.expectUnknown("barrier extension chain did not preserve unknown fallback");
+        x.begin(); b.pNext=nullptr;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,nullptr,0,nullptr);
+        x.expectUnknown("null barrier array with nonzero count was not marked unknown");
+        x.begin(); VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO}; dep.pNext=&ext;
+        layerCmdPipelineBarrier2(x.command,&dep);
+        x.expectUnknown("sync2 dependency extension did not preserve unknown fallback");
+        x.begin();
+        x.f.device.promotedBuffers.erase(x.buffer);
+        b.pNext=nullptr; b.offset=0; b.size=4*MiB;
+        layerCmdPipelineBarrier(x.command,0,0,0,0,nullptr,1,&b,0,nullptr);
+        std::vector<VkSubmissionTracker::BufferRange> ranges;
+        const char* reason=nullptr;
+        require(x.f.device.submission.collectRanges(1,&x.command,ranges,&reason) && !reason &&
+                ranges.size()==1 && ranges[0].offset==0 && ranges[0].size==VK_WHOLE_SIZE,
+                "missing promoted-buffer size metadata was narrowed");
+    }
+}
+
 void checkAllocationFailureRetry() {
     Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); auto& m=f.state();
     failAllocations=1;
@@ -1775,6 +1939,7 @@ int main() try {
     checkAsyncSnapshotEncodingRoundTrip();
     checkAsyncEncoderReleasesBothGates();
     checkNoActionCommandHooksStaySelective();
+    checkFiniteBufferBarrierTracking();
     checkAllocationFailureRetry();
     checkBindFailureAccounting();
     checkMergedRestoreMapping();
