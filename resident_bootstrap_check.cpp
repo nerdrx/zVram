@@ -5,6 +5,7 @@
 #include <iostream>
 #include <unordered_set>
 #include <stdexcept>
+#include <condition_variable>
 
 namespace {
 constexpr VkDeviceSize MiB = 1024ull * 1024ull;
@@ -45,6 +46,16 @@ struct CapturedMemoryBarrier {
     VkAccessFlags srcAccess{},dstAccess{};
 };
 std::vector<CapturedMemoryBarrier> capturedMemoryBarriers;
+std::mutex mockFenceMutex;
+std::condition_variable mockFenceCondition;
+bool mockFenceWaitEntered{},mockFenceWaitRelease{};
+VkResult mockFenceWaitResult{VK_SUCCESS};
+std::uint32_t mockDeviceWaitCalls{},mockResetCommandPoolCalls{};
+VkResult mockDeviceWaitResult{VK_SUCCESS};
+std::uint32_t destroyedMockBuffers{},destroyedMockFences{};
+const void* lastDestroyedBufferUserData{};
+const void* lastFreedMemoryUserData{};
+std::unordered_map<VkDeviceMemory,const void*> freedMemoryUserData;
 
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
 void requireColdLogicalMatchesState(const Device& d,const char* message) {
@@ -61,7 +72,8 @@ VKAPI_ATTR VkResult VKAPI_CALL mockCreateBuffer(VkDevice,const VkBufferCreateInf
     const VkAllocationCallbacks*,VkBuffer* out) {
     *out=tokenHandle<VkBuffer>(nextHandle++); bufferSizes[*out]=info->size; return VK_SUCCESS;
 }
-VKAPI_ATTR void VKAPI_CALL mockDestroyBuffer(VkDevice,VkBuffer buffer,const VkAllocationCallbacks*) {
+VKAPI_ATTR void VKAPI_CALL mockDestroyBuffer(VkDevice,VkBuffer buffer,const VkAllocationCallbacks* allocator) {
+    ++destroyedMockBuffers; lastDestroyedBufferUserData=allocator?allocator->pUserData:nullptr;
     bufferSizes.erase(buffer);
 }
 VKAPI_ATTR void VKAPI_CALL mockGetBufferMemoryRequirements(VkDevice,VkBuffer buffer,VkMemoryRequirements* req) {
@@ -75,8 +87,9 @@ VKAPI_ATTR VkResult VKAPI_CALL mockAllocate(VkDevice,const VkMemoryAllocateInfo*
     if(failAllocationTypes.count(info->memoryTypeIndex)) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
     *out=tokenHandle<VkDeviceMemory>(nextHandle++); liveAllocations.insert(*out); return VK_SUCCESS;
 }
-VKAPI_ATTR void VKAPI_CALL mockFree(VkDevice,VkDeviceMemory memory,const VkAllocationCallbacks*) {
-    ++frees; liveAllocations.erase(memory);
+VKAPI_ATTR void VKAPI_CALL mockFree(VkDevice,VkDeviceMemory memory,const VkAllocationCallbacks* allocator) {
+    ++frees; lastFreedMemoryUserData=allocator?allocator->pUserData:nullptr; liveAllocations.erase(memory);
+    freedMemoryUserData[memory]=lastFreedMemoryUserData;
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockSparse(VkQueue,std::uint32_t count,const VkBindSparseInfo* infos,VkFence) {
     ++sparseBinds;
@@ -98,7 +111,7 @@ VKAPI_ATTR VkResult VKAPI_CALL mockQueueWait(VkQueue) {
     ++queueWaitCalls;
     return failQueueWaitAt==queueWaitCalls?failQueueWaitResult:VK_SUCCESS;
 }
-VKAPI_ATTR VkResult VKAPI_CALL mockDeviceWait(VkDevice) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockDeviceWait(VkDevice) { ++mockDeviceWaitCalls; return mockDeviceWaitResult; }
 VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDeviceMemoryProperties2* out) {
     ++budgetQueries;
     out->memoryProperties.memoryHeapCount=2;
@@ -128,8 +141,15 @@ VKAPI_ATTR void VKAPI_CALL mockSetLineWidth(VkCommandBuffer,float) { ++unsupport
 VKAPI_ATTR VkResult VKAPI_CALL mockCreateFence(VkDevice,const VkFenceCreateInfo*,const VkAllocationCallbacks*,VkFence* out) {
     *out=tokenHandle<VkFence>(nextHandle++); return VK_SUCCESS;
 }
-VKAPI_ATTR void VKAPI_CALL mockDestroyFence(VkDevice,VkFence,const VkAllocationCallbacks*) {}
+VKAPI_ATTR void VKAPI_CALL mockDestroyFence(VkDevice,VkFence,const VkAllocationCallbacks*) { ++destroyedMockFences; }
 VKAPI_ATTR VkResult VKAPI_CALL mockFenceStatus(VkDevice,VkFence) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockWaitForFences(VkDevice,std::uint32_t,const VkFence*,VkBool32,std::uint64_t) {
+    std::unique_lock<std::mutex> lock(mockFenceMutex);
+    mockFenceWaitEntered=true; mockFenceCondition.notify_all();
+    if(!mockFenceCondition.wait_for(lock,std::chrono::seconds(5),[]{return mockFenceWaitRelease;}))
+        return VK_TIMEOUT;
+    return mockFenceWaitResult;
+}
 VKAPI_ATTR VkResult VKAPI_CALL mockResetFences(VkDevice,std::uint32_t,const VkFence*) { return VK_SUCCESS; }
 VKAPI_ATTR VkResult VKAPI_CALL mockCreateSemaphore(VkDevice,const VkSemaphoreCreateInfo*,const VkAllocationCallbacks*,VkSemaphore* out) {
     *out=tokenHandle<VkSemaphore>(nextHandle++); return VK_SUCCESS;
@@ -140,7 +160,9 @@ VKAPI_ATTR VkResult VKAPI_CALL mockSubmit(VkQueue,std::uint32_t count,const VkSu
                           (applicationSubmitInfo && infos==applicationSubmitInfo))) ++submitCalls;
     return VK_SUCCESS;
 }
-VKAPI_ATTR VkResult VKAPI_CALL mockResetCommandPool(VkDevice,VkCommandPool,VkCommandPoolResetFlags) { return VK_SUCCESS; }
+VKAPI_ATTR VkResult VKAPI_CALL mockResetCommandPool(VkDevice,VkCommandPool,VkCommandPoolResetFlags) {
+    ++mockResetCommandPoolCalls; return VK_SUCCESS;
+}
 VKAPI_ATTR VkResult VKAPI_CALL mockBeginCommandBuffer(VkCommandBuffer,const VkCommandBufferBeginInfo*) { return VK_SUCCESS; }
 VKAPI_ATTR VkResult VKAPI_CALL mockEndCommandBuffer(VkCommandBuffer) {
     const auto result=mockEndCommandResult; mockEndCommandResult=VK_SUCCESS; return result;
@@ -166,6 +188,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const ch
     if(std::strcmp(name,"vkCmdSetLineWidth")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSetLineWidth);
     if(std::strcmp(name,"vkCreateFence")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCreateFence);
     if(std::strcmp(name,"vkDestroyFence")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockDestroyFence);
+    if(std::strcmp(name,"vkWaitForFences")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockWaitForFences);
     if(std::strcmp(name,"vkGetFenceStatus")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockFenceStatus);
     if(std::strcmp(name,"vkResetFences")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockResetFences);
     if(std::strcmp(name,"vkCreateSemaphore")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCreateSemaphore);
@@ -189,7 +212,8 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr;
+        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); freedMemoryUserData.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr; mockDeviceWaitCalls=mockResetCommandPoolCalls=destroyedMockBuffers=destroyedMockFences=0; lastDestroyedBufferUserData=lastFreedMemoryUserData=nullptr; mockDeviceWaitResult=VK_SUCCESS;
+        { std::lock_guard<std::mutex> fenceLock(mockFenceMutex); mockFenceWaitEntered=false; mockFenceWaitRelease=false; mockFenceWaitResult=VK_SUCCESS; }
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
         mockHeapBudget=mockHeapUsage=mockNativeHeapSize=0;
         device.handle=handle; device.autoEnabled=true; device.lazyBacking=true;
@@ -494,6 +518,120 @@ struct ColdCycleFixture {
     }
 };
 
+void checkGatedRecoveryTeardownCleanup() {
+    for(const auto idleResult:{VK_SUCCESS,VK_ERROR_DEVICE_LOST}) {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        d.autoInitialized=true; d.gpuRestoreUnsafe=true; d.gpuGateError=VK_ERROR_DEVICE_LOST;
+        d.snapshot.destroyFence=mockDestroyFence;
+        d.pendingWarmRecovery.fence=tokenHandle<VkFence>(0xc031);
+        const auto replacement=tokenHandle<VkDeviceMemory>(0xc032);
+        const auto destination=tokenHandle<VkBuffer>(0xc033);
+        liveAllocations.insert(replacement); bufferSizes[destination]=MiB;
+        m.trackPhysicalStats=true; d.liveOther=MiB; d.liveLocal=MiB;
+        d.retainedWarmRecoveries.push_back({c.nonlocal,replacement,m.poolViews[0],destination,1,0,MiB});
+        mockDeviceWaitResult=idleResult;
+        require(waitForDeviceTeardown(d) && d.teardownGpuIdleProven && d.gpuRestoreUnsafe,
+                "success/device-lost teardown did not authorize gated resource cleanup while preserving gate");
+        cleanupRetainedWarmRecoveriesAfterIdle(d);
+        releaseChildren(d,m);
+        require(frees==2 && !liveAllocations.count(c.nonlocal) && !liveAllocations.count(replacement) &&
+                destroyedMockBuffers==2 && bufferSizes.empty() && destroyedMockFences==1 &&
+                d.retainedWarmRecoveries.empty() && !d.pendingWarmRecovery.fence &&
+                d.liveLocal==0 && d.liveOther==0 && d.gpuGateError==VK_ERROR_DEVICE_LOST,
+                "safe teardown did not destroy each retained/ordinary resource exactly once");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        d.autoInitialized=true; d.gpuRestoreUnsafe=true; d.gpuGateError=VK_ERROR_DEVICE_LOST;
+        d.snapshot.destroyFence=mockDestroyFence;
+        d.pendingWarmRecovery.fence=tokenHandle<VkFence>(0xc041);
+        const auto replacement=tokenHandle<VkDeviceMemory>(0xc042);
+        const auto destination=tokenHandle<VkBuffer>(0xc043);
+        liveAllocations.insert(replacement); bufferSizes[destination]=MiB;
+        d.retainedWarmRecoveries.push_back({c.nonlocal,replacement,m.poolViews[0],destination,1,0,MiB});
+        mockDeviceWaitResult=VK_ERROR_OUT_OF_HOST_MEMORY;
+        require(!waitForDeviceTeardown(d) && !d.teardownGpuIdleProven && d.gpuRestoreUnsafe &&
+                d.gpuGateError==VK_ERROR_DEVICE_LOST,
+                "unrelated wait failure incorrectly authorized gated GPU cleanup or overwrote the gate diagnostic");
+        cleanupRetainedWarmRecoveriesAfterIdle(d);
+        require(frees==0 && destroyedMockBuffers==0 && destroyedMockFences==0 &&
+                liveAllocations.count(c.nonlocal) && liveAllocations.count(replacement) &&
+                bufferSizes.count(m.poolViews[0]) && bufferSizes.count(destination) &&
+                d.retainedWarmRecoveries.size()==1 && d.pendingWarmRecovery.fence,
+                "unproven idle teardown destroyed a retained backing, view, or fence prematurely");
+    }
+}
+
+void checkDeferredPromotedBufferDestroy() {
+    ColdCycleFixture c; c.f.handle=reinterpret_cast<VkDevice>(&c.f.dispatchWord);
+    auto& d=c.f.device; d.handle=c.f.handle;
+    d.autoInitialized=true; d.gpuGateError=VK_ERROR_DEVICE_LOST;
+    d.snapshot.deviceWaitIdle=mockDeviceWait; d.destroyBuffer=mockDestroyBuffer;
+    const auto buffer=tokenHandle<VkBuffer>(0xc051);
+    bufferSizes[buffer]=MiB;
+    PromotedBuffer promoted{}; promoted.size=MiB;
+    d.promotedBuffers.emplace(buffer,promoted);
+    int allocatorTag{}; VkAllocationCallbacks callbacks{}; callbacks.pUserData=&allocatorTag;
+    {
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices[key(d.handle)]=std::shared_ptr<Device>(&d,[](Device*){});
+    }
+    layerDestroyBuffer(d.handle,buffer,&callbacks);
+    require(d.promotedBuffers.count(buffer)==1 && d.promotedBuffers.at(buffer).deferredDestroy &&
+            destroyedMockBuffers==0 && bufferSizes.count(buffer),
+            "gated application destroy was not retained without touching the buffer");
+    const auto untrackedBuffer=tokenHandle<VkBuffer>(0xc054);
+    bufferSizes[untrackedBuffer]=MiB;
+    layerDestroyBuffer(d.handle,untrackedBuffer,nullptr);
+    require(destroyedMockBuffers==1 && !bufferSizes.count(untrackedBuffer),
+            "ordinary untracked buffer destroy was swallowed by the recovery gate");
+    const auto memory=tokenHandle<VkDeviceMemory>(0xc052);
+    Allocation allocation{}; allocation.size=MiB; allocation.local=true; allocation.type=0;
+    allocation.nativeHandle=memory; d.allocations.emplace(memory,allocation);
+    const auto memoryNull=tokenHandle<VkDeviceMemory>(0xc055);
+    Allocation unwrappedNull{}; unwrappedNull.size=MiB; unwrappedNull.local=true; unwrappedNull.type=0;
+    unwrappedNull.nativeHandle=memoryNull; d.allocations.emplace(memoryNull,unwrappedNull);
+    const auto memoryWrapped=tokenHandle<VkDeviceMemory>(0xc056);
+    const auto wrappedNative=tokenHandle<VkDeviceMemory>(0xc057);
+    int originalAllocatorTag{}; VkAllocationCallbacks originalCallbacks{};
+    originalCallbacks.pUserData=&originalAllocatorTag;
+    Allocation wrapped{}; wrapped.size=MiB; wrapped.local=true; wrapped.type=0;
+    wrapped.nativeHandle=wrappedNative; wrapped.wrapped=true; wrapped.hasCallbacks=true;
+    wrapped.callbacks=originalCallbacks; d.allocations.emplace(memoryWrapped,wrapped);
+    d.liveLocal=3*MiB; liveAllocations.insert(memory); liveAllocations.insert(memoryNull);
+    liveAllocations.insert(wrappedNative);
+    layerFreeMemory(d.handle,memory,&callbacks);
+    layerFreeMemory(d.handle,memoryNull,nullptr);
+    layerFreeMemory(d.handle,memoryWrapped,&callbacks);
+    require(d.allocations.count(memory)==1 && d.allocations.at(memory).deferredFree &&
+            d.allocations.at(memoryNull).deferredFree && d.allocations.at(memoryWrapped).deferredFree &&
+            frees==0,
+            "gated native free was not deferred with the allocation still tracked");
+    mockDeviceWaitResult=VK_ERROR_OUT_OF_HOST_MEMORY;
+    require(!waitForDeviceTeardown(d),"unrelated wait error incorrectly proved safe teardown");
+    destroyDeferredPromotedBuffersAfterIdle(d);
+    releaseDeferredNativeFreesAfterIdle(d);
+    require(d.promotedBuffers.count(buffer)==1 && d.allocations.count(memory)==1 &&
+            d.allocations.count(memoryNull)==1 && d.allocations.count(memoryWrapped)==1 &&
+            destroyedMockBuffers==1 && frees==0 && bufferSizes.count(buffer) &&
+            liveAllocations.count(memory) && liveAllocations.count(memoryNull) &&
+            liveAllocations.count(wrappedNative),
+            "deferred app buffer or memory was destroyed before idle/lost proof");
+    mockDeviceWaitResult=VK_ERROR_DEVICE_LOST;
+    require(waitForDeviceTeardown(d),"device-lost teardown was not accepted as completion proof");
+    destroyDeferredPromotedBuffersAfterIdle(d);
+    releaseDeferredNativeFreesAfterIdle(d);
+    require(d.promotedBuffers.count(buffer)==0 && d.allocations.count(memory)==0 &&
+            d.allocations.count(memoryNull)==0 && d.allocations.count(memoryWrapped)==0 &&
+            destroyedMockBuffers==2 && frees==3 && !bufferSizes.count(buffer) &&
+            !liveAllocations.count(memory) && !liveAllocations.count(memoryNull) &&
+            !liveAllocations.count(wrappedNative) && lastDestroyedBufferUserData==&allocatorTag &&
+            freedMemoryUserData.at(memory)==&allocatorTag && freedMemoryUserData.at(memoryNull)==nullptr &&
+            freedMemoryUserData.at(wrappedNative)==&originalAllocatorTag && d.liveLocal==0,
+            "safe teardown did not honor deferred buffer/memory releases and their callbacks exactly once");
+    std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(d.handle));
+}
+
 void checkColdCyclePromotionAndFailureRetry() {
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
@@ -630,6 +768,261 @@ void checkColdCycleCandidateZeroLiveOther() {
     require(!selectColdCycleCandidate(d,64*MiB,std::chrono::steady_clock::now(),candidate,child) &&
             candidate==VK_NULL_HANDLE && child==0,
             "zero tracked nonlocal bytes did not clear recovery candidate outputs");
+}
+
+PendingWarmRecovery pendingWarmRecoveryFor(ColdCycleFixture& c) {
+    auto& m=c.f.state();
+    PendingWarmRecovery pending{};
+    pending.memory=c.f.memory; pending.allocationGeneration=m.identityGeneration;
+    pending.bindingGeneration=m.bindingGeneration; pending.childGeneration=m.childGenerations[0];
+    pending.child=0; pending.oldBacking=m.children[0]; pending.sourceView=m.poolViews[0];
+    pending.destinationView=tokenHandle<VkBuffer>(0xc2fe); pending.oldType=m.childTypes[0];
+    pending.newType=0; pending.size=MiB; pending.fence=tokenHandle<VkFence>(0xc2fd);
+    return pending;
+}
+
+void checkPendingWarmRecoveryTokenAndQueueGates() {
+    ColdCycleFixture c; auto& d=c.f.device;
+    d.pendingWarmRecovery=pendingWarmRecoveryFor(c); d.pendingWarmRecovery.active=true;
+    const auto valid=d.pendingWarmRecovery;
+    require(pendingWarmRecoveryTokenValid(d,valid),"valid recovery lifetime key was rejected");
+    auto stale=valid; ++stale.allocationGeneration;
+    require(!pendingWarmRecoveryTokenValid(d,stale),"recovery token survived allocation replacement");
+    stale=valid; ++stale.childGeneration;
+    require(!pendingWarmRecoveryTokenValid(d,stale),"recovery token survived child replacement");
+    stale=valid; ++stale.bindingGeneration;
+    require(!pendingWarmRecoveryTokenValid(d,stale),"recovery token survived alias mutation");
+    stale=valid; stale.oldBacking=tokenHandle<VkDeviceMemory>(0xc2fc);
+    require(!pendingWarmRecoveryTokenValid(d,stale),"recovery token survived backing replacement");
+    const std::vector<ActiveRefs::Use> empty{};
+    const std::vector<ActiveRefs::Use> hotDisjoint{{tokenHandle<VkDeviceMemory>(0xc2fb),0}};
+    const std::vector<ActiveRefs::Use> exact{{c.f.memory,0}};
+    const std::vector<ActiveRefs::Use> whole{{c.f.memory,SIZE_MAX}};
+    require(!warmRecoveryBlocksUses(d,true,empty) &&
+            !warmRecoveryBlocksUses(d,true,hotDisjoint) &&
+            warmRecoveryBlocksUses(d,false,empty) &&
+            warmRecoveryBlocksUses(d,true,exact) && warmRecoveryBlocksUses(d,true,whole),
+            "pending recovery queue-use gate mishandled empty, unknown, matching, or disjoint uses");
+    d.coldLogicalBytes=1;
+    require(!warmRecoveryBlocksUses(d,true,empty) && warmRecoveryBlocksUses(d,true,hotDisjoint),
+            "cold restore did not block nonempty submissions while preserving empty signals");
+    const auto replacement=tokenHandle<VkDeviceMemory>(0xc2fa);
+    d.retainedWarmRecoveries.push_back({valid.oldBacking,replacement,valid.sourceView,
+                                        valid.destinationView,valid.oldType,valid.newType,valid.size});
+    d.pendingWarmRecovery=valid; d.pendingWarmRecovery.active=true;
+    stale=valid; ++stale.bindingGeneration;
+    require(!finalizeWarmRecoveryLocked(d,stale) && d.gpuRestoreUnsafe &&
+            d.gpuGateError==VK_ERROR_DEVICE_LOST && sparseBinds==0 && frees==0 &&
+            d.retainedWarmRecoveries.size()==1,
+            "stale pending recovery token rebound or freed owned backing resources");
+}
+
+void checkPendingKnownEmptyQueueCallSkipsColdRestore() {
+    Fixture f(MiB,MiB); auto& d=f.device;
+    f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord); d.handle=f.handle;
+    d.gdpa=mockGetDeviceProcAddr; d.virtualEnabled=true; d.autoInitialized=true;
+    d.residentAdmissionArmed=true; d.activeEviction=false; d.selectiveRestore=true;
+    const auto queue=reinterpret_cast<VkQueue>(f.handle);
+    const std::vector<VkQueue> queues{queue,d.sparseQueue};
+    require(d.autoQueues.init(d.handle,d.gdpa,d.sparseQueue,queues,false)==VK_SUCCESS,
+            "empty-signal pending fixture failed to initialize automatic queues");
+    VirtualMemory cold{}; cold.size=MiB; cold.children={VK_NULL_HANDLE};
+    cold.childSizes={MiB}; cold.childTypes={0}; cold.childGenerations={1};
+    cold.poolViews={tokenHandle<VkBuffer>(0xd100)}; cold.poolViewMemoryTypeBits={1};
+    cold.coldGroups.resize(1); cold.cold=true; cold.coldLogicalSize=MiB;
+    cold.coldGroups[0].cold=true; cold.coldGroups[0].pristine=true;
+    cold.coldGroups[0].logicalBytes=MiB; cold.coldGroups[0].lastUse=std::chrono::steady_clock::now();
+    cold.backingMemoryTypeBits=1;
+    d.virtualMemory.at(f.memory)=std::move(cold); d.coldLogicalBytes=MiB;
+    d.pendingWarmRecovery.active=true; d.pendingWarmRecovery.memory=tokenHandle<VkDeviceMemory>(0xd101);
+    VkSubmitInfo empty{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    const VkSubmitInfo* emptyInfo=&empty;
+    applicationSubmitInfo=&empty;
+    {
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices[key(f.handle)]=std::shared_ptr<Device>(&d,[](Device*){});
+    }
+    const auto oldUnknownProc=unknownCommandProc.exchange(false);
+    std::vector<ActiveRefs::Use> emptyUses;
+    const bool emptyKnown=queueMemories(d,"vkQueueSubmit",emptyUses,std::uint32_t{1},emptyInfo,VkFence{});
+    if(!emptyKnown || !emptyUses.empty()) {
+        unknownCommandProc.store(oldUnknownProc);
+        std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(f.handle));
+        applicationSubmitInfo=nullptr;
+        require(false,"empty signal was not classified as known by the queue tracker");
+    }
+    const auto result=queueCall<PFN_vkQueueSubmit>(queue,"vkQueueSubmit",std::uint32_t{1},emptyInfo,VkFence{});
+    unknownCommandProc.store(oldUnknownProc);
+    {
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices.erase(key(f.handle));
+    }
+    applicationSubmitInfo=nullptr;
+    const auto coldFound=d.virtualMemory.find(f.memory);
+    const bool coldGroupRemains=coldFound!=d.virtualMemory.end() &&
+        !coldFound->second.coldGroups.empty() && coldFound->second.coldGroups[0].cold;
+    require(result==VK_SUCCESS && submitCalls==1 && mockDeviceWaitCalls==0 &&
+            mockResetCommandPoolCalls==0 && allocations==0 && d.coldLogicalBytes==MiB &&
+            coldGroupRemains && d.pendingWarmRecovery.active,
+            "known-empty submit touched the cold restore/shared command-pool path while recovery was pending");
+}
+
+void checkPendingAdmissionRequestsFullPreflightRetry() {
+    Fixture f(MiB,MiB); auto& d=f.device;
+    d.pendingWarmRecovery.active=true; d.pendingWarmRecovery.memory=tokenHandle<VkDeviceMemory>(0xd201);
+    VirtualMemory memory{}; memory.children={VK_NULL_HANDLE}; memory.childSizes={MiB}; memory.childTypes={0};
+    d.virtualMemory.at(f.memory)=std::move(memory);
+    d.residentBytes=MiB; d.coldLogicalBytes=MiB;
+    VkBaseInStructure unknown{static_cast<VkStructureType>(0x7fffffff),nullptr};
+    VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.pNext=&unknown;
+    const auto result=admitTrackedSubmit(d,"vkQueueSubmit",1,&submit,VkFence{});
+    require(result==VK_NOT_READY && d.pendingRecoveryAdmissionWait && allocations==0 &&
+            d.residentBytes==MiB && d.coldLogicalBytes==MiB,
+            "pending admission eviction did not request queue preflight retry without mutation");
+}
+
+void checkUnlockedRecoveryAbortsAfterExternalGate() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    d.unlockedWarmRecoveryWait=true;
+    d.snapshot.createFence=mockCreateFence; d.snapshot.destroyFence=mockDestroyFence;
+    d.snapshot.waitForFences=mockWaitForFences;
+    require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && d.pendingWarmRecovery.active,
+            "external-gate fixture did not begin fenced recovery");
+    const auto sparseBeforeWait=sparseBinds;
+    std::atomic<bool> finished{true};
+    std::thread worker([&] {
+        std::unique_lock<std::mutex> deviceLock(d.mutex),queueLock(d.queueMutex);
+        finished=finishPendingWarmRecoveryLocked(d,deviceLock,queueLock);
+    });
+    bool fenceEntered=false;
+    {
+        std::unique_lock<std::mutex> lock(mockFenceMutex);
+        fenceEntered=mockFenceCondition.wait_for(lock,std::chrono::seconds(5),[]{return mockFenceWaitEntered;});
+    }
+    {
+        std::lock_guard<std::mutex> lock(d.mutex);
+        d.gpuGateError=VK_ERROR_DEVICE_LOST;
+        d.autoEnabled=false; d.stopWorker.store(true);
+    }
+    {
+        std::lock_guard<std::mutex> lock(mockFenceMutex);
+        mockFenceWaitRelease=true;
+    }
+    mockFenceCondition.notify_all(); worker.join();
+    const auto& retained=d.retainedWarmRecoveries.at(0);
+    require(fenceEntered && !finished && !d.pendingWarmRecovery.active && d.gpuRestoreUnsafe &&
+            d.gpuGateError==VK_ERROR_DEVICE_LOST && m.children[0]==c.nonlocal && m.childTypes[0]==1 &&
+            liveAllocations.count(retained.oldBacking) && liveAllocations.count(retained.replacement) &&
+            bufferSizes.count(retained.destinationView) && frees==0 && sparseBinds==sparseBeforeWait,
+            "external device gate during fence wait allowed sparse commit or released retained backing");
+}
+
+void checkUnlockedRecoveryFenceWaitReleasesLocks() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    d.unlockedWarmRecoveryWait=true;
+    d.snapshot.createFence=mockCreateFence; d.snapshot.destroyFence=mockDestroyFence;
+    d.snapshot.waitForFences=mockWaitForFences;
+    require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && d.pendingWarmRecovery.active &&
+            m.children[0]==c.nonlocal && m.childTypes[0]==1 && d.retainedWarmRecoveries.size()==1,
+            "unlocked recovery did not retain the old backing before waiting");
+    std::atomic<bool> completed{false};
+    std::thread worker([&] {
+        std::unique_lock<std::mutex> deviceLock(d.mutex),queueLock(d.queueMutex);
+        completed=finishPendingWarmRecoveryLocked(d,deviceLock,queueLock);
+    });
+    bool fenceEntered=false;
+    {
+        std::unique_lock<std::mutex> lock(mockFenceMutex);
+        fenceEntered=mockFenceCondition.wait_for(lock,std::chrono::seconds(5),[]{return mockFenceWaitEntered;});
+    }
+    std::unique_lock<std::mutex> deviceProbe(d.mutex,std::try_to_lock);
+    std::unique_lock<std::mutex> queueProbe(d.queueMutex,std::try_to_lock);
+    const bool locksFree=deviceProbe.owns_lock() && queueProbe.owns_lock();
+    if(deviceProbe.owns_lock()) deviceProbe.unlock();
+    if(queueProbe.owns_lock()) queueProbe.unlock();
+    std::atomic<bool> waiterStarted{false};
+    VkResult waitResult=VK_ERROR_UNKNOWN;
+    std::thread mutator([&] {
+        std::unique_lock<std::mutex> lock(d.mutex);
+        waiterStarted=true;
+        waitResult=waitForPendingWarmRecovery(d,lock);
+    });
+    while(!waiterStarted.load()) std::this_thread::yield();
+    bool mutexReleased=false;
+    bool waiterCounted=false;
+    for(unsigned i=0;i<1000;i++) {
+        std::unique_lock<std::mutex> probe(d.mutex,std::try_to_lock);
+        mutexReleased=probe.owns_lock();
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+        if(mutexReleased) waiterCounted=d.warmRecoveryWaiters==1;
+#endif
+        if(mutexReleased) probe.unlock();
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+        if(mutexReleased && waiterCounted) break;
+#else
+        if(mutexReleased) break;
+#endif
+        std::this_thread::yield();
+    }
+    {
+        std::lock_guard<std::mutex> lock(mockFenceMutex);
+        mockFenceWaitRelease=true;
+    }
+    mockFenceCondition.notify_all();
+    worker.join(); mutator.join();
+    require(fenceEntered && locksFree && mutexReleased && completed && waitResult==VK_SUCCESS && !d.pendingWarmRecovery.active &&
+            m.childTypes[0]==0 && m.children[0]!=c.nonlocal && d.retainedWarmRecoveries.empty() &&
+            !d.gpuRestoreUnsafe && d.liveOther==0,
+            "fence completion failed to commit and release waiting mutators");
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+    require(waiterCounted && d.warmRecoveryWaiters==0,
+            "test-only recovery waiter counter did not track wait entry and wake");
+#endif
+}
+
+void checkUnlockedRecoveryLateCapRollbackAndFenceFailure() {
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        d.unlockedWarmRecoveryWait=true;
+        d.snapshot.createFence=mockCreateFence; d.snapshot.destroyFence=mockDestroyFence;
+        d.snapshot.waitForFences=mockWaitForFences;
+        require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && d.pendingWarmRecovery.active,
+                "late-cap fixture did not begin a fenced recovery");
+        d.liveControl.state.result=1; d.liveControl.state.requestedMiB=0;
+        { std::lock_guard<std::mutex> lock(mockFenceMutex); mockFenceWaitRelease=true; }
+        std::unique_lock<std::mutex> deviceLock(d.mutex),queueLock(d.queueMutex);
+        require(!finishPendingWarmRecoveryLocked(d,deviceLock,queueLock) &&
+                !d.pendingWarmRecovery.active && !d.gpuRestoreUnsafe && m.children[0]==c.nonlocal &&
+                m.childTypes[0]==1 && d.liveLocal==0 && d.liveOther==MiB && frees==1 &&
+                d.retainedWarmRecoveries.empty(),
+                "late live-cap decrease committed a recovery instead of safely rolling it back");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        d.unlockedWarmRecoveryWait=true;
+        d.snapshot.createFence=mockCreateFence; d.snapshot.destroyFence=mockDestroyFence;
+        d.snapshot.waitForFences=mockWaitForFences;
+        require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && d.pendingWarmRecovery.active,
+                "fence-failure fixture did not begin a fenced recovery");
+        std::atomic<bool> finished{true};
+        std::thread worker([&] {
+            std::unique_lock<std::mutex> deviceLock(d.mutex),queueLock(d.queueMutex);
+            finished=finishPendingWarmRecoveryLocked(d,deviceLock,queueLock);
+        });
+        bool fenceEntered=false;
+        {
+            std::unique_lock<std::mutex> lock(mockFenceMutex);
+            fenceEntered=mockFenceCondition.wait_for(lock,std::chrono::seconds(5),[]{return mockFenceWaitEntered;});
+            mockFenceWaitResult=VK_ERROR_DEVICE_LOST; mockFenceWaitRelease=true;
+        }
+        mockFenceCondition.notify_all(); worker.join();
+        const auto& retained=d.retainedWarmRecoveries.at(0);
+        require(fenceEntered && !finished && !d.pendingWarmRecovery.active && d.gpuRestoreUnsafe &&
+                d.gpuGateError==VK_ERROR_DEVICE_LOST && m.children[0]==c.nonlocal &&
+                liveAllocations.count(retained.oldBacking) && liveAllocations.count(retained.replacement) &&
+                bufferSizes.count(retained.destinationView) && frees==0,
+                "ambiguous copy-fence failure failed to gate or retain both backings and the view");
+    }
 }
 
 void checkColdCycleIgnoresSnapshotBudgetBlock() {
@@ -1364,6 +1757,8 @@ void checkBindFailureAccounting() {
 } // namespace
 
 int main() try {
+    checkGatedRecoveryTeardownCleanup();
+    checkDeferredPromotedBufferDestroy();
     checkBootstrapAdmissionAndRestore();
     checkExactCapRestore();
     checkOneByteBelowCap();
@@ -1388,6 +1783,12 @@ int main() try {
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();
     checkColdCycleCandidateZeroLiveOther();
+    checkPendingWarmRecoveryTokenAndQueueGates();
+    checkPendingKnownEmptyQueueCallSkipsColdRestore();
+    checkPendingAdmissionRequestsFullPreflightRetry();
+    checkUnlockedRecoveryFenceWaitReleasesLocks();
+    checkUnlockedRecoveryAbortsAfterExternalGate();
+    checkUnlockedRecoveryLateCapRollbackAndFenceFailure();
     checkColdCycleIgnoresSnapshotBudgetBlock();
 #ifdef ZVRAM_TEST_ASYNC_HOOK
     checkColdCycleTestPause();

@@ -439,6 +439,29 @@ if(ZVRAM_TEST_ASYNC_HOOK)
     set_tests_properties(vulkan-cold-cycle-native-recovery-bda PROPERTIES TIMEOUT 30
         ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
         LABELS "hardware;vulkan;cold-cycle;native-allocation;bda;test-hook")
+    add_test(NAME vulkan-cold-cycle-unlocked-wait-overlap
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --two-queues --unlocked-recovery-wait-fixture)
+    set_tests_properties(vulkan-cold-cycle-unlocked-wait-overlap PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        SKIP_REGULAR_EXPRESSION "UNSUPPORTED: no discrete AMD RADV GPU exposes two queues in one sparse/compute family"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;unlocked-wait;test-hook")
+    add_test(NAME vulkan-cold-cycle-unlocked-cold-peer-wait
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --native-allocation
+            --unlocked-recovery-cold-wait-fixture)
+    set_tests_properties(vulkan-cold-cycle-unlocked-cold-peer-wait PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;unlocked-wait;cold-restore;test-hook")
     foreach(hot_cycle_mode single two-queues)
         set(hot_cycle_flags)
         set(hot_cycle_idle_ms 100)

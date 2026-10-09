@@ -1,0 +1,35 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+    Start 58: vulkan-async-encode-overlap-pressure-raise
+1/4 Test #58: vulkan-async-encode-overlap-pressure-raise .........***Failed    0.06 sec
+[zvram] unlocked recovery wait requires cold-cycle recovery
+[zvram] automatic Vulkan snapshots disabled: private queue synchronization resources unavailable result=-8
+[zvram] async compression refused: automatic range snapshots and active eviction are required
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=0 allocation-failures=0
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+error: create device failed: -8
+
+    Start 65: vulkan-cold-cycle-native-recovery-two-queues
+2/4 Test #65: vulkan-cold-cycle-native-recovery-two-queues .......   Passed    1.31 sec
+    Start 66: vulkan-cold-cycle-native-recovery-bda
+3/4 Test #66: vulkan-cold-cycle-native-recovery-bda ..............   Passed    1.10 sec
+    Start 70: vulkan-cold-cycle-native-hot-recovery-two-queues
+4/4 Test #70: vulkan-cold-cycle-native-hot-recovery-two-queues ...   Passed    1.30 sec
+
+75% tests passed, 1 tests failed out of 4
+
+Label Time Summary:
+async-overlap        =   0.06 sec*proc (1 test)
+bda                  =   1.10 sec*proc (1 test)
+cold-cycle           =   3.71 sec*proc (3 tests)
+hardware             =   3.77 sec*proc (4 tests)
+hot-recovery         =   1.30 sec*proc (1 test)
+native-allocation    =   3.71 sec*proc (3 tests)
+pressure             =   0.06 sec*proc (1 test)
+test-hook            =   3.77 sec*proc (4 tests)
+vulkan               =   3.77 sec*proc (4 tests)
+
+Total Test time (real) =   3.77 sec
+
+The following tests FAILED:
+	 58 - vulkan-async-encode-overlap-pressure-raise (Failed) async-overlap hardware pressure test-hook vulkan
+Errors while running CTest

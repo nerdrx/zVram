@@ -1,0 +1,57 @@
+# Unlocked recovery copy wait prototype
+
+Experimental, default off: `ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1` requires
+explicit local recovery. The installed v0.4.19 release remains unchanged.
+
+The worker retains the old and replacement allocations, private views, and
+copy fence. It releases the device and queue locks only while waiting for the
+copy fence. Sparse alias transitions remain synchronous. On completion it
+revalidates allocation, child, binding, backing, and device-error state and
+rechecks the current cap before committing; a reduced cap can roll back.
+
+Known, disjoint hot submissions may proceed only when no cold data exists.
+Matching, unknown, cold-restoration, admission-eviction, and mutation paths
+join the pending transaction. Known-empty signals bypass restoration.
+Condition-variable waits release the device lock, allowing completion to run.
+
+The compile-only hook holds the worker after both locks are released. A
+compile-only waiter counter proves submissions reached the pending wait;
+pre-submit thread scheduling alone is not counted as proof. Fixtures cover
+disjoint progress and matching/unknown joins, then a separate pristine cold
+peer fill/restore. Each checks full data and accounting after release.
+
+Root's 13 normal CPU checks passed (`final-cpu-ctest.txt`), including pending
+admission retry, known-empty submits with cold groups, stale identity rejection,
+cap rollback, lock release/wakeup, and retained-resource teardown. Both normal
+and hook bootstrap checks passed. The selected 13 Python checks also passed.
+
+Both deterministic GPU overlap tests passed in 0.21 seconds
+(`final-gpu-ctest.txt`, `final-gpu-details.txt`). They verify the original full
+32 MiB pattern, the additional 4 MiB cold peer's fill pattern, actual pending
+waiter entry, and zero resident/cold/failure accounting at teardown. During the
+artificially held hook, the disjoint hot submission returned in 44 microseconds;
+matching and unknown submissions waited for release. That is a single
+call-progress observation, not unhooked recovery latency or a game benchmark.
+
+Three existing BDA/busy-two-queue/hot-pending-two-queue gates passed with unlocked
+wait enabled. The ordinary async stale-pressure regression passed separately.
+Its first mixed batch rejected an invalid unlocked-without-recovery setting;
+that configuration failure is preserved in the regression log.
+
+Initial fixture failures are preserved: omitted storage usage, an unsupported
+overlapping alias, extra-peer accounting, a legacy sampler with no samples,
+and whole-buffer barrier tracking plus a staging write hazard. The final probe
+uses a global write-to-transfer-read/write memory dependency and exact-range
+copies. No production tracking guard was weakened to obtain these passes.
+These are access/lifetime and lock-progress checks, not game FPS or a claim
+that spikes are eliminated. Sparse setup/finalization still waits under locks;
+general graphics access tracking and kernel-transparent GTT placement remain
+unchanged. Proven-idle teardown explicitly cleans retained resources and app
+destroy/free requests deferred during a gate. Synthetic error codes alone do
+not authorize cleanup: the driver must return success or device loss from its
+idle wait. Allocator policy matches ordinary destruction/free paths. The
+[Vulkan lost-device rules](https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html#devsandqueues-lost-device)
+require explicit child destruction and treat device loss as completion for
+determining whether resources remain in use. Other ambiguous wait errors do
+not establish safe completion and remain an abnormal teardown limitation.
+This prototype is not published or installed.

@@ -4,11 +4,13 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -69,6 +71,58 @@ using SetAsyncEncodeHook = VkResult (VKAPI_PTR *)(VkDevice, void (*)(void*), voi
 using ForceNextBackingType = VkResult (VKAPI_PTR *)(VkDevice, std::uint32_t);
 using GetBackingType = VkResult (VKAPI_PTR *)(VkDevice, VkDeviceMemory, std::uint32_t, std::uint32_t*);
 using SetRecoveryPaused = VkResult (VKAPI_PTR *)(VkDevice, VkBool32);
+using SetWarmRecoveryWaitHook = VkResult (VKAPI_PTR *)(VkDevice, void (*)(void*), void*);
+using GetWarmRecoveryWaiters = VkResult (VKAPI_PTR *)(VkDevice, std::uint32_t*);
+
+struct WarmRecoveryWaitHookState {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool entered{}, release{}, timedOut{};
+};
+
+void warmRecoveryWaitHook(void* userdata) noexcept {
+    auto& state = *static_cast<WarmRecoveryWaitHookState*>(userdata);
+    std::unique_lock<std::mutex> lock(state.mutex);
+    state.entered = true;
+    state.changed.notify_all();
+    if (!state.changed.wait_for(lock, std::chrono::seconds(20), [&] { return state.release; }))
+        state.timedOut = true;
+}
+
+struct WarmRecoveryWaitHookGuard {
+    VkDevice device{};
+    SetWarmRecoveryWaitHook setHook{};
+    WarmRecoveryWaitHookState state;
+    bool installed{};
+
+    void install() {
+        require(setHook != nullptr, "unlocked recovery fixture lacks the test-only wait hook");
+        check(setHook(device, warmRecoveryWaitHook, &state), "install unlocked recovery wait hook");
+        installed = true;
+    }
+    bool waitUntilEntered(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(state.mutex);
+        return state.changed.wait_for(lock, timeout, [&] { return state.entered; });
+    }
+    void release() noexcept {
+        {
+            std::lock_guard<std::mutex> lock(state.mutex);
+            state.release = true;
+        }
+        state.changed.notify_all();
+    }
+    VkResult clear() noexcept {
+        if (!installed) return VK_SUCCESS;
+        release();
+        const auto result = setHook(device, nullptr, nullptr);
+        if (result == VK_SUCCESS) installed = false;
+        return result;
+    }
+    ~WarmRecoveryWaitHookGuard() noexcept {
+        if (clear() != VK_SUCCESS)
+            std::cerr << "WARNING: failed to unregister unlocked recovery wait hook\n";
+    }
+};
 
 struct RecoveryPauseGuard {
     VkDevice device{};
@@ -226,7 +280,7 @@ struct Context {
             }
             if (physical) break;
         }
-        require(physical != VK_NULL_HANDLE, activeSubmit
+        require(physical != VK_NULL_HANDLE, (activeSubmit || twoSame)
             ? "UNSUPPORTED: no discrete AMD RADV GPU exposes two queues in one sparse/compute family"
             : "no discrete AMD RADV GPU has the requested sparse/compute queue setup");
         std::cout << "GPU: " << properties.deviceName << '\n';
@@ -894,6 +948,58 @@ VkResult upload(Context& context, VkBuffer buffer, Staging& staging,
     return VK_SUCCESS;
 }
 
+template<class Record>
+void submitIsolated(Context& context, VkQueue queue, Record&& record,
+                    std::atomic<bool>* ready = nullptr,
+                    std::uint64_t* submitCallMicros = nullptr) {
+    VkCommandPool pool{};
+    VkCommandBuffer command{};
+    VkFence fence{};
+    bool submitted = false;
+    VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    poolInfo.queueFamilyIndex = context.family;
+    check(vkCreateCommandPool(context.device, &poolInfo, nullptr, &pool),
+          "create isolated recovery-gate command pool");
+    try {
+        VkCommandBufferAllocateInfo allocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        allocation.commandPool = pool;
+        allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocation.commandBufferCount = 1;
+        check(vkAllocateCommandBuffers(context.device, &allocation, &command),
+              "allocate isolated recovery-gate command buffer");
+        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        check(vkBeginCommandBuffer(command, &begin), "begin isolated recovery-gate command buffer");
+        record(command);
+        check(vkEndCommandBuffer(command), "end isolated recovery-gate command buffer");
+        VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        check(vkCreateFence(context.device, &fenceInfo, nullptr, &fence),
+              "create isolated recovery-gate fence");
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &command;
+        if (ready) ready->store(true, std::memory_order_release);
+        const auto submitStarted = std::chrono::steady_clock::now();
+        const auto submitResult = vkQueueSubmit(queue, 1, &submit, fence);
+        if (submitCallMicros)
+            *submitCallMicros = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - submitStarted).count();
+        check(submitResult,
+              "submit isolated recovery-gate command buffer");
+        submitted = true;
+        check(vkWaitForFences(context.device, 1, &fence, VK_TRUE, UINT64_MAX),
+              "wait for isolated recovery-gate fence");
+    } catch (...) {
+        if (submitted && vkWaitForFences(context.device, 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+            throw;
+        if (fence) vkDestroyFence(context.device, fence, nullptr);
+        if (pool) vkDestroyCommandPool(context.device, pool, nullptr);
+        throw;
+    }
+    vkDestroyFence(context.device, fence, nullptr);
+    vkDestroyCommandPool(context.device, pool, nullptr);
+}
+
 VkResult computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle,
                       std::uint32_t queueIndex, bool expectFirstFailure = false,
                       VkDeviceSize byteSize = TotalBytes, std::uint32_t firstChunk = 0) {
@@ -1495,7 +1601,38 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                                    SetRecoveryPaused setRecoveryPaused,
                                    bool expectNativeTypeRefusal, bool hotRecovery,
                                    bool expectDirectRecovery,
+                                   bool unlockedWaitFixture,
+                                   bool unlockedColdWaitFixture,
+                                   GetWarmRecoveryWaiters getWarmRecoveryWaiters,
                                    std::vector<std::uint64_t>* batchSubmitSamples = nullptr) {
+    Buffer coldPeer; coldPeer.device = context.device;
+    VkDeviceSize coldPeerBytes{};
+    ZvramSnapshotStatsNX coldPeerPristine{};
+    ZvramSnapshotStatsNX coldPeerBeforeUse{};
+    if (unlockedColdWaitFixture) {
+        VkBufferCreateInfo peerInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        peerInfo.size = 4 * MiB;
+        peerInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        check(vkCreateBuffer(context.device, &peerInfo, nullptr, &coldPeer.handle),
+              "create pristine cold recovery peer");
+        VkMemoryRequirements peerReq{};
+        vkGetBufferMemoryRequirements(context.device, coldPeer.handle, &peerReq);
+        coldPeerBytes = peerReq.size;
+        require(coldPeerBytes == 4 * MiB,
+                "cold recovery peer must be exactly one 4 MiB tracked child");
+        VkMemoryAllocateInfo peerAllocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        peerAllocation.allocationSize = peerReq.size;
+        peerAllocation.memoryTypeIndex = context.virtualType;
+        check(vkAllocateMemory(context.device, &peerAllocation, nullptr, &coldPeer.memory),
+              "allocate pristine cold recovery peer");
+        check(vkBindBufferMemory(context.device, coldPeer.handle, coldPeer.memory, 0),
+              "bind pristine cold recovery peer");
+        coldPeerPristine = context.stats();
+        require(coldPeerPristine.coldLogicalBytes == coldPeerBytes &&
+                coldPeerPristine.coldStoredBytes == 0 && coldPeerPristine.residentBytes == 0,
+                "unwritten recovery peer did not remain a pristine cold child");
+    }
     Buffer resident; resident.device = context.device;
     VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     info.size = ChunkBytes;
@@ -1525,10 +1662,22 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
     require(nonlocalType != UINT32_MAX,
             "cold-cycle fixture needs a compatible non-device-local backing type");
     RecoveryPauseGuard recoveryPause{context.device, setRecoveryPaused};
+    WarmRecoveryWaitHookGuard waitHook{context.device,
+        reinterpret_cast<SetWarmRecoveryWaitHook>(
+            vkGetDeviceProcAddr(context.device, "vkZVramSetWarmRecoveryWaitHookNX"))};
     if (expectDirectRecovery) {
         require(setRecoveryPaused != nullptr,
                 "direct recovery fixture lacks the test-only recovery pause hook");
         recoveryPause.set(true);
+    }
+    if (unlockedWaitFixture || unlockedColdWaitFixture) {
+        require(expectDirectRecovery && !context.bdaMode &&
+                (unlockedWaitFixture ? (context.twoQueues && context.secondQueue)
+                                     : !context.twoQueues),
+                "unlocked recovery wait mode has incompatible application queues");
+        require(getWarmRecoveryWaiters != nullptr,
+                "unlocked recovery fixture lacks the test-only waiter-count getter");
+        waitHook.install();
     }
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     VkMemoryAllocateFlagsInfo addressFlags{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
@@ -1541,6 +1690,10 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
           "allocate cold-cycle virtual backing");
     check(vkBindBufferMemory(context.device, resident.handle, resident.memory, 0),
           "bind cold-cycle virtual backing");
+    NativeImage unknownImage;
+    if (unlockedWaitFixture) {
+        createUnknownResourceImage(context, unknownImage);
+    }
     std::uint32_t initialBackingType = UINT32_MAX;
     if (context.bdaMode) {
         VkBufferDeviceAddressInfo addressInfo{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
@@ -1568,6 +1721,17 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
           "bind cold-cycle staging memory");
     check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped),
           "map cold-cycle staging memory");
+
+    const auto recordResidentChildRead = [&](VkCommandBuffer command, VkDeviceSize offset) {
+        VkMemoryBarrier ready{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        ready.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+        ready.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                             1, &ready, 0, nullptr, 0, nullptr);
+        VkBufferCopy copy{offset, 0, 4 * MiB};
+        vkCmdCopyBuffer(command, resident.handle, staging.buffer, 1, &copy);
+    };
 
     const auto hotBaseline = context.stats();
     std::unique_ptr<TimedEmptySubmitSampler> directSampler;
@@ -1638,7 +1802,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         pending.submitted = true;
         watchdog = std::make_unique<TimelineWatchdog>(context.device, context.pendingTimeline, waitValue);
     };
-    if (context.twoQueues && (hotRecovery || expectDirectRecovery)) beginPendingUse();
+    if (context.twoQueues && !unlockedWaitFixture && (hotRecovery || expectDirectRecovery)) beginPendingUse();
 
     const VkResult uploadResult = upload(context, resident.handle, staging, ChunkBytes,
         expectNativeTypeRefusal ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_SUCCESS);
@@ -1673,18 +1837,180 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         require(heap < context.memory.memoryHeapCount &&
                 !(context.memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
                 "direct recovery fixture did not start with a nonlocal backing");
+        if (unlockedWaitFixture) {
+            check(context.submit([&](VkCommandBuffer command) {
+                recordResidentChildRead(command, 4 * MiB);
+            }), "warm known-disjoint resident child before recovery");
+        }
+        if (unlockedColdWaitFixture) {
+            const auto beforeRecovery = context.stats();
+            require(beforeRecovery.coldLogicalBytes == coldPeerBytes &&
+                    beforeRecovery.coldStoredBytes == 0,
+                    "pristine cold peer changed before the recovery wait gate");
+        }
         recoveryPause.set(false);
+        if (unlockedWaitFixture || unlockedColdWaitFixture) {
+            require(waitHook.waitUntilEntered(std::chrono::seconds(5)),
+                    "recovery did not reach the unlocked fence-wait test hook");
+            struct AsyncProbe {
+                std::atomic<bool> started{}, finished{};
+                std::uint64_t submitCallMicros{};
+                std::string error;
+                std::thread thread;
+            } disjointProbe, matchingProbe, unknownProbe;
+            struct ProbeJoinGuard {
+                WarmRecoveryWaitHookGuard& hook;
+                AsyncProbe& disjoint;
+                AsyncProbe& matching;
+                AsyncProbe& unknown;
+                ~ProbeJoinGuard() {
+                    hook.release();
+                    for (auto* probe : {&disjoint, &matching, &unknown})
+                        if (probe->thread.joinable()) probe->thread.join();
+                }
+            } joinGuard{waitHook, disjointProbe, matchingProbe, unknownProbe};
+            const auto startProbe = [&](AsyncProbe& probe, VkQueue queue, auto record) {
+                probe.thread = std::thread([&probe, &context, queue, record] {
+                    try { submitIsolated(context, queue, record, &probe.started,
+                                         &probe.submitCallMicros); }
+                    catch (const std::exception& error) { probe.error = error.what(); }
+                    probe.finished.store(true, std::memory_order_release);
+                });
+            };
+            const auto waitFinished = [](AsyncProbe& probe, std::chrono::milliseconds timeout) {
+                const auto deadline = std::chrono::steady_clock::now() + timeout;
+                while (!probe.finished.load(std::memory_order_acquire) &&
+                       std::chrono::steady_clock::now() < deadline)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                return probe.finished.load(std::memory_order_acquire);
+            };
+            const auto waitStarted = [](AsyncProbe& probe, std::chrono::milliseconds timeout) {
+                const auto deadline = std::chrono::steady_clock::now() + timeout;
+                while (!probe.started.load(std::memory_order_acquire) &&
+                       std::chrono::steady_clock::now() < deadline)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                return probe.started.load(std::memory_order_acquire);
+            };
+            const auto waitForWaiters = [&](std::uint32_t minimum,
+                                            std::chrono::milliseconds timeout) {
+                const auto deadline = std::chrono::steady_clock::now() + timeout;
+                do {
+                    std::uint32_t waiters{};
+                    check(getWarmRecoveryWaiters(context.device, &waiters),
+                          "query pending recovery waiter count");
+                    if (waiters >= minimum) return true;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                } while (std::chrono::steady_clock::now() < deadline);
+                return false;
+            };
+            bool disjointProgress = false, matchingBlocked = false, unknownBlocked = false;
+            bool matchingReachedSubmit = false, unknownReachedSubmit = false;
+            if (unlockedWaitFixture) {
+                startProbe(disjointProbe, context.queue, [&](VkCommandBuffer command) {
+                    recordResidentChildRead(command, 4 * MiB);
+                });
+                disjointProgress = waitFinished(disjointProbe, std::chrono::seconds(5));
+                if (disjointProgress) disjointProbe.thread.join();
+
+                startProbe(matchingProbe, context.queue, [&](VkCommandBuffer command) {
+                    recordResidentChildRead(command, 0);
+                });
+                matchingReachedSubmit = waitStarted(matchingProbe, std::chrono::seconds(2));
+                matchingBlocked = matchingReachedSubmit &&
+                    waitForWaiters(1, std::chrono::seconds(2)) &&
+                    !matchingProbe.finished.load(std::memory_order_acquire);
+
+                startProbe(unknownProbe, context.secondQueue, [&](VkCommandBuffer command) {
+                    recordUnknownResourceClear(command, unknownImage.handle);
+                });
+                unknownReachedSubmit = waitStarted(unknownProbe, std::chrono::seconds(2));
+                unknownBlocked = unknownReachedSubmit &&
+                    waitForWaiters(2, std::chrono::seconds(2)) &&
+                    !unknownProbe.finished.load(std::memory_order_acquire);
+            } else {
+                coldPeerBeforeUse = context.stats();
+                require(coldPeerBeforeUse.coldLogicalBytes == coldPeerBytes &&
+                        coldPeerBeforeUse.coldStoredBytes == 0,
+                        "cold peer changed before its pending-recovery submission");
+                startProbe(matchingProbe, context.queue, [&](VkCommandBuffer command) {
+                    vkCmdFillBuffer(command, coldPeer.handle, 0, coldPeerBytes, 0x5a17c0deu);
+                });
+                matchingReachedSubmit = waitStarted(matchingProbe, std::chrono::seconds(2));
+                matchingBlocked = matchingReachedSubmit &&
+                    waitForWaiters(1, std::chrono::seconds(2)) &&
+                    !matchingProbe.finished.load(std::memory_order_acquire);
+            }
+
+            waitHook.release();
+            const bool matchingFinished = !matchingProbe.thread.joinable() ||
+                waitFinished(matchingProbe, std::chrono::seconds(5));
+            const bool unknownFinished = !unknownProbe.thread.joinable() ||
+                waitFinished(unknownProbe, std::chrono::seconds(5));
+            if (matchingProbe.thread.joinable()) matchingProbe.thread.join();
+            if (unknownProbe.thread.joinable()) unknownProbe.thread.join();
+            if (!disjointProgress && disjointProbe.thread.joinable()) disjointProbe.thread.join();
+            bool hookTimedOut{};
+            {
+                std::lock_guard<std::mutex> lock(waitHook.state.mutex);
+                hookTimedOut = waitHook.state.timedOut;
+            }
+            if (unlockedWaitFixture) {
+                require(disjointProgress && matchingBlocked && unknownBlocked && matchingFinished &&
+                        unknownFinished && !hookTimedOut && disjointProbe.error.empty() &&
+                        matchingProbe.error.empty() && unknownProbe.error.empty(),
+                        "unlocked recovery wait did not admit disjoint work and defer unsafe submissions");
+                std::cout << "hook-held vkQueueSubmit call-only us (includes layer queueCall; excludes fence wait/pool setup): "
+                          << "disjoint=" << disjointProbe.submitCallMicros
+                          << " matching=" << matchingProbe.submitCallMicros
+                          << " unknown=" << unknownProbe.submitCallMicros << '\n';
+            } else {
+                require(matchingReachedSubmit && matchingBlocked && matchingFinished &&
+                        !hookTimedOut && matchingProbe.error.empty(),
+                        "cold-peer restore did not wait for pending recovery to rebind");
+            }
+            check(waitHook.clear(), "unregister unlocked recovery wait hook");
+            if (unlockedWaitFixture) {
+                std::cout << "verified disjoint HOT progress; matching and unknown submits waited for rebind\n";
+            } else {
+                const auto coldAfterUse = context.stats();
+                require(coldAfterUse.coldLogicalBytes == 0 &&
+                        coldAfterUse.restores > coldPeerBeforeUse.restores &&
+                        coldAfterUse.failures == coldPeerBeforeUse.failures,
+                        "cold-peer queue use did not restore the pristine child cleanly");
+                check(context.submit([&](VkCommandBuffer command) {
+                    VkBufferMemoryBarrier ready{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+                    ready.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    ready.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    ready.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    ready.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    ready.buffer = coldPeer.handle;
+                    ready.size = coldPeerBytes;
+                    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                         0, nullptr, 1, &ready, 0, nullptr);
+                    VkBufferCopy copy{0, 0, coldPeerBytes};
+                    vkCmdCopyBuffer(command, coldPeer.handle, staging.buffer, 1, &copy);
+                }), "read back restored cold recovery peer");
+                const auto* words = static_cast<const std::uint32_t*>(staging.mapped);
+                require(std::all_of(words, words + coldPeerBytes / sizeof(std::uint32_t),
+                                    [](std::uint32_t value) { return value == 0x5a17c0deu; }),
+                        "cold-peer fill bytes changed across the pending recovery wait");
+                std::cout << "verified cold-peer restore wait and full fill pattern\n";
+            }
+        }
     }
     auto hotWindowStart = std::chrono::steady_clock::now();
+    const VkDeviceSize expectedResidentBytes = ChunkBytes +
+        (unlockedColdWaitFixture ? coldPeerBytes : 0);
     const auto warm = context.stats();
-    require(warm.residentBytes == ChunkBytes && warm.coldLogicalBytes == 0 && warm.failures == 0,
+    require(warm.residentBytes == expectedResidentBytes && warm.coldLogicalBytes == 0 && warm.failures == 0,
             "cold-cycle allocation did not start resident below cap");
-    if (expectDirectRecovery && context.twoQueues && !directSampler) {
+    if (expectDirectRecovery && context.twoQueues && !unlockedWaitFixture && !directSampler) {
         directSampler = std::make_unique<TimedEmptySubmitSampler>(context);
         directSampler->start();
     }
     EmptyQueueSubmitProbe emptyProbe(context);
-    if (context.twoQueues) {
+    if (context.twoQueues && !unlockedWaitFixture) {
         if (!pending.submitted) beginPendingUse();
         require(watchdog != nullptr, "cold-cycle busy gate has no timeline watchdog");
         std::uint64_t maxEmptySubmitMicros = 0, emptySubmitSamples = 0;
@@ -1703,7 +2029,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
               "query cold-cycle busy timeline");
         require(!watchdog->fired.load() && timelineValue < 1,
                 "cold-cycle busy timeline was released before the quiet-window check");
-        const bool deferred = busy.residentBytes == ChunkBytes && busy.coldLogicalBytes == 0 &&
+        const bool deferred = busy.residentBytes == expectedResidentBytes && busy.coldLogicalBytes == 0 &&
             busy.freezes == (hotRecovery ? hotBaseline.freezes : warm.freezes) &&
             busy.failures == warm.failures &&
             (hotRecovery || busy.restores == warm.restores);
@@ -1726,7 +2052,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
     }
     ZvramSnapshotStatsNX cycled{};
     if (expectDirectRecovery) {
-        if (!directSampler) {
+        if (!unlockedWaitFixture && !unlockedColdWaitFixture && !directSampler) {
             directSampler = std::make_unique<TimedEmptySubmitSampler>(context);
             directSampler->start();
             directSampler->recording.store(true, std::memory_order_release);
@@ -1739,11 +2065,13 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             if (recoveredType != initialBackingType) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
-        directSampler->recording.store(false, std::memory_order_release);
-        directSampler->finish();
-        if (batchSubmitSamples)
-            batchSubmitSamples->insert(batchSubmitSamples->end(), directSampler->samples.begin(),
-                                       directSampler->samples.end());
+        if (directSampler) {
+            directSampler->recording.store(false, std::memory_order_release);
+            directSampler->finish();
+            if (batchSubmitSamples)
+                batchSubmitSamples->insert(batchSubmitSamples->end(), directSampler->samples.begin(),
+                                           directSampler->samples.end());
+        }
         const auto recoveredHeap = recoveredType < context.memory.memoryTypeCount
             ? context.memory.memoryTypes[recoveredType].heapIndex : UINT32_MAX;
         require(recoveredType != initialBackingType &&
@@ -1751,7 +2079,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
                 (context.memory.memoryHeaps[recoveredHeap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
                 "direct recovery did not move the child to a local backing type");
         cycled = context.stats();
-        require(cycled.residentBytes == ChunkBytes && cycled.coldLogicalBytes == 0 &&
+        require(cycled.residentBytes == expectedResidentBytes && cycled.coldLogicalBytes == 0 &&
                 cycled.freezes == warm.freezes && cycled.restores == warm.restores &&
                 cycled.failures == warm.failures,
                 "direct recovery changed cold-storage accounting or lost resident bytes");
@@ -1759,7 +2087,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             std::chrono::steady_clock::now() - hotWindowStart).count();
         std::cout << "direct recovery detected-us=" << elapsedMicros << " backing-type="
                   << initialBackingType << "->" << recoveredType << '\n';
-        if (!batchSubmitSamples)
+        if (!batchSubmitSamples && directSampler)
             printSubmitLatencySummary("direct recovery", directSampler->samples);
     } else if (hotRecovery) {
         if (context.twoQueues) emptyProbe.drain();
@@ -1769,7 +2097,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         auto done = [&] {
             cycled = context.stats();
             return cycled.freezes > hotBaseline.freezes &&
-                   cycled.residentBytes == ChunkBytes && cycled.coldLogicalBytes == 0;
+                   cycled.residentBytes == expectedResidentBytes && cycled.coldLogicalBytes == 0;
         };
         while (!done() && std::chrono::steady_clock::now() < deadline) {
             if (std::chrono::steady_clock::now() < nextTouch)
@@ -1790,7 +2118,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         }
         const auto recoveryMicros = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - hotWindowStart).count();
-        require(cycled.freezes > hotBaseline.freezes && cycled.residentBytes == ChunkBytes &&
+        require(cycled.freezes > hotBaseline.freezes && cycled.residentBytes == expectedResidentBytes &&
                 cycled.coldLogicalBytes == 0 && cycled.failures == 0 && recoveryMicros < 1'000'000,
                 "hot completed-use recovery did not finish below 1s");
         std::cout << "hot completed-use recovery-us=" << recoveryMicros
@@ -1817,11 +2145,11 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         while (std::chrono::steady_clock::now() < deadline) {
             cycled = context.stats();
             if (cycled.freezes > warm.freezes && cycled.restores > warm.restores &&
-                cycled.residentBytes == ChunkBytes && cycled.coldLogicalBytes == 0) break;
+                cycled.residentBytes == expectedResidentBytes && cycled.coldLogicalBytes == 0) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
         }
         require(cycled.freezes > warm.freezes && cycled.restores > warm.restores &&
-                cycled.residentBytes == ChunkBytes && cycled.coldLogicalBytes == 0 &&
+                cycled.residentBytes == expectedResidentBytes && cycled.coldLogicalBytes == 0 &&
                 cycled.failures == 0,
                 "idle worker did not cold-cycle the nonlocal range below cap");
     }
@@ -1839,6 +2167,22 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
         check(readbackAndVerify(context, resident.handle, staging, 0, false, ChunkBytes),
               "verify BDA shader-updated full bytes after cold-cycle recovery");
     }
+    if (coldPeer.handle) {
+        vkDestroyBuffer(context.device, coldPeer.handle, nullptr);
+        coldPeer.handle = VK_NULL_HANDLE;
+    }
+    if (coldPeer.memory) {
+        vkFreeMemory(context.device, coldPeer.memory, nullptr);
+        coldPeer.memory = VK_NULL_HANDLE;
+    }
+    if (unknownImage.handle) {
+        vkDestroyImage(context.device, unknownImage.handle, nullptr);
+        unknownImage.handle = VK_NULL_HANDLE;
+    }
+    if (unknownImage.memory) {
+        vkFreeMemory(context.device, unknownImage.memory, nullptr);
+        unknownImage.memory = VK_NULL_HANDLE;
+    }
     vkDestroyBuffer(context.device, resident.handle, nullptr); resident.handle = VK_NULL_HANDLE;
     vkFreeMemory(context.device, resident.memory, nullptr); resident.memory = VK_NULL_HANDLE;
     const auto empty = context.stats();
@@ -1846,7 +2190,12 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             empty.failures == 0, "cold-cycle fixture cleanup retained backing or errors");
     std::cout << "PASS: cold-cycle restored "
               << (context.nativeAllocation ? "native-intercepted" : "virtual")
-              << " nonlocal-backed range and preserved every byte\n";
+              << " nonlocal-backed range and preserved every byte";
+    if (unlockedWaitFixture)
+        std::cout << "; disjoint HOT submit progressed while matching/unknown submits waited";
+    if (unlockedColdWaitFixture)
+        std::cout << "; cold-peer restore waited and preserved its fill pattern";
+    std::cout << '\n';
 }
 
 bool readFixtureStatus(const std::string& path, std::unordered_map<std::string, std::uint64_t>& fields) {
@@ -2910,6 +3259,8 @@ int main(int argc, char** argv) try {
     bool pressureOnlyLiveCapFixture = false;
     bool coldCycleRecoveryFixture = false;
     bool expectDirectRecovery = false;
+    bool unlockedRecoveryWaitFixture = false;
+    bool unlockedColdRecoveryWaitFixture = false;
     bool directRecoveryBatchFixture = false;
     bool hotRecoveryFixture = false;
     bool asyncEncodeOverlapFixture = false, asyncPressureRaiseDiscardFixture = false;
@@ -2933,6 +3284,14 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--native-allocation") == 0) nativeAllocation = true;
         else if (std::strcmp(argv[i], "--expect-native-type-refusal") == 0) expectNativeTypeRefusal = true;
         else if (std::strcmp(argv[i], "--expect-direct-recovery") == 0) expectDirectRecovery = true;
+        else if (std::strcmp(argv[i], "--unlocked-recovery-wait-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
+            twoQueues=true; expectDirectRecovery=true; unlockedRecoveryWaitFixture=true;
+        }
+        else if (std::strcmp(argv[i], "--unlocked-recovery-cold-wait-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
+            expectDirectRecovery=true; unlockedColdRecoveryWaitFixture=true;
+        }
         else if (std::strcmp(argv[i], "--two-queues") == 0) twoQueues = true;
         else if (std::strcmp(argv[i], "--two-families") == 0) twoFamilies = true;
         else if (std::strcmp(argv[i], "--exclusive-families") == 0) exclusiveFamilies = true;
@@ -3037,6 +3396,14 @@ int main(int argc, char** argv) try {
             "native type refusal requires the native cold-cycle fixture");
     require(!expectDirectRecovery || (coldCycleRecoveryFixture && !expectNativeTypeRefusal),
             "direct recovery requires a positive cold-cycle fixture");
+    require(!unlockedRecoveryWaitFixture ||
+            (expectDirectRecovery && nativeAllocation && !bdaMode && twoQueues && !twoFamilies && !exclusiveFamilies),
+            "unlocked recovery wait fixture uses native two-queue memory");
+    require(!unlockedColdRecoveryWaitFixture ||
+            (expectDirectRecovery && nativeAllocation && !bdaMode && !twoQueues && !twoFamilies && !exclusiveFamilies),
+            "cold-peer recovery wait fixture uses native single-queue memory");
+    require(!(unlockedRecoveryWaitFixture && unlockedColdRecoveryWaitFixture),
+            "choose one unlocked recovery wait fixture");
     require(!directRecoveryBatchFixture || (!twoQueues && !bdaMode && nativeAllocation),
             "direct recovery batch uses native single-queue backing");
     require(!hotRecoveryFixture || (nativeAllocation && !bdaMode && !expectNativeTypeRefusal),
@@ -3099,6 +3466,10 @@ int main(int argc, char** argv) try {
             ? reinterpret_cast<SetRecoveryPaused>(
                 vkGetDeviceProcAddr(context.device, "vkZVramSetRecoveryPausedNX"))
             : nullptr;
+        const auto getWarmRecoveryWaiters = (unlockedRecoveryWaitFixture || unlockedColdRecoveryWaitFixture)
+            ? reinterpret_cast<GetWarmRecoveryWaiters>(
+                vkGetDeviceProcAddr(context.device, "vkZVramGetWarmRecoveryWaitersNX"))
+            : nullptr;
         if (expectDirectRecovery && !getBackingType) {
             std::cerr << "UNSUPPORTED: direct recovery fixture requires ZVRAM_TEST_ASYNC_HOOK getter\n";
             return 77;
@@ -3112,12 +3483,14 @@ int main(int argc, char** argv) try {
             for (unsigned int transaction = 0; transaction < 5; ++transaction)
                 coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
                                               false, false,
-                                              true, &submitSamples);
+                                              true, false, false, nullptr, &submitSamples);
             printSubmitLatencySummary("five direct-recovery transactions", std::move(submitSamples));
         } else {
             coldCycleRecoveryFixtureCheck(context, forceType, getBackingType, setRecoveryPaused,
                                           expectNativeTypeRefusal, hotRecoveryFixture,
-                                          expectDirectRecovery);
+                                          expectDirectRecovery, unlockedRecoveryWaitFixture,
+                                          unlockedColdRecoveryWaitFixture,
+                                          getWarmRecoveryWaiters);
         }
         return 0;
     }
