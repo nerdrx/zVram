@@ -380,10 +380,42 @@ if(ZVRAM_TEST_ASYNC_HOOK)
             --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
             --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
             --vulkan-lazy-backing --vulkan-headroom-mib 1 --
-            $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture --native-allocation)
+            $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture --native-allocation
+            --expect-native-type-refusal)
     set_tests_properties(vulkan-cold-cycle-native-type-refusal PROPERTIES TIMEOUT 30
-        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=0;VK_LOADER_LAYERS_DISABLE=~implicit~"
         LABELS "hardware;vulkan;cold-cycle;native-allocation;negative-gate;test-hook")
+    foreach(native_cycle_mode single two-queues)
+        set(native_cycle_flags)
+        set(native_cycle_idle_ms 100)
+        if(native_cycle_mode STREQUAL "two-queues")
+            list(APPEND native_cycle_flags --two-queues)
+            set(native_cycle_idle_ms 1000)
+        endif()
+        set(native_cycle_test vulkan-cold-cycle-native-recovery-${native_cycle_mode})
+        add_test(NAME ${native_cycle_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms ${native_cycle_idle_ms}
+                --vulkan-cold-mib 64 --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib 4 --vulkan-resident-mib 64
+                --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
+                --native-allocation ${native_cycle_flags})
+        set_tests_properties(${native_cycle_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;cold-cycle;native-allocation;test-hook")
+    endforeach()
+    add_test(NAME vulkan-cold-cycle-native-recovery-bda
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
+            --native-allocation --bda)
+    set_tests_properties(vulkan-cold-cycle-native-recovery-bda PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;bda;test-hook")
 endif()
 add_test(NAME vulkan-graphics-pressure-retention
     COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers

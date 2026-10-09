@@ -609,6 +609,7 @@ VkResult restoreColdLocked(VkDevice,Device&,VkDeviceMemory only=VK_NULL_HANDLE,s
 VkResult freezeChildLocked(Device&,VirtualMemory&,std::size_t);
 void discardCleanCacheLocked(Device&,VirtualMemory&,std::size_t);
 std::vector<std::uint32_t> backingMemoryTypes(const Device&,const VkMemoryRequirements&);
+void preferNativeBackingType(std::vector<std::uint32_t>&,std::uint32_t);
 VkResult allocateBackingChild(Device&,VkDevice,VkDeviceSize,std::uint32_t,VkMemoryAllocateFlags,bool,float,VkDeviceMemory*);
 void releaseChildren(Device&,VirtualMemory&);
 void trackBackingAllocation(Device&,std::uint32_t,VkDeviceSize);
@@ -1594,6 +1595,8 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
        memoryOffset%req.alignment || memoryOffset>it->second.size || req.size>it->second.size-memoryOffset)
         return VK_ERROR_FEATURE_NOT_PRESENT;
     auto& m=it->second;
+    if(m.nativeTypeBits && !(req.memoryTypeBits&m.nativeTypeBits))
+        return VK_ERROR_FEATURE_NOT_PRESENT;
     bool initializedNow=false;
     auto discardFirstBacking=[&] {
         if(!initializedNow) return;
@@ -1615,7 +1618,22 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
     }
     if(m.everBound && m.backingMemoryTypeBits==0) return VK_ERROR_FEATURE_NOT_PRESENT;
     if(!m.everBound) {
-        m.backingMemoryTypeBits=req.memoryTypeBits&(m.nativeTypeBits?m.nativeTypeBits:UINT32_MAX);
+        const bool broadenNativeTypes=m.nativeTypeBits && d.coldCycleRecovery;
+        const auto nativeTypeConstraint=m.nativeTypeBits && !broadenNativeTypes
+            ?m.nativeTypeBits:UINT32_MAX;
+        m.backingMemoryTypeBits=req.memoryTypeBits&nativeTypeConstraint;
+        if(broadenNativeTypes) {
+            VkMemoryPropertyFlags excluded=VK_MEMORY_PROPERTY_PROTECTED_BIT|VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+#ifdef VK_AMD_device_coherent_memory
+            excluded|=VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD|VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD;
+#endif
+            for(std::uint32_t type=0;type<d.memory.memoryTypeCount && type<32;type++) {
+                const auto bit=1u<<type;
+                if((m.nativeTypeBits&bit)==0 &&
+                   (d.memory.memoryTypes[type].propertyFlags&excluded))
+                    m.backingMemoryTypeBits&=~bit;
+            }
+        }
         const VkDeviceSize alignment=req.alignment;
         VkDeviceSize chunk=d.rangeChunkBytes?d.rangeChunkBytes:256u*1024u*1024u;
         chunk-=chunk%alignment;
@@ -1637,6 +1655,7 @@ VkResult bindPoolBuffer(VkDevice device,Device& d,VkBuffer buffer,VkDeviceMemory
         try { VkMemoryRequirements all{}; all.memoryTypeBits=m.backingMemoryTypeBits; types=backingMemoryTypes(d,all); }
         catch(const std::bad_alloc&) { discardFirstBacking(); return VK_ERROR_OUT_OF_HOST_MEMORY; }
         if(types.empty()) { discardFirstBacking(); return VK_ERROR_OUT_OF_DEVICE_MEMORY; }
+        preferNativeBackingType(types,m.nativeTypeBits);
         const bool lazy=d.lazyBacking && d.autoEnabled && d.rangeChunkBytes &&
             d.residentLimitBytes && d.residentAdmissionArmed;
         m.trackPhysicalStats=true;
@@ -2130,6 +2149,7 @@ VkResult restoreColdLocked(VkDevice device,Device& d,VkDeviceMemory only,std::si
             types=backingMemoryTypes(d,req);
         } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
         if(types.empty()) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        preferNativeBackingType(types,memory.nativeTypeBits);
         for(std::size_t i=0;i<memory.coldGroups.size();i++) {
             if(childOnly!=SIZE_MAX && i!=childOnly) continue;
             auto& group=memory.coldGroups[i];
@@ -3045,6 +3065,14 @@ std::vector<std::uint32_t> backingMemoryTypes(const Device& d,const VkMemoryRequ
         if(heap<d.memory.memoryHeapCount && (d.memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)==0) types.push_back(i);
     }
     return types;
+}
+void preferNativeBackingType(std::vector<std::uint32_t>& types,std::uint32_t nativeTypeBits) {
+    for(auto type=types.begin();type!=types.end();++type) {
+        if(*type<32 && (nativeTypeBits&(1u<<*type))) {
+            std::rotate(types.begin(),type,type+1);
+            return;
+        }
+    }
 }
 VkResult allocateBackingChild(Device& d,VkDevice device,VkDeviceSize size,std::uint32_t type,
                               VkMemoryAllocateFlags flags,bool hasPriority,float priority,VkDeviceMemory* out) {

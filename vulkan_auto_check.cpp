@@ -126,13 +126,16 @@ struct Context {
     }
 
     void initialize(bool enableBda, bool native, bool twoSame, bool twoSeparate, bool exclusive,
-                    bool pending, bool bindWhilePending, bool active, bool pressureWait = false, bool robustCore = false) {
+                    bool pending, bool bindWhilePending, bool active, bool pressureWait = false,
+                    bool robustCore = false, bool enableColdCycleSparseResidency = false) {
         twoSeparate = twoSeparate || exclusive;
         bdaMode = enableBda;
         nativeAllocation = native; twoQueues = twoSame; twoFamilies = twoSeparate;
         exclusiveFamilies = exclusive; pendingWait = pending; pendingBind = bindWhilePending;
         activeSubmit = active;
         pressureTimeline = pressureWait;
+        require(!enableColdCycleSparseResidency || enableBda,
+                "cold-cycle sparse-residency request requires BDA mode");
         if (exclusive) twoFamilies = true;
         require(!(twoSame && twoSeparate), "choose only one of --two-queues and --two-families");
         require(!(pending && bindWhilePending), "choose only one pending queue test");
@@ -171,6 +174,7 @@ struct Context {
                 vkGetPhysicalDeviceFeatures2(candidate, &features2);
                 features = features2.features;
                 if (enableBda && (!bdaFeatures.bufferDeviceAddress || !features.shaderInt64)) continue;
+                if (enableColdCycleSparseResidency && !features.sparseResidencyBuffer) continue;
                 if ((pending || bindWhilePending || active || pressureWait) && !timelineFeatures.timelineSemaphore) continue;
             } else {
                 vkGetPhysicalDeviceFeatures(candidate, &features);
@@ -240,6 +244,7 @@ struct Context {
         if (enableBda) {
             enabledBda.bufferDeviceAddress = VK_TRUE;
             enabled2.features.sparseBinding = VK_TRUE;
+            if (enableColdCycleSparseResidency) enabled2.features.sparseResidencyBuffer = VK_TRUE;
             enabled2.features.shaderInt64 = VK_TRUE; enabled2.features.robustBufferAccess=robustCore;
             enabled2.pNext = &enabledBda;
             if (pendingWait || pendingBind || activeSubmit || pressureTimeline) {
@@ -1418,12 +1423,14 @@ void pressureOnlyFixtureCheck(Context& context) {
     std::cout << "PASS: below-cap data stayed resident; pressure evicted it; removing pressure restored every byte" << std::endl;
 }
 
-void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceType) {
+void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceType,
+                                   bool expectNativeTypeRefusal) {
     Buffer resident; resident.device = context.device;
     VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     info.size = ChunkBytes;
     info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                  VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    if (context.bdaMode) info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     check(vkCreateBuffer(context.device, &info, nullptr, &resident.handle), "create cold-cycle buffer");
     VkMemoryRequirements req{};
     vkGetBufferMemoryRequirements(context.device, resident.handle, &req);
@@ -1447,6 +1454,9 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
     require(nonlocalType != UINT32_MAX,
             "cold-cycle fixture needs a compatible non-device-local backing type");
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    VkMemoryAllocateFlagsInfo addressFlags{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
+    addressFlags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+    allocation.pNext = context.bdaMode ? &addressFlags : nullptr;
     allocation.allocationSize = req.size;
     allocation.memoryTypeIndex = allocationType;
     check(forceType(context.device, nonlocalType), "force initial nonlocal backing type");
@@ -1454,6 +1464,12 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
           "allocate cold-cycle virtual backing");
     check(vkBindBufferMemory(context.device, resident.handle, resident.memory, 0),
           "bind cold-cycle virtual backing");
+    if (context.bdaMode) {
+        VkBufferDeviceAddressInfo addressInfo{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
+        addressInfo.buffer = resident.handle;
+        context.bufferAddress = vkGetBufferDeviceAddress(context.device, &addressInfo);
+        require(context.bufferAddress != 0, "cold-cycle BDA buffer has no device address");
+    }
 
     Staging staging; staging.device = context.device;
     VkBufferCreateInfo stagingInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -1463,6 +1479,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
           "create cold-cycle staging buffer");
     VkMemoryRequirements stagingReq{};
     vkGetBufferMemoryRequirements(context.device, staging.buffer, &stagingReq);
+    allocation.pNext = nullptr;
     allocation.allocationSize = stagingReq.size;
     allocation.memoryTypeIndex = hostCoherentType(context, stagingReq.memoryTypeBits);
     require(allocation.memoryTypeIndex != UINT32_MAX,
@@ -1475,8 +1492,8 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
           "map cold-cycle staging memory");
 
     const VkResult uploadResult = upload(context, resident.handle, staging, ChunkBytes,
-        context.nativeAllocation ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_SUCCESS);
-    if (context.nativeAllocation) {
+        expectNativeTypeRefusal ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_SUCCESS);
+    if (expectNativeTypeRefusal) {
         require(uploadResult == VK_ERROR_OUT_OF_DEVICE_MEMORY,
                 "native original-type allocation unexpectedly accepted a nonlocal backing type");
         const auto refused = context.stats();
@@ -1615,8 +1632,20 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             cycled.residentBytes == ChunkBytes && cycled.coldLogicalBytes == 0 &&
             cycled.failures == 0,
             "idle worker did not cold-cycle the nonlocal range below cap");
+    if (context.bdaMode) {
+        VkBufferDeviceAddressInfo addressInfo{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
+        addressInfo.buffer = resident.handle;
+        require(vkGetBufferDeviceAddress(context.device, &addressInfo) == context.bufferAddress,
+                "cold-cycle recovery changed the BDA buffer address");
+    }
     check(readbackAndVerify(context, resident.handle, staging, -1, false, ChunkBytes),
           "verify cold-cycle full-byte restoration");
+    if (context.bdaMode) {
+        check(computeCycle(context, resident.handle, 0, 0, false, ChunkBytes),
+              "exercise BDA shader after cold-cycle recovery");
+        check(readbackAndVerify(context, resident.handle, staging, 0, false, ChunkBytes),
+              "verify BDA shader-updated full bytes after cold-cycle recovery");
+    }
     vkDestroyBuffer(context.device, resident.handle, nullptr); resident.handle = VK_NULL_HANDLE;
     vkFreeMemory(context.device, resident.memory, nullptr); resident.memory = VK_NULL_HANDLE;
     const auto empty = context.stats();
@@ -2676,6 +2705,7 @@ int main(int argc, char** argv) try {
     bool expectPartialFreeze = false, expectPartialRestore = false;
     bool expectPipelineRestore = false, expectPipelinePartialRestore = false;
     bool bdaMode = false, nativeAllocation = false;
+    bool expectNativeTypeRefusal = false;
     bool twoQueues = false, twoFamilies = false, exclusiveFamilies = false;
     bool pendingWait = false, pendingBind = false;
     bool activeSubmit = false;
@@ -2705,6 +2735,7 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--expect-pipeline-partial-restore") == 0) expectPipelinePartialRestore = true;
         else if (std::strcmp(argv[i], "--bda") == 0) bdaMode = true;
         else if (std::strcmp(argv[i], "--native-allocation") == 0) nativeAllocation = true;
+        else if (std::strcmp(argv[i], "--expect-native-type-refusal") == 0) expectNativeTypeRefusal = true;
         else if (std::strcmp(argv[i], "--two-queues") == 0) twoQueues = true;
         else if (std::strcmp(argv[i], "--two-families") == 0) twoFamilies = true;
         else if (std::strcmp(argv[i], "--exclusive-families") == 0) exclusiveFamilies = true;
@@ -2788,15 +2819,18 @@ int main(int argc, char** argv) try {
                                                twoFamilies || exclusiveFamilies || pendingWait || pendingBind)),
             "pipeline partial-restore mode requires synthetic single-queue memory");
     require(!(twoQueues && (twoFamilies || exclusiveFamilies)), "choose only one multi-queue mode");
-    require(!rangePressure || (rangeSubmit && !activeSubmit && !bdaMode && !twoFamilies && !exclusiveFamilies),
+    require(!rangePressure || (rangeSubmit && !activeSubmit && (!bdaMode || coldCycleRecoveryFixture) &&
+                               !twoFamilies && !exclusiveFamilies),
             "range pressure requires descriptor-tracked range-submit mode");
     require(!rangePressure || !pendingWait,
             "range pressure manages its own pending timeline test");
     require(!pressureOnlyFixture || (!nativeAllocation && !twoQueues),
             "pressure-only fixture uses synthetic single-queue backing");
-    require(!coldCycleRecoveryFixture || (!bdaMode &&
+    require(!coldCycleRecoveryFixture || ((!bdaMode || nativeAllocation) &&
             !twoFamilies && !exclusiveFamilies && !pendingWait && !pendingBind),
-            "cold-cycle fixture requires tracked buffer backing without BDA or unrelated queue tests");
+            "cold-cycle fixture requires tracked buffer backing and native-only BDA");
+    require(!expectNativeTypeRefusal || (coldCycleRecoveryFixture && nativeAllocation && !bdaMode),
+            "native type refusal requires the native cold-cycle fixture");
     require(!pressureOnlyLiveCapFixture || (!nativeAllocation && !twoQueues && !twoFamilies && !exclusiveFamilies),
             "pressure-only live-cap fixture uses synthetic single-queue backing");
     require(!(asyncEncodeOverlapFixture && asyncPressureRaiseDiscardFixture),
@@ -2838,7 +2872,8 @@ int main(int argc, char** argv) try {
     require(!suballocation || !nativeAllocation || suballocationAuto,
             "native suballocation checks require --suballocation-auto");
     context.initialize(bdaMode, nativeAllocation, twoQueues, twoFamilies, exclusiveFamilies,
-                       pendingWait, pendingBind, activeSubmit, rangePressure && twoQueues, robustCore);
+                       pendingWait, pendingBind, activeSubmit, rangePressure && twoQueues, robustCore,
+                       coldCycleRecoveryFixture && bdaMode);
     if (coldCycleRecoveryFixture) {
         const auto forceType = reinterpret_cast<ForceNextBackingType>(
             vkGetDeviceProcAddr(context.device, "vkZVramForceNextBackingTypeNX"));
@@ -2846,7 +2881,7 @@ int main(int argc, char** argv) try {
             std::cerr << "UNSUPPORTED: cold-cycle fixture requires ZVRAM_TEST_ASYNC_HOOK layer build\n";
             return 77;
         }
-        coldCycleRecoveryFixtureCheck(context, forceType);
+        coldCycleRecoveryFixtureCheck(context, forceType, expectNativeTypeRefusal);
         return 0;
     }
     if (asyncEncodeOverlapFixture || asyncPressureRaiseDiscardFixture) {

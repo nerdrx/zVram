@@ -18,6 +18,7 @@ int failSparseBinds{};
 unsigned failQueueWaitAt{};
 VkResult failQueueWaitResult{VK_ERROR_DEVICE_LOST};
 unsigned failSparseBindAt{};
+std::uint32_t mockPoolViewTypeBits{1};
 unsigned frees{};
 unsigned budgetQueries{};
 unsigned submitCalls{};
@@ -49,7 +50,7 @@ VKAPI_ATTR void VKAPI_CALL mockDestroyBuffer(VkDevice,VkBuffer buffer,const VkAl
     bufferSizes.erase(buffer);
 }
 VKAPI_ATTR void VKAPI_CALL mockGetBufferMemoryRequirements(VkDevice,VkBuffer buffer,VkMemoryRequirements* req) {
-    req->size=bufferSizes.at(buffer); req->alignment=4096; req->memoryTypeBits=1;
+    req->size=bufferSizes.at(buffer); req->alignment=4096; req->memoryTypeBits=mockPoolViewTypeBits;
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockAllocate(VkDevice,const VkMemoryAllocateInfo* info,
     const VkAllocationCallbacks*,VkDeviceMemory* out) {
@@ -166,7 +167,7 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr;
+        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr;
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
         mockHeapBudget=mockHeapUsage=mockNativeHeapSize=0;
         device.handle=handle; device.autoEnabled=true; device.lazyBacking=true;
@@ -197,6 +198,85 @@ struct Fixture {
     }
     VirtualMemory& state() { return device.virtualMemory.at(memory); }
 };
+
+void configureNativeTypeFallback(Fixture& f) {
+    auto& d=f.device; auto& m=f.state();
+    d.memory.memoryTypeCount=3; d.memory.memoryHeapCount=3;
+    for(std::uint32_t i=0;i<3;i++) {
+        d.memory.memoryTypes[i].heapIndex=i;
+        d.memory.memoryHeaps[i].flags=i<2?VK_MEMORY_HEAP_DEVICE_LOCAL_BIT:0;
+        d.memory.memoryHeaps[i].size=8*MiB;
+    }
+    m.nativeTypeBits=1u<<1; // Original native type: local type 1.
+    f.req.memoryTypeBits=7;
+    mockPoolViewTypeBits=7;
+}
+
+void checkNativeBackingFallbackPolicy() {
+    {
+        Fixture f(MiB,2*MiB); configureNativeTypeFallback(f);
+        f.device.lazyBacking=false;
+        failAllocationTypes.insert(1);
+        const auto r=bindPoolBuffer(f.handle,f.device,tokenHandle<VkBuffer>(0xb001),f.memory,0,f.req);
+        require(r==VK_ERROR_OUT_OF_DEVICE_MEMORY && allocatedTypes==std::vector<std::uint32_t>{1} &&
+                f.state().nativeTypeBits==(1u<<1),
+                "default native backing escaped the application's original type");
+        failAllocationTypes.clear();
+    }
+    {
+        Fixture f(MiB,2*MiB); configureNativeTypeFallback(f);
+        f.device.lazyBacking=false; f.device.coldCycleRecovery=true;
+        failAllocationTypes.insert(0); failAllocationTypes.insert(1);
+        require(bindPoolBuffer(f.handle,f.device,tokenHandle<VkBuffer>(0xb002),f.memory,0,f.req)==VK_SUCCESS,
+                "opt-in native backing did not fall back to a compatible nonlocal type");
+        const auto& m=f.state();
+        require(allocatedTypes==std::vector<std::uint32_t>({1,0,2}) &&
+                m.children[0] && m.childTypes[0]==2 && m.nativeTypeBits==(1u<<1) &&
+                m.backingMemoryTypeBits==7,
+                "opt-in fallback did not prefer original type or preserve candidate provenance");
+        failAllocationTypes.clear();
+    }
+    {
+        Fixture f(2*MiB,3*MiB); configureNativeTypeFallback(f);
+        f.device.coldCycleRecovery=true;
+        auto& m=f.state();
+        f.bind(0,MiB);
+        f.req.memoryTypeBits=6; // Preserve the original type and permit nonlocal type 2.
+        f.bind(MiB,MiB);
+        require(m.backingMemoryTypeBits==6 && m.coldGroups[0].cold && m.coldGroups[1].cold,
+                "native alias did not monotonically narrow the cold backing mask");
+        failAllocationTypes.insert(1);
+        require(restoreColdLocked(f.handle,f.device,f.memory,0)==VK_SUCCESS &&
+                m.children[0] && m.childTypes[0]==2 && m.backingMemoryTypeBits==6 &&
+                allocatedTypes==std::vector<std::uint32_t>({1,2}),
+                "cold restore escaped the narrowed multi-alias compatible type set");
+        failAllocationTypes.clear();
+    }
+    {
+        Fixture f(2*MiB,3*MiB); configureNativeTypeFallback(f);
+        f.device.coldCycleRecovery=true;
+        auto& m=f.state(); f.bind(0,MiB);
+        f.req.memoryTypeBits=5; // Omits the application's original native type 1.
+        const auto before=allocatedTypes.size();
+        const auto result=bindPoolBuffer(f.handle,f.device,tokenHandle<VkBuffer>(0xb004),
+                                         f.memory,MiB,f.req);
+        require(result==VK_ERROR_FEATURE_NOT_PRESENT && allocatedTypes.size()==before &&
+                m.bindings.size()==1 && m.backingMemoryTypeBits==7 &&
+                m.coldGroups[0].cold && m.coldGroups[1].cold && f.device.residentBytes==0,
+                "native alias incompatible with the original app type mutated backing state");
+    }
+    {
+        Fixture f(MiB,2*MiB); configureNativeTypeFallback(f);
+        f.device.lazyBacking=false; f.device.coldCycleRecovery=true;
+        f.device.memory.memoryTypes[2].propertyFlags=VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+        failAllocationTypes.insert(0); failAllocationTypes.insert(1);
+        require(bindPoolBuffer(f.handle,f.device,tokenHandle<VkBuffer>(0xb003),f.memory,0,f.req)==
+                    VK_ERROR_OUT_OF_DEVICE_MEMORY &&
+                allocatedTypes==std::vector<std::uint32_t>({1,0}),
+                "opt-in native fallback admitted a lazily allocated type");
+        failAllocationTypes.clear();
+    }
+}
 
 void checkBootstrapAdmissionAndRestore() {
     Fixture f;
@@ -1044,6 +1124,7 @@ int main() try {
     checkColdCycleActiveReferenceGuard();
     checkColdCycleSparseFailurePreservesBacking();
     checkColdCycleRefusalPolicies();
+    checkNativeBackingFallbackPolicy();
     checkPressureOnlyAsyncCommitRechecksCurrentCap();
     std::cout<<"PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry\n";
     return 0;
