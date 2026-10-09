@@ -175,6 +175,7 @@ def discovered_processes(exclude=(), proc_root=Path('/proc')):
         cap = env.get('ZVRAM_VULKAN_RESIDENT_MIB', '')
         row = dict(name=f'@{pid}-{start}', display_name=name, external=True, source='zVram',
                    mode='wrapped', priority='—', running=True, pid=pid, process_start=start,
+                   backend_loaded=loaded,
                    state='Layer loaded' if loaded else 'Launch configured', command=[],
                    resident_mib=None, active_resident_mib=int(cap) if cap.isdecimal() else None)
         row.update(process_usage(pid))

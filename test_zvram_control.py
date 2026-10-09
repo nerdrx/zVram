@@ -12,6 +12,41 @@ import zvram_control as control
 
 
 class ControlChecks(unittest.TestCase):
+    def test_launcher_layer_paths_include_steam_import_and_native_dirs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            build = Path(temporary) / 'build'
+            build.mkdir()
+            (build / 'VK_LAYER_NX_zvram.json').touch()
+            (build / 'libzvram_layer.so').touch()
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith('VK_LAYER_PATH') and k != 'VK_ADD_LAYER_PATH'}
+            env.update(XDG_CONFIG_HOME='/user/config', XDG_CONFIG_DIRS='/etc/xdg:/opt/config',
+                       XDG_DATA_HOME='/user/data', XDG_DATA_DIRS='/local/share:/usr/share',
+                       VK_ADD_LAYER_PATH='/extra/layers')
+            launcher = Path(__file__).with_name('zvram')
+
+            def layer_paths(**extra):
+                test_env = env | extra
+                result = subprocess.run(
+                    [sys.executable, str(launcher), '--build-dir', str(build), '--no-live-control',
+                     '--', sys.executable, '-c',
+                     'import os,json; print(json.dumps([os.environ.get("VK_LAYER_PATH"), os.environ.get("VK_ADD_LAYER_PATH")]))'],
+                    env=test_env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                return json.loads(result.stdout)
+
+            search, additional = layer_paths()
+            self.assertEqual(search.split(os.pathsep), [
+                str(build), '/extra/layers', '/user/config/vulkan/explicit_layer.d',
+                '/etc/xdg/vulkan/explicit_layer.d', '/opt/config/vulkan/explicit_layer.d',
+                '/user/data/vulkan/explicit_layer.d',
+                '/local/share/vulkan/explicit_layer.d', '/usr/share/vulkan/explicit_layer.d',
+                '/etc/vulkan/explicit_layer.d', '/usr/local/share/vulkan/explicit_layer.d'])
+            self.assertEqual(additional, '/extra/layers')
+            search, additional = layer_paths(VK_LAYER_PATH='/custom/one:/custom/two')
+            self.assertEqual(search.split(os.pathsep), [str(build), '/custom/one', '/custom/two'])
+            self.assertEqual(additional, '/extra/layers')
+
     def test_launcher_defaults_and_opt_out(self):
         with tempfile.TemporaryDirectory() as temporary:
             build = Path(temporary)

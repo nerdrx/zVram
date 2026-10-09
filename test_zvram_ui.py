@@ -1,6 +1,6 @@
 """Small UI checks; --gui exercises actual Tk widgets on an isolated display."""
 import sys
-from zvram_ui import profile_from_fields, command_text, system_status, profile_details
+from zvram_ui import profile_from_fields, command_text, system_status, profile_details, table_state, usage_mib
 
 
 EXTERNAL = dict(name="@12345-678", display_name="vrchat.exe", external=True, source="zVram",
@@ -11,7 +11,8 @@ EXTERNAL = dict(name="@12345-678", display_name="vrchat.exe", external=True, sou
 class FakeManager:
     def __init__(self, external=False):
         self.profiles = {"test": dict(name="test", priority="low", resident_mib=1024,
-                                     command=["/bin/echo", "hello world"], mode="vulkan", env={"TEST": "1"}, min_available_mib=16384, max_swap_growth_mib=8192)}
+                                     command=["/bin/echo", "hello world"], mode="vulkan", env={"TEST": "1"}, min_available_mib=16384, max_swap_growth_mib=8192,
+                                     vram_mib=512.4, gtt_mib=None, rss_mib=0)}
         if external:
             self.profiles[EXTERNAL["name"]] = dict(EXTERNAL)
         self.calls = []
@@ -58,6 +59,9 @@ def check_fields():
     assert profile_from_fields("a", "low", "", "zvram -- /bin/true", mode="wrapped")["mode"] == "wrapped"
     assert "Native: no zVram residency cap" in profile_details({"mode": "native"})
     assert command_text(profile) == "/bin/echo 'hello world'"
+    assert usage_mib({"vram_mib": 512.4}, "vram_mib") == "512"
+    assert usage_mib({"rss_mib": 0}, "rss_mib") == "0"
+    assert usage_mib({}, "gtt_mib") == "—"
     for fields in (("", "low", "1", "echo hi"), ("a", "bad", "1", "echo hi"),
                    ("a", "high", "0", "echo hi"), ("a", "high", "-1", "echo hi"),
                    ("a", "high", "1", ""), ("a", "high", "1", 'echo "')):
@@ -72,6 +76,12 @@ def check_fields():
     details = profile_details(EXTERNAL)
     assert "restart through updated zVram" in details and "Configured cap: unknown" in details
     assert "Next launch" not in details and "not running" not in details
+    assert 'layer is NOT loaded' in details
+    assert table_state(EXTERNAL) == 'Layer missing'
+    assert table_state(dict(EXTERNAL, backend_loaded=True)) == 'Restart needed'
+    assert table_state(dict(EXTERNAL, backend_loaded=True, control_devices=[{'capable': False}])) == 'Paging off'
+    assert table_state(dict(EXTERNAL, live_capable=True)) == 'Live control'
+    assert 'Apply live requires a running app' in profile_details({'running': False})
     assert "Configured cap: 1024 MiB" in profile_details(dict(EXTERNAL, active_resident_mib=1024))
     live = dict(EXTERNAL, live_capable=True, control_devices=[dict(device="2", current_limit_mib=1024, resident_mib=900, requested_mib=768, result=2, reason=7)])
     assert "GPU 1: cap 1024 MiB · resident 900 MiB · requested 768 MiB · rejected (request rejected)" in profile_details(live)
@@ -86,6 +96,9 @@ def check_gui():
     window = ManagerWindow(root, manager)
     root.geometry("1200x920")
     root.update()
+    assert len(window.table.get_children()) == 2
+    assert window.table.item("test", "values") == ("512", "—", "0", "LOW", "Stopped")
+    assert tuple(window.table.cget("columns")) == ("vram", "gtt", "rss", "priority", "state")
     window.table.selection_set("test")
     root.update()
     assert window.fields["priority"].get() == "low"
@@ -94,9 +107,11 @@ def check_gui():
     root.update()
     assert window.fields["resident_mib"].get() == "2048", "Refresh overwrote unsaved edit"
     window.fields["priority"].set("high")
+    window.swap_guard.set(True)
     window.save()
     root.update()
     assert manager.profiles["test"]["resident_mib"] == 2048
+    assert manager.profiles["test"]["ignore_swap_guard"] is True
     assert manager.profiles["test"]["env"] == {"TEST": "1"}
     assert manager.profiles["test"]["min_available_mib"] == 16384
     assert manager.profiles["test"]["max_swap_growth_mib"] == 8192
@@ -109,6 +124,7 @@ def check_gui():
         if isinstance(child, tk.Toplevel):
             child.destroy()
     window.new()
+    assert window.swap_guard.get() is False
     window.fields["name"].set("second")
     window.fields["command"].set("/bin/true")
     window.fields["mode"].set("wrapped")
@@ -116,6 +132,7 @@ def check_gui():
     root.update()
     assert manager.profiles["second"]["resident_mib"] is None
     assert manager.profiles["second"]["mode"] == "wrapped"
+    assert manager.profiles["second"]["ignore_swap_guard"] is False
     assert "RAM available: 20000" in window.telemetry.get()
     window.update_cards(dict(gpu=[dict(card="card0", vram_used_mib=20, vram_total_mib=2048), dict(card="card1", vram_used_mib=1024, vram_total_mib=24576)]))
     assert window.cards["gpu"][0].get() == "1.0 GiB / 24.0 GiB"

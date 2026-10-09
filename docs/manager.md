@@ -78,6 +78,25 @@ same-user PID after checking its start identity and opening a pidfd; it does not
 signal Steam or unrelated process groups. SIGSTOP is not used because it retains VRAM.
 Existing models and unrelated programs are never stopped automatically.
 
+The app list shows per-process **VRAM**, **GTT**, and **RAM (RSS)** alongside
+priority and status. Unknown counters show a dash rather than zero. VRAM/GTT
+columns are DRM allocation accounting; the top physical GPU total has a
+different meaning, and shared clients can appear in more than one process.
+The full process list stays available.
+
+External status distinguishes **Live control**, **Layer missing**, **Paging off**,
+and **Restart needed**. Launch settings inherited by Steam/Wine helpers do not
+prove the layer is loaded. An app with no mapped layer cannot accept live caps.
+An already-created Vulkan device cannot gain paging features after launch.
+Select a running capable app for Apply live; stopped saved profiles only accept
+next-launch settings. Restarting the manager after an update does not restart
+the game or attach a layer to it.
+
+Steam's pressure-vessel container imports host layers using `VK_LAYER_PATH`
+and can discard `VK_ADD_LAYER_PATH`. The launcher now exports the former while
+preserving existing paths and default explicit-layer locations. This requires
+relaunching an affected game; no running game is modified or stopped by updating.
+
 The worker stops its own process when available RAM falls below its floor or
 system swap grows by more than 4 GiB from launch. Defaults: 16 GiB available
 RAM for range-paged launches, 4 GiB otherwise. System swap includes unrelated

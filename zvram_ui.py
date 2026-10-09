@@ -37,6 +37,16 @@ def status_text(profile):
     return str(profile.get("state", "stopped")).capitalize()
 
 
+def table_state(profile):
+    if not profile.get('external'):
+        return 'Running' if profile.get('running') else status_text(profile)
+    if profile.get('live_capable'):
+        return 'Live control'
+    if not profile.get('backend_loaded', profile.get('state') == 'Layer loaded'):
+        return 'Layer missing'
+    return 'Paging off' if profile.get('control_devices') else 'Restart needed'
+
+
 def system_status(status):
     ram = "RAM available: %s MiB | Swap used: %s MiB" % (status.get("mem_available_mib", "?"), status.get("swap_used_mib", "?"))
     gpu = ["%s VRAM %s/%s MiB, GTT %s MiB" % (item.get("card", "GPU"), item.get("vram_used_mib", "?"), item.get("vram_total_mib", "?"), item.get("gtt_used_mib", "?")) for item in status.get("gpu", [])]
@@ -50,6 +60,12 @@ def profile_details(profile):
         cap = "%s MiB" % profile["active_resident_mib"] if profile.get("active_resident_mib") is not None else "unknown"
         text += " | External zVram launch | " + profile.get("state", "Launch configured") + " | Configured cap: " + cap
         if not profile.get("live_capable"):
+            if not profile.get('backend_loaded', profile.get('state') == 'Layer loaded'):
+                text += " · zVram layer is NOT loaded; inherited launch settings alone do not enable paging"
+            elif profile.get('control_devices'):
+                text += " · paging was disabled at launch; it cannot be enabled on an existing Vulkan device"
+            else:
+                text += " · loaded backend has no live control channel"
             text += " · restart through updated zVram for live residency controls"
     elif profile.get("mode") == "native":
         text += " | Native: no zVram residency cap"
@@ -57,6 +73,8 @@ def profile_details(profile):
         active = "%s MiB" % profile["active_resident_mib"] if profile.get("running") and profile.get("active_resident_mib") else "automatic" if profile.get("running") else "not running"
         pending = "%s MiB" % profile["resident_mib"] if profile.get("resident_mib") else profile.get("priority", "normal") + " preset"
         text += " | Launch cap: %s · Next launch: %s" % (active, pending)
+        if not profile.get('running'):
+            text += " · Apply live requires a running app with paging enabled"
         if profile.get("mode") == "wrapped":
             text += " · existing zVram command"
     for index, device in enumerate(profile.get("control_devices", []), 1):
@@ -79,6 +97,11 @@ NX = dict(bg="#100f14", fg="#e9e6ef", panel="#19171e", border="#37323e",
 
 def gib(value):
     return "—" if value is None else "%.1f GiB" % (value / 1024)
+
+
+def usage_mib(profile, key):
+    value = profile.get(key)
+    return "—" if value is None else "%.0f" % value
 
 
 class ManagerWindow:
@@ -109,6 +132,8 @@ class ManagerWindow:
         style.configure("CardValue.TLabel", background=NX["panel"], foreground=NX["fg"], font=("DejaVu Sans", 24, "bold"))
         style.configure("Title.TLabel", font=("DejaVu Sans", 25, "bold"))
         style.configure("Section.TLabel", background=NX["panel"], foreground=NX["fg"], font=("DejaVu Sans", 13, "bold"))
+        style.configure("Card.TCheckbutton", background=NX["panel"], foreground=NX["muted"])
+        style.map("Card.TCheckbutton", background=[("active", NX["panel"])], foreground=[("disabled", NX["muted"])])
         style.configure("Badge.TLabel", background=NX["selected"], foreground=NX["accent"], padding=(10, 6), font=("DejaVu Sans", 9, "bold"))
         style.configure("TButton", background=NX["panel"], foreground=NX["fg"], bordercolor=NX["border"], lightcolor=NX["border"], darkcolor=NX["border"], padding=(12, 9), focusthickness=2, focuscolor=NX["accent"])
         style.map("TButton", background=[("active", NX["selected"])], bordercolor=[("focus", NX["accent"])])
@@ -131,13 +156,13 @@ class ManagerWindow:
         body.columnconfigure(0, weight=1)
         body.rowconfigure(2, weight=1)
         header = ttk.Frame(body)
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 22))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 9))
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text="zVram", style="Title.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(header, text="Memory, on your terms.", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
         ttk.Label(header, text="NX  /  MEMORY CONTROL", style="Badge.TLabel").grid(row=0, column=1, rowspan=2, sticky="e")
         overview = ttk.Frame(body)
-        overview.grid(row=1, column=0, sticky="ew", pady=(0, 20))
+        overview.grid(row=1, column=0, sticky="ew", pady=(0, 6))
         self.cards = {}
         for index, (key, title, caption) in enumerate((("gpu", "PHYSICAL GPU VRAM", "Device-wide usage · not per-process accounting"),
                                                       ("ram", "SYSTEM RAM AVAILABLE", "Headroom for model spill and your desktop"),
@@ -159,8 +184,8 @@ class ManagerWindow:
             self.cards[key] = (value, bar)
         workspace = ttk.Frame(body)
         workspace.grid(row=2, column=0, sticky="nsew")
-        workspace.columnconfigure(0, weight=4)
-        workspace.columnconfigure(1, weight=6)
+        workspace.columnconfigure(0, weight=6)
+        workspace.columnconfigure(1, weight=4)
         workspace.rowconfigure(0, weight=1)
         left = ttk.Frame(workspace, style="Card.TFrame", padding=16)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 16))
@@ -171,13 +196,15 @@ class ManagerWindow:
         titlebar.columnconfigure(0, weight=1)
         ttk.Label(titlebar, text="Profiles & zVram apps", style="Section.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Button(titlebar, text="+ New", command=self.new).grid(row=0, column=1, sticky="e")
-        ttk.Label(left, text="Profiles and apps launched through zVram.", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 12))
-        self.table = ttk.Treeview(left, columns=("priority", "state"), height=7)
+        ttk.Label(left, text="Memory in MiB · VRAM/GTT show allocations.", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 12))
+        self.table = ttk.Treeview(left, columns=("vram", "gtt", "rss", "priority", "state"), height=7)
         self.table.heading("#0", text="APP / PROFILE", anchor="w")
-        self.table.column("#0", width=175, minwidth=120, stretch=True)
-        for key, label, width in (("priority", "PRIORITY", 76), ("state", "STATUS", 120)):
+        self.table.column("#0", width=150, minwidth=115, stretch=True)
+        for key, label, width in (("vram", "VRAM", 78), ("gtt", "GTT", 72),
+                                  ("rss", "RAM", 72), ("priority", "PRIORITY", 80),
+                                  ("state", "STATUS", 100)):
             self.table.heading(key, text=label, anchor="w")
-            self.table.column(key, width=width, stretch=False)
+            self.table.column(key, width=width, minwidth=width, stretch=False, anchor="e" if key in ("vram", "gtt", "rss") else "w")
         self.table.grid(row=2, column=0, sticky="nsew")
         self.table.bind("<<TreeviewSelect>>", self.select)
         leftactions = ttk.Frame(left, style="Panel.TFrame")
@@ -194,6 +221,7 @@ class ManagerWindow:
         ttk.Label(right, text="Profile settings", style="Section.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
         ttk.Label(right, text="Save preferences, then launch when you are ready.", style="CardMuted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 14))
         self.fields = {}
+        self.swap_guard = tk.BooleanVar(value=False)
         fields = (("name", "Profile name", 2, 0, 2), ("priority", "VRAM priority", 4, 0, 1),
                   ("mode", "Launch mode", 4, 1, 1), ("resident_mib", "Resident MiB · blank uses priority preset", 6, 0, 2),
                   ("command", "Command · shell quoting supported; no shell invoked", 8, 0, 2))
@@ -203,17 +231,20 @@ class ManagerWindow:
             self.fields[key] = variable
             widget = ttk.Combobox(right, textvariable=variable, values=PRIORITIES if key == "priority" else ("native", "vulkan", "wrapped"), state="readonly") if key in ("priority", "mode") else ttk.Entry(right, textvariable=variable)
             self.field_widgets[key] = widget
-            widget.grid(row=row + 1, column=column, columnspan=span, sticky="ew", pady=(0, 12), padx=(0, 10 if column == 0 and span == 1 else 0))
+            widget.grid(row=row + 1, column=column, columnspan=span, sticky="ew", pady=(0, 6), padx=(0, 10 if column == 0 and span == 1 else 0))
+        guard = ttk.Checkbutton(right, text="Ignore swap-growth guard (RAM floor stays on)", variable=self.swap_guard, style="Card.TCheckbutton")
+        guard.grid(row=10, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        self.field_widgets["ignore_swap_guard"] = guard
         actions = ttk.Frame(right, style="Panel.TFrame")
-        actions.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(2, 16))
+        actions.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(2, 8))
         for label, callback, kind in (("Save settings", self.save, "TButton"), ("Start app", lambda: self.act("start"), "Accent.TButton"),
                                      ("Stop app", lambda: self.act("stop"), "TButton"), ("Apply live", self.apply_live, "TButton")):
             button = ttk.Button(actions, text=label, command=callback, style=kind)
             button.pack(side="left", padx=(0, 10))
             self.controls[label] = button
-        ttk.Label(right, text="PROCESS ACCOUNTING", style="CardMuted.TLabel", font=("DejaVu Sans", 9, "bold")).grid(row=11, column=0, columnspan=2, sticky="w")
+        ttk.Label(right, text="PROCESS ACCOUNTING", style="CardMuted.TLabel", font=("DejaVu Sans", 9, "bold")).grid(row=12, column=0, columnspan=2, sticky="w")
         self.details = tk.StringVar(value="Select a profile to inspect its process.")
-        ttk.Label(right, textvariable=self.details, style="CardMuted.TLabel", wraplength=545, justify="left").grid(row=12, column=0, columnspan=2, sticky="nw", pady=(8, 0))
+        ttk.Label(right, textvariable=self.details, style="CardMuted.TLabel", wraplength=450, justify="left").grid(row=13, column=0, columnspan=2, sticky="nw", pady=(8, 0))
         self.telemetry = tk.StringVar(value="")
         footer = ttk.Frame(body)
         footer.grid(row=3, column=0, sticky="ew", pady=(16, 0))
@@ -252,7 +283,7 @@ class ManagerWindow:
             widget.configure(state="normal" if enabled else "disabled")
         self.controls["Save settings"].configure(text="Save live cap" if external else "Save settings")
         for key, widget in self.field_widgets.items():
-            enabled = not external or live and key in ("priority", "resident_mib")
+            enabled = (not external or live and key in ("priority", "resident_mib")) if key != "ignore_swap_guard" else not external
             widget.configure(state="disabled" if not enabled else "readonly" if key in ("priority", "mode") else "normal")
 
     def blocked(self, action=None):
@@ -284,6 +315,7 @@ class ManagerWindow:
         self.configure_controls(profile)
         if profile:
             self.details.set(profile_details(profile))
+            self.swap_guard.set(bool(profile.get("ignore_swap_guard", False)))
         if profile and self.editing != profile["name"]:
             self.editing = profile["name"]
             for key in self.fields:
@@ -298,6 +330,7 @@ class ManagerWindow:
         self.table.selection_remove(*self.table.selection())
         for key, variable in self.fields.items():
             variable.set("normal" if key == "priority" else "vulkan" if key == "mode" else "")
+        self.swap_guard.set(False)
         self.message.set("New profile: enter a name and command, then Save")
 
     def refresh(self):
@@ -308,7 +341,8 @@ class ManagerWindow:
             self.table.delete(*self.table.get_children())
             for profile in profiles:
                 self.table.insert("", "end", iid=profile["name"], text=profile.get("display_name", profile["name"]), values=(
-                    profile["priority"].upper(), "External · live" if profile.get("external") and profile.get("live_capable") else "External" if profile.get("external") else "Running" if profile.get("running") else status_text(profile)))
+                    usage_mib(profile, "vram_mib"), usage_mib(profile, "gtt_mib"),
+                    usage_mib(profile, "rss_mib"), profile["priority"].upper(), table_state(profile)))
             if selected in self.profiles:
                 self.table.selection_set(selected)
                 self.select()
@@ -328,6 +362,7 @@ class ManagerWindow:
             return
         try:
             profile = profile_from_fields(**{key: value.get() for key, value in self.fields.items()})
+            profile["ignore_swap_guard"] = self.swap_guard.get()
             if self.editing in self.profiles:
                 profile = dict(self.profiles[self.editing], **profile)
             self.manager.save_profile(profile)

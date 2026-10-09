@@ -286,8 +286,23 @@ else:
         env["ZVRAM_VULKAN_CLEAN_CACHE"] = "1"
     if args.vulkan_clean_cache_mib is not None:
         env["ZVRAM_VULKAN_CLEAN_CACHE_MIB"] = str(args.vulkan_clean_cache_mib)
-    path_variable = "VK_LAYER_PATH" if env.get("VK_LAYER_PATH") else "VK_ADD_LAYER_PATH"
-    env[path_variable] = str(build) + (os.pathsep + env[path_variable] if env.get(path_variable) else "")
+    layer_paths = [str(build)]
+    if env.get("VK_LAYER_PATH"):
+        layer_paths.extend(env["VK_LAYER_PATH"].split(os.pathsep))
+    else:
+        # Pressure Vessel imports VK_LAYER_PATH but drops VK_ADD_LAYER_PATH.
+        layer_paths.extend(env.get("VK_ADD_LAYER_PATH", "").split(os.pathsep))
+        config_home = env.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+        config_dirs = env.get("XDG_CONFIG_DIRS") or "/etc/xdg"
+        data_home = env.get("XDG_DATA_HOME") or str(Path.home() / ".local/share")
+        data_dirs = env.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+        layer_paths.append(str(Path(config_home) / "vulkan/explicit_layer.d"))
+        layer_paths.extend(str(Path(path) / "vulkan/explicit_layer.d") for path in config_dirs.split(os.pathsep) if path)
+        layer_paths.append(str(Path(data_home) / "vulkan/explicit_layer.d"))
+        layer_paths.extend(str(Path(path) / "vulkan/explicit_layer.d") for path in data_dirs.split(os.pathsep) if path)
+        layer_paths.extend(("/etc/vulkan/explicit_layer.d", "/usr/local/share/vulkan/explicit_layer.d",
+                            "/usr/share/vulkan/explicit_layer.d"))
+    env["VK_LAYER_PATH"] = os.pathsep.join(dict.fromkeys(path for path in layer_paths if path))
     layers = ["VK_LAYER_NX_zvram"]
     if args.validate:
         layers.append("VK_LAYER_KHRONOS_validation")
