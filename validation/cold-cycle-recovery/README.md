@@ -21,3 +21,9 @@ Earlier probe archives are retained as diagnostic evidence: `non-overlapping-liv
 The synchronous recovery transaction still holds submission locks. Success logs report its own duration; resource-free submit sampling alone can miss the transaction. Keep recovery opt-in until broader workload and frame-time evidence supports enabling it.
 
 Final fixed-one-second-quiet runs passed both hardware cases (3.79 s total) and all 13 normal CPU checks. Recovery transaction durations were 20.696 ms single-queue and 12.366 ms after busy-queue release; a resource-free submit caught an 18.684 ms stall in the single-queue window. The two-queue window missed the cycle and its 79 us maximum is not a recovery cost estimate. These results justify retaining default-off recovery. See `final-fixed-quiet-duration-ctest.txt` and `cpu-ctest.txt`.
+
+## Smaller recovery ranges
+
+The same 32 MiB full-byte fixture passed with 8 MiB and 4 MiB residency ranges. Only the first child is forced nonlocal; remaining children start local. Recovery transaction durations were 8.633 ms and 5.292 ms respectively, with sampled submit stalls of 6.042 ms and 2.335 ms. These are single bounded observations, not game performance estimates. Smaller ranges increase allocation/binding metadata and can add overhead to large working sets; they remain an explicit `--vulkan-range-mib` choice. See `small-range-ctest.txt`.
+
+Native intercepted allocations currently retain the app-selected native type. Forcing a nonlocal child is therefore refused before upload with VK_ERROR_OUT_OF_DEVICE_MEMORY, with pristine accounting preserved and zero-accounting teardown. The explicit negative gate passed; it is not native recovery proof. See `native-type-refusal-ctest.txt`. Broadening native backing candidates requires a separate opt-in policy review and native/alias correctness gates.

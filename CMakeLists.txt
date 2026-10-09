@@ -361,6 +361,29 @@ if(ZVRAM_TEST_ASYNC_HOOK)
             ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
             LABELS "hardware;vulkan;cold-cycle;test-hook")
     endforeach()
+    foreach(cold_cycle_range_mib 8 4)
+        set(cold_cycle_test vulkan-cold-cycle-recovery-range-${cold_cycle_range_mib})
+        add_test(NAME ${cold_cycle_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+                --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib ${cold_cycle_range_mib} --vulkan-resident-mib 64
+                --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture)
+        set_tests_properties(${cold_cycle_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;cold-cycle;range-sensitivity;test-hook")
+    endforeach()
+    add_test(NAME vulkan-cold-cycle-native-type-refusal
+        COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+            --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64
+            --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+            --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+            --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+            $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture --native-allocation)
+    set_tests_properties(vulkan-cold-cycle-native-type-refusal PROPERTIES TIMEOUT 30
+        ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+        LABELS "hardware;vulkan;cold-cycle;native-allocation;negative-gate;test-hook")
 endif()
 add_test(NAME vulkan-graphics-pressure-retention
     COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers

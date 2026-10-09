@@ -784,15 +784,16 @@ void probeNativeTokenLifetimes(Context& context, VkDeviceMemory original,
     std::cout << "native token probes bound with distinct allocations; original cold token unchanged" << std::endl;
 }
 
-void upload(Context& context, VkBuffer buffer, Staging& staging,
-            VkDeviceSize byteSize = TotalBytes) {
+VkResult upload(Context& context, VkBuffer buffer, Staging& staging,
+                VkDeviceSize byteSize = TotalBytes,
+                VkResult expectedFailure = VK_SUCCESS) {
     auto* words = static_cast<std::uint32_t*>(staging.mapped);
     require(byteSize % ChunkBytes == 0, "upload size must contain whole chunks");
     const std::uint32_t chunkCount = static_cast<std::uint32_t>(byteSize / ChunkBytes);
     for (std::uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
         const std::uint32_t base = chunk * ChunkWords;
         for (std::uint32_t i = 0; i < ChunkWords; ++i) words[i] = initialWord(base + i);
-        context.submit([&](VkCommandBuffer command) {
+        const VkResult result = context.submit([&](VkCommandBuffer command) {
             VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
             barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
             barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -815,8 +816,10 @@ void upload(Context& context, VkBuffer buffer, Staging& staging,
                                      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
                                      0, nullptr, 1, &release, 0, nullptr);
             }
-        });
+        }, 0, expectedFailure);
+        if (expectedFailure != VK_SUCCESS) return result;
     }
+    return VK_SUCCESS;
 }
 
 VkResult computeCycle(Context& context, VkBuffer buffer, std::uint32_t cycle,
@@ -1427,6 +1430,11 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
     require(req.size == ChunkBytes && (req.memoryTypeBits & (1u << context.virtualType)),
             "cold-cycle fixture requires one exact eligible range");
 
+    const auto allocationType = context.nativeAllocation
+        ? gpuOnlyNativeType(context, req.memoryTypeBits) : context.virtualType;
+    require(allocationType != UINT32_MAX,
+            "cold-cycle native fixture has no compatible GPU-only native memory type");
+
     std::uint32_t nonlocalType = UINT32_MAX;
     for (std::uint32_t i = 0; i < context.memory.memoryTypeCount; ++i) {
         const auto heap = context.memory.memoryTypes[i].heapIndex;
@@ -1440,7 +1448,7 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
             "cold-cycle fixture needs a compatible non-device-local backing type");
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     allocation.allocationSize = req.size;
-    allocation.memoryTypeIndex = context.virtualType;
+    allocation.memoryTypeIndex = allocationType;
     check(forceType(context.device, nonlocalType), "force initial nonlocal backing type");
     check(vkAllocateMemory(context.device, &allocation, nullptr, &resident.memory),
           "allocate cold-cycle virtual backing");
@@ -1466,7 +1474,29 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
     check(vkMapMemory(context.device, staging.memory, 0, ChunkBytes, 0, &staging.mapped),
           "map cold-cycle staging memory");
 
-    upload(context, resident.handle, staging, ChunkBytes);
+    const VkResult uploadResult = upload(context, resident.handle, staging, ChunkBytes,
+        context.nativeAllocation ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_SUCCESS);
+    if (context.nativeAllocation) {
+        require(uploadResult == VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                "native original-type allocation unexpectedly accepted a nonlocal backing type");
+        const auto refused = context.stats();
+        require(refused.residentBytes == 0 && refused.coldLogicalBytes == ChunkBytes &&
+                refused.freezes == 0 && refused.restores == 0 && refused.failures == 0,
+                "native original-type refusal changed pristine cold accounting");
+        vkUnmapMemory(context.device, staging.memory);
+        staging.mapped = nullptr;
+        vkDestroyBuffer(context.device, staging.buffer, nullptr); staging.buffer = VK_NULL_HANDLE;
+        vkFreeMemory(context.device, staging.memory, nullptr); staging.memory = VK_NULL_HANDLE;
+        vkDestroyBuffer(context.device, resident.handle, nullptr); resident.handle = VK_NULL_HANDLE;
+        vkFreeMemory(context.device, resident.memory, nullptr); resident.memory = VK_NULL_HANDLE;
+        const auto empty = context.stats();
+        require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 &&
+                empty.coldStoredBytes == 0 && empty.freezes == 0 && empty.restores == 0 &&
+                empty.failures == 0,
+                "native original-type refusal cleanup retained accounting or errors");
+        std::cout << "PASS: native original-type constraint refused nonlocal backing; cleanup balanced\n";
+        return;
+    }
     check(vkQueueWaitIdle(context.queue), "finish cold-cycle initial upload");
     const auto warm = context.stats();
     require(warm.residentBytes == ChunkBytes && warm.coldLogicalBytes == 0 && warm.failures == 0,
@@ -1592,7 +1622,9 @@ void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceT
     const auto empty = context.stats();
     require(empty.residentBytes == 0 && empty.coldLogicalBytes == 0 && empty.coldStoredBytes == 0 &&
             empty.failures == 0, "cold-cycle fixture cleanup retained backing or errors");
-    std::cout << "PASS: cold-cycle restored nonlocal-backed range and preserved every byte\n";
+    std::cout << "PASS: cold-cycle restored "
+              << (context.nativeAllocation ? "native-intercepted" : "virtual")
+              << " nonlocal-backed range and preserved every byte\n";
 }
 
 bool readFixtureStatus(const std::string& path, std::unordered_map<std::string, std::uint64_t>& fields) {
@@ -2762,9 +2794,9 @@ int main(int argc, char** argv) try {
             "range pressure manages its own pending timeline test");
     require(!pressureOnlyFixture || (!nativeAllocation && !twoQueues),
             "pressure-only fixture uses synthetic single-queue backing");
-    require(!coldCycleRecoveryFixture || (!nativeAllocation && !bdaMode &&
+    require(!coldCycleRecoveryFixture || (!bdaMode &&
             !twoFamilies && !exclusiveFamilies && !pendingWait && !pendingBind),
-            "cold-cycle fixture uses tracked virtual backing and no pending queue test");
+            "cold-cycle fixture requires tracked buffer backing without BDA or unrelated queue tests");
     require(!pressureOnlyLiveCapFixture || (!nativeAllocation && !twoQueues && !twoFamilies && !exclusiveFamilies),
             "pressure-only live-cap fixture uses synthetic single-queue backing");
     require(!(asyncEncodeOverlapFixture && asyncPressureRaiseDiscardFixture),

@@ -83,6 +83,7 @@ class ControlChecks(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 return json.loads(result.stdout)
             default = launch()
+            self.assertNotIn('ZVRAM_VULKAN_COLD_CYCLE_RECOVERY', default)
             self.assertEqual(default['ZVRAM_VULKAN_ACTIVE_EVICTION'], '1')
             self.assertEqual(default['ZVRAM_VULKAN_RANGE_MIB'], '32')
             self.assertEqual(default['ZVRAM_VULKAN_PRESSURE_ONLY'], '1')
@@ -92,6 +93,22 @@ class ControlChecks(unittest.TestCase):
             self.assertEqual(int(default['ZVRAM_VULKAN_RESIDENT_MIB']), max(256, int(detected)))
             self.assertEqual(default['ZVRAM_VULKAN_HEADROOM_MIB'], '1536')
             self.assertEqual(launch('--vulkan-resident-mib', '96')['ZVRAM_VULKAN_RESIDENT_MIB'], '96')
+            recovered = launch('--vulkan-recover-local')
+            self.assertEqual(recovered['ZVRAM_VULKAN_COLD_CYCLE_RECOVERY'], '1')
+            self.assertEqual(recovered['ZVRAM_VULKAN_PRESSURE_ONLY'], '1')
+            manual = launch('--no-live-control', '--vulkan-recover-local', '--vulkan-virtual-mib', '32768',
+                            '--vulkan-auto-idle-ms', '1000', '--vulkan-cold-mib', '4096',
+                            '--vulkan-eviction-trigger', 'pressure', '--vulkan-selective-restore',
+                            '--vulkan-active-eviction', '--vulkan-range-mib', '32',
+                            '--vulkan-resident-mib', '256', '--vulkan-lazy-backing',
+                            '--vulkan-headroom-mib', '1536')
+            self.assertEqual(manual['ZVRAM_VULKAN_COLD_CYCLE_RECOVERY'], '1')
+            invalid = subprocess.run(
+                [sys.executable, str(launcher), '--build-dir', str(build), '--no-live-control',
+                 '--vulkan-recover-local', '--', sys.executable, '-c', 'pass'],
+                env=env, text=True, capture_output=True, timeout=10)
+            self.assertNotEqual(invalid.returncode, 0)
+            self.assertIn('--vulkan-recover-local requires', invalid.stderr)
             self.assertEqual(launch('--live-control'), default)
             self.assertEqual(launch('--no-live-control'), {'ZVRAM_VULKAN_CODEC': 'zstd'})
             self.assertEqual(launch('--no-live-control', '--vulkan-virtual-gib', '96'),
