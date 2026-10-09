@@ -12,8 +12,12 @@ unsigned allocations{};
 unsigned sparseBinds{};
 unsigned queueWaitCalls{};
 int failAllocations{};
+std::unordered_set<std::uint32_t> failAllocationTypes;
+std::vector<std::uint32_t> allocatedTypes;
 int failSparseBinds{};
 unsigned failQueueWaitAt{};
+VkResult failQueueWaitResult{VK_ERROR_DEVICE_LOST};
+unsigned failSparseBindAt{};
 unsigned frees{};
 unsigned budgetQueries{};
 unsigned submitCalls{};
@@ -47,10 +51,12 @@ VKAPI_ATTR void VKAPI_CALL mockDestroyBuffer(VkDevice,VkBuffer buffer,const VkAl
 VKAPI_ATTR void VKAPI_CALL mockGetBufferMemoryRequirements(VkDevice,VkBuffer buffer,VkMemoryRequirements* req) {
     req->size=bufferSizes.at(buffer); req->alignment=4096; req->memoryTypeBits=1;
 }
-VKAPI_ATTR VkResult VKAPI_CALL mockAllocate(VkDevice,const VkMemoryAllocateInfo*,
+VKAPI_ATTR VkResult VKAPI_CALL mockAllocate(VkDevice,const VkMemoryAllocateInfo* info,
     const VkAllocationCallbacks*,VkDeviceMemory* out) {
     ++allocations;
+    allocatedTypes.push_back(info->memoryTypeIndex);
     if(failAllocations>0) { --failAllocations; return VK_ERROR_OUT_OF_DEVICE_MEMORY; }
+    if(failAllocationTypes.count(info->memoryTypeIndex)) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
     *out=tokenHandle<VkDeviceMemory>(nextHandle++); liveAllocations.insert(*out); return VK_SUCCESS;
 }
 VKAPI_ATTR void VKAPI_CALL mockFree(VkDevice,VkDeviceMemory memory,const VkAllocationCallbacks*) {
@@ -69,11 +75,12 @@ VKAPI_ATTR VkResult VKAPI_CALL mockSparse(VkQueue,std::uint32_t count,const VkBi
     }
     sparseBindCalls.push_back(std::move(call));
     if(failSparseBinds>0) { --failSparseBinds; return VK_ERROR_OUT_OF_DEVICE_MEMORY; }
+    if(failSparseBindAt && sparseBinds==failSparseBindAt) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
     return VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockQueueWait(VkQueue) {
     ++queueWaitCalls;
-    return failQueueWaitAt==queueWaitCalls?VK_ERROR_DEVICE_LOST:VK_SUCCESS;
+    return failQueueWaitAt==queueWaitCalls?failQueueWaitResult:VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockDeviceWait(VkDevice) { return VK_SUCCESS; }
 VKAPI_ATTR void VKAPI_CALL mockBudgetProperties(VkPhysicalDevice,VkPhysicalDeviceMemoryProperties2* out) {
@@ -159,7 +166,7 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failQueueWaitAt=0; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr;
+        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); sparseBindCalls.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr;
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
         mockHeapBudget=mockHeapUsage=mockNativeHeapSize=0;
         device.handle=handle; device.autoEnabled=true; device.lazyBacking=true;
@@ -342,6 +349,178 @@ void checkMergedRestoreMapping() {
     }
 }
 
+struct ColdCycleFixture {
+    Fixture f{MiB,2*MiB};
+    std::unique_ptr<std::vector<std::uint8_t>> staging;
+    VkDeviceMemory nonlocal{tokenHandle<VkDeviceMemory>(0xc001)};
+
+    ColdCycleFixture() {
+        f.device.memory.memoryTypeCount=2; f.device.memory.memoryHeapCount=2;
+        f.device.memory.memoryHeaps[0].size=8*MiB;
+        f.device.memory.memoryHeaps[0].flags=VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+        f.device.memory.memoryHeaps[1].size=8*MiB;
+        f.device.memory.memoryHeaps[1].flags=0;
+        f.device.memory.memoryTypes[0].heapIndex=0;
+        f.device.memory.memoryTypes[1].heapIndex=1;
+        f.device.budgetProperties=mockBudgetProperties; f.device.budgetHeap=0;
+        f.device.budgetReserveBytes=1; f.device.physical=tokenHandle<VkPhysicalDevice>(4);
+        f.device.coldCycleRecovery=true; f.device.pressureOnly=true;
+        f.device.budgetProperties=mockBudgetProperties;
+        mockNativeHeapSize=mockHeapBudget=8*MiB; mockHeapUsage=0;
+        auto& m=f.state();
+        f.bind(0,MiB);
+        m.backingMemoryTypeBits=3; m.poolViewMemoryTypeBits[0]=3;
+        m.children[0]=nonlocal; m.childTypes[0]=1; m.coldGroups[0].cold=false;
+        m.coldGroups[0].pristine=false;
+        m.coldGroups[0].logicalBytes=0; m.cold=false; m.coldLogicalSize=0;
+        f.device.coldLogicalBytes=0;
+        m.coldGroups[0].lastUse=std::chrono::steady_clock::now()-std::chrono::seconds(5);
+        m.residentBytes=MiB; f.device.residentBytes=MiB; f.device.liveOther=MiB;
+        liveAllocations.insert(nonlocal);
+        f.device.idleMilliseconds=1000; f.device.coldBudget=2*MiB;
+        f.device.minSavingsPercent=1; f.device.snapshot.chunkSize=MiB;
+        f.device.snapshot.stagingSize=MiB; f.device.snapshot.stagingBuffer=tokenHandle<VkBuffer>(0xc002);
+        f.device.snapshot.commandPool=tokenHandle<VkCommandPool>(0xc003);
+        f.device.snapshot.commandBuffer=tokenHandle<VkCommandBuffer>(0xc004);
+        f.device.copyQueue=tokenHandle<VkQueue>(0xc005);
+        staging=std::make_unique<std::vector<std::uint8_t>>(MiB);
+        f.device.snapshot.mapped=staging->data();
+    }
+};
+
+void checkColdCyclePromotionAndFailureRetry() {
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+                "cold-cycle did not restore the nonlocal child into local memory");
+        require(m.children[0] && m.childTypes[0]==0 && d.liveLocal==MiB && d.liveOther==0 &&
+                d.residentBytes==MiB && !m.coldGroups[0].cold && d.coldLogicalBytes==0 &&
+                d.minSavingsPercent==1,
+                "successful cold-cycle type or residency accounting mismatch");
+        require(m.backingMemoryTypeBits==3 && allocatedTypes.size()==1 && allocatedTypes[0]==0,
+                "cold-cycle did not constrain allocation to local types or restore original mask");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        failAllocationTypes.insert(0);
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+                "cold-cycle unexpectedly succeeded when local allocation was refused");
+        require(m.coldGroups[0].cold && m.coldGroups[0].storedBytes==MiB &&
+                m.coldGroups[0].chunks.size()==1 && d.coldLogicalBytes==MiB &&
+                !m.children[0] && m.backingMemoryTypeBits==3 && d.minSavingsPercent==1,
+                "local allocation refusal lost cold data or failed to restore the type mask");
+        require(restoreColdLocked(c.f.handle,d,c.f.memory,0)==VK_SUCCESS && m.children[0] &&
+                m.childTypes[0]==1 && !m.coldGroups[0].cold,
+                "ordinary restore could not fall back to nonlocal memory after promotion refusal");
+        require(allocatedTypes.size()==3 && allocatedTypes[0]==0 &&
+                allocatedTypes[1]==0 && allocatedTypes[2]==1,
+                "cold-cycle did not restrict its attempt and permit normal restore fallback");
+        failAllocationTypes.clear();
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        failQueueWaitAt=3; failQueueWaitResult=VK_ERROR_OUT_OF_DEVICE_MEMORY; // Freeze copy completion.
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+                "cold-cycle ignored a failed snapshot copy");
+        require(m.children[0]==c.nonlocal && !m.coldGroups[0].cold &&
+                m.backingMemoryTypeBits==3 && d.liveOther==MiB && d.liveLocal==0 &&
+                d.residentBytes==MiB && d.coldBytes==0 && d.coldLogicalBytes==0 &&
+                d.gpuGateError==VK_SUCCESS && d.minSavingsPercent==1 && frees==0,
+                "pre-commit copy failure lost the original backing or changed accounting");
+        failQueueWaitAt=0; d.coldCycleBackoffUntil={};
+        require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+                "original backing was not recoverable after snapshot-copy failure");
+        require(d.minSavingsPercent==1,"cold-cycle did not restore the compression policy after retry");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        failQueueWaitAt=6; failQueueWaitResult=VK_ERROR_OUT_OF_DEVICE_MEMORY; // Restore copy.
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+                "cold-cycle ignored a failed local restore copy");
+        require(m.children[0] && m.childTypes[0]==0 && m.coldGroups[0].cold &&
+                !m.coldGroups[0].restoreBound && m.coldGroups[0].storedBytes==MiB &&
+                m.backingMemoryTypeBits==3 && d.liveLocal==MiB && d.liveOther==0 &&
+                d.residentBytes==MiB && d.coldLogicalBytes==MiB && d.coldBytes==MiB &&
+                d.gpuGateError==VK_SUCCESS && d.minSavingsPercent==1,
+                "post-commit copy failure lost the cold snapshot or corrupted accounting");
+        failQueueWaitAt=0;
+        require(restoreColdLocked(c.f.handle,d,c.f.memory,0)==VK_SUCCESS &&
+                !m.coldGroups[0].cold && m.children[0] && m.childTypes[0]==0,
+                "ordinary restore could not recover after local restore-copy failure");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        failSparseBindAt=sparseBinds+5; // Final app-alias transition after local copy.
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+                "cold-cycle ignored an application rebind failure");
+        require(m.children[0] && m.childTypes[0]==0 && m.coldGroups[0].cold &&
+                m.coldGroups[0].restoreBound && m.coldGroups[0].storedBytes==MiB,
+                "failed app rebind did not retain the cold group and local child");
+        require(m.backingMemoryTypeBits==3 && d.liveLocal==MiB && d.liveOther==0 &&
+                d.residentBytes==MiB && d.coldLogicalBytes==MiB && d.coldBytes==MiB,
+                "failed app rebind corrupted masks or cold/resident accounting");
+        require(d.gpuGateError==VK_ERROR_OUT_OF_DEVICE_MEMORY && d.minSavingsPercent==1 && frees==1,
+                "failed app rebind did not preserve the backing behind the sticky gate");
+    }
+}
+
+void checkColdCycleActiveReferenceGuard() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    d.activeRefs.recordRanges(tokenHandle<VkQueue>(0xc006),{{c.f.memory,0}},true);
+    require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+            "cold-cycle ignored an in-flight child reference");
+    require(allocations==0 && sparseBinds==0 && m.children[0]==c.nonlocal &&
+            !m.coldGroups[0].cold && d.residentBytes==MiB,
+            "in-flight guard mutated or froze the referenced child");
+}
+
+void checkColdCycleSparseFailurePreservesBacking() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    failSparseBinds=1;
+    require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+            "cold-cycle ignored injected application-unbind failure");
+    require(m.children[0]==c.nonlocal && !m.coldGroups[0].cold &&
+            m.backingMemoryTypeBits==3 && d.liveOther==MiB && frees==0,
+            "sparse failure lost original backing or failed to restore the type mask");
+    failSparseBinds=0;
+}
+
+void checkColdCycleRefusalPolicies() {
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        d.coldBudget=MiB-1;
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
+                "cold-cycle ignored insufficient raw snapshot quota");
+        require(m.children[0]==c.nonlocal && !m.coldGroups[0].cold &&
+                m.coldGroups[0].storedBytes==0 && m.coldGroups[0].chunks.empty() &&
+                d.residentBytes==MiB && d.liveOther==MiB && d.liveLocal==0 &&
+                d.coldBytes==0 && d.coldLogicalBytes==0 && frees==0 &&
+                m.backingMemoryTypeBits==3 && d.minSavingsPercent==1,
+                "raw quota refusal lost backing or changed masks, policy, or accounting");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        m.poolViewMemoryTypeBits[0]=2;
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && allocations==0 &&
+                m.children[0]==c.nonlocal && !m.coldGroups[0].cold,
+                "cold-cycle ignored an incompatible pool-view type mask");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        m.coldGroups[0].lastUse=std::chrono::steady_clock::now();
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && allocations==0 &&
+                m.children[0]==c.nonlocal,
+                "cold-cycle ignored the quiet delay");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        m.childSizes[0]=kAsyncSnapshotMaxRaw+MiB;
+        require(!coldCyclePromoteLocked(d,c.f.memory,0,40*MiB) && allocations==0 &&
+                m.children[0]==c.nonlocal && !m.coldGroups[0].cold,
+                "cold-cycle ignored the per-pass size ceiling");
+    }
+}
+
 void checkPressureOnlyAsyncCommitRechecksCurrentCap() {
     Fixture f(3*MiB,2*MiB); auto& d=f.device;
     d.pressureOnly=true; d.residentBytes=MiB;
@@ -360,6 +539,7 @@ void checkPressureOnlyAsyncCommitRechecksCurrentCap() {
     require(!pressureOnlyFreezeNeeded(d,target),
             "pressure-only recheck changed legacy idle-mode behavior");
 }
+
 void checkUnknownSubmitAdmission() {
     Fixture f(3*MiB,2*MiB); f.bind(0,3*MiB);
     // Unknown submit chains must admit the entire allocation conservatively.
@@ -860,6 +1040,10 @@ int main() try {
     checkAllocationFailureRetry();
     checkBindFailureAccounting();
     checkMergedRestoreMapping();
+    checkColdCyclePromotionAndFailureRetry();
+    checkColdCycleActiveReferenceGuard();
+    checkColdCycleSparseFailurePreservesBacking();
+    checkColdCycleRefusalPolicies();
     checkPressureOnlyAsyncCommitRechecksCurrentCap();
     std::cout<<"PASS: pristine bootstrap, cold aliases, cap/budget accounting, rollback, and retry\n";
     return 0;

@@ -339,6 +339,28 @@ if(ZVRAM_TEST_ASYNC_HOOK)
         set_tests_properties(vulkan-async-encode-overlap-${async_overlap_mode} PROPERTIES
             TIMEOUT 30 LABELS "hardware;vulkan;pressure;async-overlap;test-hook")
     endforeach()
+    foreach(cold_cycle_queue_mode single two-queues)
+        set(cold_cycle_queue_flags)
+        set(cold_cycle_idle_ms 100)
+        if(cold_cycle_queue_mode STREQUAL "two-queues")
+            list(APPEND cold_cycle_queue_flags --two-queues)
+            # Give the fixture time to park a tracked second-queue use before
+            # the idle cold-cycle window expires.
+            set(cold_cycle_idle_ms 1000)
+        endif()
+        set(cold_cycle_test vulkan-cold-cycle-recovery-${cold_cycle_queue_mode})
+        add_test(NAME ${cold_cycle_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms ${cold_cycle_idle_ms} --vulkan-cold-mib 64
+                --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 32
+                --vulkan-resident-mib 64 --vulkan-eviction-trigger pressure
+                --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --cold-cycle-recovery-fixture
+                ${cold_cycle_queue_flags})
+        set_tests_properties(${cold_cycle_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;cold-cycle;test-hook")
+    endforeach()
 endif()
 add_test(NAME vulkan-graphics-pressure-retention
     COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers

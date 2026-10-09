@@ -253,6 +253,7 @@ struct Device {
 #ifdef ZVRAM_TEST_ASYNC_HOOK
     void (*asyncEncodeTestHook)(void*){};
     void* asyncEncodeTestUserdata{};
+    std::uint32_t forceNextBackingType{UINT32_MAX};
 #endif
     std::uint64_t nextVirtualIdentity{1};
     std::atomic<bool> selectiveRestore{false};
@@ -261,6 +262,9 @@ struct Device {
     ActiveRefs activeRefs;
     bool activeEviction{};
     bool pressureOnly{};
+    bool coldCycleRecovery{};
+    std::uint64_t coldCycleQuietMilliseconds{1000};
+    std::chrono::steady_clock::time_point coldCycleBackoffUntil{};
     VkDeviceSize rangeChunkBytes{};
     VkDeviceSize residentLimitBytes{};
     std::uint64_t gpuLocalOwnerCombinedLimitBytes{};
@@ -805,7 +809,9 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     if(!supported) logf("AMD overallocation extension unavailable; passing device creation through unchanged");
     const char* pressureOnlyEnv=std::getenv("ZVRAM_VULKAN_PRESSURE_ONLY");
     const bool pressureOnlyRequested=pressureOnlyEnv && std::strcmp(pressureOnlyEnv,"1")==0;
-    const bool snapshotRequested=std::getenv("ZVRAM_VULKAN_AUTO_IDLE_MS") || std::getenv("ZVRAM_VULKAN_COLD_MIB") || pressureOnlyRequested;
+    const char* coldCycleEnv=std::getenv("ZVRAM_VULKAN_COLD_CYCLE_RECOVERY");
+    const bool coldCycleRequested=coldCycleEnv && std::strcmp(coldCycleEnv,"1")==0;
+    const bool snapshotRequested=std::getenv("ZVRAM_VULKAN_AUTO_IDLE_MS") || std::getenv("ZVRAM_VULKAN_COLD_MIB") || pressureOnlyRequested || coldCycleRequested;
     bool deviceGroupRequested=false;
     for(auto* p=static_cast<const VkBaseInStructure*>(ci->pNext);p;p=p->pNext)
         if(p->sType==VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO) deviceGroupRequested=true;
@@ -1287,6 +1293,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 d->activeEviction=d->selectiveRestore && active && std::strcmp(active,"1")==0;
                 if(d->activeEviction && rangeEnabled) d->rangeChunkBytes=rangeMiB*1024ull*1024ull;
                 d->pressureOnly=pressureOnlyRequested;
+                d->coldCycleRecovery=coldCycleRequested;
                 const char* clean=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE");
                 d->cleanCache=d->rangeChunkBytes && clean && std::strcmp(clean,"1")==0;
                 if(d->gpuRawHostInput && !d->cleanCache) {
@@ -1378,6 +1385,12 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
                     logf("pressure-only snapshots require active range eviction and immediate resident admission");
                 }
+                if(d->coldCycleRecovery && (!d->pressureOnly || !d->activeEviction || !d->rangeChunkBytes ||
+                   !d->residentLimitBytes || !d->residentAdmissionArmed || !d->budgetProperties ||
+                   d->budgetHeap>=d->memory.memoryHeapCount || !d->budgetReserveBytes)) {
+                    autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
+                    logf("cold-cycle recovery requires pressure-only range eviction and native VRAM headroom");
+                }
                 try {
                     handles=d->appQueues; handles.push_back(d->copyQueue);
                     if(d->activeEviction) for(auto queue:d->appQueues)
@@ -1402,6 +1415,10 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                     if(d->autoEnabled && d->activeEviction) logf("active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction");
                     if(d->autoEnabled && d->bufferPresentation) logf("base Vulkan buffer presentation passthrough enabled");
                     if(d->autoEnabled && d->asyncCompression) logf("background range snapshot compression uses off-lock transactions max-raw-bytes=33554432");
+                    if(d->autoEnabled && d->coldCycleRecovery)
+                        logf("cold-cycle backing recovery enabled quiet-ms=%llu max-child-bytes=%llu; no in-place TTM migration",
+                             static_cast<unsigned long long>(d->coldCycleQuietMilliseconds),
+                             static_cast<unsigned long long>(32ull*1024ull*1024ull));
                     if(d->autoEnabled && d->rangeChunkBytes) logf("Vulkan range residency enabled chunk-bytes=%llu",static_cast<unsigned long long>(d->rangeChunkBytes));
                     else if(rangeMiB) logf("Vulkan range residency disabled: feature chain, sparse residency support, or active mode unavailable");
                     if(d->autoEnabled && strictRobustnessEnabled) logf("bounded Vulkan robustness enabled alignment-bytes=%llu",static_cast<unsigned long long>(robustAlignment));
@@ -1424,6 +1441,13 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         if(budgetRequested && (!d->autoEnabled || !d->lazyBacking || !d->rangeChunkBytes ||
                                !d->residentLimitBytes || !d->residentAdmissionArmed)) {
             logf("VRAM headroom refused: lazy immediate paging initialization unavailable");
+            layerDestroyDevice(*out,allocator); *out=VK_NULL_HANDLE;
+            return VK_ERROR_FEATURE_NOT_PRESENT;
+        }
+        if(coldCycleRequested && (!d->autoEnabled || !d->pressureOnly || !d->activeEviction ||
+                                  !d->rangeChunkBytes || !d->budgetReserveBytes || !d->budgetProperties ||
+                                  d->budgetHeap>=d->memory.memoryHeapCount)) {
+            logf("cold-cycle recovery refused: pressure-only paging with native VRAM headroom is required");
             layerDestroyDevice(*out,allocator); *out=VK_NULL_HANDLE;
             return VK_ERROR_FEATURE_NOT_PRESENT;
         }
@@ -2723,6 +2747,73 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
     logSnapshotState("async-freeze",d);
     return true;
 }
+bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,VkDeviceSize target) {
+    if(!d.coldCycleRecovery || !d.pressureOnly || !d.activeEviction || !d.budgetReserveBytes ||
+       !d.budgetProperties || d.budgetHeap>=d.memory.memoryHeapCount || d.asyncFreezePending ||
+       d.gpuRestoreUnsafe || d.gpuGateError!=VK_SUCCESS ||
+       std::chrono::steady_clock::now()<d.coldCycleBackoffUntil) return false;
+    auto found=d.virtualMemory.find(handle);
+    if(found==d.virtualMemory.end()) return false;
+    auto& memory=found->second;
+    if(child>=memory.children.size() || child>=memory.childSizes.size() ||
+       child>=memory.childTypes.size() || child>=memory.coldGroups.size() ||
+       child>=memory.poolViewMemoryTypeBits.size() || !memory.trackPhysicalStats || memory.hasAdoptedCallbacks ||
+       memory.bindings.empty() || !memory.children[child] || !memory.childSizes[child] ||
+       memory.coldGroups[child].cold || memory.coldGroups[child].pristine ||
+       memory.coldGroups[child].restoreBound || d.activeRefs.busy(handle,child)) return false;
+    const auto now=std::chrono::steady_clock::now();
+    if(now<memory.coldGroups[child].lastUse+std::chrono::milliseconds(d.coldCycleQuietMilliseconds)) return false;
+    const auto size=memory.childSizes[child];
+    if(d.residentBytes>target || size>kAsyncSnapshotMaxRaw ||
+       d.liveLocal>target || size>target-d.liveLocal) return false;
+    const auto oldType=memory.childTypes[child];
+    if(oldType>=d.memory.memoryTypeCount ||
+       d.memory.memoryTypes[oldType].heapIndex>=d.memory.memoryHeapCount ||
+       (d.memory.memoryHeaps[d.memory.memoryTypes[oldType].heapIndex].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT))
+        return false;
+    std::uint32_t localTypes=memory.backingMemoryTypeBits&memory.poolViewMemoryTypeBits[child];
+    for(std::uint32_t type=0;type<d.memory.memoryTypeCount && type<32;type++) {
+        const auto heap=d.memory.memoryTypes[type].heapIndex;
+        if(heap>=d.memory.memoryHeapCount || heap!=d.budgetHeap ||
+           !(d.memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT))
+            localTypes&=~(1u<<type);
+    }
+    if(!localTypes) return false;
+
+    struct RestoreTypeMask {
+        std::uint32_t& value;
+        std::uint32_t original;
+        ~RestoreTypeMask() { value=original; }
+    } restoreMask{memory.backingMemoryTypeBits,memory.backingMemoryTypeBits};
+    memory.backingMemoryTypeBits=localTypes;
+    const auto recoveryStarted=std::chrono::steady_clock::now();
+    VkResult result=VK_SUCCESS;
+    {
+        struct RestoreSavingsPolicy {
+            unsigned& value;
+            unsigned original;
+            ~RestoreSavingsPolicy() { value=original; }
+        } restoreSavings{d.minSavingsPercent,d.minSavingsPercent};
+        d.minSavingsPercent=100;
+        result=freezeChildLocked(d,memory,child);
+        if(result==VK_SUCCESS && memory.coldGroups[child].cold)
+            result=restoreColdLocked(d.handle,d,handle,child);
+    }
+    if(result!=VK_SUCCESS || !memory.children[child] ||
+       memory.childTypes[child]>=d.memory.memoryTypeCount ||
+       d.memory.memoryTypes[memory.childTypes[child]].heapIndex!=d.budgetHeap ||
+       !(d.memory.memoryHeaps[d.budgetHeap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
+        d.coldCycleBackoffUntil=std::chrono::steady_clock::now()+std::chrono::milliseconds(250);
+        if(result!=VK_SUCCESS)
+            logf("cold-cycle local recovery deferred result=%d; cold snapshot retained when available",static_cast<int>(result));
+        return false;
+    }
+    logf("cold-cycle local backing restored bytes=%llu memory-type=%u->%u duration-us=%llu",
+         static_cast<unsigned long long>(size),oldType,memory.childTypes[child],
+         static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::microseconds>(
+             std::chrono::steady_clock::now()-recoveryStarted).count()));
+    return true;
+}
 } // namespace
 void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
     auto& d=*shared;
@@ -2800,6 +2891,49 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
                                 (void)freezeChildLocked(d,found->second,candidateChild);
                         }
                     }
+                } else if(d.coldCycleRecovery &&
+                          std::chrono::steady_clock::now()>=d.coldCycleBackoffUntil &&
+                          d.liveLocal<=target) {
+                    VkDeviceMemory candidateMemory{};
+                    std::size_t candidateChild{};
+                    auto oldest=std::chrono::steady_clock::time_point::max();
+                    const auto now=std::chrono::steady_clock::now();
+                    for(const auto& pair:d.virtualMemory) {
+                        const auto& memory=pair.second;
+                        if(!memory.trackPhysicalStats || memory.bindings.empty() ||
+                           memory.children.size()!=memory.coldGroups.size() ||
+                           memory.children.size()!=memory.childSizes.size() ||
+                           memory.children.size()!=memory.childTypes.size() ||
+                           memory.children.size()!=memory.poolViewMemoryTypeBits.size()) continue;
+                        for(std::size_t i=0;i<memory.children.size();i++) {
+                            const auto& group=memory.coldGroups[i];
+                            const auto type=memory.childTypes[i];
+                            if(!memory.children[i] || !memory.childSizes[i] || group.cold || group.pristine ||
+                               group.restoreBound || d.activeRefs.busy(pair.first,i) ||
+                               type>=d.memory.memoryTypeCount ||
+                               d.memory.memoryTypes[type].heapIndex>=d.memory.memoryHeapCount ||
+                               (d.memory.memoryHeaps[d.memory.memoryTypes[type].heapIndex].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) ||
+                               now<group.lastUse+std::chrono::milliseconds(d.coldCycleQuietMilliseconds) ||
+                               d.liveLocal>target || memory.childSizes[i]>target-d.liveLocal) continue;
+                            const auto compatible=memory.backingMemoryTypeBits&memory.poolViewMemoryTypeBits[i];
+                            bool hasLocalType=false;
+                            for(std::uint32_t candidate=0;candidate<d.memory.memoryTypeCount && candidate<32;candidate++) {
+                                const auto heap=d.memory.memoryTypes[candidate].heapIndex;
+                                if((compatible&(1u<<candidate)) && heap==d.budgetHeap &&
+                                   heap<d.memory.memoryHeapCount &&
+                                   (d.memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
+                                    hasLocalType=true; break;
+                                }
+                            }
+                            if(hasLocalType && group.lastUse<oldest) {
+                                oldest=group.lastUse;
+                                candidateMemory=pair.first;
+                                candidateChild=i;
+                            }
+                        }
+                    }
+                    if(candidateMemory)
+                        (void)coldCyclePromoteLocked(d,candidateMemory,candidateChild,target);
                 }
             }
         } else {
@@ -2914,6 +3048,10 @@ std::vector<std::uint32_t> backingMemoryTypes(const Device& d,const VkMemoryRequ
 }
 VkResult allocateBackingChild(Device& d,VkDevice device,VkDeviceSize size,std::uint32_t type,
                               VkMemoryAllocateFlags flags,bool hasPriority,float priority,VkDeviceMemory* out) {
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+    if(d.forceNextBackingType!=UINT32_MAX && type!=d.forceNextBackingType)
+        return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+#endif
     const auto started=d.gpuProfileEnabled?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
     VkMemoryPriorityAllocateInfoEXT priorityInfo{VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT};
     priorityInfo.priority=priority;
@@ -2926,6 +3064,9 @@ VkResult allocateBackingChild(Device& d,VkDevice device,VkDeviceSize size,std::u
     if(flags) allocation.pNext=&flagsInfo;
     else if(hasPriority) allocation.pNext=&priorityInfo;
     const auto result=d.allocate(device,&allocation,nullptr,out);
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+    if(d.forceNextBackingType==type) d.forceNextBackingType=UINT32_MAX;
+#endif
     if(d.gpuProfileEnabled) {
         d.gpuProfileAllocCalls.fetch_add(1,std::memory_order_relaxed);
         (result==VK_SUCCESS?d.gpuProfileAllocSuccess:d.gpuProfileAllocFailures).fetch_add(1,std::memory_order_relaxed);
@@ -3900,6 +4041,17 @@ VKAPI_ATTR VkResult VKAPI_CALL layerSetAsyncEncodeHook(VkDevice device,void (*ho
     }
     return VK_SUCCESS;
 }
+VKAPI_ATTR VkResult VKAPI_CALL layerForceNextBackingType(VkDevice device,std::uint32_t type) {
+    auto d=findDevice(device);
+    if(!d || !d->autoInitialized || type>=d->memory.memoryTypeCount) return VK_ERROR_FEATURE_NOT_PRESENT;
+    const auto heap=d->memory.memoryTypes[type].heapIndex;
+    if(heap>=d->memory.memoryHeapCount ||
+       (d->memory.memoryHeaps[heap].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT))
+        return VK_ERROR_FEATURE_NOT_PRESENT;
+    std::lock_guard<std::mutex> deviceLock(d->mutex),queueLock(d->queueMutex);
+    d->forceNextBackingType=type;
+    return VK_SUCCESS;
+}
 #endif
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,const char* name) {
     auto d=findDevice(device);
@@ -3907,6 +4059,9 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,
     if(name && std::strcmp(name,"vkZVramSetAsyncEncodeHookNX")==0)
         return d && d->autoInitialized && d->asyncCompression
             ?reinterpret_cast<PFN_vkVoidFunction>(layerSetAsyncEncodeHook):nullptr;
+    if(name && std::strcmp(name,"vkZVramForceNextBackingTypeNX")==0)
+        return d && d->autoInitialized
+            ?reinterpret_cast<PFN_vkVoidFunction>(layerForceNextBackingType):nullptr;
 #endif
     if(isTrackedCommand(name) || submissionHookLookup(name)) {
         auto next=d&&d->gdpa?d->gdpa(device,name):nullptr;
