@@ -273,6 +273,7 @@ struct Device {
     PFN_vkQueueWaitIdle queueWaitIdle{};
     PFN_vkGetDeviceQueue getDeviceQueue{};
     PFN_vkGetDeviceQueue2 getDeviceQueue2{};
+    bool queueInventoryComplete{};
     PFN_vkSetDeviceLoaderData setDeviceLoaderData{};
     std::unordered_map<VkDeviceMemory,VirtualMemory> virtualMemory;
     std::unordered_map<VkBuffer,PromotedBuffer> promotedBuffers;
@@ -1333,6 +1334,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
         for(const auto* extension:rawMemoryHandleExtensions)
             if(appEnabled(ci,extension)) d->nativeWrappingAllowed=false;
         if(!d->nativeWrappingAllowed) logf("native memory-handle wrapping/adoption disabled by device-group or raw-handle extension");
+        bool queueInventoryComplete=true;
         if(d->getDeviceQueue || d->getDeviceQueue2) {
             for(std::uint32_t q=0;q<ci->queueCreateInfoCount;q++) {
                 const auto& requested=ci->pQueueCreateInfos[q];
@@ -1347,6 +1349,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                         d->getDeviceQueue2(*out,&queueInfo,&queue);
                     }
                     if(queue) d->appQueues.push_back(queue);
+                    else queueInventoryComplete=false;
                 }
             }
             if(privateQueuePlanned) {
@@ -1358,6 +1361,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 }
                 if(d->copyQueue && d->setDeviceLoaderData && d->setDeviceLoaderData(*out,d->copyQueue)!=VK_SUCCESS)
                     d->copyQueue=VK_NULL_HANDLE;
+                if(!d->copyQueue) queueInventoryComplete=false;
                 if(std::find(d->queueFamilies.begin(),d->queueFamilies.end(),privateFamily)==d->queueFamilies.end())
                     d->queueFamilies.push_back(privateFamily);
             }
@@ -1371,6 +1375,9 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 }
             }
         }
+        if(!d->getDeviceQueue && !d->getDeviceQueue2) queueInventoryComplete=false;
+        if(virtualEnabled && !d->sparseQueue) queueInventoryComplete=false;
+        d->queueInventoryComplete=queueInventoryComplete;
         in->memoryProperties(physical,&d->memory); VkPhysicalDeviceProperties props{}; in->properties(physical,&props); d->gpu=props.deviceName; d->autoPolicy=inject;
         { std::lock_guard<std::mutex> lock(mapsMutex); devices[key(*out)]=d; }
         if(snapshotRequested) {
@@ -1892,6 +1899,26 @@ bool waitForDeviceTeardown(Device& d) {
     const auto result=d.snapshot.deviceWaitIdle
         ?d.snapshot.deviceWaitIdle(d.handle):VK_ERROR_INITIALIZATION_FAILED;
     d.teardownGpuIdleProven=result==VK_SUCCESS || result==VK_ERROR_DEVICE_LOST;
+    if(!d.teardownGpuIdleProven && d.queueInventoryComplete && d.queueWaitIdle && d.copyQueue) {
+        bool allQueuesIdle=true;
+        bool waitedAnyQueue=false;
+        auto waitQueue=[&](VkQueue queue) {
+            if(!queue) { allQueuesIdle=false; return; }
+            waitedAnyQueue=true;
+            const auto queueResult=d.queueWaitIdle(queue);
+            if(queueResult!=VK_SUCCESS && queueResult!=VK_ERROR_DEVICE_LOST)
+                allQueuesIdle=false;
+        };
+        for(auto it=d.appQueues.begin();it!=d.appQueues.end();++it)
+            if(std::find(d.appQueues.begin(),it,*it)==it) waitQueue(*it);
+        const auto appContains=[&](VkQueue queue) {
+            return std::find(d.appQueues.begin(),d.appQueues.end(),queue)!=d.appQueues.end();
+        };
+        if(d.copyQueue && !appContains(d.copyQueue)) waitQueue(d.copyQueue);
+        if(d.sparseQueue && d.sparseQueue!=d.copyQueue && !appContains(d.sparseQueue))
+            waitQueue(d.sparseQueue);
+        d.teardownGpuIdleProven=allQueuesIdle && waitedAnyQueue;
+    }
     if(!d.teardownGpuIdleProven) {
         if(d.gpuGateError==VK_SUCCESS) d.gpuGateError=result;
         d.gpuRestoreUnsafe=true;

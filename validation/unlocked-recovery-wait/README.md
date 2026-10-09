@@ -143,3 +143,28 @@ See `unhooked-reverse-{baseline,unlocked}.txt` and
 GPU snapshot was 60 percent, with no game/model runner. All bytes and cleanup
 checks passed. This bounded order check ends the current timing experiment;
 release/default decisions still require the outstanding teardown review.
+
+## Teardown queue-idle fallback follow-up
+
+A failed real `vkDeviceWaitIdle` can be followed by real `vkQueueWaitIdle`
+on each unique application/private-copy/sparse queue after the worker joins,
+under the existing locks. This is permitted only with a complete queue
+inventory; missing retrieved handles disable the fallback. Every wait must
+return success or real device loss before deferred/retained resources may be
+freed. A synthetic layer error never supplies this proof. The Vulkan
+[device-loss rules](https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html#devsandqueues-lost-device)
+treat a real device-loss result as success only for pending/in-use state.
+
+All 13 normal CPU CTests passed (5.81 seconds), and the rebuilt hook bootstrap
+passed. The gates cover complete all-success and real device-loss proof,
+partial error with no cleanup, later successful cleanup with copied callbacks,
+duplicate handles, incomplete/empty inventories and the ordinary device-idle
+success path. All six test APIs remain absent from the normal shared library.
+No GPU fault was reproduced or injected. See `queue-idle-fallback/`. The first
+root run caught a fixture assertion reading the last destroy callback after
+private-view destroys had correctly replaced it with null. The application
+callback assertion was moved directly after the application destroy, retaining
+all resource/count checks; the failed run is preserved. This follow-up does
+not resolve the abnormal case where both device and queue waits return other
+errors. In that case decoder destruction and native-device teardown remain
+an explicit unresolved limitation; this is not a release safety claim.

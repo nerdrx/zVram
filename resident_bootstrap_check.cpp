@@ -28,6 +28,8 @@ VkDeviceSize mockHeapBudget{};
 VkDeviceSize mockHeapUsage{};
 VkDeviceSize mockNativeHeapSize{};
 std::vector<std::pair<VkDeviceSize,VkDeviceSize>> mockBudgetSequence;
+std::vector<VkQueue> mockWaitedQueues;
+std::unordered_map<VkQueue,VkResult> mockQueueWaitResults;
 const void* applicationSubmitPnext{};
 const VkSubmitInfo* applicationSubmitInfo{};
 unsigned presentCalls{};
@@ -108,8 +110,11 @@ VKAPI_ATTR VkResult VKAPI_CALL mockSparse(VkQueue,std::uint32_t count,const VkBi
     if(failSparseBindAt && sparseBinds==failSparseBindAt) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
     return VK_SUCCESS;
 }
-VKAPI_ATTR VkResult VKAPI_CALL mockQueueWait(VkQueue) {
+VKAPI_ATTR VkResult VKAPI_CALL mockQueueWait(VkQueue queue) {
     ++queueWaitCalls;
+    mockWaitedQueues.push_back(queue);
+    const auto configured=mockQueueWaitResults.find(queue);
+    if(configured!=mockQueueWaitResults.end()) return configured->second;
     return failQueueWaitAt==queueWaitCalls?failQueueWaitResult:VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockDeviceWait(VkDevice) { ++mockDeviceWaitCalls; return mockDeviceWaitResult; }
@@ -229,7 +234,7 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); freedMemoryUserData.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr; mockDeviceWaitCalls=mockResetCommandPoolCalls=destroyedMockBuffers=destroyedMockFences=0; lastDestroyedBufferUserData=lastFreedMemoryUserData=nullptr; mockDeviceWaitResult=VK_SUCCESS;
+        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); freedMemoryUserData.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); mockWaitedQueues.clear(); mockQueueWaitResults.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr; mockDeviceWaitCalls=mockResetCommandPoolCalls=destroyedMockBuffers=destroyedMockFences=0; lastDestroyedBufferUserData=lastFreedMemoryUserData=nullptr; mockDeviceWaitResult=VK_SUCCESS;
         pipelineBarrierForwards=waitEventsForwards=pipelineBarrier2Forwards=waitEvents2Forwards=0;
         { std::lock_guard<std::mutex> fenceLock(mockFenceMutex); mockFenceWaitEntered=false; mockFenceWaitRelease=false; mockFenceWaitResult=VK_SUCCESS; }
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
@@ -580,6 +585,126 @@ void checkGatedRecoveryTeardownCleanup() {
     }
 }
 
+void configureTeardownQueueInventory(Device& d) {
+    const auto app0=tokenHandle<VkQueue>(0xc061), app1=tokenHandle<VkQueue>(0xc062);
+    const auto privateQueue=tokenHandle<VkQueue>(0xc063);
+    d.appQueues={app0,app1,app0};
+    d.copyQueue=privateQueue; d.sparseQueue=app1;
+    d.queueInventoryComplete=true; d.queueWaitIdle=mockQueueWait;
+}
+
+void checkQueueIdleTeardownFallback() {
+    {
+        Fixture f; auto& d=f.device;
+        d.autoInitialized=true; d.snapshot.deviceWaitIdle=mockDeviceWait;
+        configureTeardownQueueInventory(d);
+        mockDeviceWaitResult=VK_ERROR_OUT_OF_HOST_MEMORY;
+        require(waitForDeviceTeardown(d) && d.teardownGpuIdleProven && mockDeviceWaitCalls==1 &&
+                mockWaitedQueues.size()==3 && mockWaitedQueues[0]==d.appQueues[0] &&
+                mockWaitedQueues[1]==d.appQueues[1] && mockWaitedQueues[2]==d.copyQueue,
+                "complete all-success queue fallback did not prove idle once per distinct queue");
+    }
+    {
+        Fixture f; auto& d=f.device;
+        d.autoInitialized=true; d.snapshot.deviceWaitIdle=mockDeviceWait;
+        configureTeardownQueueInventory(d);
+        mockDeviceWaitResult=VK_ERROR_OUT_OF_HOST_MEMORY;
+        mockQueueWaitResults[d.appQueues[1]]=VK_ERROR_OUT_OF_HOST_MEMORY;
+        require(!waitForDeviceTeardown(d) && !d.teardownGpuIdleProven && mockWaitedQueues.size()==3 &&
+                mockWaitedQueues[2]==d.copyQueue,
+                "partial queue-wait error stopped enumeration or incorrectly proved idle");
+    }
+    {
+        Fixture f; auto& d=f.device;
+        d.autoInitialized=true; d.gpuRestoreUnsafe=true; d.snapshot.deviceWaitIdle=mockDeviceWait;
+        d.snapshot.destroyFence=mockDestroyFence; d.snapshot.destroyBuffer=mockDestroyBuffer;
+        d.destroyBuffer=mockDestroyBuffer; d.free=mockFree;
+        configureTeardownQueueInventory(d);
+        const auto app0=d.appQueues[0], app1=d.appQueues[1], privateQueue=d.copyQueue;
+        const auto oldBacking=tokenHandle<VkDeviceMemory>(0xc071);
+        const auto replacement=tokenHandle<VkDeviceMemory>(0xc072);
+        const auto sourceView=tokenHandle<VkBuffer>(0xc073);
+        const auto destinationView=tokenHandle<VkBuffer>(0xc074);
+        const auto deferredMemory=tokenHandle<VkDeviceMemory>(0xc075);
+        const auto deferredBuffer=tokenHandle<VkBuffer>(0xc076);
+        int memoryTag{},bufferTag{}; VkAllocationCallbacks memoryCallbacks{},bufferCallbacks{};
+        memoryCallbacks.pUserData=&memoryTag; bufferCallbacks.pUserData=&bufferTag;
+        liveAllocations.insert(oldBacking); liveAllocations.insert(replacement);
+        bufferSizes[sourceView]=MiB; bufferSizes[destinationView]=MiB; bufferSizes[deferredBuffer]=MiB;
+        d.retainedWarmRecoveries.push_back({oldBacking,replacement,sourceView,destinationView,0,0,MiB});
+        d.pendingWarmRecovery.fence=tokenHandle<VkFence>(0xc077);
+        d.promotedBuffers[deferredBuffer].deferredDestroy=true;
+        d.promotedBuffers[deferredBuffer].deferredDestroyCallbacks=bufferCallbacks;
+        d.promotedBuffers[deferredBuffer].hasDeferredDestroyCallbacks=true;
+        Allocation deferred{}; deferred.size=MiB; deferred.local=true; deferred.deferredFree=true;
+        deferred.hasDeferredFreeCallbacks=true; deferred.deferredFreeCallbacks=memoryCallbacks;
+        d.allocations.emplace(deferredMemory,deferred); liveAllocations.insert(deferredMemory);
+        d.liveLocal=3*MiB;
+        mockDeviceWaitResult=VK_ERROR_OUT_OF_HOST_MEMORY;
+        mockQueueWaitResults[app1]=VK_ERROR_OUT_OF_HOST_MEMORY;
+        require(!waitForDeviceTeardown(d),"partial-error cleanup fixture unexpectedly proved idle");
+        destroyDeferredPromotedBuffersAfterIdle(d);
+        releaseDeferredNativeFreesAfterIdle(d);
+        cleanupRetainedWarmRecoveriesAfterIdle(d);
+        require(frees==0 && destroyedMockBuffers==0 && destroyedMockFences==0 &&
+                liveAllocations.count(oldBacking) && liveAllocations.count(replacement) &&
+                liveAllocations.count(deferredMemory) && d.pendingWarmRecovery.fence &&
+                d.retainedWarmRecoveries.size()==1 && d.promotedBuffers.count(deferredBuffer) &&
+                d.allocations.count(deferredMemory),
+                "partial queue-idle failure let cleanup release retained GPU resources");
+        mockQueueWaitResults.clear(); mockWaitedQueues.clear(); queueWaitCalls=0;
+        require(waitForDeviceTeardown(d) && mockWaitedQueues.size()==3 &&
+                mockWaitedQueues[0]==app0 && mockWaitedQueues[1]==app1 &&
+                mockWaitedQueues[2]==privateQueue,
+                "subsequent all-queue success did not establish teardown proof");
+        destroyDeferredPromotedBuffersAfterIdle(d);
+        require(lastDestroyedBufferUserData==&bufferTag,
+                "deferred application buffer lost its copied destroy callback");
+        releaseDeferredNativeFreesAfterIdle(d);
+        cleanupRetainedWarmRecoveriesAfterIdle(d);
+        require(frees==3 && destroyedMockBuffers==3 && destroyedMockFences==1 &&
+                !liveAllocations.count(oldBacking) && !liveAllocations.count(replacement) &&
+                !liveAllocations.count(deferredMemory) && !d.pendingWarmRecovery.fence &&
+                d.retainedWarmRecoveries.empty() && !d.promotedBuffers.count(deferredBuffer) &&
+                !d.allocations.count(deferredMemory) && d.liveLocal==0 &&
+                freedMemoryUserData.at(deferredMemory)==&memoryTag,
+                "queue fallback proof failed to release deferred callbacks/resources exactly once");
+    }
+    {
+        Fixture f; auto& d=f.device;
+        d.autoInitialized=true; d.snapshot.deviceWaitIdle=mockDeviceWait;
+        configureTeardownQueueInventory(d);
+        mockDeviceWaitResult=VK_ERROR_OUT_OF_HOST_MEMORY;
+        mockQueueWaitResults[d.appQueues[1]]=VK_ERROR_DEVICE_LOST;
+        require(waitForDeviceTeardown(d) && d.teardownGpuIdleProven && mockWaitedQueues.size()==3,
+                "real queue DEVICE_LOST was not accepted as an idle proof");
+    }
+    {
+        Fixture f; auto& d=f.device;
+        d.autoInitialized=true; d.snapshot.deviceWaitIdle=mockDeviceWait;
+        configureTeardownQueueInventory(d); d.queueInventoryComplete=false;
+        mockDeviceWaitResult=VK_ERROR_OUT_OF_HOST_MEMORY;
+        require(!waitForDeviceTeardown(d) && !d.teardownGpuIdleProven && mockWaitedQueues.empty(),
+                "incomplete queue inventory was used to claim idle");
+    }
+    {
+        Fixture f; auto& d=f.device;
+        d.autoInitialized=true; d.snapshot.deviceWaitIdle=mockDeviceWait;
+        d.queueInventoryComplete=true; d.queueWaitIdle=mockQueueWait;
+        mockDeviceWaitResult=VK_ERROR_OUT_OF_HOST_MEMORY;
+        require(!waitForDeviceTeardown(d) && !d.teardownGpuIdleProven && mockWaitedQueues.empty(),
+                "empty queue inventory vacuously proved device idle");
+    }
+    {
+        Fixture f; auto& d=f.device;
+        d.autoInitialized=true; d.snapshot.deviceWaitIdle=mockDeviceWait;
+        configureTeardownQueueInventory(d);
+        mockDeviceWaitResult=VK_SUCCESS;
+        require(waitForDeviceTeardown(d) && mockWaitedQueues.empty(),
+                "successful device wait unnecessarily fell back to individual queues");
+    }
+}
+
 void checkDeferredPromotedBufferDestroy() {
     ColdCycleFixture c; c.f.handle=reinterpret_cast<VkDevice>(&c.f.dispatchWord);
     auto& d=c.f.device; d.handle=c.f.handle;
@@ -635,8 +760,9 @@ void checkDeferredPromotedBufferDestroy() {
             liveAllocations.count(memory) && liveAllocations.count(memoryNull) &&
             liveAllocations.count(wrappedNative),
             "deferred app buffer or memory was destroyed before idle/lost proof");
-    mockDeviceWaitResult=VK_ERROR_DEVICE_LOST;
-    require(waitForDeviceTeardown(d),"device-lost teardown was not accepted as completion proof");
+    configureTeardownQueueInventory(d);
+    mockDeviceWaitResult=VK_ERROR_OUT_OF_HOST_MEMORY;
+    require(waitForDeviceTeardown(d),"all-queue fallback did not prove deferred callback cleanup safe");
     destroyDeferredPromotedBuffersAfterIdle(d);
     releaseDeferredNativeFreesAfterIdle(d);
     require(d.promotedBuffers.count(buffer)==0 && d.allocations.count(memory)==0 &&
@@ -1922,6 +2048,7 @@ void checkBindFailureAccounting() {
 
 int main() try {
     checkGatedRecoveryTeardownCleanup();
+    checkQueueIdleTeardownFallback();
     checkDeferredPromotedBufferDestroy();
     checkBootstrapAdmissionAndRestore();
     checkExactCapRestore();
