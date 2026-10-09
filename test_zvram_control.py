@@ -96,6 +96,18 @@ class ControlChecks(unittest.TestCase):
             recovered = launch('--vulkan-recover-local')
             self.assertEqual(recovered['ZVRAM_VULKAN_COLD_CYCLE_RECOVERY'], '1')
             self.assertEqual(recovered['ZVRAM_VULKAN_PRESSURE_ONLY'], '1')
+            self.assertNotIn('ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS', recovered)
+            for quiet in (0, 1000, (1 << 32) - 1):
+                self.assertEqual(launch('--vulkan-recover-local', '--vulkan-recover-local-quiet-ms', str(quiet))[
+                    'ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS'], str(quiet))
+            for flags in (('--vulkan-recover-local-quiet-ms', '0'),
+                          ('--vulkan-recover-local', '--vulkan-recover-local-quiet-ms', '-1'),
+                          ('--vulkan-recover-local', '--vulkan-recover-local-quiet-ms', str(1 << 32))):
+                rejected = subprocess.run([sys.executable, str(launcher), '--build-dir', str(build), *flags,
+                                           '--', sys.executable, '-c', 'pass'],
+                                          env=env, text=True, capture_output=True, timeout=10)
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertIn('--vulkan-recover-local-quiet-ms requires', rejected.stderr)
             manual = launch('--no-live-control', '--vulkan-recover-local', '--vulkan-virtual-mib', '32768',
                             '--vulkan-auto-idle-ms', '1000', '--vulkan-cold-mib', '4096',
                             '--vulkan-eviction-trigger', 'pressure', '--vulkan-selective-restore',

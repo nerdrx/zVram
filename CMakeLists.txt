@@ -416,6 +416,26 @@ if(ZVRAM_TEST_ASYNC_HOOK)
     set_tests_properties(vulkan-cold-cycle-native-recovery-bda PROPERTIES TIMEOUT 30
         ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
         LABELS "hardware;vulkan;cold-cycle;native-allocation;bda;test-hook")
+    foreach(hot_cycle_mode single two-queues)
+        set(hot_cycle_flags)
+        set(hot_cycle_idle_ms 100)
+        if(hot_cycle_mode STREQUAL "two-queues")
+            list(APPEND hot_cycle_flags --two-queues)
+            set(hot_cycle_idle_ms 1000)
+        endif()
+        set(hot_cycle_test vulkan-cold-cycle-native-hot-recovery-${hot_cycle_mode})
+        add_test(NAME ${hot_cycle_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 128 --vulkan-auto-idle-ms ${hot_cycle_idle_ms}
+                --vulkan-cold-mib 64 --vulkan-selective-restore --vulkan-active-eviction
+                --vulkan-range-mib 4 --vulkan-resident-mib 64
+                --vulkan-eviction-trigger pressure --vulkan-lazy-backing --vulkan-headroom-mib 1 --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --hot-recovery-fixture
+                --native-allocation ${hot_cycle_flags})
+        set_tests_properties(${hot_cycle_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=0;VK_LOADER_LAYERS_DISABLE=~implicit~"
+            LABELS "hardware;vulkan;cold-cycle;native-allocation;hot-recovery;test-hook")
+    endforeach()
 endif()
 add_test(NAME vulkan-graphics-pressure-retention
     COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers

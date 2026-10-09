@@ -647,6 +647,17 @@ std::uint64_t positiveEnv(const char* name,std::uint64_t max=std::numeric_limits
     if(errno || end==value || *end || parsed==0 || parsed>max) return 0;
     return parsed;
 }
+bool uint32EnvAllowZero(const char* name,std::uint32_t& output) {
+    const char* value=std::getenv(name);
+    if(!value) return true;
+    if(!*value) return false;
+    for(const char* digit=value;*digit;digit++)
+        if(*digit<'0' || *digit>'9') return false;
+    char* end=nullptr; errno=0; const auto parsed=std::strtoull(value,&end,10);
+    if(errno || end==value || *end || parsed>UINT32_MAX) return false;
+    output=static_cast<std::uint32_t>(parsed);
+    return true;
+}
 bool snapshotConfig(const Device& d,std::uint64_t& idleMs,std::uint64_t& coldBudget) {
     idleMs=positiveEnv("ZVRAM_VULKAN_AUTO_IDLE_MS",UINT32_MAX);
     const auto coldMiB=positiveEnv("ZVRAM_VULKAN_COLD_MIB");
@@ -1295,6 +1306,13 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 if(d->activeEviction && rangeEnabled) d->rangeChunkBytes=rangeMiB*1024ull*1024ull;
                 d->pressureOnly=pressureOnlyRequested;
                 d->coldCycleRecovery=coldCycleRequested;
+                if(d->coldCycleRecovery) {
+                    std::uint32_t quietMilliseconds=static_cast<std::uint32_t>(d->coldCycleQuietMilliseconds);
+                    if(!uint32EnvAllowZero("ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS",quietMilliseconds)) {
+                        autoResult=VK_ERROR_FEATURE_NOT_PRESENT;
+                        logf("invalid cold-cycle quiet delay: expected unsigned milliseconds from 0 to %u",UINT32_MAX);
+                    } else d->coldCycleQuietMilliseconds=quietMilliseconds;
+                }
                 const char* clean=std::getenv("ZVRAM_VULKAN_CLEAN_CACHE");
                 d->cleanCache=d->rangeChunkBytes && clean && std::strcmp(clean,"1")==0;
                 if(d->gpuRawHostInput && !d->cleanCache) {

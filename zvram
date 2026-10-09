@@ -56,6 +56,7 @@ parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residenc
 parser.add_argument("--vulkan-resident-mib", type=int, help="limit eligible resident backing at tracked submission admission; requires range mode (experimental, not a global VRAM cap)")
 parser.add_argument("--vulkan-headroom-mib", type=int, help="tighten the backing cap using native memory_budget and this positive MiB reserve; requires lazy backing (experimental)")
 parser.add_argument("--vulkan-recover-local", action="store_true", help="opt in to cold-cycle recovery of eligible GTT-backed ranges into local VRAM (experimental)")
+parser.add_argument("--vulkan-recover-local-quiet-ms", type=int, help="minimum unused age before local recovery (default 1000 ms); 0 allows completed recent use; requires --vulkan-recover-local")
 parser.add_argument("--vulkan-lazy-backing", action="store_true", help="defer pristine range backing until admitted use; requires immediate resident admission (experimental)")
 parser.add_argument("--vulkan-resident-after-cold", action="store_true", help="arm resident admission after all eligible backing first becomes cold; startup can exceed limit")
 parser.add_argument("--vulkan-eviction-policy", choices=("lru", "mru"), help="choose pressure victims: oldest first (default lru), or newest first for cyclic scans; requires resident admission")
@@ -193,6 +194,9 @@ if args.vulkan_resident_after_cold and args.vulkan_resident_mib is None:
     parser.error("--vulkan-resident-after-cold requires --vulkan-resident-mib")
 if args.vulkan_eviction_policy is not None and args.vulkan_resident_mib is None:
     parser.error("--vulkan-eviction-policy requires --vulkan-resident-mib")
+if args.vulkan_recover_local_quiet_ms is not None and (
+        not args.vulkan_recover_local or not 0 <= args.vulkan_recover_local_quiet_ms <= (1 << 32) - 1):
+    parser.error("--vulkan-recover-local-quiet-ms requires --vulkan-recover-local and a uint32 value in ms")
 if args.vulkan_recover_local and (
         args.hip or args.vulkan_eviction_trigger != "pressure" or
         args.vulkan_auto_idle_ms is None or args.vulkan_cold_mib is None or
@@ -304,6 +308,8 @@ else:
         env["ZVRAM_VULKAN_HEADROOM_MIB"] = str(args.vulkan_headroom_mib)
     if args.vulkan_recover_local:
         env["ZVRAM_VULKAN_COLD_CYCLE_RECOVERY"] = "1"
+    if args.vulkan_recover_local_quiet_ms is not None:
+        env["ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS"] = str(args.vulkan_recover_local_quiet_ms)
     if args.vulkan_resident_after_cold:
         env["ZVRAM_VULKAN_RESIDENT_AFTER_COLD"] = "1"
     if args.vulkan_eviction_policy is not None:

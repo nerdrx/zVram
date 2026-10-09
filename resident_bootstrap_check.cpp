@@ -546,12 +546,56 @@ void checkColdCyclePromotionAndFailureRetry() {
 
 void checkColdCycleActiveReferenceGuard() {
     ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    d.coldCycleQuietMilliseconds=0;
+    m.coldGroups[0].lastUse=std::chrono::steady_clock::now();
     d.activeRefs.recordRanges(tokenHandle<VkQueue>(0xc006),{{c.f.memory,0}},true);
     require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB),
             "cold-cycle ignored an in-flight child reference");
     require(allocations==0 && sparseBinds==0 && m.children[0]==c.nonlocal &&
             !m.coldGroups[0].cold && d.residentBytes==MiB,
             "in-flight guard mutated or froze the referenced child");
+}
+
+void checkColdCycleHotCompletedChild() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    d.coldCycleQuietMilliseconds=0;
+    m.coldGroups[0].lastUse=std::chrono::steady_clock::now();
+    require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && m.children[0] &&
+            m.childTypes[0]==0 && !m.coldGroups[0].cold,
+            "zero-quiet recovery did not promote a recent completed child");
+}
+
+void checkColdCycleQuietEnvParsing() {
+    constexpr const char* name="ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS";
+    const char* previous=std::getenv(name);
+    const bool hadPrevious=previous!=nullptr;
+    const std::string saved=previous?previous:"";
+    std::uint32_t value=1000;
+    unsetenv(name);
+    require(uint32EnvAllowZero(name,value) && value==1000,
+            "unset recovery quiet delay changed the one-second default");
+    setenv(name,"0",1);
+    require(uint32EnvAllowZero(name,value) && value==0,
+            "recovery quiet delay rejected zero");
+    setenv(name,"4294967295",1);
+    require(uint32EnvAllowZero(name,value) && value==UINT32_MAX,
+            "recovery quiet delay rejected uint32 maximum");
+    setenv(name,"4294967296",1);
+    require(!uint32EnvAllowZero(name,value),"recovery quiet delay accepted uint32 overflow");
+    value=1000;
+    setenv(name,"-18446744073709551615",1);
+    require(!uint32EnvAllowZero(name,value) && value==1000,
+            "recovery quiet delay accepted a negative wrapped value or changed output");
+    setenv(name,"+1",1);
+    require(!uint32EnvAllowZero(name,value) && value==1000,
+            "recovery quiet delay accepted a signed value or changed output");
+    setenv(name," 1",1);
+    require(!uint32EnvAllowZero(name,value) && value==1000,
+            "recovery quiet delay accepted whitespace or changed output");
+    setenv(name,"10ms",1);
+    require(!uint32EnvAllowZero(name,value) && value==1000,
+            "recovery quiet delay accepted malformed input or changed output");
+    if(hadPrevious) setenv(name,saved.c_str(),1); else unsetenv(name);
 }
 
 void checkColdCycleSparseFailurePreservesBacking() {
@@ -588,7 +632,8 @@ void checkColdCycleRefusalPolicies() {
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
         m.coldGroups[0].lastUse=std::chrono::steady_clock::now();
-        require(!coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && allocations==0 &&
+        require(d.coldCycleQuietMilliseconds==1000 &&
+                !coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && allocations==0 &&
                 m.children[0]==c.nonlocal,
                 "cold-cycle ignored the quiet delay");
     }
@@ -1122,6 +1167,8 @@ int main() try {
     checkMergedRestoreMapping();
     checkColdCyclePromotionAndFailureRetry();
     checkColdCycleActiveReferenceGuard();
+    checkColdCycleHotCompletedChild();
+    checkColdCycleQuietEnvParsing();
     checkColdCycleSparseFailurePreservesBacking();
     checkColdCycleRefusalPolicies();
     checkNativeBackingFallbackPolicy();
