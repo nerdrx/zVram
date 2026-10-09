@@ -1,6 +1,6 @@
 # Experimental cold-cycle recovery
 
-Default off; not included in installed v0.4.9. This prototype recovers completed eligible buffers whose backing explicitly uses a non-device-local Vulkan heap. It cannot identify or move device-local allocations that the kernel has transparently placed in GTT. Allocation type is not proof of physical residency.
+Default off; included in Hub release v0.4.10. This prototype recovers completed eligible buffers whose backing explicitly uses a non-device-local Vulkan heap. It cannot identify or move device-local allocations that the kernel has transparently placed in GTT. Allocation type is not proof of physical residency.
 
 ## Correctness
 
@@ -31,3 +31,7 @@ Native intercepted allocations retain the app-selected type by default. Opt-in r
 The default-off negative gate still refuses forced nonlocal backing with pristine accounting. Opt-in native 4 MiB single-queue and blocked second-queue recovery gates pass full 32 MiB byte verification and empty teardown. See `native-opt-in-ctest.txt` and `native-alias-guard-and-bda-preflight.txt`; the latter includes the initial BDA fixture preflight failure. CPU tests also verify original-type preference, fallback, alias narrowing and rejection before mutation. This expands explicit nonlocal backing recovery, not kernel-managed physical residency control.
 
 Final native gates after the alias guard pass all four cases: default refusal, single-queue recovery, blocked second-queue recovery and BDA shader access. The BDA gate confirms a stable device address, verifies the original full byte pattern, executes one address-based shader update, then verifies every updated byte. An initial diagnostic failed because the fixture dispatched cycle 7 once but expected cumulative cycles 0 through 7; using one cycle 0 dispatch and expectation corrected the fixture without changing production code. The failure remains archived in `native-bda-ctest.txt`; the corrected run is `native-final-bda-and-alias-ctest.txt`. All 13 normal CPU checks and 19 Python checks passed after the native alias guard. Recovery remains default off, with no game frame-time claim.
+
+## Published package
+
+v0.4.10 release workflow 37879035839 passed and NX Hub installed the published tarball after SHA-256 verification. Installed launcher and manager match the tag; codec metadata reports test_hooks=false and the Vulkan library contains neither test setter. The installed layer passed the bounded async live-cap reduction/increase fixture with full byte restoration and zero resident/cold/error accounting at teardown (`installed-0.4.10-live-cap.txt`). Recovery and async compression remain opt-in; the published package does not contain the forced-nonlocal test selector.
