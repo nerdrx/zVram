@@ -32,6 +32,7 @@ def main():
     host_input.add_argument("--bp16-allocated-host-input", action="store_true")
     parser.add_argument("--bp16-upload-workers", type=int, choices=range(1, 9))
     parser.add_argument("--video-driver", choices=("x11", "wayland"), default="x11")
+    parser.add_argument("--present-metadata", choices=("id", "regions", "both"))
     parser.add_argument("--prefer-device")
     parser.add_argument("--output-dir", type=Path, default=Path("build/presentation-check"))
     args = parser.parse_args()
@@ -96,6 +97,8 @@ def main():
                         "--vulkan-bp16-gpu"]
         command.append("--")
     command += [str(binary), "--present", "--frames", "3"]
+    if args.present_metadata:
+        command += ["--present-metadata", args.present_metadata]
     if args.native:
         command.append("--native")
     if args.native_allocation:
@@ -125,8 +128,18 @@ def main():
                 pass
     text = log_path.read_text(errors="replace")
     expected = "PASS: 3 presented draw/readback frames " + ("(native mode)" if args.native else "with cold restore")
+    if args.present_metadata:
+        expected += " metadata=" + args.present_metadata
+    unsupported_lines = [line for line in text.splitlines()
+                         if line.startswith("UNSUPPORTED: PRESENT_METADATA: ")]
+    unsupported_metadata = bool(
+        args.present_metadata and unsupported_lines and not timed_out and
+        "PASS:" not in text and
+        not any(marker in text for marker in (
+            "FAIL:", "VUID-", "Vulkan validation error:", "Validation Error")))
     passed = (not timed_out and process.returncode == 0 and expected in text and
               "validation=on" in text and ("type=4" if args.cpu else "type=2") in text and
+              not unsupported_lines and
               not any(marker in text for marker in ("FAIL:", "VUID-", "Vulkan validation error:", "Validation Error")))
     if args.async_compression:
         passed = passed and text.count("async snapshot committed raw=33554432") >= 4
@@ -160,7 +173,8 @@ def main():
                   "FAIL: submit graphics fixture: -2" in text and
                   "event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0" in text and
                   not any(marker in text for marker in ("VUID-", "Vulkan validation error:", "Validation Error")))
-    report = dict(passed=passed, command=command, environment={key: env[key] for key in
+    report = dict(passed=passed, skipped=unsupported_metadata,
+                  presentation_metadata=args.present_metadata, command=command, environment={key: env[key] for key in
                   ("VK_DRIVER_FILES", "VK_VALIDATION_VALIDATE_SYNC", "DISABLE_GAMESCOPE_WSI", "DISABLE_LSFGVK")},
                   timeout=timed_out, exit=process.returncode, seconds=time.monotonic()-started,
                   scope=("expected zero-budget refusal before GPU buffer use; no presented frames" if args.expect_headroom_refusal else
@@ -179,7 +193,7 @@ def main():
     (args.output_dir / "result.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report))
     print("See " + str(log_path))
-    return 0 if passed else 1
+    return 77 if unsupported_metadata else (0 if passed else 1)
 
 
 if __name__ == "__main__":

@@ -933,6 +933,57 @@ void checkPresentGateAndFallback() {
     }
 }
 
+void checkPresentMetadataAllowlist() {
+    for(unsigned accepted=0;accepted<3;accepted++) {
+        Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); registerPresentFixture(f);
+        auto& d=f.device;
+        VkSemaphore semaphore{}; VkSwapchainKHR swapchain{}; std::uint32_t index{};
+        auto info=makePresentInfo(semaphore,swapchain,index);
+        VkPresentIdKHR presentId{VK_STRUCTURE_TYPE_PRESENT_ID_KHR};
+        VkPresentRegionsKHR regions{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR};
+        presentId.swapchainCount=regions.swapchainCount=info.swapchainCount;
+        // Null metadata arrays are valid and remain the driver's responsibility.
+        if(accepted==0) info.pNext=&presentId;
+        else if(accepted==1) info.pNext=&regions;
+        else { presentId.pNext=&regions; info.pNext=&presentId; }
+        const auto originalChain=info.pNext;
+        const auto q=reinterpret_cast<VkQueue>(f.handle);
+        require(layerQueuePresent(q,&info)==VK_SUCCESS && presentCalls==1 && forwardedPresent==&info &&
+                info.pNext==originalChain,
+                "allowlisted present metadata did not forward the original chain");
+        require(allocations==0 && f.state().cold && d.autoEnabled,
+                "allowlisted present metadata restored cold backing or disabled paging");
+        unregisterPresentFixture(f);
+    }
+    for(unsigned rejected=0;rejected<6;rejected++) {
+        Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); registerPresentFixture(f);
+        auto& d=f.device;
+        VkSemaphore semaphore{}; VkSwapchainKHR swapchain{}; std::uint32_t index{};
+        auto info=makePresentInfo(semaphore,swapchain,index);
+        VkPresentIdKHR presentId{VK_STRUCTURE_TYPE_PRESENT_ID_KHR};
+        VkPresentRegionsKHR regions{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR};
+        VkBaseInStructure unknown{static_cast<VkStructureType>(0x7fffffff),nullptr};
+        presentId.swapchainCount=regions.swapchainCount=info.swapchainCount;
+        VkPresentIdKHR duplicate{VK_STRUCTURE_TYPE_PRESENT_ID_KHR};
+        duplicate.swapchainCount=info.swapchainCount;
+        if(rejected==0) info.pNext=&unknown;
+        else if(rejected==1) { presentId.pNext=&duplicate; info.pNext=&presentId; }
+        else if(rejected==2) { presentId.pNext=&presentId; info.pNext=&presentId; }
+        else if(rejected==3) { presentId.pNext=&regions; regions.pNext=&presentId; info.pNext=&presentId; }
+        else if(rejected==4) { presentId.swapchainCount++; info.pNext=&presentId; }
+        else { regions.swapchainCount++; info.pNext=&regions; }
+        const auto originalChain=info.pNext;
+        const auto q=reinterpret_cast<VkQueue>(f.handle);
+        require(layerQueuePresent(q,&info)==VK_SUCCESS && presentCalls==1 && forwardedPresent==&info &&
+                info.pNext==originalChain,
+                "rejected present chain was not forwarded unchanged by the fallback");
+        require(allocations==2 && d.autoEnabled==false && d.residentBytes==2*MiB &&
+                d.coldLogicalBytes==0,
+                "rejected present chain bypassed conservative restore/disable fallback");
+        unregisterPresentFixture(f);
+    }
+}
+
 void checkAsyncSnapshotTransactionDecisions() {
     Fixture f; auto& d=f.device; const auto memoryHandle=f.memory;
     d.asyncCompression=true; d.autoEnabled=true; d.coldBudget=10;
@@ -1158,6 +1209,7 @@ int main() try {
     checkDefaultBudgetDoesNotQuery();
     checkBasePresentPassthrough();
     checkPresentGateAndFallback();
+    checkPresentMetadataAllowlist();
     checkAsyncSnapshotTransactionDecisions();
     checkAsyncSnapshotEncodingRoundTrip();
     checkAsyncEncoderReleasesBothGates();

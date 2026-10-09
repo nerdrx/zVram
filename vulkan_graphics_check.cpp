@@ -86,7 +86,10 @@ struct Fixture {
     std::vector<VkImageView> swapViews; std::vector<VkFramebuffer> swapFramebuffers;
     std::vector<VkSemaphore> acquireSemaphores, renderSemaphores;
     std::vector<std::uint64_t> submitCallMicros, fenceWaitCallMicros;
-    bool presenting{}, nativeAllocation{};
+    bool presenting{}, nativeAllocation{}, presentIdMetadata{}, presentRegionsMetadata{};
+    bool unsupported{};
+    std::string unsupportedReason;
+    std::uint64_t nextPresentId{1};
     bool abandon{}, validationOn{}; GetStats getStats{};
 
     ~Fixture() {
@@ -205,7 +208,7 @@ struct Fixture {
         } while(std::chrono::steady_clock::now()<until);
         throw std::runtime_error("32 MiB buffer did not return to cold state before timeout");
     }
-    void init(bool native
+    void init(bool native, bool requestPresentId=false, bool requestPresentRegions=false
 #ifdef ZVRAM_GRAPHICS_SDL2
               , bool present=false, SDL_Window* window=nullptr
 #endif
@@ -216,6 +219,10 @@ struct Fixture {
 #else
         (void)native;
 #endif
+        presentIdMetadata=requestPresentId;
+        presentRegionsMetadata=requestPresentRegions;
+        require((!requestPresentId&&!requestPresentRegions)||presenting,
+                "presentation metadata requires SDL presentation");
         VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO}; app.apiVersion=VK_API_VERSION_1_1;
         std::uint32_t layerCount=0, extCount=0;
         check(vkEnumerateInstanceLayerProperties(&layerCount,nullptr),"enumerate layers");
@@ -256,9 +263,29 @@ struct Fixture {
 #endif
         std::uint32_t n=0; check(vkEnumeratePhysicalDevices(instance,&n,nullptr),"enumerate devices"); require(n,"no Vulkan device");
         std::vector<VkPhysicalDevice> devices(n); check(vkEnumeratePhysicalDevices(instance,&n,devices.data()),"enumerate devices");
+        bool metadataSupportedDevice=false;
         for(auto d:devices) {
 #ifdef ZVRAM_GRAPHICS_SDL2
-            if(present) { std::uint32_t ec=0; check(vkEnumerateDeviceExtensionProperties(d,nullptr,&ec,nullptr),"query device extensions"); std::vector<VkExtensionProperties> ex(ec); check(vkEnumerateDeviceExtensionProperties(d,nullptr,&ec,ex.data()),"read device extensions"); if(std::none_of(ex.begin(),ex.end(),[](const auto& x){return std::strcmp(x.extensionName,VK_KHR_SWAPCHAIN_EXTENSION_NAME)==0;})) continue; }
+            if(present) {
+                std::uint32_t ec=0;
+                check(vkEnumerateDeviceExtensionProperties(d,nullptr,&ec,nullptr),"query device extensions");
+                std::vector<VkExtensionProperties> ex(ec);
+                check(vkEnumerateDeviceExtensionProperties(d,nullptr,&ec,ex.data()),"read device extensions");
+                const auto hasExtension=[&](const char* name) {
+                    return std::any_of(ex.begin(),ex.end(),[&](const auto& x){return std::strcmp(x.extensionName,name)==0;});
+                };
+                if(!hasExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME) ||
+                   (requestPresentId && !hasExtension(VK_KHR_PRESENT_ID_EXTENSION_NAME)) ||
+                   (requestPresentRegions && !hasExtension(VK_KHR_INCREMENTAL_PRESENT_EXTENSION_NAME))) continue;
+                if(requestPresentId) {
+                    VkPhysicalDevicePresentIdFeaturesKHR supported{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR};
+                    VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+                    features.pNext=&supported;
+                    vkGetPhysicalDeviceFeatures2(d,&features);
+                    if(!supported.presentId) continue;
+                }
+                metadataSupportedDevice=true;
+            }
 #endif
             std::uint32_t qn=0; vkGetPhysicalDeviceQueueFamilyProperties(d,&qn,nullptr); std::vector<VkQueueFamilyProperties> q(qn); vkGetPhysicalDeviceQueueFamilyProperties(d,&qn,q.data());
             for(std::uint32_t i=0;i<qn;++i) if(q[i].queueCount && (q[i].queueFlags&VK_QUEUE_GRAPHICS_BIT)) {
@@ -269,17 +296,39 @@ struct Fixture {
             }
             if(physical) break;
         }
+#ifdef ZVRAM_GRAPHICS_SDL2
+        if(present && (requestPresentId||requestPresentRegions) && !metadataSupportedDevice) {
+            unsupported=true;
+            unsupportedReason="requested extension or feature is unavailable";
+            return;
+        }
+#endif
         require(physical,"no graphics queue");
         VkPhysicalDeviceProperties selectedProperties{}; vkGetPhysicalDeviceProperties(physical,&selectedProperties);
         std::cout<<"graphics-device="<<selectedProperties.deviceName<<" type="<<static_cast<unsigned>(selectedProperties.deviceType)<<'\n';
         VkPhysicalDeviceMemoryProperties mp{}; vkGetPhysicalDeviceMemoryProperties(physical,&mp);
         const VkDeviceQueueCreateInfo qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,nullptr,0,queueFamily,1,&queuePriority};
-#ifdef ZVRAM_GRAPHICS_SDL2
-        const char* swapExt=VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-#endif
         VkDeviceCreateInfo di{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; di.queueCreateInfoCount=1; di.pQueueCreateInfos=&qi;
 #ifdef ZVRAM_GRAPHICS_SDL2
-        if(present) { di.enabledExtensionCount=1; di.ppEnabledExtensionNames=&swapExt; }
+        std::vector<const char*> enabledDeviceExtensions;
+        if(present) enabledDeviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        if(requestPresentId) enabledDeviceExtensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+        if(requestPresentRegions) enabledDeviceExtensions.push_back(VK_KHR_INCREMENTAL_PRESENT_EXTENSION_NAME);
+        if(present) {
+            di.enabledExtensionCount=static_cast<std::uint32_t>(enabledDeviceExtensions.size());
+            di.ppEnabledExtensionNames=enabledDeviceExtensions.data();
+        }
+        VkPhysicalDevicePresentIdFeaturesKHR enabledPresentId{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR};
+        VkPhysicalDeviceFeatures2 enabledFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+        if(requestPresentId) {
+            VkPhysicalDeviceFeatures supportedBase{};
+            vkGetPhysicalDeviceFeatures(physical,&supportedBase);
+            enabledFeatures.features.sparseBinding=supportedBase.sparseBinding;
+            enabledFeatures.features.sparseResidencyBuffer=supportedBase.sparseResidencyBuffer;
+            enabledPresentId.presentId=VK_TRUE;
+            enabledFeatures.pNext=&enabledPresentId;
+            di.pNext=&enabledFeatures;
+        }
 #endif
         check(vkCreateDevice(physical,&di,nullptr,&device),"create device"); vkGetDeviceQueue(device,queueFamily,0,&queue);
         getStats=reinterpret_cast<GetStats>(vkGetDeviceProcAddr(device,"vkZVramGetSnapshotStatsNX"));
@@ -435,7 +484,24 @@ struct Fixture {
         vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&hostBarrier,0,nullptr);
         submit(cmd,acquired,rendered,true);
 #ifdef ZVRAM_GRAPHICS_SDL2
-        if(presenting) { VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR}; pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&rendered; pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex; const auto pr=vkQueuePresentKHR(queue,&pi); if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) abandon=true; if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) check(pr,"present swapchain image"); }
+        if(presenting) {
+            VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+            pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&rendered;
+            pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex;
+            VkPresentIdKHR idInfo{VK_STRUCTURE_TYPE_PRESENT_ID_KHR};
+            const std::uint64_t presentId=nextPresentId++;
+            if(presentIdMetadata) { idInfo.swapchainCount=1; idInfo.pPresentIds=&presentId; }
+            VkRectLayerKHR rectangle{}; rectangle.offset={0,0}; rectangle.extent=extent; rectangle.layer=0;
+            VkPresentRegionKHR region{}; region.rectangleCount=1; region.pRectangles=&rectangle;
+            VkPresentRegionsKHR regionsInfo{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR};
+            if(presentRegionsMetadata) { regionsInfo.swapchainCount=1; regionsInfo.pRegions=&region; }
+            if(presentIdMetadata && presentRegionsMetadata) idInfo.pNext=&regionsInfo;
+            pi.pNext=presentIdMetadata ? static_cast<const void*>(&idInfo) :
+                     (presentRegionsMetadata ? static_cast<const void*>(&regionsInfo) : nullptr);
+            const auto pr=vkQueuePresentKHR(queue,&pi);
+            if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) abandon=true;
+            if(pr!=VK_SUCCESS&&pr!=VK_SUBOPTIMAL_KHR) check(pr,"present swapchain image");
+        }
 #endif
         void* p{}; check(vkMapMemory(device,readbackMem,0,BufferBytes+Width*Height*4,0,&p),"map readback");
         const auto* pixels=static_cast<const std::uint8_t*>(p);
@@ -451,8 +517,12 @@ struct Fixture {
 };
 }
 
+struct UnsupportedMetadata {};
+
 int main(int argc,char** argv) {
-    bool native=false, present=false, nativeAllocation=false, expectLazy=false, warmResidency=false; unsigned frames=3, frameDelayMs=0;
+    bool native=false, present=false, nativeAllocation=false, expectLazy=false, warmResidency=false;
+    std::string presentMetadata="none";
+    unsigned frames=3, frameDelayMs=0;
 #ifdef ZVRAM_GRAPHICS_SDL2
     SDL_Window* window=nullptr; bool sdlReady=false;
 #endif
@@ -463,12 +533,26 @@ int main(int argc,char** argv) {
             else if(std::strcmp(argv[i],"--expect-lazy-backing")==0) expectLazy=true;
             else if(std::strcmp(argv[i],"--frames")==0 && i+1<argc) { frames=static_cast<unsigned>(std::stoul(argv[++i])); require(frames>=2 && frames<=120,"--frames must be 2..120"); }
             else if(std::strcmp(argv[i],"--warm-residency")==0) warmResidency=true;
+            else if(std::strcmp(argv[i],"--present-metadata")==0 && i+1<argc) presentMetadata=argv[++i];
             else if(std::strcmp(argv[i],"--frame-delay-ms")==0 && i+1<argc) { frameDelayMs=static_cast<unsigned>(std::stoul(argv[++i])); require(frameDelayMs<=1000,"frame delay maximum is 1000 ms"); }
 #ifdef ZVRAM_GRAPHICS_SDL2
             else if(std::strcmp(argv[i],"--present")==0) present=true;
 #endif
-            else throw std::runtime_error("usage: vulkan-graphics-check [--native] [--native-allocation] [--expect-lazy-backing] [--present] [--warm-residency] [--frame-delay-ms 0..1000] [--frames 2..120]");
+            else throw std::runtime_error("usage: vulkan-graphics-check [--native] [--native-allocation] [--expect-lazy-backing] [--present] [--present-metadata id|regions|both] [--warm-residency] [--frame-delay-ms 0..1000] [--frames 2..120]");
         }
+        require(presentMetadata=="none" || presentMetadata=="id" ||
+                presentMetadata=="regions" || presentMetadata=="both",
+                "--present-metadata must be id, regions or both");
+        const bool requestPresentId=presentMetadata=="id" || presentMetadata=="both";
+        const bool requestPresentRegions=presentMetadata=="regions" || presentMetadata=="both";
+#ifndef ZVRAM_GRAPHICS_SDL2
+        if(presentMetadata!="none") {
+            std::cerr<<"UNSUPPORTED: PRESENT_METADATA: requires SDL2 support\n";
+            return 77;
+        }
+#else
+        require(present || presentMetadata=="none","--present-metadata requires --present");
+#endif
         require(!expectLazy || !native,"lazy backing check requires zVram");
 #ifdef ZVRAM_GRAPHICS_SDL2
         if(present) { require(SDL_Init(SDL_INIT_VIDEO)==0,"initialize SDL2 video"); sdlReady=true; window=SDL_CreateWindow("zVram Vulkan graphics check",SDL_WINDOWPOS_UNDEFINED,SDL_WINDOWPOS_UNDEFINED,Width,Height,SDL_WINDOW_VULKAN|SDL_WINDOW_SHOWN); require(window,"create SDL Vulkan window"); SDL_PumpEvents(); }
@@ -479,11 +563,15 @@ int main(int argc,char** argv) {
         {
             Fixture f;
             f.nativeAllocation=nativeAllocation;
-            f.init(native
+            f.init(native,requestPresentId,requestPresentRegions
 #ifdef ZVRAM_GRAPHICS_SDL2
                    ,present,window
 #endif
                    );
+            if(f.unsupported) {
+                std::cerr<<"UNSUPPORTED: PRESENT_METADATA: "<<f.unsupportedReason<<'\n';
+                throw UnsupportedMetadata{};
+            }
             auto input=makeInput(); const auto initial=native?Stats{}:f.stats();
             if(expectLazy) {
                 require(initial.residentBytes==0 && initial.coldLogicalBytes==BufferBytes && initial.coldStoredBytes==0,
@@ -526,8 +614,16 @@ int main(int argc,char** argv) {
         if(window) SDL_DestroyWindow(window);
         if(sdlReady) SDL_Quit();
 #endif
-        std::cout<<"PASS: "<<frames<<(present?" presented":" offscreen")<<" draw/readback frames"<<(native?" (native mode)":(warmResidency?" with warm residency":" with cold restore"))<<" validation="<<(validationOn?"on":"unavailable")<<"\n";
+        std::cout<<"PASS: "<<frames<<(present?" presented":" offscreen")<<" draw/readback frames"<<(native?" (native mode)":(warmResidency?" with warm residency":" with cold restore"))
+                 <<(presentMetadata!="none"?" metadata="+presentMetadata:"")
+                 <<" validation="<<(validationOn?"on":"unavailable")<<"\n";
         return 0;
+    } catch(const UnsupportedMetadata&) {
+#ifdef ZVRAM_GRAPHICS_SDL2
+        if(window) SDL_DestroyWindow(window);
+        if(sdlReady) SDL_Quit();
+#endif
+        return 77;
     } catch(const std::exception& e) {
 #ifdef ZVRAM_GRAPHICS_SDL2
         if(window) SDL_DestroyWindow(window);

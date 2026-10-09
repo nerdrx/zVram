@@ -3920,9 +3920,37 @@ VKAPI_ATTR VkResult VKAPI_CALL layerQueueBindSparse(VkQueue q,std::uint32_t coun
 VKAPI_ATTR VkResult VKAPI_CALL layerQueueWaitIdle(VkQueue q) {
     return queueCall<PFN_vkQueueWaitIdle>(q,"vkQueueWaitIdle");
 }
+bool supportedBufferPresentMetadata(const VkPresentInfoKHR* info) {
+    if(!info) return false;
+    bool hasPresentId=false,hasRegions=false;
+    auto* node=static_cast<const VkBaseInStructure*>(info->pNext);
+    for(unsigned count=0;node;count++) {
+        if(count>=2) return false;
+        switch(node->sType) {
+        case VK_STRUCTURE_TYPE_PRESENT_ID_KHR: {
+            if(hasPresentId) return false;
+            const auto* presentId=reinterpret_cast<const VkPresentIdKHR*>(node);
+            if(presentId->swapchainCount!=info->swapchainCount) return false;
+            hasPresentId=true;
+            node=static_cast<const VkBaseInStructure*>(presentId->pNext);
+            break;
+        }
+        case VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR: {
+            if(hasRegions) return false;
+            const auto* regions=reinterpret_cast<const VkPresentRegionsKHR*>(node);
+            if(regions->swapchainCount!=info->swapchainCount) return false;
+            hasRegions=true;
+            node=static_cast<const VkBaseInStructure*>(regions->pNext);
+            break;
+        }
+        default: return false;
+        }
+    }
+    return true;
+}
 VKAPI_ATTR VkResult VKAPI_CALL layerQueuePresent(VkQueue q,const VkPresentInfoKHR* info) {
     auto d=findDevice(reinterpret_cast<VkDevice>(q)); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
-    if(d->bufferPresentation && d->autoInitialized && info && !info->pNext) {
+    if(d->bufferPresentation && d->autoInitialized && supportedBufferPresentMetadata(info)) {
         auto next=reinterpret_cast<PFN_vkQueuePresentKHR>(d->gdpa(d->handle,"vkQueuePresentKHR"));
         if(!next) return VK_ERROR_EXTENSION_NOT_PRESENT;
         std::unique_lock<std::mutex> deviceLock(d->mutex,std::defer_lock);

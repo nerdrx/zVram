@@ -146,6 +146,22 @@ add_test(NAME vulkan-graphics-native-allocation-cold-restore COMMAND ${graphics_
     --vulkan-selective-restore --vulkan-active-eviction -- $<TARGET_FILE:zvram-vulkan-graphics-check> --native-allocation)
 set_tests_properties(vulkan-graphics-cold-restore vulkan-graphics-active-cold-restore vulkan-graphics-native-allocation-cold-restore
     PROPERTIES TIMEOUT 45 LABELS "hardware;graphics")
+find_program(ZVRAM_GAMESCOPE_EXECUTABLE gamescope)
+find_file(ZVRAM_RADEON_ICD_PATH radeon_icd.json
+    PATHS /usr/share/vulkan/icd.d /etc/vulkan/icd.d /usr/local/share/vulkan/icd.d)
+if(SDL2_FOUND AND ZVRAM_GAMESCOPE_EXECUTABLE AND ZVRAM_RADEON_ICD_PATH)
+    foreach(present_metadata id regions both)
+        add_test(NAME vulkan-graphics-present-metadata-${present_metadata}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_graphics_presentation.py
+                --binary $<TARGET_FILE:zvram-vulkan-graphics-check>
+                --icd ${ZVRAM_RADEON_ICD_PATH} --build-dir ${CMAKE_CURRENT_BINARY_DIR}
+                --native-allocation --present-metadata ${present_metadata}
+                --output-dir ${CMAKE_CURRENT_BINARY_DIR}/presentation-metadata-${present_metadata})
+        set_tests_properties(vulkan-graphics-present-metadata-${present_metadata} PROPERTIES
+            TIMEOUT 25 SKIP_RETURN_CODE 77
+            LABELS "hardware;graphics;presentation;metadata;gamescope")
+    endforeach()
+endif()
 add_test(NAME cpu-vulkan-ram-guard COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_ram_guard.py)
 set_tests_properties(cpu-vulkan-ram-guard PROPERTIES TIMEOUT 10)
 add_test(NAME cpu-vulkan-compression-options COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_compression_options.py)
