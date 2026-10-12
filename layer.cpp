@@ -33,15 +33,11 @@
 #include "resident_budget.hpp"
 #include "snapshot_pipeline.hpp"
 #include "gdeflate_gpu.hpp"
+#include "vulkan_queue_flags.hpp"
 
 namespace {
+using zvram::kAllowedQueueCreateFlags;
 constexpr char kLayer[] = "VK_LAYER_NX_zvram";
-#ifdef VK_KHR_internally_synchronized_queues
-constexpr VkDeviceQueueCreateFlags kAllowedQueueCreateFlags =
-    VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR;
-#else
-constexpr VkDeviceQueueCreateFlags kAllowedQueueCreateFlags = 0;
-#endif
 struct Device;
 template<class H> void* key(H h) { return h ? *reinterpret_cast<void**>(h) : nullptr; }
 template<class H> H tokenHandle(std::uintptr_t value) {
