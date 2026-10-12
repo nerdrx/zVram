@@ -1,0 +1,14 @@
+{
+  "metadata": {
+    "gdeflate": true,
+    "gdeflate_gpu": true,
+    "bp16": true,
+    "bp16_gpu": true,
+    "test_hooks": false
+  },
+  "test_setters_absent": true,
+  "script_tag_match": {
+    "zvram": true,
+    "zvram_manager.py": true
+  }
+}

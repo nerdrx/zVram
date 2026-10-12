@@ -297,12 +297,12 @@ def run_probe(limit_mib, command, args):
             cwd = Path.cwd()
         else:
             run_command = [
-                str(repo / "zvram"), "--validate", "--isolate-layers", "--",
+                str(repo / "zvram"), "--no-live-control", "--validate", "--isolate-layers", "--",
                 str(repo / "build" / "zvram-capacity-check"),
                 "--mib", "64", "--chunk-mib", "8",
             ]
             cwd = repo
-            if not os.access(run_command[0], os.X_OK) or not os.access(run_command[4], os.X_OK):
+            if not os.access(run_command[0], os.X_OK) or not os.access(run_command[5], os.X_OK):
                 raise RuntimeError("build the launcher and capacity check before --run")
 
         preexec = lambda: drop_into_cgroup(cgroup / "cgroup.procs", uid, gid, user)

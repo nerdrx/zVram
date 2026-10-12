@@ -1,0 +1,29 @@
+{
+  "read_phase_reuses": 4,
+  "read_phase_invalidations": 0,
+  "write_phase_invalidations": 1,
+  "final": {
+    "resident": 0,
+    "cold-logical": 0,
+    "cold-stored": 0,
+    "freezes": 14,
+    "restores": 13,
+    "failures": 0,
+    "cache-stored": 0,
+    "clean-reuses": 8,
+    "cache-invalidations": 4,
+    "copy-calls": 19,
+    "copy-bytes": 637534208,
+    "copy-ns": 84151224,
+    "decode-bytes": 436207616,
+    "decode-ns": 29732016,
+    "pipeline-prefetches": 0,
+    "pipeline-restores": 13,
+    "pipeline-wait-ns": 510,
+    "gpu-decode-calls": 0,
+    "gpu-decode-bytes": 0,
+    "gpu-decode-ns": 0,
+    "gpu-decode-fallbacks": 0
+  },
+  "scope": "cache reuse and byte-integrity correctness; not FPS or latency"
+}

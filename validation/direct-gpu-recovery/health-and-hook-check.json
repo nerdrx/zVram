@@ -1,0 +1,12 @@
+{
+  "memory_psi": "some avg10=0.00 avg60=0.00 avg300=0.04 total=587373519\nfull avg10=0.00 avg60=0.00 avg300=0.04 total=561278227\n",
+  "available_kib": 27322460,
+  "gpu_busy_percent": 77,
+  "game_processes": [
+    {
+      "pid": 3508758,
+      "comm": "Warframe.x64.ex"
+    }
+  ],
+  "normal_test_api_names_absent": true
+}

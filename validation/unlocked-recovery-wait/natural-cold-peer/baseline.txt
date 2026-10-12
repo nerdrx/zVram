@@ -1,0 +1,504 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 71
+    Start 71: vulkan-cold-cycle-cold-peer-submit-sampler-baseline
+
+71: Test command: /usr/bin/cmake "-E" "env" "--unset=ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT" "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "4" "--vulkan-resident-mib" "64" "--vulkan-eviction-trigger" "pressure" "--vulkan-lazy-backing" "--vulkan-headroom-mib" "1" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-vulkan-auto-check" "--native-allocation" "--recovery-submit-cold-peer-sampler-fixture"
+71: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+71: Environment variables: 
+71:  VK_VALIDATION_VALIDATE_SYNC=1
+71:  ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1
+71:  ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=50
+71:  ZVRAM_VULKAN_GPU_PROFILE=1
+71:  VK_LOADER_LAYERS_DISABLE=~implicit~
+71: Test timeout computed to be: 30
+71: [zvram] Vulkan snapshot transfer staging bytes=33554432
+71: [zvram] Vulkan snapshot decode max-workers=1
+71: [zvram] Vulkan snapshot lookahead staging bytes=33554432
+71: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+71: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+71: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+71: [zvram] cold-cycle backing recovery enabled quiet-ms=50 max-child-bytes=33554432 unlocked-wait=0; no in-place TTM migration
+71: [zvram] Vulkan range residency enabled chunk-bytes=4194304
+71: [zvram] Vulkan resident admission enabled limit-bytes=67108864
+71: [zvram] Vulkan eviction policy=lru
+71: [zvram] Vulkan snapshot minimum savings percent=0
+71: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+71: [zvram] virtual allocate bytes=4194304 heap-capacity=134217728
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=4194304 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=37748736 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] native allocation segmented bytes=33554432 children=8
+71: [zvram] resident budget native-heap=1 budget=21459312640 usage=8839168 tracked-local=0 reserve=1048576 effective-limit=67108864 hard-limit=67108864
+71: [zvram] snapshot state event=restore resident=4194304 cold-logical=33554432 cold-stored=0 freezes=0 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=8388608 cold-logical=29360128 cold-stored=0 freezes=0 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=12582912 cold-logical=25165824 cold-stored=0 freezes=0 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=16777216 cold-logical=20971520 cold-stored=0 freezes=0 restores=4 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=20971520 cold-logical=16777216 cold-stored=0 freezes=0 restores=5 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=25165824 cold-logical=12582912 cold-stored=0 freezes=0 restores=6 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=29360128 cold-logical=8388608 cold-stored=0 freezes=0 restores=7 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=33554432 cold-logical=4194304 cold-stored=0 freezes=0 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=8 restored-chunks=8 cold-pools-left=1
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] warm-recovery phases bytes=4194304 view-us=34 allocate-us=48 alias-unbind-us=72 private-bind-us=35 copy-wait-us=1047 private-unbind-us=53 app-rebind-us=35 release-us=35
+71: [zvram] warm-recovery copy-phase bytes=4194304 start-monotonic-ns=171303331816680 end-monotonic-ns=171303332864485 unlocked=0
+71: [zvram] warm-recovery local-copy bytes=4194304 memory-type=2->0 duration-us=1371
+71: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+71: recovery-submit-sample transaction=0 index=0 start-monotonic-ns=171303272168434 end-monotonic-ns=171303272205284 submit-ns=36850
+71: recovery-submit-sample transaction=0 index=1 start-monotonic-ns=171303277231585 end-monotonic-ns=171303277287485 submit-ns=55900
+71: recovery-submit-sample transaction=0 index=2 start-monotonic-ns=171303282227455 end-monotonic-ns=171303282274366 submit-ns=46911
+71: recovery-submit-sample transaction=0 index=3 start-monotonic-ns=171303287224176 end-monotonic-ns=171303287246146 submit-ns=21970
+71: recovery-submit-sample transaction=0 index=4 start-monotonic-ns=171303292226927 end-monotonic-ns=171303292277157 submit-ns=50230
+71: recovery-submit-sample transaction=0 index=5 start-monotonic-ns=171303297224467 end-monotonic-ns=171303297253398 submit-ns=28931
+71: recovery-submit-sample transaction=0 index=6 start-monotonic-ns=171303302225648 end-monotonic-ns=171303302269718 submit-ns=44070
+71: recovery-submit-sample transaction=0 index=7 start-monotonic-ns=171303307232239 end-monotonic-ns=171303307300529 submit-ns=68290
+71: recovery-submit-sample transaction=0 index=8 start-monotonic-ns=171303312221989 end-monotonic-ns=171303312241069 submit-ns=19080
+71: recovery-submit-sample transaction=0 index=9 start-monotonic-ns=171303314224788 end-monotonic-ns=171303314272198 submit-ns=47410
+71: recovery-submit-sample transaction=0 index=10 start-monotonic-ns=171303315188322 end-monotonic-ns=171303315226992 submit-ns=38670
+71: recovery-submit-sample transaction=0 index=11 start-monotonic-ns=171303317223300 end-monotonic-ns=171303317259100 submit-ns=35800
+71: recovery-submit-sample transaction=0 index=12 start-monotonic-ns=171303318221454 end-monotonic-ns=171303318234664 submit-ns=13210
+71: recovery-submit-sample transaction=0 index=13 start-monotonic-ns=171303320221872 end-monotonic-ns=171303320235682 submit-ns=13810
+71: recovery-submit-sample transaction=0 index=14 start-monotonic-ns=171303321226387 end-monotonic-ns=171303321258507 submit-ns=32120
+71: recovery-submit-sample transaction=0 index=15 start-monotonic-ns=171303322221811 end-monotonic-ns=171303322234901 submit-ns=13090
+71: recovery-submit-sample transaction=0 index=16 start-monotonic-ns=171303323224565 end-monotonic-ns=171303323254995 submit-ns=30430
+71: recovery-submit-sample transaction=0 index=17 start-monotonic-ns=171303324223279 end-monotonic-ns=171303324251739 submit-ns=28460
+71: recovery-submit-sample transaction=0 index=18 start-monotonic-ns=171303325222323 end-monotonic-ns=171303325237463 submit-ns=15140
+71: recovery-submit-sample transaction=0 index=19 start-monotonic-ns=171303326220907 end-monotonic-ns=171303326230517 submit-ns=9610
+71: recovery-submit-sample transaction=0 index=20 start-monotonic-ns=171303327221671 end-monotonic-ns=171303327231251 submit-ns=9580
+71: recovery-submit-sample transaction=0 index=21 start-monotonic-ns=171303328227445 end-monotonic-ns=171303328264376 submit-ns=36931
+71: recovery-submit-sample transaction=0 index=22 start-monotonic-ns=171303329226370 end-monotonic-ns=171303329257480 submit-ns=31110
+71: recovery-submit-sample transaction=0 index=23 start-monotonic-ns=171303330223674 end-monotonic-ns=171303330255704 submit-ns=32030
+71: recovery-submit-sample transaction=0 index=24 start-monotonic-ns=171303331230158 end-monotonic-ns=171303331310008 submit-ns=79850
+71: recovery-submit-sample transaction=0 index=25 start-monotonic-ns=171303332223002 end-monotonic-ns=171303333076055 submit-ns=853053
+71: recovery-submit-sample transaction=0 index=26 start-monotonic-ns=171303334224070 end-monotonic-ns=171303334251910 submit-ns=27840
+71: recovery-submit-sample transaction=0 index=27 start-monotonic-ns=171303335220914 end-monotonic-ns=171303335231474 submit-ns=10560
+71: recovery-submit-sample transaction=0 index=28 start-monotonic-ns=171303336220958 end-monotonic-ns=171303336229859 submit-ns=8901
+71: recovery-submit-sample transaction=0 index=29 start-monotonic-ns=171303337221093 end-monotonic-ns=171303337232103 submit-ns=11010
+71: recovery-submit-sample transaction=0 index=30 start-monotonic-ns=171303338220377 end-monotonic-ns=171303338230677 submit-ns=10300
+71: recovery-submit-sample transaction=0 index=31 start-monotonic-ns=171303339221591 end-monotonic-ns=171303339233461 submit-ns=11870
+71: recovery-submit-sample transaction=0 index=32 start-monotonic-ns=171303341226259 end-monotonic-ns=171303341237009 submit-ns=10750
+71: recovery-submit-sample transaction=0 index=33 start-monotonic-ns=171303342225733 end-monotonic-ns=171303342264024 submit-ns=38291
+71: recovery-submit-sample transaction=0 index=34 start-monotonic-ns=171303343222927 end-monotonic-ns=171303343259548 submit-ns=36621
+71: recovery-submit-sample transaction=0 index=35 start-monotonic-ns=171303344224322 end-monotonic-ns=171303344241492 submit-ns=17170
+71: recovery-submit-sample transaction=0 index=36 start-monotonic-ns=171303345220456 end-monotonic-ns=171303345229696 submit-ns=9240
+71: recovery-submit-sample transaction=0 index=37 start-monotonic-ns=171303346222610 end-monotonic-ns=171303346231730 submit-ns=9120
+71: recovery-submit-sample transaction=0 index=38 start-monotonic-ns=171303347225304 end-monotonic-ns=171303347260434 submit-ns=35130
+71: recovery-submit-sample transaction=0 index=39 start-monotonic-ns=171303352220975 end-monotonic-ns=171303352231505 submit-ns=10530
+71: recovery-submit-sample transaction=0 index=40 start-monotonic-ns=171303357223105 end-monotonic-ns=171303357238585 submit-ns=15480
+71: recovery-submit-sample transaction=0 index=41 start-monotonic-ns=171303362220976 end-monotonic-ns=171303362231436 submit-ns=10460
+71: recovery-submit-sample transaction=0 index=42 start-monotonic-ns=171303367221307 end-monotonic-ns=171303367230347 submit-ns=9040
+71: recovery-submit-sample transaction=0 index=43 start-monotonic-ns=171303372222047 end-monotonic-ns=171303372230347 submit-ns=8300
+71: recovery-submit-sample transaction=0 index=44 start-monotonic-ns=171303377221368 end-monotonic-ns=171303377229968 submit-ns=8600
+71: recovery-submit-sample transaction=0 index=45 start-monotonic-ns=171303382220709 end-monotonic-ns=171303382230549 submit-ns=9840
+71: recovery-submit-sample transaction=0 index=46 start-monotonic-ns=171303387221229 end-monotonic-ns=171303387230199 submit-ns=8970
+71: recovery-submit-sample transaction=0 index=47 start-monotonic-ns=171303392221410 end-monotonic-ns=171303392230200 submit-ns=8790
+71: recovery-submit-sample transaction=0 index=48 start-monotonic-ns=171303397220671 end-monotonic-ns=171303397229121 submit-ns=8450
+71: recovery-submit-sample transaction=0 index=49 start-monotonic-ns=171303402220901 end-monotonic-ns=171303402229341 submit-ns=8440
+71: recovery-submit-sample transaction=0 index=50 start-monotonic-ns=171303407221352 end-monotonic-ns=171303407230232 submit-ns=8880
+71: recovery-submit-sample transaction=0 index=51 start-monotonic-ns=171303412221883 end-monotonic-ns=171303412230243 submit-ns=8360
+71: recovery-submit-sample transaction=0 index=52 start-monotonic-ns=171303417221813 end-monotonic-ns=171303417230303 submit-ns=8490
+71: recovery-submit-sample transaction=0 index=53 start-monotonic-ns=171303422221984 end-monotonic-ns=171303422230564 submit-ns=8580
+71: recovery-submit-sample transaction=0 index=54 start-monotonic-ns=171303427222735 end-monotonic-ns=171303427230935 submit-ns=8200
+71: recovery-submit-sample transaction=0 index=55 start-monotonic-ns=171303432221105 end-monotonic-ns=171303432231195 submit-ns=10090
+71: recovery-submit-sample transaction=0 index=56 start-monotonic-ns=171303437220626 end-monotonic-ns=171303437228926 submit-ns=8300
+71: recovery-submit-sample transaction=0 index=57 start-monotonic-ns=171303442221197 end-monotonic-ns=171303442229647 submit-ns=8450
+71: recovery-submit-sample transaction=0 index=58 start-monotonic-ns=171303447221597 end-monotonic-ns=171303447229617 submit-ns=8020
+71: recovery-submit-sample transaction=0 index=59 start-monotonic-ns=171303452222188 end-monotonic-ns=171303452231648 submit-ns=9460
+71: recovery-submit-sample transaction=0 index=60 start-monotonic-ns=171303457221289 end-monotonic-ns=171303457229849 submit-ns=8560
+71: recovery-submit-sample transaction=0 index=61 start-monotonic-ns=171303462220989 end-monotonic-ns=171303462230739 submit-ns=9750
+71: recovery-submit-sample transaction=0 index=62 start-monotonic-ns=171303467223020 end-monotonic-ns=171303467241980 submit-ns=18960
+71: recovery-submit-transaction=0 last-child0-submit-start-monotonic-ns=171303271695852 last-child0-submit-end-monotonic-ns=171303271787452 window-start-monotonic-ns=171303272168174 count=63 submit-ns-p50=11870 submit-ns-p95=55900 submit-ns-max=853053 (vkQueueSubmit call only; no GPU/FPS claim)
+71: [zvram] snapshot state event=restore resident=37748736 cold-logical=0 cold-stored=0 freezes=0 restores=9 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] virtual free bytes=33554432
+71: [zvram] virtual free bytes=4194304
+71: PASS: recovery-submit sampling preserved child-one bytes, recovered child zero, verified all 32 MiB, and cleaned up transaction 0
+71: cold-peer-sampler transaction=0 stayed-cold-during-window=1 restored-bytes=4194304 final-resident-bytes=37748736
+71: [zvram] virtual allocate bytes=4194304 heap-capacity=134217728
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=4194304 cold-stored=0 freezes=0 restores=9 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=37748736 cold-stored=0 freezes=0 restores=9 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] native allocation segmented bytes=33554432 children=8
+71: [zvram] snapshot state event=restore resident=4194304 cold-logical=33554432 cold-stored=0 freezes=0 restores=10 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=8388608 cold-logical=29360128 cold-stored=0 freezes=0 restores=11 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=12582912 cold-logical=25165824 cold-stored=0 freezes=0 restores=12 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=16777216 cold-logical=20971520 cold-stored=0 freezes=0 restores=13 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=20971520 cold-logical=16777216 cold-stored=0 freezes=0 restores=14 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=25165824 cold-logical=12582912 cold-stored=0 freezes=0 restores=15 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=29360128 cold-logical=8388608 cold-stored=0 freezes=0 restores=16 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=33554432 cold-logical=4194304 cold-stored=0 freezes=0 restores=17 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1047455 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=8 restored-chunks=8 cold-pools-left=1
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] warm-recovery phases bytes=4194304 view-us=25 allocate-us=22 alias-unbind-us=48 private-bind-us=32 copy-wait-us=1239 private-unbind-us=42 app-rebind-us=34 release-us=19
+71: [zvram] warm-recovery copy-phase bytes=4194304 start-monotonic-ns=171303546988420 end-monotonic-ns=171303548227965 unlocked=0
+71: [zvram] warm-recovery local-copy bytes=4194304 memory-type=2->0 duration-us=1468
+71: recovery-submit-sample transaction=1 index=0 start-monotonic-ns=171303494735514 end-monotonic-ns=171303494743914 submit-ns=8400
+71: recovery-submit-sample transaction=1 index=1 start-monotonic-ns=171303499788185 end-monotonic-ns=171303499796705 submit-ns=8520
+71: recovery-submit-sample transaction=1 index=2 start-monotonic-ns=171303504789085 end-monotonic-ns=171303504798495 submit-ns=9410
+71: recovery-submit-sample transaction=1 index=3 start-monotonic-ns=171303509788116 end-monotonic-ns=171303509797426 submit-ns=9310
+71: recovery-submit-sample transaction=1 index=4 start-monotonic-ns=171303514788627 end-monotonic-ns=171303514798577 submit-ns=9950
+71: recovery-submit-sample transaction=1 index=5 start-monotonic-ns=171303519788407 end-monotonic-ns=171303519797277 submit-ns=8870
+71: recovery-submit-sample transaction=1 index=6 start-monotonic-ns=171303524788028 end-monotonic-ns=171303524796848 submit-ns=8820
+71: recovery-submit-sample transaction=1 index=7 start-monotonic-ns=171303529788729 end-monotonic-ns=171303529797599 submit-ns=8870
+71: recovery-submit-sample transaction=1 index=8 start-monotonic-ns=171303534787969 end-monotonic-ns=171303534799419 submit-ns=11450
+71: recovery-submit-sample transaction=1 index=9 start-monotonic-ns=171303535788453 end-monotonic-ns=171303535796283 submit-ns=7830
+71: recovery-submit-sample transaction=1 index=10 start-monotonic-ns=171303536788247 end-monotonic-ns=171303536796557 submit-ns=8310
+71: recovery-submit-sample transaction=1 index=11 start-monotonic-ns=171303537788332 end-monotonic-ns=171303537796012 submit-ns=7680
+71: recovery-submit-sample transaction=1 index=12 start-monotonic-ns=171303538788176 end-monotonic-ns=171303538795596 submit-ns=7420
+71: recovery-submit-sample transaction=1 index=13 start-monotonic-ns=171303539788070 end-monotonic-ns=171303539796300 submit-ns=8230
+71: recovery-submit-sample transaction=1 index=14 start-monotonic-ns=171303540788354 end-monotonic-ns=171303540797494 submit-ns=9140
+71: recovery-submit-sample transaction=1 index=15 start-monotonic-ns=171303541787128 end-monotonic-ns=171303541796348 submit-ns=9220
+71: recovery-submit-sample transaction=1 index=16 start-monotonic-ns=171303542787572 end-monotonic-ns=171303542797012 submit-ns=9440
+71: recovery-submit-sample transaction=1 index=17 start-monotonic-ns=171303543790766 end-monotonic-ns=171303543821086 submit-ns=30320
+71: recovery-submit-sample transaction=1 index=18 start-monotonic-ns=171303544787971 end-monotonic-ns=171303544799071 submit-ns=11100
+71: recovery-submit-sample transaction=1 index=19 start-monotonic-ns=171303545787475 end-monotonic-ns=171303545796705 submit-ns=9230
+71: recovery-submit-sample transaction=1 index=20 start-monotonic-ns=171303546788119 end-monotonic-ns=171303546795319 submit-ns=7200
+71: recovery-submit-sample transaction=1 index=21 start-monotonic-ns=171303547787503 end-monotonic-ns=171303548365375 submit-ns=577872
+71: recovery-submit-sample transaction=1 index=22 start-monotonic-ns=171303549787961 end-monotonic-ns=171303549797081 submit-ns=9120
+71: recovery-submit-sample transaction=1 index=23 start-monotonic-ns=171303550787775 end-monotonic-ns=171303550795485 submit-ns=7710
+71: recovery-submit-sample transaction=1 index=24 start-monotonic-ns=171303551792959 end-monotonic-ns=171303551826150 submit-ns=33191
+71: recovery-submit-sample transaction=1 index=25 start-monotonic-ns=171303553788328 end-monotonic-ns=171303553799368 submit-ns=11040
+71: recovery-submit-sample transaction=1 index=26 start-monotonic-ns=171303554787242 end-monotonic-ns=171303554794662 submit-ns=7420
+71: recovery-submit-sample transaction=1 index=27 start-monotonic-ns=171303555772716 end-monotonic-ns=171303555806156 submit-ns=33440
+71: recovery-submit-sample transaction=1 index=28 start-monotonic-ns=171303556790400 end-monotonic-ns=171303556807400 submit-ns=17000
+71: recovery-submit-sample transaction=1 index=29 start-monotonic-ns=171303557790364 end-monotonic-ns=171303557822014 submit-ns=31650
+71: recovery-submit-sample transaction=1 index=30 start-monotonic-ns=171303558787908 end-monotonic-ns=171303558797578 submit-ns=9670
+71: recovery-submit-sample transaction=1 index=31 start-monotonic-ns=171303559789313 end-monotonic-ns=171303559802043 submit-ns=12730
+71: recovery-submit-sample transaction=1 index=32 start-monotonic-ns=171303560787657 end-monotonic-ns=171303560796627 submit-ns=8970
+71: recovery-submit-sample transaction=1 index=33 start-monotonic-ns=171303561847611 end-monotonic-ns=171303561884391 submit-ns=36780
+71: recovery-submit-sample transaction=1 index=34 start-monotonic-ns=171303562792075 end-monotonic-ns=171303562827465 submit-ns=35390
+71: recovery-submit-sample transaction=1 index=35 start-monotonic-ns=171303563795019 end-monotonic-ns=171303563829689 submit-ns=34670
+71: recovery-submit-sample transaction=1 index=36 start-monotonic-ns=171303564788233 end-monotonic-ns=171303564800523 submit-ns=12290
+71: recovery-submit-sample transaction=1 index=37 start-monotonic-ns=171303565788477 end-monotonic-ns=171303565799817 submit-ns=11340
+71: recovery-submit-sample transaction=1 index=38 start-monotonic-ns=171303566787691 end-monotonic-ns=171303566797691 submit-ns=10000
+71: recovery-submit-sample transaction=1 index=39 start-monotonic-ns=171303567787046 end-monotonic-ns=171303567796006 submit-ns=8960
+71: recovery-submit-sample transaction=1 index=40 start-monotonic-ns=171303568792420 end-monotonic-ns=171303568821980 submit-ns=29560
+71: recovery-submit-sample transaction=1 index=41 start-monotonic-ns=171303569787824 end-monotonic-ns=171303569800454 submit-ns=12630
+71: recovery-submit-sample transaction=1 index=42 start-monotonic-ns=171303574793585 end-monotonic-ns=171303574823695 submit-ns=30110
+71: recovery-submit-sample transaction=1 index=43 start-monotonic-ns=171303579793345 end-monotonic-ns=171303579822905 submit-ns=29560
+71: recovery-submit-sample transaction=1 index=44 start-monotonic-ns=171303584794706 end-monotonic-ns=171303584826506 submit-ns=31800
+71: recovery-submit-sample transaction=1 index=45 start-monotonic-ns=171303589794867 end-monotonic-ns=171303589829657 submit-ns=34790
+71: recovery-submit-sample transaction=1 index=46 start-monotonic-ns=171303594793417 end-monotonic-ns=171303594826367 submit-ns=32950
+71: recovery-submit-sample transaction=1 index=47 start-monotonic-ns=171303599790658 end-monotonic-ns=171303599805098 submit-ns=14440
+71: recovery-submit-sample transaction=1 index=48 start-monotonic-ns=171303604793609 end-monotonic-ns=171303604826809 submit-ns=33200
+71: recovery-submit-sample transaction=1 index=49 start-monotonic-ns=171303609792529 end-monotonic-ns=171303609823729 submit-ns=31200
+71: recovery-submit-sample transaction=1 index=50 start-monotonic-ns=171303614789000 end-monotonic-ns=171303614802680 submit-ns=13680
+71: recovery-submit-sample transaction=1 index=51 start-monotonic-ns=171303619787661 end-monotonic-ns=171303619797601 submit-ns=9940
+71: recovery-submit-sample transaction=1 index=52 start-monotonic-ns=171303624789941 end-monotonic-ns=171303624804771 submit-ns=14830
+71: recovery-submit-sample transaction=1 index=53 start-monotonic-ns=171303629811312 end-monotonic-ns=171303629866012 submit-ns=54700
+71: recovery-submit-sample transaction=1 index=54 start-monotonic-ns=171303634802542 end-monotonic-ns=171303634836023 submit-ns=33481
+71: recovery-submit-sample transaction=1 index=55 start-monotonic-ns=171303639795923 end-monotonic-ns=171303639871704 submit-ns=75781
+71: recovery-submit-sample transaction=1 index=56 start-monotonic-ns=171303644806204 end-monotonic-ns=171303644903894 submit-ns=97690
+71: recovery-submit-sample transaction=1 index=57 start-monotonic-ns=171303649811945 end-monotonic-ns=171303649918315 submit-ns=106370
+71: recovery-submit-sample transaction=1 index=58 start-monotonic-ns=171303654807635 end-monotonic-ns=171303654906246 submit-ns=98611
+71: recovery-submit-sample transaction=1 index=59 start-monotonic-ns=171303659814366 end-monotonic-ns=171303659910216 submit-ns=95850
+71: recovery-submit-sample transaction=1 index=60 start-monotonic-ns=171303664810957 end-monotonic-ns=171303664914947 submit-ns=103990
+71: recovery-submit-sample transaction=1 index=61 start-monotonic-ns=171303669802637 end-monotonic-ns=171303669886508 submit-ns=83871
+71: recovery-submit-sample transaction=1 index=62 start-monotonic-ns=171303674802628 end-monotonic-ns=171303674926018 submit-ns=123390
+71: recovery-submit-sample transaction=1 index=63 start-monotonic-ns=171303679809179 end-monotonic-ns=171303679916349 submit-ns=107170
+71: recovery-submit-sample transaction=1 index=64 start-monotonic-ns=171303684813099 end-monotonic-ns=171303684923890 submit-ns=110791
+71: recovery-submit-sample transaction=1 index=65 start-monotonic-ns=171303689817820 end-monotonic-ns=171303689975911 submit-ns=158091
+71: recovery-submit-transaction=1 last-child0-submit-start-monotonic-ns=171303494399302 last-child0-submit-end-monotonic-ns=171303494418232 window-start-monotonic-ns=171303494735244 count=66 submit-ns-p50=13680 submit-ns-p95=110791 submit-ns-max=577872 (vkQueueSubmit call only; no GPU/FPS claim)
+71: [zvram] snapshot state event=restore resident=37748736 cold-logical=0 cold-stored=0 freezes=0 restores=18 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] virtual free bytes=33554432
+71: [zvram] virtual free bytes=4194304
+71: PASS: recovery-submit sampling preserved child-one bytes, recovered child zero, verified all 32 MiB, and cleaned up transaction 1
+71: cold-peer-sampler transaction=1 stayed-cold-during-window=1 restored-bytes=4194304 final-resident-bytes=37748736
+71: [zvram] virtual allocate bytes=4194304 heap-capacity=134217728
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=4194304 cold-stored=0 freezes=0 restores=18 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=37748736 cold-stored=0 freezes=0 restores=18 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] native allocation segmented bytes=33554432 children=8
+71: [zvram] snapshot state event=restore resident=4194304 cold-logical=33554432 cold-stored=0 freezes=0 restores=19 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=8388608 cold-logical=29360128 cold-stored=0 freezes=0 restores=20 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=12582912 cold-logical=25165824 cold-stored=0 freezes=0 restores=21 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=16777216 cold-logical=20971520 cold-stored=0 freezes=0 restores=22 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=20971520 cold-logical=16777216 cold-stored=0 freezes=0 restores=23 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=25165824 cold-logical=12582912 cold-stored=0 freezes=0 restores=24 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=29360128 cold-logical=8388608 cold-stored=0 freezes=0 restores=25 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=33554432 cold-logical=4194304 cold-stored=0 freezes=0 restores=26 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=2286590 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=8 restored-chunks=8 cold-pools-left=1
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] warm-recovery phases bytes=4194304 view-us=23 allocate-us=25 alias-unbind-us=37 private-bind-us=28 copy-wait-us=824 private-unbind-us=31 app-rebind-us=24 release-us=20
+71: [zvram] warm-recovery copy-phase bytes=4194304 start-monotonic-ns=171303772908133 end-monotonic-ns=171303773732557 unlocked=0
+71: [zvram] warm-recovery local-copy bytes=4194304 memory-type=2->0 duration-us=1018
+71: recovery-submit-sample transaction=2 index=0 start-monotonic-ns=171303721123059 end-monotonic-ns=171303721134899 submit-ns=11840
+71: recovery-submit-sample transaction=2 index=1 start-monotonic-ns=171303726179330 end-monotonic-ns=171303726210060 submit-ns=30730
+71: recovery-submit-sample transaction=2 index=2 start-monotonic-ns=171303731180421 end-monotonic-ns=171303731214161 submit-ns=33740
+71: recovery-submit-sample transaction=2 index=3 start-monotonic-ns=171303736179942 end-monotonic-ns=171303736213412 submit-ns=33470
+71: recovery-submit-sample transaction=2 index=4 start-monotonic-ns=171303741180932 end-monotonic-ns=171303741214872 submit-ns=33940
+71: recovery-submit-sample transaction=2 index=5 start-monotonic-ns=171303746178173 end-monotonic-ns=171303746199233 submit-ns=21060
+71: recovery-submit-sample transaction=2 index=6 start-monotonic-ns=171303751178144 end-monotonic-ns=171303751206724 submit-ns=28580
+71: recovery-submit-sample transaction=2 index=7 start-monotonic-ns=171303756177984 end-monotonic-ns=171303756194774 submit-ns=16790
+71: recovery-submit-sample transaction=2 index=8 start-monotonic-ns=171303761176975 end-monotonic-ns=171303761191455 submit-ns=14480
+71: recovery-submit-sample transaction=2 index=9 start-monotonic-ns=171303762175139 end-monotonic-ns=171303762183969 submit-ns=8830
+71: recovery-submit-sample transaction=2 index=10 start-monotonic-ns=171303763174923 end-monotonic-ns=171303763183883 submit-ns=8960
+71: recovery-submit-sample transaction=2 index=11 start-monotonic-ns=171303765176311 end-monotonic-ns=171303765192741 submit-ns=16430
+71: recovery-submit-sample transaction=2 index=12 start-monotonic-ns=171303766177376 end-monotonic-ns=171303766211356 submit-ns=33980
+71: recovery-submit-sample transaction=2 index=13 start-monotonic-ns=171303767175100 end-monotonic-ns=171303767186250 submit-ns=11150
+71: recovery-submit-sample transaction=2 index=14 start-monotonic-ns=171303768174774 end-monotonic-ns=171303768182864 submit-ns=8090
+71: recovery-submit-sample transaction=2 index=15 start-monotonic-ns=171303769176058 end-monotonic-ns=171303769187168 submit-ns=11110
+71: recovery-submit-sample transaction=2 index=16 start-monotonic-ns=171303770174842 end-monotonic-ns=171303770182192 submit-ns=7350
+71: recovery-submit-sample transaction=2 index=17 start-monotonic-ns=171303771174626 end-monotonic-ns=171303771182456 submit-ns=7830
+71: recovery-submit-sample transaction=2 index=18 start-monotonic-ns=171303772174550 end-monotonic-ns=171303772181990 submit-ns=7440
+71: recovery-submit-sample transaction=2 index=19 start-monotonic-ns=171303773175564 end-monotonic-ns=171303773868487 submit-ns=692923
+71: recovery-submit-sample transaction=2 index=20 start-monotonic-ns=171303775175833 end-monotonic-ns=171303775189223 submit-ns=13390
+71: recovery-submit-sample transaction=2 index=21 start-monotonic-ns=171303776174907 end-monotonic-ns=171303776183667 submit-ns=8760
+71: recovery-submit-sample transaction=2 index=22 start-monotonic-ns=171303777177701 end-monotonic-ns=171303777201281 submit-ns=23580
+71: recovery-submit-sample transaction=2 index=23 start-monotonic-ns=171303778178715 end-monotonic-ns=171303778207885 submit-ns=29170
+71: recovery-submit-sample transaction=2 index=24 start-monotonic-ns=171303779176869 end-monotonic-ns=171303779189799 submit-ns=12930
+71: recovery-submit-sample transaction=2 index=25 start-monotonic-ns=171303780177173 end-monotonic-ns=171303780189903 submit-ns=12730
+71: recovery-submit-sample transaction=2 index=26 start-monotonic-ns=171303781177418 end-monotonic-ns=171303781189508 submit-ns=12090
+71: recovery-submit-sample transaction=2 index=27 start-monotonic-ns=171303782178362 end-monotonic-ns=171303782188342 submit-ns=9980
+71: recovery-submit-sample transaction=2 index=28 start-monotonic-ns=171303783177016 end-monotonic-ns=171303783187646 submit-ns=10630
+71: recovery-submit-sample transaction=2 index=29 start-monotonic-ns=171303784176100 end-monotonic-ns=171303784185280 submit-ns=9180
+71: recovery-submit-sample transaction=2 index=30 start-monotonic-ns=171303785176784 end-monotonic-ns=171303785187234 submit-ns=10450
+71: recovery-submit-sample transaction=2 index=31 start-monotonic-ns=171303786175988 end-monotonic-ns=171303786185308 submit-ns=9320
+71: recovery-submit-sample transaction=2 index=32 start-monotonic-ns=171303787175572 end-monotonic-ns=171303787183982 submit-ns=8410
+71: recovery-submit-sample transaction=2 index=33 start-monotonic-ns=171303788178646 end-monotonic-ns=171303788210317 submit-ns=31671
+71: recovery-submit-sample transaction=2 index=34 start-monotonic-ns=171303789175591 end-monotonic-ns=171303789183721 submit-ns=8130
+71: recovery-submit-sample transaction=2 index=35 start-monotonic-ns=171303790176645 end-monotonic-ns=171303790190835 submit-ns=14190
+71: recovery-submit-sample transaction=2 index=36 start-monotonic-ns=171303791175359 end-monotonic-ns=171303791184499 submit-ns=9140
+71: recovery-submit-sample transaction=2 index=37 start-monotonic-ns=171303792176603 end-monotonic-ns=171303792185883 submit-ns=9280
+71: recovery-submit-sample transaction=2 index=38 start-monotonic-ns=171303793175877 end-monotonic-ns=171303793184177 submit-ns=8300
+71: recovery-submit-sample transaction=2 index=39 start-monotonic-ns=171303794174911 end-monotonic-ns=171303794185111 submit-ns=10200
+71: recovery-submit-sample transaction=2 index=40 start-monotonic-ns=171303795174855 end-monotonic-ns=171303795183575 submit-ns=8720
+71: recovery-submit-sample transaction=2 index=41 start-monotonic-ns=171303796174870 end-monotonic-ns=171303796182360 submit-ns=7490
+71: recovery-submit-sample transaction=2 index=42 start-monotonic-ns=171303801201810 end-monotonic-ns=171303801313231 submit-ns=111421
+71: recovery-submit-sample transaction=2 index=43 start-monotonic-ns=171303806194711 end-monotonic-ns=171303806289741 submit-ns=95030
+71: recovery-submit-sample transaction=2 index=44 start-monotonic-ns=171303811185842 end-monotonic-ns=171303811260512 submit-ns=74670
+71: recovery-submit-sample transaction=2 index=45 start-monotonic-ns=171303816188812 end-monotonic-ns=171303816269223 submit-ns=80411
+71: recovery-submit-sample transaction=2 index=46 start-monotonic-ns=171303821193543 end-monotonic-ns=171303821297783 submit-ns=104240
+71: recovery-submit-sample transaction=2 index=47 start-monotonic-ns=171303826184244 end-monotonic-ns=171303826254124 submit-ns=69880
+71: recovery-submit-sample transaction=2 index=48 start-monotonic-ns=171303831196444 end-monotonic-ns=171303831301565 submit-ns=105121
+71: recovery-submit-sample transaction=2 index=49 start-monotonic-ns=171303836189035 end-monotonic-ns=171303836287085 submit-ns=98050
+71: recovery-submit-sample transaction=2 index=50 start-monotonic-ns=171303841189196 end-monotonic-ns=171303841273106 submit-ns=83910
+71: recovery-submit-sample transaction=2 index=51 start-monotonic-ns=171303846190936 end-monotonic-ns=171303846278637 submit-ns=87701
+71: recovery-submit-sample transaction=2 index=52 start-monotonic-ns=171303851200767 end-monotonic-ns=171303851307427 submit-ns=106660
+71: recovery-submit-sample transaction=2 index=53 start-monotonic-ns=171303856200188 end-monotonic-ns=171303856325368 submit-ns=125180
+71: recovery-submit-sample transaction=2 index=54 start-monotonic-ns=171303861178148 end-monotonic-ns=171303861214498 submit-ns=36350
+71: recovery-submit-sample transaction=2 index=55 start-monotonic-ns=171303866176119 end-monotonic-ns=171303866190279 submit-ns=14160
+71: recovery-submit-sample transaction=2 index=56 start-monotonic-ns=171303871175810 end-monotonic-ns=171303871185350 submit-ns=9540
+71: recovery-submit-sample transaction=2 index=57 start-monotonic-ns=171303876175800 end-monotonic-ns=171303876187850 submit-ns=12050
+71: recovery-submit-sample transaction=2 index=58 start-monotonic-ns=171303881175471 end-monotonic-ns=171303881185881 submit-ns=10410
+71: recovery-submit-sample transaction=2 index=59 start-monotonic-ns=171303886176592 end-monotonic-ns=171303886189342 submit-ns=12750
+71: recovery-submit-sample transaction=2 index=60 start-monotonic-ns=171303891174432 end-monotonic-ns=171303891182732 submit-ns=8300
+71: recovery-submit-sample transaction=2 index=61 start-monotonic-ns=171303896175633 end-monotonic-ns=171303896188793 submit-ns=13160
+71: recovery-submit-sample transaction=2 index=62 start-monotonic-ns=171303901175113 end-monotonic-ns=171303901184054 submit-ns=8941
+71: recovery-submit-sample transaction=2 index=63 start-monotonic-ns=171303906175964 end-monotonic-ns=171303906187674 submit-ns=11710
+71: recovery-submit-sample transaction=2 index=64 start-monotonic-ns=171303911175015 end-monotonic-ns=171303911183655 submit-ns=8640
+71: recovery-submit-sample transaction=2 index=65 start-monotonic-ns=171303916175275 end-monotonic-ns=171303916183816 submit-ns=8541
+71: recovery-submit-transaction=2 last-child0-submit-start-monotonic-ns=171303720706428 last-child0-submit-end-monotonic-ns=171303720738198 window-start-monotonic-ns=171303721122519 count=66 submit-ns-p50=12750 submit-ns-p95=106660 submit-ns-max=692923 (vkQueueSubmit call only; no GPU/FPS claim)
+71: [zvram] snapshot state event=restore resident=37748736 cold-logical=0 cold-stored=0 freezes=0 restores=27 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] virtual free bytes=33554432
+71: [zvram] virtual free bytes=4194304
+71: PASS: recovery-submit sampling preserved child-one bytes, recovered child zero, verified all 32 MiB, and cleaned up transaction 2
+71: cold-peer-sampler transaction=2 stayed-cold-during-window=1 restored-bytes=4194304 final-resident-bytes=37748736
+71: [zvram] virtual allocate bytes=4194304 heap-capacity=134217728
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=4194304 cold-stored=0 freezes=0 restores=27 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=37748736 cold-stored=0 freezes=0 restores=27 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] native allocation segmented bytes=33554432 children=8
+71: [zvram] snapshot state event=restore resident=4194304 cold-logical=33554432 cold-stored=0 freezes=0 restores=28 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=8388608 cold-logical=29360128 cold-stored=0 freezes=0 restores=29 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=12582912 cold-logical=25165824 cold-stored=0 freezes=0 restores=30 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=16777216 cold-logical=20971520 cold-stored=0 freezes=0 restores=31 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=20971520 cold-logical=16777216 cold-stored=0 freezes=0 restores=32 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=25165824 cold-logical=12582912 cold-stored=0 freezes=0 restores=33 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=29360128 cold-logical=8388608 cold-stored=0 freezes=0 restores=34 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=33554432 cold-logical=4194304 cold-stored=0 freezes=0 restores=35 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=3110734 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=8 restored-chunks=8 cold-pools-left=1
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] warm-recovery phases bytes=4194304 view-us=14 allocate-us=19 alias-unbind-us=52 private-bind-us=44 copy-wait-us=663 private-unbind-us=31 app-rebind-us=26 release-us=15
+71: [zvram] warm-recovery copy-phase bytes=4194304 start-monotonic-ns=171303996905909 end-monotonic-ns=171303997569482 unlocked=0
+71: [zvram] warm-recovery local-copy bytes=4194304 memory-type=2->0 duration-us=872
+71: recovery-submit-sample transaction=3 index=0 start-monotonic-ns=171303942699945 end-monotonic-ns=171303942719695 submit-ns=19750
+71: recovery-submit-sample transaction=3 index=1 start-monotonic-ns=171303947751966 end-monotonic-ns=171303947763766 submit-ns=11800
+71: recovery-submit-sample transaction=3 index=2 start-monotonic-ns=171303952752717 end-monotonic-ns=171303952762727 submit-ns=10010
+71: recovery-submit-sample transaction=3 index=3 start-monotonic-ns=171303957757917 end-monotonic-ns=171303957794318 submit-ns=36401
+71: recovery-submit-sample transaction=3 index=4 start-monotonic-ns=171303962754068 end-monotonic-ns=171303962762398 submit-ns=8330
+71: recovery-submit-sample transaction=3 index=5 start-monotonic-ns=171303967756899 end-monotonic-ns=171303967786199 submit-ns=29300
+71: recovery-submit-sample transaction=3 index=6 start-monotonic-ns=171303972754049 end-monotonic-ns=171303972767759 submit-ns=13710
+71: recovery-submit-sample transaction=3 index=7 start-monotonic-ns=171303977751850 end-monotonic-ns=171303977760600 submit-ns=8750
+71: recovery-submit-sample transaction=3 index=8 start-monotonic-ns=171303982751841 end-monotonic-ns=171303982761751 submit-ns=9910
+71: recovery-submit-sample transaction=3 index=9 start-monotonic-ns=171303983751765 end-monotonic-ns=171303983761245 submit-ns=9480
+71: recovery-submit-sample transaction=3 index=10 start-monotonic-ns=171303984751959 end-monotonic-ns=171303984759519 submit-ns=7560
+71: recovery-submit-sample transaction=3 index=11 start-monotonic-ns=171303985752503 end-monotonic-ns=171303985761043 submit-ns=8540
+71: recovery-submit-sample transaction=3 index=12 start-monotonic-ns=171303986764297 end-monotonic-ns=171303986798417 submit-ns=34120
+71: recovery-submit-sample transaction=3 index=13 start-monotonic-ns=171303987753871 end-monotonic-ns=171303987763651 submit-ns=9780
+71: recovery-submit-sample transaction=3 index=14 start-monotonic-ns=171303988753615 end-monotonic-ns=171303988768085 submit-ns=14470
+71: recovery-submit-sample transaction=3 index=15 start-monotonic-ns=171303989753800 end-monotonic-ns=171303989762390 submit-ns=8590
+71: recovery-submit-sample transaction=3 index=16 start-monotonic-ns=171303990757394 end-monotonic-ns=171303990789494 submit-ns=32100
+71: recovery-submit-sample transaction=3 index=17 start-monotonic-ns=171303991754598 end-monotonic-ns=171303991764398 submit-ns=9800
+71: recovery-submit-sample transaction=3 index=18 start-monotonic-ns=171303992754882 end-monotonic-ns=171303992768422 submit-ns=13540
+71: recovery-submit-sample transaction=3 index=19 start-monotonic-ns=171303993755886 end-monotonic-ns=171303993788396 submit-ns=32510
+71: recovery-submit-sample transaction=3 index=20 start-monotonic-ns=171303994753710 end-monotonic-ns=171303994765600 submit-ns=11890
+71: recovery-submit-sample transaction=3 index=21 start-monotonic-ns=171303995754184 end-monotonic-ns=171303995767704 submit-ns=13520
+71: recovery-submit-sample transaction=3 index=22 start-monotonic-ns=171303996757109 end-monotonic-ns=171303997679262 submit-ns=922153
+71: recovery-submit-sample transaction=3 index=23 start-monotonic-ns=171303999754661 end-monotonic-ns=171303999787481 submit-ns=32820
+71: recovery-submit-sample transaction=3 index=24 start-monotonic-ns=171304000757795 end-monotonic-ns=171304000789115 submit-ns=31320
+71: recovery-submit-sample transaction=3 index=25 start-monotonic-ns=171304001752649 end-monotonic-ns=171304001764649 submit-ns=12000
+71: recovery-submit-sample transaction=3 index=26 start-monotonic-ns=171304002749923 end-monotonic-ns=171304002759493 submit-ns=9570
+71: recovery-submit-sample transaction=3 index=27 start-monotonic-ns=171304003751757 end-monotonic-ns=171304003759687 submit-ns=7930
+71: recovery-submit-sample transaction=3 index=28 start-monotonic-ns=171304004751992 end-monotonic-ns=171304004760852 submit-ns=8860
+71: recovery-submit-sample transaction=3 index=29 start-monotonic-ns=171304005751326 end-monotonic-ns=171304005759446 submit-ns=8120
+71: recovery-submit-sample transaction=3 index=30 start-monotonic-ns=171304006753600 end-monotonic-ns=171304006762910 submit-ns=9310
+71: recovery-submit-sample transaction=3 index=31 start-monotonic-ns=171304007751404 end-monotonic-ns=171304007764954 submit-ns=13550
+71: recovery-submit-sample transaction=3 index=32 start-monotonic-ns=171304008751938 end-monotonic-ns=171304008761928 submit-ns=9990
+71: recovery-submit-sample transaction=3 index=33 start-monotonic-ns=171304009752372 end-monotonic-ns=171304009760642 submit-ns=8270
+71: recovery-submit-sample transaction=3 index=34 start-monotonic-ns=171304010751756 end-monotonic-ns=171304010760436 submit-ns=8680
+71: recovery-submit-sample transaction=3 index=35 start-monotonic-ns=171304012754525 end-monotonic-ns=171304012781725 submit-ns=27200
+71: recovery-submit-sample transaction=3 index=36 start-monotonic-ns=171304013752069 end-monotonic-ns=171304013762449 submit-ns=10380
+71: recovery-submit-sample transaction=3 index=37 start-monotonic-ns=171304015752987 end-monotonic-ns=171304015762907 submit-ns=9920
+71: recovery-submit-sample transaction=3 index=38 start-monotonic-ns=171304016752381 end-monotonic-ns=171304016762111 submit-ns=9730
+71: recovery-submit-sample transaction=3 index=39 start-monotonic-ns=171304017751715 end-monotonic-ns=171304017759465 submit-ns=7750
+71: recovery-submit-sample transaction=3 index=40 start-monotonic-ns=171304022756456 end-monotonic-ns=171304022785126 submit-ns=28670
+71: recovery-submit-sample transaction=3 index=41 start-monotonic-ns=171304027755587 end-monotonic-ns=171304027779497 submit-ns=23910
+71: recovery-submit-sample transaction=3 index=42 start-monotonic-ns=171304032760797 end-monotonic-ns=171304032794868 submit-ns=34071
+71: recovery-submit-sample transaction=3 index=43 start-monotonic-ns=171304037756918 end-monotonic-ns=171304037789468 submit-ns=32550
+71: recovery-submit-sample transaction=3 index=44 start-monotonic-ns=171304042758269 end-monotonic-ns=171304042790659 submit-ns=32390
+71: recovery-submit-sample transaction=3 index=45 start-monotonic-ns=171304047757859 end-monotonic-ns=171304047790320 submit-ns=32461
+71: recovery-submit-sample transaction=3 index=46 start-monotonic-ns=171304052756450 end-monotonic-ns=171304052773740 submit-ns=17290
+71: recovery-submit-sample transaction=3 index=47 start-monotonic-ns=171304057757281 end-monotonic-ns=171304057789411 submit-ns=32130
+71: recovery-submit-sample transaction=3 index=48 start-monotonic-ns=171304062754341 end-monotonic-ns=171304062766521 submit-ns=12180
+71: recovery-submit-sample transaction=3 index=49 start-monotonic-ns=171304067758702 end-monotonic-ns=171304067790662 submit-ns=31960
+71: recovery-submit-sample transaction=3 index=50 start-monotonic-ns=171304072758243 end-monotonic-ns=171304072790223 submit-ns=31980
+71: recovery-submit-sample transaction=3 index=51 start-monotonic-ns=171304077757093 end-monotonic-ns=171304077789093 submit-ns=32000
+71: recovery-submit-sample transaction=3 index=52 start-monotonic-ns=171304082756984 end-monotonic-ns=171304082790294 submit-ns=33310
+71: recovery-submit-sample transaction=3 index=53 start-monotonic-ns=171304087754605 end-monotonic-ns=171304087770685 submit-ns=16080
+71: recovery-submit-sample transaction=3 index=54 start-monotonic-ns=171304092758555 end-monotonic-ns=171304092791596 submit-ns=33041
+71: recovery-submit-sample transaction=3 index=55 start-monotonic-ns=171304097756496 end-monotonic-ns=171304097785466 submit-ns=28970
+71: recovery-submit-sample transaction=3 index=56 start-monotonic-ns=171304102755717 end-monotonic-ns=171304102787077 submit-ns=31360
+71: recovery-submit-sample transaction=3 index=57 start-monotonic-ns=171304107752547 end-monotonic-ns=171304107767127 submit-ns=14580
+71: recovery-submit-sample transaction=3 index=58 start-monotonic-ns=171304112753918 end-monotonic-ns=171304112770428 submit-ns=16510
+71: recovery-submit-sample transaction=3 index=59 start-monotonic-ns=171304117753649 end-monotonic-ns=171304117766509 submit-ns=12860
+71: recovery-submit-sample transaction=3 index=60 start-monotonic-ns=171304122757969 end-monotonic-ns=171304122790580 submit-ns=32611
+71: recovery-submit-sample transaction=3 index=61 start-monotonic-ns=171304127752890 end-monotonic-ns=171304127765610 submit-ns=12720
+71: recovery-submit-sample transaction=3 index=62 start-monotonic-ns=171304132759091 end-monotonic-ns=171304132790561 submit-ns=31470
+71: recovery-submit-sample transaction=3 index=63 start-monotonic-ns=171304137754861 end-monotonic-ns=171304137768641 submit-ns=13780
+71: recovery-submit-transaction=3 last-child0-submit-start-monotonic-ns=171303942270093 last-child0-submit-end-monotonic-ns=171303942308414 window-start-monotonic-ns=171303942699675 count=64 submit-ns-p50=13780 submit-ns-p95=34071 submit-ns-max=922153 (vkQueueSubmit call only; no GPU/FPS claim)
+71: [zvram] snapshot state event=restore resident=37748736 cold-logical=0 cold-stored=0 freezes=0 restores=36 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] virtual free bytes=33554432
+71: [zvram] virtual free bytes=4194304
+71: PASS: recovery-submit sampling preserved child-one bytes, recovered child zero, verified all 32 MiB, and cleaned up transaction 3
+71: cold-peer-sampler transaction=3 stayed-cold-during-window=1 restored-bytes=4194304 final-resident-bytes=37748736
+71: [zvram] virtual allocate bytes=4194304 heap-capacity=134217728
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=4194304 cold-stored=0 freezes=0 restores=36 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=37748736 cold-stored=0 freezes=0 restores=36 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] native allocation segmented bytes=33554432 children=8
+71: [zvram] snapshot state event=restore resident=4194304 cold-logical=33554432 cold-stored=0 freezes=0 restores=37 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=8388608 cold-logical=29360128 cold-stored=0 freezes=0 restores=38 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=12582912 cold-logical=25165824 cold-stored=0 freezes=0 restores=39 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=16777216 cold-logical=20971520 cold-stored=0 freezes=0 restores=40 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=20971520 cold-logical=16777216 cold-stored=0 freezes=0 restores=41 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=25165824 cold-logical=12582912 cold-stored=0 freezes=0 restores=42 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=29360128 cold-logical=8388608 cold-stored=0 freezes=0 restores=43 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] snapshot state event=restore resident=33554432 cold-logical=4194304 cold-stored=0 freezes=0 restores=44 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=3773997 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=8 restored-chunks=8 cold-pools-left=1
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] warm-recovery phases bytes=4194304 view-us=14 allocate-us=17 alias-unbind-us=32 private-bind-us=27 copy-wait-us=796 private-unbind-us=24 app-rebind-us=19 release-us=14
+71: [zvram] warm-recovery copy-phase bytes=4194304 start-monotonic-ns=171304220004471 end-monotonic-ns=171304220800915 unlocked=0
+71: [zvram] warm-recovery local-copy bytes=4194304 memory-type=2->0 duration-us=949
+71: recovery-submit-sample transaction=4 index=0 start-monotonic-ns=171304165173205 end-monotonic-ns=171304165186305 submit-ns=13100
+71: recovery-submit-sample transaction=4 index=1 start-monotonic-ns=171304170227385 end-monotonic-ns=171304170247216 submit-ns=19831
+71: recovery-submit-sample transaction=4 index=2 start-monotonic-ns=171304175229116 end-monotonic-ns=171304175248636 submit-ns=19520
+71: recovery-submit-sample transaction=4 index=3 start-monotonic-ns=171304180227017 end-monotonic-ns=171304180237877 submit-ns=10860
+71: recovery-submit-sample transaction=4 index=4 start-monotonic-ns=171304185227227 end-monotonic-ns=171304185239378 submit-ns=12151
+71: recovery-submit-sample transaction=4 index=5 start-monotonic-ns=171304190226258 end-monotonic-ns=171304190235348 submit-ns=9090
+71: recovery-submit-sample transaction=4 index=6 start-monotonic-ns=171304195229609 end-monotonic-ns=171304195259359 submit-ns=29750
+71: recovery-submit-sample transaction=4 index=7 start-monotonic-ns=171304200227969 end-monotonic-ns=171304200244980 submit-ns=17011
+71: recovery-submit-sample transaction=4 index=8 start-monotonic-ns=171304205227020 end-monotonic-ns=171304205242860 submit-ns=15840
+71: recovery-submit-sample transaction=4 index=9 start-monotonic-ns=171304206238054 end-monotonic-ns=171304206249364 submit-ns=11310
+71: recovery-submit-sample transaction=4 index=10 start-monotonic-ns=171304207224958 end-monotonic-ns=171304207233478 submit-ns=8520
+71: recovery-submit-sample transaction=4 index=11 start-monotonic-ns=171304208224763 end-monotonic-ns=171304208233243 submit-ns=8480
+71: recovery-submit-sample transaction=4 index=12 start-monotonic-ns=171304209224847 end-monotonic-ns=171304209232447 submit-ns=7600
+71: recovery-submit-sample transaction=4 index=13 start-monotonic-ns=171304210225321 end-monotonic-ns=171304210233871 submit-ns=8550
+71: recovery-submit-sample transaction=4 index=14 start-monotonic-ns=171304211225135 end-monotonic-ns=171304211232725 submit-ns=7590
+71: recovery-submit-sample transaction=4 index=15 start-monotonic-ns=171304212225739 end-monotonic-ns=171304212234309 submit-ns=8570
+71: recovery-submit-sample transaction=4 index=16 start-monotonic-ns=171304214225637 end-monotonic-ns=171304214235687 submit-ns=10050
+71: recovery-submit-sample transaction=4 index=17 start-monotonic-ns=171304215225851 end-monotonic-ns=171304215234382 submit-ns=8531
+71: recovery-submit-sample transaction=4 index=18 start-monotonic-ns=171304216226206 end-monotonic-ns=171304216234576 submit-ns=8370
+71: recovery-submit-sample transaction=4 index=19 start-monotonic-ns=171304217227810 end-monotonic-ns=171304217240500 submit-ns=12690
+71: recovery-submit-sample transaction=4 index=20 start-monotonic-ns=171304218233944 end-monotonic-ns=171304218266684 submit-ns=32740
+71: recovery-submit-sample transaction=4 index=21 start-monotonic-ns=171304219228808 end-monotonic-ns=171304219241348 submit-ns=12540
+71: recovery-submit-sample transaction=4 index=22 start-monotonic-ns=171304220226412 end-monotonic-ns=171304220900285 submit-ns=673873
+71: recovery-submit-sample transaction=4 index=23 start-monotonic-ns=171304222225250 end-monotonic-ns=171304222234770 submit-ns=9520
+71: recovery-submit-sample transaction=4 index=24 start-monotonic-ns=171304223225425 end-monotonic-ns=171304223234755 submit-ns=9330
+71: recovery-submit-sample transaction=4 index=25 start-monotonic-ns=171304224227719 end-monotonic-ns=171304224243109 submit-ns=15390
+71: recovery-submit-sample transaction=4 index=26 start-monotonic-ns=171304225226373 end-monotonic-ns=171304225234203 submit-ns=7830
+71: recovery-submit-sample transaction=4 index=27 start-monotonic-ns=171304226231617 end-monotonic-ns=171304226240927 submit-ns=9310
+71: recovery-submit-sample transaction=4 index=28 start-monotonic-ns=171304227226001 end-monotonic-ns=171304227235191 submit-ns=9190
+71: recovery-submit-sample transaction=4 index=29 start-monotonic-ns=171304228224645 end-monotonic-ns=171304228233565 submit-ns=8920
+71: recovery-submit-sample transaction=4 index=30 start-monotonic-ns=171304229224849 end-monotonic-ns=171304229231669 submit-ns=6820
+71: recovery-submit-sample transaction=4 index=31 start-monotonic-ns=171304230230593 end-monotonic-ns=171304230258384 submit-ns=27791
+71: recovery-submit-sample transaction=4 index=32 start-monotonic-ns=171304231227088 end-monotonic-ns=171304231237208 submit-ns=10120
+71: recovery-submit-sample transaction=4 index=33 start-monotonic-ns=171304232225502 end-monotonic-ns=171304232234132 submit-ns=8630
+71: recovery-submit-sample transaction=4 index=34 start-monotonic-ns=171304233225526 end-monotonic-ns=171304233235436 submit-ns=9910
+71: recovery-submit-sample transaction=4 index=35 start-monotonic-ns=171304234224690 end-monotonic-ns=171304234232340 submit-ns=7650
+71: recovery-submit-sample transaction=4 index=36 start-monotonic-ns=171304235229174 end-monotonic-ns=171304235256964 submit-ns=27790
+71: recovery-submit-sample transaction=4 index=37 start-monotonic-ns=171304236226298 end-monotonic-ns=171304236236218 submit-ns=9920
+71: recovery-submit-sample transaction=4 index=38 start-monotonic-ns=171304237225572 end-monotonic-ns=171304237233292 submit-ns=7720
+71: recovery-submit-sample transaction=4 index=39 start-monotonic-ns=171304239224821 end-monotonic-ns=171304239231741 submit-ns=6920
+71: recovery-submit-sample transaction=4 index=40 start-monotonic-ns=171304240225205 end-monotonic-ns=171304240232975 submit-ns=7770
+71: recovery-submit-sample transaction=4 index=41 start-monotonic-ns=171304245226655 end-monotonic-ns=171304245239516 submit-ns=12861
+71: recovery-submit-sample transaction=4 index=42 start-monotonic-ns=171304250226446 end-monotonic-ns=171304250237966 submit-ns=11520
+71: recovery-submit-sample transaction=4 index=43 start-monotonic-ns=171304255230337 end-monotonic-ns=171304255259477 submit-ns=29140
+71: recovery-submit-sample transaction=4 index=44 start-monotonic-ns=171304260228837 end-monotonic-ns=171304260254668 submit-ns=25831
+71: recovery-submit-sample transaction=4 index=45 start-monotonic-ns=171304265231858 end-monotonic-ns=171304265263648 submit-ns=31790
+71: recovery-submit-sample transaction=4 index=46 start-monotonic-ns=171304270229759 end-monotonic-ns=171304270263339 submit-ns=33580
+71: recovery-submit-sample transaction=4 index=47 start-monotonic-ns=171304275227589 end-monotonic-ns=171304275243340 submit-ns=15751
+71: recovery-submit-sample transaction=4 index=48 start-monotonic-ns=171304280230480 end-monotonic-ns=171304280263310 submit-ns=32830
+71: recovery-submit-sample transaction=4 index=49 start-monotonic-ns=171304285228311 end-monotonic-ns=171304285252951 submit-ns=24640
+71: recovery-submit-sample transaction=4 index=50 start-monotonic-ns=171304290231412 end-monotonic-ns=171304290263432 submit-ns=32020
+71: recovery-submit-sample transaction=4 index=51 start-monotonic-ns=171304295227282 end-monotonic-ns=171304295244362 submit-ns=17080
+71: recovery-submit-sample transaction=4 index=52 start-monotonic-ns=171304300229893 end-monotonic-ns=171304300261993 submit-ns=32100
+71: recovery-submit-sample transaction=4 index=53 start-monotonic-ns=171304305228553 end-monotonic-ns=171304305248194 submit-ns=19641
+71: recovery-submit-sample transaction=4 index=54 start-monotonic-ns=171304310230764 end-monotonic-ns=171304310262224 submit-ns=31460
+71: recovery-submit-sample transaction=4 index=55 start-monotonic-ns=171304315227065 end-monotonic-ns=171304315242325 submit-ns=15260
+71: recovery-submit-sample transaction=4 index=56 start-monotonic-ns=171304320229845 end-monotonic-ns=171304320258156 submit-ns=28311
+71: recovery-submit-sample transaction=4 index=57 start-monotonic-ns=171304325229776 end-monotonic-ns=171304325261296 submit-ns=31520
+71: recovery-submit-sample transaction=4 index=58 start-monotonic-ns=171304330227327 end-monotonic-ns=171304330242107 submit-ns=14780
+71: recovery-submit-sample transaction=4 index=59 start-monotonic-ns=171304335228627 end-monotonic-ns=171304335259578 submit-ns=30951
+71: recovery-submit-sample transaction=4 index=60 start-monotonic-ns=171304340230478 end-monotonic-ns=171304340265918 submit-ns=35440
+71: recovery-submit-sample transaction=4 index=61 start-monotonic-ns=171304345231539 end-monotonic-ns=171304345260289 submit-ns=28750
+71: recovery-submit-sample transaction=4 index=62 start-monotonic-ns=171304350229189 end-monotonic-ns=171304350246800 submit-ns=17611
+71: recovery-submit-sample transaction=4 index=63 start-monotonic-ns=171304355228890 end-monotonic-ns=171304355250800 submit-ns=21910
+71: recovery-submit-sample transaction=4 index=64 start-monotonic-ns=171304360231451 end-monotonic-ns=171304360260731 submit-ns=29280
+71: recovery-submit-transaction=4 last-child0-submit-start-monotonic-ns=171304164576722 last-child0-submit-end-monotonic-ns=171304164614312 window-start-monotonic-ns=171304165172955 count=65 submit-ns-p50=13100 submit-ns-p95=32830 submit-ns-max=673873 (vkQueueSubmit call only; no GPU/FPS claim)
+71: [zvram] snapshot state event=restore resident=37748736 cold-logical=0 cold-stored=0 freezes=0 restores=45 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=5 copy-bytes=20971520 copy-ns=4569811 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+71: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+71: [zvram] virtual free bytes=33554432
+71: [zvram] virtual free bytes=4194304
+71: PASS: recovery-submit sampling preserved child-one bytes, recovered child zero, verified all 32 MiB, and cleaned up transaction 4
+71: cold-peer-sampler transaction=4 stayed-cold-during-window=1 restored-bytes=4194304 final-resident-bytes=37748736
+71: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=45 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=5 copy-bytes=20971520 copy-ns=4569811 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+71: [zvram] GPU restore backing profile alloc-calls=50 alloc-ok=50 alloc-fail=0 alloc-ns=1210715 free-calls=0 free-ns=0 sparse-calls=10 sparse-ok=10 sparse-fail=0 sparse-ns=516583 final=1
+71: [zvram] snapshot transfer profile copy-calls=5 copy-bytes=20971520 copy-ns=4569811 decode-bytes=0 decode-ns=0
+71: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=37748736 live-nonlocal=0 peak-nonlocal=37748736 allocation-failures=0
+1/1 Test #71: vulkan-cold-cycle-cold-peer-submit-sampler-baseline ...   Passed    1.45 sec
+
+The following tests passed:
+	vulkan-cold-cycle-cold-peer-submit-sampler-baseline
+
+100% tests passed out of 1
+
+Label Time Summary:
+cold-cycle           =   1.45 sec*proc (1 test)
+cold-peer            =   1.45 sec*proc (1 test)
+hardware             =   1.45 sec*proc (1 test)
+native-allocation    =   1.45 sec*proc (1 test)
+profile              =   1.45 sec*proc (1 test)
+submit-sampler       =   1.45 sec*proc (1 test)
+vulkan               =   1.45 sec*proc (1 test)
+
+Total Test time (real) =   1.45 sec

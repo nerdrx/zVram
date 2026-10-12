@@ -1,0 +1,10 @@
+children=3072 sample=1 calls=100 ns/call=1129.4 expected-limit=46291456
+children=3072 sample=2 calls=100 ns/call=876.6 expected-limit=46291456
+children=3072 sample=3 calls=100 ns/call=874.4 expected-limit=46291456
+children=3072 sample=4 calls=100 ns/call=874.0 expected-limit=46291456
+children=3072 sample=5 calls=100 ns/call=875.8 expected-limit=46291456
+children=100000 sample=1 calls=100 ns/call=30992.0 expected-limit=244800000
+children=100000 sample=2 calls=100 ns/call=28780.1 expected-limit=244800000
+children=100000 sample=3 calls=100 ns/call=28666.1 expected-limit=244800000
+children=100000 sample=4 calls=100 ns/call=28987.9 expected-limit=244800000
+children=100000 sample=5 calls=100 ns/call=29696.9 expected-limit=244800000

@@ -1,0 +1,6 @@
+graphics-validation=on
+graphics-device=AMD Radeon RX 7900 XTX (RADV NAVI31) type=2
+draw-readback-ms p50=180.415 p95=192.77 max=192.77
+vkQueueSubmit-call count=6 p50-us=16 p95-us=58 max-us=58
+vkWaitForFences-call count=6 p50-us=1903 p95-us=2053 max-us=2053
+PASS: 6 offscreen draw/readback frames (native mode) validation=on

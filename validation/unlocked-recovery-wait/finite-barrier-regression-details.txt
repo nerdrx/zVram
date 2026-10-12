@@ -1,0 +1,287 @@
+Start testing: Oct 09 17:59 CEST
+----------------------------------------------------------
+8/126 Testing: vulkan-graphics-narrow-descriptor-conservative-fallback
+8/126 Test: vulkan-graphics-narrow-descriptor-conservative-fallback
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-range-mib" "4" "--vulkan-selective-restore" "--vulkan-active-eviction" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-graphics-check" "--native-allocation" "--descriptor-window-mib" "4" "--expect-conservative-graphics"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"vulkan-graphics-narrow-descriptor-conservative-fallback" start time: Oct 09 17:59 CEST
+Output:
+----------------------------------------------------------
+[zvram] Vulkan snapshot transfer staging bytes=33554432
+[zvram] Vulkan snapshot decode max-workers=1
+[zvram] Vulkan snapshot lookahead staging bytes=33554432
+[zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+[zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+[zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+[zvram] Vulkan range residency enabled chunk-bytes=4194304
+[zvram] Vulkan snapshot minimum savings percent=0
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] snapshot state event=bootstrap-bind resident=33554432 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] native allocation segmented bytes=33554432 children=8
+[zvram] snapshot cold bytes=4194304 stored=152258 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=29360128 cold-logical=4194304 cold-stored=152258 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=780164 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152199 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=25165824 cold-logical=8388608 cold-stored=304457 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=8388608 copy-ns=1403087 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152160 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=20971520 cold-logical=12582912 cold-stored=456617 freezes=3 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=12582912 copy-ns=1945779 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152160 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=16777216 cold-logical=16777216 cold-stored=608777 freezes=4 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=4 copy-bytes=16777216 copy-ns=2489362 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152154 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=12582912 cold-logical=20971520 cold-stored=760931 freezes=5 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=5 copy-bytes=20971520 copy-ns=3286586 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152166 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=8388608 cold-logical=25165824 cold-stored=913097 freezes=6 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=6 copy-bytes=25165824 copy-ns=3959639 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152181 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=4194304 cold-logical=29360128 cold-stored=1065278 freezes=7 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=7 copy-bytes=29360128 copy-ns=4535262 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152205 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=33554432 cold-stored=1217483 freezes=8 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=8 copy-bytes=33554432 copy-ns=5332685 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] access tracking fallback reason=vkCmdBeginRenderPass command-count=1
+[zvram] selective restore fallback: untracked command, descriptor or address shader
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=0 cold-stored=0 freezes=8 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=16 copy-bytes=67108864 copy-ns=9752855 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152258 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=29360128 cold-logical=4194304 cold-stored=152258 freezes=9 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=17 copy-bytes=71303168 copy-ns=10446348 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152199 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=25165824 cold-logical=8388608 cold-stored=304457 freezes=10 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=18 copy-bytes=75497472 copy-ns=11157361 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152160 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=20971520 cold-logical=12582912 cold-stored=456617 freezes=11 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=19 copy-bytes=79691776 copy-ns=11813814 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152160 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=16777216 cold-logical=16777216 cold-stored=608777 freezes=12 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=20 copy-bytes=83886080 copy-ns=12424767 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152154 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=12582912 cold-logical=20971520 cold-stored=760931 freezes=13 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=21 copy-bytes=88080384 copy-ns=13135280 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152166 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=8388608 cold-logical=25165824 cold-stored=913097 freezes=14 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=22 copy-bytes=92274688 copy-ns=13643042 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152181 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=4194304 cold-logical=29360128 cold-stored=1065278 freezes=15 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=23 copy-bytes=96468992 copy-ns=14220665 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot cold bytes=4194304 stored=152205 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=33554432 cold-stored=1217483 freezes=16 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=24 copy-bytes=100663296 copy-ns=14785117 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] virtual free bytes=33554432
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=16 restores=8 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=24 copy-bytes=100663296 copy-ns=14785117 decode-bytes=33554432 decode-ns=1979368 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot transfer profile copy-calls=24 copy-bytes=100663296 copy-ns=14785117 decode-bytes=33554432 decode-ns=1979368
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=33558528 live-nonlocal=0 peak-nonlocal=67109888 allocation-failures=0
+graphics-validation=on
+graphics-device=AMD Radeon RX 7900 XTX (RADV NAVI31) type=2
+conservative-frame=0 resident=33554432 cold=0 restores=8
+conservative-frame=1 resident=33554432 cold=0 restores=8
+conservative-frame=2 resident=33554432 cold=0 restores=8
+conservative-frame=3 resident=33554432 cold=0 restores=8
+conservative-frame=4 resident=33554432 cold=0 restores=8
+conservative-frame=5 resident=33554432 cold=0 restores=8
+draw-readback-ms p50=0.159091 p95=8.79754 max=8.79754
+first-vkQueueSubmit-call count=1 p50-us=7295 p95-us=7295 max-us=7295
+warm-vkQueueSubmit-call count=5 p50-us=13 p95-us=37 max-us=37
+first-vkWaitForFences-call count=1 p50-us=38 p95-us=38 max-us=38
+warm-vkWaitForFences-call count=5 p50-us=32 p95-us=60 max-us=60
+vkQueueSubmit-call count=6 p50-us=13 p95-us=7295 max-us=7295
+vkWaitForFences-call count=6 p50-us=32 p95-us=60 max-us=60
+PASS: 6 offscreen draw/readback frames with conservative graphics fallback validation=on
+<end of output>
+Test time =   0.53 sec
+----------------------------------------------------------
+Test Passed.
+"vulkan-graphics-narrow-descriptor-conservative-fallback" end time: Oct 09 17:59 CEST
+"vulkan-graphics-narrow-descriptor-conservative-fallback" time elapsed: 00:00:00
+----------------------------------------------------------
+
+68/126 Testing: vulkan-range-clean-cache-native
+68/126 Test: vulkan-range-clean-cache-native
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "60000" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--vulkan-resident-mib" "32" "--vulkan-clean-cache" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-auto-check" "--range-cache" "--native-allocation"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+"vulkan-range-clean-cache-native" start time: Oct 09 17:59 CEST
+Output:
+----------------------------------------------------------
+[zvram] Vulkan snapshot transfer staging bytes=33554432
+[zvram] Vulkan snapshot decode max-workers=1
+[zvram] Vulkan snapshot lookahead staging bytes=33554432
+[zvram] automatic Vulkan snapshots enabled idle-ms=60000 cold-budget=67108864
+[zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+[zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+[zvram] Vulkan range residency enabled chunk-bytes=33554432
+[zvram] Vulkan resident admission enabled limit-bytes=33554432
+[zvram] Vulkan eviction policy=lru
+[zvram] Vulkan clean snapshot cache enabled: retained read-only backing shares cold budget
+[zvram] Vulkan snapshot minimum savings percent=0
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] snapshot state event=bootstrap-bind resident=67108864 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] native allocation segmented bytes=67108864 children=2
+[zvram] snapshot cold bytes=33554432 stored=1043 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=33554432 cold-logical=33554432 cold-stored=1043 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=33554432 copy-ns=4957293 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=33554432 incoming-bytes=0 limit-bytes=33554432
+[zvram] snapshot cold bytes=33554432 stored=1227082 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=1228125 freezes=2 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=67108864 copy-ns=8383969 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=1227082 freezes=2 restores=1 failures=0 cache-stored=1043 clean-reuses=0 cache-invalidations=0 copy-calls=3 copy-bytes=100663296 copy-ns=12842450 decode-bytes=33554432 decode-ns=2486181 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=50 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=1 wait-ns=50
+[zvram] snapshot cold bytes=33554432 stored=1227829 compressed-chunks=1 raw-chunks=0 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=2454911 freezes=3 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=1 copy-calls=4 copy-bytes=134217728 copy-ns=16275046 decode-bytes=33554432 decode-ns=2486181 pipeline-prefetches=0 pipeline-restores=1 pipeline-wait-ns=50 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=1227829 freezes=3 restores=2 failures=0 cache-stored=1227082 clean-reuses=0 cache-invalidations=1 copy-calls=5 copy-bytes=167772160 copy-ns=20105634 decode-bytes=67108864 decode-ns=4700001 pipeline-prefetches=0 pipeline-restores=1 pipeline-wait-ns=80 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=2 wait-ns=80
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=34782261 freezes=4 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=2 copy-calls=6 copy-bytes=201326592 copy-ns=23090748 decode-bytes=67108864 decode-ns=4700001 pipeline-prefetches=0 pipeline-restores=2 pipeline-wait-ns=80 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=4 restores=3 failures=0 cache-stored=1227829 clean-reuses=0 cache-invalidations=2 copy-calls=7 copy-bytes=234881024 copy-ns=27244327 decode-bytes=100663296 decode-ns=6939211 pipeline-prefetches=0 pipeline-restores=2 pipeline-wait-ns=120 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=3 wait-ns=120
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+CLEAN_CACHE_READBACK_PHASE_BEGIN
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=5 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=3 copy-calls=8 copy-bytes=268435456 copy-ns=30504362 decode-bytes=100663296 decode-ns=6939211 pipeline-prefetches=0 pipeline-restores=3 pipeline-wait-ns=120 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=5 restores=4 failures=0 cache-stored=33554432 clean-reuses=0 cache-invalidations=3 copy-calls=9 copy-bytes=301989888 copy-ns=34776392 decode-bytes=134217728 decode-ns=9362512 pipeline-prefetches=0 pipeline-restores=3 pipeline-wait-ns=200 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=4 wait-ns=200
+CLEAN_CACHE_READBACK pass=0 chunk=0
+[zvram] snapshot reused clean bytes=33554432 stored=33554432
+[zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=6 restores=4 failures=0 cache-stored=0 clean-reuses=1 cache-invalidations=3 copy-calls=9 copy-bytes=301989888 copy-ns=34776392 decode-bytes=134217728 decode-ns=9362512 pipeline-prefetches=0 pipeline-restores=4 pipeline-wait-ns=200 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=6 restores=5 failures=0 cache-stored=33554432 clean-reuses=1 cache-invalidations=3 copy-calls=10 copy-bytes=335544320 copy-ns=38798191 decode-bytes=167772160 decode-ns=11643613 pipeline-prefetches=0 pipeline-restores=4 pipeline-wait-ns=320 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=5 wait-ns=320
+CLEAN_CACHE_READBACK pass=0 chunk=1
+[zvram] snapshot reused clean bytes=33554432 stored=33554432
+[zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=7 restores=5 failures=0 cache-stored=0 clean-reuses=2 cache-invalidations=3 copy-calls=10 copy-bytes=335544320 copy-ns=38798191 decode-bytes=167772160 decode-ns=11643613 pipeline-prefetches=0 pipeline-restores=5 pipeline-wait-ns=320 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=7 restores=6 failures=0 cache-stored=33554432 clean-reuses=2 cache-invalidations=3 copy-calls=11 copy-bytes=369098752 copy-ns=42568858 decode-bytes=201326592 decode-ns=14396785 pipeline-prefetches=0 pipeline-restores=5 pipeline-wait-ns=350 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=6 wait-ns=350
+CLEAN_CACHE_READBACK pass=1 chunk=0
+[zvram] snapshot reused clean bytes=33554432 stored=33554432
+[zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=8 restores=6 failures=0 cache-stored=0 clean-reuses=3 cache-invalidations=3 copy-calls=11 copy-bytes=369098752 copy-ns=42568858 decode-bytes=201326592 decode-ns=14396785 pipeline-prefetches=0 pipeline-restores=6 pipeline-wait-ns=350 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=8 restores=7 failures=0 cache-stored=33554432 clean-reuses=3 cache-invalidations=3 copy-calls=12 copy-bytes=402653184 copy-ns=46598197 decode-bytes=234881024 decode-ns=16616125 pipeline-prefetches=0 pipeline-restores=6 pipeline-wait-ns=380 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=7 wait-ns=380
+CLEAN_CACHE_READBACK pass=1 chunk=1
+[zvram] snapshot reused clean bytes=33554432 stored=33554432
+[zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=9 restores=7 failures=0 cache-stored=0 clean-reuses=4 cache-invalidations=3 copy-calls=12 copy-bytes=402653184 copy-ns=46598197 decode-bytes=234881024 decode-ns=16616125 pipeline-prefetches=0 pipeline-restores=7 pipeline-wait-ns=380 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=9 restores=8 failures=0 cache-stored=33554432 clean-reuses=4 cache-invalidations=3 copy-calls=13 copy-bytes=436207616 copy-ns=50373554 decode-bytes=268435456 decode-ns=19101987 pipeline-prefetches=0 pipeline-restores=7 pipeline-wait-ns=420 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=8 wait-ns=420
+CLEAN_CACHE_READBACK pass=2 chunk=0
+[zvram] snapshot reused clean bytes=33554432 stored=33554432
+[zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=10 restores=8 failures=0 cache-stored=0 clean-reuses=5 cache-invalidations=3 copy-calls=13 copy-bytes=436207616 copy-ns=50373554 decode-bytes=268435456 decode-ns=19101987 pipeline-prefetches=0 pipeline-restores=8 pipeline-wait-ns=420 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=10 restores=9 failures=0 cache-stored=33554432 clean-reuses=5 cache-invalidations=3 copy-calls=14 copy-bytes=469762048 copy-ns=54491413 decode-bytes=301989888 decode-ns=21639448 pipeline-prefetches=0 pipeline-restores=8 pipeline-wait-ns=520 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=9 wait-ns=520
+CLEAN_CACHE_READBACK pass=2 chunk=1
+CLEAN_CACHE_READBACK_PHASE_END
+[zvram] snapshot reused clean bytes=33554432 stored=33554432
+[zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=11 restores=9 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=3 copy-calls=14 copy-bytes=469762048 copy-ns=54491413 decode-bytes=301989888 decode-ns=21639448 pipeline-prefetches=0 pipeline-restores=9 pipeline-wait-ns=520 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=11 restores=10 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=3 copy-calls=15 copy-bytes=503316480 copy-ns=58388781 decode-bytes=335544320 decode-ns=23891159 pipeline-prefetches=0 pipeline-restores=9 pipeline-wait-ns=560 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=10 wait-ns=560
+CLEAN_CACHE_SHADER_WRITE cycle=1 chunk=0
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=12 restores=10 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=4 copy-calls=16 copy-bytes=536870912 copy-ns=61918467 decode-bytes=335544320 decode-ns=23891159 pipeline-prefetches=0 pipeline-restores=10 pipeline-wait-ns=560 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=12 restores=11 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=4 copy-calls=17 copy-bytes=570425344 copy-ns=66148086 decode-bytes=369098752 decode-ns=26385701 pipeline-prefetches=0 pipeline-restores=10 pipeline-wait-ns=590 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=11 wait-ns=590
+CLEAN_CACHE_SHADER_WRITE cycle=1 chunk=1
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=13 restores=11 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=5 copy-calls=18 copy-bytes=603979776 copy-ns=69526482 decode-bytes=369098752 decode-ns=26385701 pipeline-prefetches=0 pipeline-restores=11 pipeline-wait-ns=590 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=13 restores=12 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=5 copy-calls=19 copy-bytes=637534208 copy-ns=73521370 decode-bytes=402653184 decode-ns=28470231 pipeline-prefetches=0 pipeline-restores=11 pipeline-wait-ns=620 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=12 wait-ns=620
+CLEAN_CACHE_SHADER_WRITE cycle=2 chunk=0
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=14 restores=12 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=6 copy-calls=20 copy-bytes=671088640 copy-ns=76238053 decode-bytes=402653184 decode-ns=28470231 pipeline-prefetches=0 pipeline-restores=12 pipeline-wait-ns=620 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=14 restores=13 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=6 copy-calls=21 copy-bytes=704643072 copy-ns=80228602 decode-bytes=436207616 decode-ns=30887752 pipeline-prefetches=0 pipeline-restores=12 pipeline-wait-ns=650 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=13 wait-ns=650
+CLEAN_CACHE_SHADER_WRITE cycle=2 chunk=1
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=15 restores=13 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=7 copy-calls=22 copy-bytes=738197504 copy-ns=83738418 decode-bytes=436207616 decode-ns=30887752 pipeline-prefetches=0 pipeline-restores=13 pipeline-wait-ns=650 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=15 restores=14 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=7 copy-calls=23 copy-bytes=771751936 copy-ns=87504615 decode-bytes=469762048 decode-ns=33193953 pipeline-prefetches=0 pipeline-restores=13 pipeline-wait-ns=680 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=14 wait-ns=680
+CLEAN_CACHE_SHADER_WRITE cycle=3 chunk=0
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=16 restores=14 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=8 copy-calls=24 copy-bytes=805306368 copy-ns=91248022 decode-bytes=469762048 decode-ns=33193953 pipeline-prefetches=0 pipeline-restores=14 pipeline-wait-ns=680 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=16 restores=15 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=8 copy-calls=25 copy-bytes=838860800 copy-ns=95027429 decode-bytes=503316480 decode-ns=35638235 pipeline-prefetches=0 pipeline-restores=14 pipeline-wait-ns=720 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=15 wait-ns=720
+CLEAN_CACHE_SHADER_WRITE cycle=3 chunk=1
+[zvram] resident admission refused: submission working set exceeds limit-bytes=33554432 known=1
+[zvram] snapshot cold bytes=33554432 stored=33554432 compressed-chunks=0 raw-chunks=1 shuffled-chunks=0
+[zvram] snapshot state event=freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=17 restores=15 failures=0 cache-stored=0 clean-reuses=6 cache-invalidations=9 copy-calls=26 copy-bytes=872415232 copy-ns=98739426 decode-bytes=503316480 decode-ns=35638235 pipeline-prefetches=0 pipeline-restores=15 pipeline-wait-ns=720 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=17 restores=16 failures=0 cache-stored=33554432 clean-reuses=6 cache-invalidations=9 copy-calls=27 copy-bytes=905969664 copy-ns=102467643 decode-bytes=536870912 decode-ns=37685914 pipeline-prefetches=0 pipeline-restores=15 pipeline-wait-ns=760 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=16 wait-ns=760
+[zvram] snapshot reused clean bytes=33554432 stored=33554432
+[zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=18 restores=16 failures=0 cache-stored=0 clean-reuses=7 cache-invalidations=9 copy-calls=27 copy-bytes=905969664 copy-ns=102467643 decode-bytes=536870912 decode-ns=37685914 pipeline-prefetches=0 pipeline-restores=16 pipeline-wait-ns=760 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=18 restores=17 failures=0 cache-stored=33554432 clean-reuses=7 cache-invalidations=9 copy-calls=28 copy-bytes=939524096 copy-ns=106864953 decode-bytes=570425344 decode-ns=39697014 pipeline-prefetches=0 pipeline-restores=16 pipeline-wait-ns=780 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=17 wait-ns=780
+[zvram] snapshot reused clean bytes=33554432 stored=33554432
+[zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=19 restores=17 failures=0 cache-stored=0 clean-reuses=8 cache-invalidations=9 copy-calls=28 copy-bytes=939524096 copy-ns=106864953 decode-bytes=570425344 decode-ns=39697014 pipeline-prefetches=0 pipeline-restores=17 pipeline-wait-ns=780 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=19 restores=18 failures=0 cache-stored=33554432 clean-reuses=8 cache-invalidations=9 copy-calls=29 copy-bytes=973078528 copy-ns=110720151 decode-bytes=603979776 decode-ns=41750413 pipeline-prefetches=0 pipeline-restores=17 pipeline-wait-ns=810 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=18 wait-ns=810
+[zvram] snapshot reused clean bytes=33554432 stored=33554432
+[zvram] snapshot state event=clean-freeze resident=0 cold-logical=67108864 cold-stored=67108864 freezes=20 restores=18 failures=0 cache-stored=0 clean-reuses=9 cache-invalidations=9 copy-calls=29 copy-bytes=973078528 copy-ns=110720151 decode-bytes=603979776 decode-ns=41750413 pipeline-prefetches=0 pipeline-restores=18 pipeline-wait-ns=810 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] resident admission selected-chunks=1 evicted-chunks=1 resident-before-restore=0 incoming-bytes=33554432 limit-bytes=33554432
+[zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+[zvram] snapshot state event=restore resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=20 restores=19 failures=0 cache-stored=33554432 clean-reuses=9 cache-invalidations=9 copy-calls=30 copy-bytes=1006632960 copy-ns=115046651 decode-bytes=637534208 decode-ns=43714762 pipeline-prefetches=0 pipeline-restores=18 pipeline-wait-ns=840 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+[zvram] snapshot pipeline prefetches=0 prepared-restores=19 wait-ns=840
+PASS: resident-cap range pressure evicted completed chunks, refused broad/unknown submissions, and preserved every byte
+[zvram] virtual free bytes=67108864
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=20 restores=19 failures=0 cache-stored=0 clean-reuses=9 cache-invalidations=9 copy-calls=30 copy-bytes=1006632960 copy-ns=115046651 decode-bytes=637534208 decode-ns=43714762 pipeline-prefetches=0 pipeline-restores=19 pipeline-wait-ns=840 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot transfer profile copy-calls=30 copy-bytes=1006632960 copy-ns=115046651 decode-bytes=637534208 decode-ns=43714762
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+<end of output>
+Test time =   0.66 sec
+----------------------------------------------------------
+Test Passed.
+"vulkan-range-clean-cache-native" end time: Oct 09 17:59 CEST
+"vulkan-range-clean-cache-native" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 09 17:59 CEST
+
+graphics =   0.53 sec*proc
+
+hardware =   0.53 sec*proc
+
+range-residency =   0.53 sec*proc
+
+validation =   0.53 sec*proc
+

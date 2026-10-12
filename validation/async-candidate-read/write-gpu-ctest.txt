@@ -1,0 +1,13 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+    Start 61: vulkan-async-candidate-write-completed
+1/1 Test #61: vulkan-async-candidate-write-completed ...   Passed    1.31 sec
+
+100% tests passed out of 1
+
+Label Time Summary:
+async-candidate    =   1.31 sec*proc (1 test)
+hardware           =   1.31 sec*proc (1 test)
+test-hook          =   1.31 sec*proc (1 test)
+vulkan             =   1.31 sec*proc (1 test)
+
+Total Test time (real) =   1.31 sec

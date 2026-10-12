@@ -1,0 +1,16 @@
+graphics-validation=on
+graphics-device=AMD Radeon RX 7900 XTX (RADV NAVI31) type=2
+frame=0 cold-bytes=1217290/33554432 restores=1
+frame=1 cold-bytes=1217290/33554432 restores=2
+frame=2 cold-bytes=1217290/33554432 restores=3
+frame=3 cold-bytes=1217290/33554432 restores=4
+frame=4 cold-bytes=1217290/33554432 restores=5
+frame=5 cold-bytes=1217290/33554432 restores=6
+frame=6 cold-bytes=1217290/33554432 restores=7
+frame=7 cold-bytes=1217290/33554432 restores=8
+frame=8 cold-bytes=1217290/33554432 restores=9
+frame=9 cold-bytes=1217290/33554432 restores=10
+frame=10 cold-bytes=1217290/33554432 restores=11
+frame=11 cold-bytes=1217290/33554432 restores=12
+draw-readback-ms p50=183.257 p95=205.495 max=205.495
+PASS: 12 offscreen draw/readback frames with cold restore validation=on

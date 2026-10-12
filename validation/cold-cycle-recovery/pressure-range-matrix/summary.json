@@ -1,0 +1,58 @@
+[
+  {
+    "range_mib": 32,
+    "async_mode": false,
+    "run": 1,
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=9 max-us=15933 cap-ack=1 freeze-delta=1"
+  },
+  {
+    "range_mib": 32,
+    "async_mode": true,
+    "run": 1,
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=9 max-us=10513 cap-ack=1 freeze-delta=1"
+  },
+  {
+    "range_mib": 4,
+    "async_mode": false,
+    "run": 1,
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=9 max-us=3042 cap-ack=1 freeze-delta=8"
+  },
+  {
+    "range_mib": 4,
+    "async_mode": true,
+    "run": 1,
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=10 max-us=3801 cap-ack=1 freeze-delta=8"
+  },
+  {
+    "range_mib": 32,
+    "async_mode": false,
+    "run": 2,
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=10 max-us=16196 cap-ack=1 freeze-delta=1"
+  },
+  {
+    "range_mib": 32,
+    "async_mode": true,
+    "run": 2,
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=9 max-us=12509 cap-ack=1 freeze-delta=1"
+  },
+  {
+    "range_mib": 4,
+    "async_mode": false,
+    "run": 2,
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=11 max-us=3762 cap-ack=1 freeze-delta=8"
+  },
+  {
+    "range_mib": 4,
+    "async_mode": true,
+    "run": 2,
+    "exit": 0,
+    "metric": "resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=12 max-us=4010 cap-ack=1 freeze-delta=8"
+  }
+]

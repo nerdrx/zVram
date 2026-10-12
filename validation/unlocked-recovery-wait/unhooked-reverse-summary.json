@@ -1,0 +1,258 @@
+{
+  "status": "window-correlated-subset",
+  "matched_pairs": [
+    {
+      "transaction": 0,
+      "baseline_intersecting_calls": {
+        "count": 1,
+        "p50_ns": 938133,
+        "p95_ns": 938133,
+        "max_ns": 938133
+      },
+      "unlocked_intersecting_calls": {
+        "count": 1,
+        "p50_ns": 40150,
+        "p95_ns": 40150,
+        "max_ns": 40150
+      }
+    },
+    {
+      "transaction": 1,
+      "baseline_intersecting_calls": {
+        "count": 1,
+        "p50_ns": 841273,
+        "p95_ns": 841273,
+        "max_ns": 841273
+      },
+      "unlocked_intersecting_calls": {
+        "count": 1,
+        "p50_ns": 9100,
+        "p95_ns": 9100,
+        "max_ns": 9100
+      }
+    },
+    {
+      "transaction": 3,
+      "baseline_intersecting_calls": {
+        "count": 1,
+        "p50_ns": 378481,
+        "p95_ns": 378481,
+        "max_ns": 378481
+      },
+      "unlocked_intersecting_calls": {
+        "count": 1,
+        "p50_ns": 33540,
+        "p95_ns": 33540,
+        "max_ns": 33540
+      }
+    },
+    {
+      "transaction": 4,
+      "baseline_intersecting_calls": {
+        "count": 1,
+        "p50_ns": 584942,
+        "p95_ns": 584942,
+        "max_ns": 584942
+      },
+      "unlocked_intersecting_calls": {
+        "count": 1,
+        "p50_ns": 81271,
+        "p95_ns": 81271,
+        "max_ns": 81271
+      }
+    }
+  ],
+  "all_five_pairs_observed": false,
+  "scope": "vkQueueSubmit call only; profile includes copy setup/wait/reacquire, not pure GPU wait or FPS",
+  "baseline": {
+    "path": "validation/unlocked-recovery-wait/unhooked-reverse-baseline.txt",
+    "unlocked": false,
+    "transactions": [
+      {
+        "transaction": 0,
+        "copy_phase_ns": 880904,
+        "all_calls": {
+          "count": 66,
+          "p50_ns": 32500,
+          "p95_ns": 74420,
+          "max_ns": 938133
+        },
+        "intersecting_calls": {
+          "count": 1,
+          "p50_ns": 938133,
+          "p95_ns": 938133,
+          "max_ns": 938133
+        }
+      },
+      {
+        "transaction": 1,
+        "copy_phase_ns": 1140114,
+        "all_calls": {
+          "count": 66,
+          "p50_ns": 13350,
+          "p95_ns": 32230,
+          "max_ns": 841273
+        },
+        "intersecting_calls": {
+          "count": 1,
+          "p50_ns": 841273,
+          "p95_ns": 841273,
+          "max_ns": 841273
+        }
+      },
+      {
+        "transaction": 2,
+        "copy_phase_ns": 799293,
+        "all_calls": {
+          "count": 66,
+          "p50_ns": 11330,
+          "p95_ns": 32710,
+          "max_ns": 706033
+        },
+        "intersecting_calls": {
+          "count": 1,
+          "p50_ns": 706033,
+          "p95_ns": 706033,
+          "max_ns": 706033
+        }
+      },
+      {
+        "transaction": 3,
+        "copy_phase_ns": 585982,
+        "all_calls": {
+          "count": 65,
+          "p50_ns": 10160,
+          "p95_ns": 73061,
+          "max_ns": 378481
+        },
+        "intersecting_calls": {
+          "count": 1,
+          "p50_ns": 378481,
+          "p95_ns": 378481,
+          "max_ns": 378481
+        }
+      },
+      {
+        "transaction": 4,
+        "copy_phase_ns": 595042,
+        "all_calls": {
+          "count": 64,
+          "p50_ns": 12590,
+          "p95_ns": 74470,
+          "max_ns": 584942
+        },
+        "intersecting_calls": {
+          "count": 1,
+          "p50_ns": 584942,
+          "p95_ns": 584942,
+          "max_ns": 584942
+        }
+      }
+    ],
+    "all_calls": {
+      "count": 327,
+      "p50_ns": 12940,
+      "p95_ns": 68290,
+      "max_ns": 938133
+    },
+    "intersecting_calls": {
+      "count": 5,
+      "p50_ns": 706033,
+      "p95_ns": 938133,
+      "max_ns": 938133
+    }
+  },
+  "unlocked": {
+    "path": "validation/unlocked-recovery-wait/unhooked-reverse-unlocked.txt",
+    "unlocked": true,
+    "transactions": [
+      {
+        "transaction": 0,
+        "copy_phase_ns": 1187105,
+        "all_calls": {
+          "count": 64,
+          "p50_ns": 15490,
+          "p95_ns": 61410,
+          "max_ns": 82160
+        },
+        "intersecting_calls": {
+          "count": 1,
+          "p50_ns": 40150,
+          "p95_ns": 40150,
+          "max_ns": 40150
+        }
+      },
+      {
+        "transaction": 1,
+        "copy_phase_ns": 593802,
+        "all_calls": {
+          "count": 66,
+          "p50_ns": 9980,
+          "p95_ns": 31620,
+          "max_ns": 58190
+        },
+        "intersecting_calls": {
+          "count": 1,
+          "p50_ns": 9100,
+          "p95_ns": 9100,
+          "max_ns": 9100
+        }
+      },
+      {
+        "transaction": 2,
+        "copy_phase_ns": 664633,
+        "all_calls": {
+          "count": 65,
+          "p50_ns": 9940,
+          "p95_ns": 32810,
+          "max_ns": 111630
+        },
+        "intersecting_calls": null
+      },
+      {
+        "transaction": 3,
+        "copy_phase_ns": 890364,
+        "all_calls": {
+          "count": 65,
+          "p50_ns": 36380,
+          "p95_ns": 77950,
+          "max_ns": 109900
+        },
+        "intersecting_calls": {
+          "count": 1,
+          "p50_ns": 33540,
+          "p95_ns": 33540,
+          "max_ns": 33540
+        }
+      },
+      {
+        "transaction": 4,
+        "copy_phase_ns": 764963,
+        "all_calls": {
+          "count": 66,
+          "p50_ns": 30530,
+          "p95_ns": 77740,
+          "max_ns": 84691
+        },
+        "intersecting_calls": {
+          "count": 1,
+          "p50_ns": 81271,
+          "p95_ns": 81271,
+          "max_ns": 81271
+        }
+      }
+    ],
+    "all_calls": {
+      "count": 326,
+      "p50_ns": 15490,
+      "p95_ns": 69450,
+      "max_ns": 111630
+    },
+    "intersecting_calls": {
+      "count": 4,
+      "p50_ns": 40150,
+      "p95_ns": 81271,
+      "max_ns": 81271
+    }
+  }
+}

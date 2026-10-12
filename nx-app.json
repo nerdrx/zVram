@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nerdrx/nx-hub/main/registry/nx-app.schema.json",
+  "nxApp": 1,
+  "name": "zVram",
+  "tagline": "Experimental Vulkan memory expansion with a standalone NX manager",
+  "homepage": "https://nerdrx.github.io/zVram/",
+  "sandbox": "none",
+  "keepAlive": false,
+  "configPaths": ["~/.local/state/zvram"],
+  "artifacts": [{
+    "assetPattern": "zvram-*-linux-x86_64.tar.gz",
+    "label": "Vulkan launcher and manager (Linux x86_64)",
+    "kind": "tarball-prefix",
+    "platform": "linux",
+    "stripPrefix": "usr/",
+    "prefix": "~/.local",
+    "launchCmd": "~/.local/bin/zvram gui",
+    "postInstallNote": "Requires Python 3, Tk, libzstd and a working Vulkan driver. Ensure ~/.local/bin is on PATH for Steam and terminal use. Reopen the manager after updates. Profiles, logs and model files are preserved. Model serving additionally needs Vulkan llama-server on PATH or an explicit --server path. This package contains the Vulkan backend; experimental HIP remains a source-build option."
+  }]
+}

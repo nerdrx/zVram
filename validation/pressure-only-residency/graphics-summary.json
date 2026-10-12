@@ -1,0 +1,23 @@
+[
+  {
+    "mode": "native",
+    "returncode": 0,
+    "timing": [
+      "draw-readback-ms p50=179.243 p95=232.888 max=232.888"
+    ]
+  },
+  {
+    "mode": "idle",
+    "returncode": 0,
+    "timing": [
+      "draw-readback-ms p50=183.257 p95=205.495 max=205.495"
+    ]
+  },
+  {
+    "mode": "pressure",
+    "returncode": 0,
+    "timing": [
+      "draw-readback-ms p50=177.704 p95=182.664 max=182.664"
+    ]
+  }
+]

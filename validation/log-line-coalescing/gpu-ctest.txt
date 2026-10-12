@@ -1,0 +1,22 @@
+Health: available=25109824 KiB GPU=35%
+some avg10=0.00 avg60=0.00 avg300=0.00 total=588411909
+full avg10=0.00 avg60=0.00 avg300=0.00 total=562277892
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+    Start  8: vulkan-graphics-narrow-descriptor-conservative-fallback
+1/2 Test  #8: vulkan-graphics-narrow-descriptor-conservative-fallback ...   Passed    0.47 sec
+    Start 56: vulkan-pressure-only-live-cap-async-regression
+2/2 Test #56: vulkan-pressure-only-live-cap-async-regression ............   Passed    1.35 sec
+
+100% tests passed out of 2
+
+Label Time Summary:
+async              =   1.35 sec*proc (1 test)
+graphics           =   0.47 sec*proc (1 test)
+hardware           =   1.82 sec*proc (2 tests)
+live-control       =   1.35 sec*proc (1 test)
+pressure           =   1.35 sec*proc (1 test)
+range-residency    =   0.47 sec*proc (1 test)
+validation         =   0.47 sec*proc (1 test)
+vulkan             =   1.35 sec*proc (1 test)
+
+Total Test time (real) =   1.82 sec

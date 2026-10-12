@@ -1,0 +1,6 @@
+vkZVramSetAsyncEncodeHookNX ABSENT
+vkZVramForceNextBackingTypeNX ABSENT
+vkZVramGetBackingTypeNX ABSENT
+vkZVramSetRecoveryPausedNX ABSENT
+vkZVramSetWarmRecoveryWaitHookNX ABSENT
+vkZVramGetWarmRecoveryWaitersNX ABSENT

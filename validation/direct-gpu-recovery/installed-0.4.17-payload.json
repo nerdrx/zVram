@@ -1,0 +1,16 @@
+{
+  "version": "0.4.17",
+  "archive_sha256": "f190a32258455ae6e97fb2bb14a142bedf48848b6104fcb4a29f7c3907af7128",
+  "metadata": {
+    "gdeflate": true,
+    "gdeflate_gpu": true,
+    "bp16": true,
+    "bp16_gpu": true,
+    "test_hooks": false
+  },
+  "test_api_names_absent": true,
+  "layer_sha256": "dae3fc895470c9b6bdf2e73962f4ecc34101aba56a02d9550d2ada67d2610b85",
+  "installed_root": "/home/nerdrx/.local/share/zvram/0.4.17",
+  "installed_layer_archive_match": true,
+  "scripts_tag_match": true
+}

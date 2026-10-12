@@ -15,7 +15,7 @@ BASE = ["--vulkan-virtual-gib", "96", "--vulkan-cold-mib", "64"]
 
 
 def run(launcher, *arguments, env=None):
-    return subprocess.run([sys.executable, str(launcher), *arguments],
+    return subprocess.run([sys.executable, str(launcher), '--no-live-control', *arguments],
                           text=True, capture_output=True, check=False, env=env)
 
 
@@ -23,6 +23,8 @@ with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     launcher = root / "zvram"
     shutil.copyfile(SOURCE, launcher)
+    for module in ('zvram_control.py', 'zvram_manager.py'):
+        shutil.copyfile(SOURCE.with_name(module), root / module)
     build = root / "build"
     build.mkdir()
     (build / "VK_LAYER_NX_zvram.json").touch()
@@ -177,7 +179,7 @@ with tempfile.TemporaryDirectory() as temporary:
     clean = os.environ.copy()
     clean.pop("VK_LAYER_PATH", None)
     clean.pop("VK_ADD_LAYER_PATH", None)
-    path_child = "import os; print(os.environ['VK_ADD_LAYER_PATH'])"
+    path_child = "import os; print(os.environ['VK_LAYER_PATH'].split(os.pathsep)[0])"
     result = run(launcher, "--build-dir", str(alternate), *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--", sys.executable, "-c", path_child, env=clean)
     assert result.returncode == 0 and result.stdout == str(alternate) + "\n", (result.stdout, result.stderr)
     conflicting_filter = run(launcher, *BASE, "--vulkan-auto-idle-ms", "100", "--vulkan-codec", "gdeflate", "--vulkan-byte-shuffle", "2", "--", sys.executable, "-c", "pass")

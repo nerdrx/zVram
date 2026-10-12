@@ -1,0 +1,23 @@
+{
+  "32": {
+    "measurements": [
+      "vkQueueSubmit-call count=6 p50-us=8377 p95-us=8575 max-us=8575",
+      "vkWaitForFences-call count=6 p50-us=1351 p95-us=1388 max-us=1388",
+      "PASS: 6 offscreen draw/readback frames with cold restore validation=on"
+    ]
+  },
+  "4": {
+    "measurements": [
+      "vkQueueSubmit-call count=6 p50-us=9009 p95-us=10098 max-us=10098",
+      "vkWaitForFences-call count=6 p50-us=1325 p95-us=1555 max-us=1555",
+      "PASS: 6 offscreen draw/readback frames with cold restore validation=on"
+    ]
+  },
+  "1": {
+    "measurements": [
+      "vkQueueSubmit-call count=6 p50-us=12511 p95-us=15795 max-us=15795",
+      "vkWaitForFences-call count=6 p50-us=1328 p95-us=1575 max-us=1575",
+      "PASS: 6 offscreen draw/readback frames with cold restore validation=on"
+    ]
+  }
+}

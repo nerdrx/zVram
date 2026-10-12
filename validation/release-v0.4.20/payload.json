@@ -1,0 +1,16 @@
+{
+  "tag_commit": "d513c139997df5f395d559efdc6b1541281d3b3a",
+  "archive_sha256": "98ccfd5b04ed5f9b6c95e9afb033efd32d0bce7cb9f66ad1931d782f4c88d06e",
+  "library_sha256": "2ca544526750682bb096d0186d67bdb4eaed026b05e7830f85b47712faec307b",
+  "capabilities": {
+    "gdeflate": true,
+    "gdeflate_gpu": true,
+    "bp16": true,
+    "bp16_gpu": true,
+    "test_hooks": false
+  },
+  "checksums": true,
+  "scripts_match_tag": true,
+  "six_test_apis_absent": true,
+  "relative_manifest": true
+}

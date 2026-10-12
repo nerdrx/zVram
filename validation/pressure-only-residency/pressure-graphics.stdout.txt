@@ -1,0 +1,4 @@
+graphics-validation=on
+graphics-device=AMD Radeon RX 7900 XTX (RADV NAVI31) type=2
+draw-readback-ms p50=177.704 p95=182.664 max=182.664
+PASS: 12 offscreen draw/readback frames with warm residency validation=on

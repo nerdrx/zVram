@@ -1,0 +1,17 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+    Start 69: vulkan-direct-recovery-batch-range-32
+1/2 Test #69: vulkan-direct-recovery-batch-range-32 ...   Passed    5.21 sec
+    Start 71: vulkan-direct-recovery-batch-range-1
+2/2 Test #71: vulkan-direct-recovery-batch-range-1 ....   Passed    5.17 sec
+
+100% tests passed out of 2
+
+Label Time Summary:
+direct-recovery      =  10.38 sec*proc (2 tests)
+hardware             =  10.38 sec*proc (2 tests)
+native-allocation    =  10.38 sec*proc (2 tests)
+range-sensitivity    =  10.38 sec*proc (2 tests)
+test-hook            =  10.38 sec*proc (2 tests)
+vulkan               =  10.38 sec*proc (2 tests)
+
+Total Test time (real) =  10.39 sec

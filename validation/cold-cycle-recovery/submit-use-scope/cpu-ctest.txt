@@ -1,0 +1,20 @@
+First five CPU checks passed: live-control, bp16-codec, resident-budget, resident-bootstrap, vulkan-ram-guard.
+ 6/13 Test #12: cpu-vulkan-compression-options ...   Passed    2.64 sec
+      Start 13: cpu-vulkan-model-budget
+ 7/13 Test #13: cpu-vulkan-model-budget ..........   Passed    2.10 sec
+      Start 14: cpu-compression-policy
+ 8/13 Test #14: cpu-compression-policy ...........   Passed    0.01 sec
+      Start 15: cpu-clean-cache-policy
+ 9/13 Test #15: cpu-clean-cache-policy ...........   Passed    0.00 sec
+      Start 16: cpu-snapshot-decode
+10/13 Test #16: cpu-snapshot-decode ..............   Passed    0.03 sec
+      Start 17: cpu-gdeflate-envelope
+11/13 Test #17: cpu-gdeflate-envelope ............   Passed    0.00 sec
+      Start 18: cpu-snapshot-pipeline
+12/13 Test #18: cpu-snapshot-pipeline ............   Passed    0.01 sec
+      Start 20: cpu-active-refs
+13/13 Test #20: cpu-active-refs ..................   Passed    0.00 sec
+
+100% tests passed out of 13
+
+Total Test time (real) =   5.09 sec

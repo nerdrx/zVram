@@ -1,0 +1,1 @@
+Normal build/gdeflate-codec/libzvram_layer.so: all six compile-only test API strings absent; checked after rebuild.

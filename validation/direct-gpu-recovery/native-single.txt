@@ -1,0 +1,14 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+    Start 64: vulkan-cold-cycle-native-recovery-single
+1/1 Test #64: vulkan-cold-cycle-native-recovery-single ...   Passed    1.36 sec
+
+100% tests passed out of 1
+
+Label Time Summary:
+cold-cycle           =   1.36 sec*proc (1 test)
+hardware             =   1.36 sec*proc (1 test)
+native-allocation    =   1.36 sec*proc (1 test)
+test-hook            =   1.36 sec*proc (1 test)
+vulkan               =   1.36 sec*proc (1 test)
+
+Total Test time (real) =   1.36 sec

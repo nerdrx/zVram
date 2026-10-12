@@ -1,0 +1,47 @@
+Start testing: Oct 09 20:23 CEST
+----------------------------------------------------------
+61/154 Testing: vulkan-async-candidate-write-completed
+61/154 Test: vulkan-async-candidate-write-completed
+Command: "/usr/bin/python3.14" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "8" "--vulkan-auto-idle-ms" "1000" "--vulkan-cold-mib" "4" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "4" "--vulkan-resident-mib" "4" "--vulkan-eviction-trigger" "idle" "--vulkan-async-compression" "--vulkan-min-savings-percent" "0" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-vulkan-auto-check" "--async-candidate-write-fixture"
+Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+"vulkan-async-candidate-write-completed" start time: Oct 09 20:23 CEST
+Output:
+----------------------------------------------------------
+[zvram] Vulkan snapshot transfer staging bytes=33554432
+[zvram] Vulkan snapshot decode max-workers=1
+[zvram] Vulkan snapshot lookahead staging bytes=33554432
+[zvram] automatic Vulkan snapshots enabled idle-ms=1000 cold-budget=4194304
+[zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+[zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+[zvram] background range snapshot compression uses off-lock transactions max-raw-bytes=33554432
+[zvram] Vulkan range residency enabled chunk-bytes=4194304
+[zvram] Vulkan resident admission enabled limit-bytes=4194304
+[zvram] Vulkan eviction policy=lru
+[zvram] Vulkan snapshot minimum savings percent=0
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] virtual allocate bytes=4194304 heap-capacity=8388608
+[zvram] snapshot state event=bootstrap-bind resident=4194304 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] virtual free bytes=4194304
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+PASS: async candidate write interaction preserved bytes and cleanup (completed write)
+[zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=4194304 copy-ns=1135245 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+[zvram] snapshot transfer profile copy-calls=1 copy-bytes=4194304 copy-ns=1135245 decode-bytes=0 decode-ns=0
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=4194304 live-nonlocal=0 peak-nonlocal=4194304 allocation-failures=0
+<end of output>
+Test time =   1.31 sec
+----------------------------------------------------------
+Test Passed.
+"vulkan-async-candidate-write-completed" end time: Oct 09 20:23 CEST
+"vulkan-async-candidate-write-completed" time elapsed: 00:00:01
+----------------------------------------------------------
+
+End testing: Oct 09 20:23 CEST
+
+async-candidate =   1.31 sec*proc
+
+hardware =   1.31 sec*proc
+
+test-hook =   1.31 sec*proc
+
+vulkan =   1.31 sec*proc
+

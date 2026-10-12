@@ -1,0 +1,62 @@
+[
+  {
+    "range_mib": 32,
+    "repeat": 0,
+    "transaction_us": 27593,
+    "log": "baseline-32-repeat-0.txt"
+  },
+  {
+    "range_mib": 4,
+    "repeat": 0,
+    "transaction_us": 4782,
+    "log": "baseline-4-repeat-0.txt"
+  },
+  {
+    "range_mib": 32,
+    "repeat": 1,
+    "transaction_us": 19799,
+    "log": "baseline-32-repeat-1.txt"
+  },
+  {
+    "range_mib": 4,
+    "repeat": 1,
+    "transaction_us": 5231,
+    "log": "baseline-4-repeat-1.txt"
+  },
+  {
+    "range_mib": 32,
+    "repeat": 2,
+    "transaction_us": 23372,
+    "log": "baseline-32-repeat-2.txt"
+  },
+  {
+    "range_mib": 4,
+    "repeat": 2,
+    "transaction_us": 4274,
+    "log": "baseline-4-repeat-2.txt"
+  },
+  {
+    "range_mib": 32,
+    "repeat": 3,
+    "transaction_us": 19960,
+    "log": "baseline-32-repeat-3.txt"
+  },
+  {
+    "range_mib": 4,
+    "repeat": 3,
+    "transaction_us": 4485,
+    "log": "baseline-4-repeat-3.txt"
+  },
+  {
+    "range_mib": 32,
+    "repeat": 4,
+    "transaction_us": 23723,
+    "log": "baseline-32-repeat-4.txt"
+  },
+  {
+    "range_mib": 4,
+    "repeat": 4,
+    "transaction_us": 5686,
+    "log": "baseline-4-repeat-4.txt"
+  }
+]

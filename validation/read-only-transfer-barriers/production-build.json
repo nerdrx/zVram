@@ -1,0 +1,13 @@
+{
+  "build_dir": "/home/nerdrx/Documents/ChatGPT/NX/zvram/build",
+  "library_sha256": "bd36ed6cc8455ced1f388aeceac1d24f4f47f9cb67e3dfac51785cb38b5f28eb",
+  "test_api_strings_absent": [
+    "SetAsyncEncodeHook",
+    "ForceNextBackingType",
+    "GetBackingType",
+    "SetRecoveryPaused",
+    "SetWarmRecoveryWaitHook",
+    "GetWarmRecoveryWaiters"
+  ],
+  "installed_changed": false
+}

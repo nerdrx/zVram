@@ -1,0 +1,22 @@
+{
+  "version": "0.4.12",
+  "root": "/home/nerdrx/.local/share/zvram/0.4.12",
+  "files": {
+    "zvram": {
+      "tag_match": true,
+      "sha256": "f26d0e162cc8e56d55e51d53c957586d2907b431f3ba39425f904355bb8630ee"
+    },
+    "zvram_manager.py": {
+      "tag_match": true,
+      "sha256": "2c88dc1f96d609636f44567df1ccae7e168bc3e7ed1490926e5c9821b7af4742"
+    }
+  },
+  "test_setters_absent": true,
+  "codec_metadata": {
+    "gdeflate": true,
+    "gdeflate_gpu": true,
+    "bp16": true,
+    "bp16_gpu": true,
+    "test_hooks": false
+  }
+}
