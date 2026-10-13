@@ -2,6 +2,7 @@
 #include "live_control.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -1664,6 +1665,329 @@ bool readFixtureStatus(const std::string& path,
                        std::unordered_map<std::string, std::uint64_t>& fields);
 void writeFixtureRequest(const std::string& directory, std::uintptr_t device,
                          std::uint64_t sequence, std::uint64_t residentMiB);
+
+void recoveryChurnFixtureCheck(Context& context, ForceNextBackingType forceType,
+                               GetBackingType getBackingType,
+                               SetRecoveryPaused setRecoveryPaused) {
+    constexpr VkDeviceSize ChurnBytes = 4 * MiB;
+    constexpr std::uint32_t BufferCount = 3;
+    constexpr std::uint32_t ChurnWords = static_cast<std::uint32_t>(ChurnBytes / sizeof(std::uint32_t));
+    constexpr std::uint32_t Accesses = 8;
+    const auto patternWord = [](std::uint32_t word, std::uint32_t buffer) {
+        return initialWord(word) ^ mix32(word ^ (0x9e3779b9u * (buffer + 1u)));
+    };
+    const auto* controlBase = std::getenv("ZVRAM_CONTROL_DIR");
+    require(controlBase && *controlBase, "recovery-churn fixture has no private control directory");
+    require(forceType && getBackingType,
+            "recovery-churn fixture requires test-only backing type hooks");
+    require(setRecoveryPaused,
+            "recovery-churn fixture requires the test-only recovery pause hook");
+    RecoveryPauseGuard recoveryPause{context.device, setRecoveryPaused};
+    recoveryPause.set(true);
+    const auto deviceToken = reinterpret_cast<std::uintptr_t>(context.device);
+    const auto process = std::to_string(getpid()) + "-" +
+                         std::to_string(zvram::control::processStart());
+    const auto directory = std::string(controlBase) + "/" + process;
+    const auto statusPath = directory + "/" + std::to_string(deviceToken) + ".status";
+
+    std::unordered_map<std::string, std::uint64_t> status;
+    const auto statusDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < statusDeadline &&
+           (!readFixtureStatus(statusPath, status) || status["capable"] != 1 ||
+            status["current_limit_mib"] != 12)) {
+        status.clear();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    require(status["capable"] == 1 && status["current_limit_mib"] == 12,
+            "recovery-churn fixture did not publish its initial 12 MiB cap");
+    std::uint64_t sequence = status["seq"];
+
+    std::array<Buffer, BufferCount> buffers{};
+    for (auto& buffer : buffers) buffer.device = context.device;
+    Staging staging; staging.device = context.device;
+    VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    info.size = ChurnBytes;
+    info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VkMemoryRequirements requirements{};
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    std::array<std::uint32_t, BufferCount> seededTypes{};
+    for (std::uint32_t i = 0; i < BufferCount; ++i) {
+        check(vkCreateBuffer(context.device, &info, nullptr, &buffers[i].handle),
+              "create recovery-churn tracked buffer");
+        vkGetBufferMemoryRequirements(context.device, buffers[i].handle, &requirements);
+        require(requirements.size == ChurnBytes &&
+                (requirements.memoryTypeBits & (1u << context.virtualType)),
+                "recovery-churn fixture requires exact 4 MiB tracked buffers");
+        seededTypes[i] = UINT32_MAX;
+        for (std::uint32_t type = 0; type < context.memory.memoryTypeCount; ++type) {
+            const auto heap = context.memory.memoryTypes[type].heapIndex;
+            if ((requirements.memoryTypeBits & (1u << type)) &&
+                heap < context.memory.memoryHeapCount &&
+                !(context.memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
+                seededTypes[i] = type;
+                break;
+            }
+        }
+        require(seededTypes[i] != UINT32_MAX,
+                "recovery-churn fixture needs a compatible nonlocal backing type");
+        allocation.allocationSize = requirements.size;
+        allocation.memoryTypeIndex = context.virtualType;
+        check(vkAllocateMemory(context.device, &allocation, nullptr, &buffers[i].memory),
+              "allocate recovery-churn virtual backing");
+        check(vkBindBufferMemory(context.device, buffers[i].handle, buffers[i].memory, 0),
+              "bind recovery-churn virtual backing");
+    }
+
+    VkBufferCreateInfo stagingInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    stagingInfo.size = ChurnBytes;
+    stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    check(vkCreateBuffer(context.device, &stagingInfo, nullptr, &staging.buffer),
+          "create recovery-churn staging buffer");
+    vkGetBufferMemoryRequirements(context.device, staging.buffer, &requirements);
+    allocation.allocationSize = requirements.size;
+    allocation.memoryTypeIndex = hostCoherentType(context, requirements.memoryTypeBits);
+    require(allocation.memoryTypeIndex != UINT32_MAX,
+            "no host-coherent recovery-churn staging type");
+    check(vkAllocateMemory(context.device, &allocation, nullptr, &staging.memory),
+          "allocate recovery-churn staging memory");
+    check(vkBindBufferMemory(context.device, staging.buffer, staging.memory, 0),
+          "bind recovery-churn staging memory");
+    check(vkMapMemory(context.device, staging.memory, 0, ChurnBytes, 0, &staging.mapped),
+          "map recovery-churn staging memory");
+
+    auto* words = static_cast<std::uint32_t*>(staging.mapped);
+    for (std::uint32_t i = 0; i < BufferCount; ++i) {
+        for (std::uint32_t word = 0; word < ChurnWords; ++word)
+            words[word] = patternWord(word, i);
+        // Lazy allocations acquire physical backing on this first submission.
+        check(forceType(context.device, seededTypes[i]),
+              "force synthetic nonlocal recovery-churn backing");
+        check(context.submit([&](VkCommandBuffer command) {
+            VkMemoryBarrier ready{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+            ready.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+            ready.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_HOST_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                 1, &ready, 0, nullptr, 0, nullptr);
+            VkBufferCopy copy{0, 0, ChurnBytes};
+            vkCmdCopyBuffer(command, staging.buffer, buffers[i].handle, 1, &copy);
+            VkBufferMemoryBarrier sourceReadable{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            sourceReadable.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            sourceReadable.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            sourceReadable.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            sourceReadable.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            sourceReadable.buffer = buffers[i].handle;
+            sourceReadable.offset = 0;
+            sourceReadable.size = ChurnBytes;
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+                                 1, &sourceReadable, 0, nullptr);
+        }), "seed recovery-churn pattern");
+    }
+    check(vkQueueWaitIdle(context.queue), "finish recovery-churn initialization");
+
+    std::array<std::uint32_t, BufferCount> initialTypes{};
+    for (std::uint32_t i = 0; i < BufferCount; ++i) {
+        check(getBackingType(context.device, buffers[i].memory, 0, &initialTypes[i]),
+              "query seeded recovery-churn backing");
+        require(initialTypes[i] < context.memory.memoryTypeCount,
+                "recovery-churn initial backing type is outside device memory properties");
+        const auto heap = context.memory.memoryTypes[initialTypes[i]].heapIndex;
+        require(heap < context.memory.memoryHeapCount &&
+                !(context.memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT),
+                "recovery-churn test-hook seed did not produce nonlocal backing");
+    }
+    const auto* quietEnv = std::getenv("ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS");
+    std::cout << "recovery-churn-mode synthetic-forced-nonlocal=1 buffers=3 bytes=12582912"
+              << " accesses=8 cap-mib=8,12 quiet-ms=" << (quietEnv ? quietEnv : "1000")
+              << std::endl;
+    recoveryPause.set(false);
+
+    auto requestCap = [&](std::uint64_t mib) {
+        ++sequence;
+        writeFixtureRequest(directory, deviceToken, sequence, mib);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < deadline) {
+            status.clear();
+            if (readFixtureStatus(statusPath, status) && status["seq"] == sequence &&
+                status["ack"] == sequence && status["result"] == 0 &&
+                status["current_limit_mib"] == mib) return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        throw std::runtime_error("recovery-churn resident cap request did not settle");
+    };
+    auto awaitChurn = [&] {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < deadline) {
+            const auto stats = context.stats();
+            if (stats.residentBytes <= 2 * ChurnBytes &&
+                stats.coldLogicalBytes >= ChurnBytes && stats.failures == 0) return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        throw std::runtime_error("recovery-churn cap did not evict a tracked buffer");
+    };
+
+    for (std::uint32_t access = 0; access < Accesses; ++access) {
+        requestCap(8);
+        awaitChurn();
+        const auto index = access % BufferCount;
+        const auto before = context.stats();
+        std::uint32_t beforeType = UINT32_MAX;
+        const auto beforeTypeResult = getBackingType(context.device, buffers[index].memory, 0, &beforeType);
+        require(beforeTypeResult == VK_SUCCESS || beforeTypeResult == VK_ERROR_FEATURE_NOT_PRESENT,
+                "query pre-access recovery-churn backing");
+        if (beforeTypeResult == VK_ERROR_FEATURE_NOT_PRESENT) beforeType = UINT32_MAX;
+
+        VkCommandPool pool{};
+        VkCommandBuffer command{};
+        VkFence fence{};
+        VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+        poolInfo.queueFamilyIndex = context.family;
+        check(vkCreateCommandPool(context.device, &poolInfo, nullptr, &pool),
+              "create recovery-churn timed command pool");
+        VkCommandBufferAllocateInfo commandAllocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        commandAllocation.commandPool = pool;
+        commandAllocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        commandAllocation.commandBufferCount = 1;
+        check(vkAllocateCommandBuffers(context.device, &commandAllocation, &command),
+              "allocate recovery-churn timed command buffer");
+        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        check(vkBeginCommandBuffer(command, &begin), "begin recovery-churn readback");
+        VkBufferMemoryBarrier sourceReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        sourceReady.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        sourceReady.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        sourceReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceReady.buffer = buffers[index].handle;
+        sourceReady.offset = 0;
+        sourceReady.size = ChurnBytes;
+        VkBufferMemoryBarrier stagingReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        stagingReady.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+        stagingReady.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        stagingReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        stagingReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        stagingReady.buffer = staging.buffer;
+        stagingReady.offset = 0;
+        stagingReady.size = ChurnBytes;
+        VkBufferMemoryBarrier readyBarriers[]{sourceReady, stagingReady};
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+                             2, readyBarriers, 0, nullptr);
+        VkBufferCopy copy{0, 0, ChurnBytes};
+        vkCmdCopyBuffer(command, buffers[index].handle, staging.buffer, 1, &copy);
+        VkBufferMemoryBarrier hostReady{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        hostReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        hostReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        hostReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostReady.buffer = staging.buffer;
+        hostReady.offset = 0;
+        hostReady.size = ChurnBytes;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr,
+                             1, &hostReady, 0, nullptr);
+        check(vkEndCommandBuffer(command), "end recovery-churn readback");
+        VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        check(vkCreateFence(context.device, &fenceInfo, nullptr, &fence),
+              "create recovery-churn readback fence");
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &command;
+        const auto submitStart = std::chrono::steady_clock::now();
+        const auto submitResult = vkQueueSubmit(context.queue, 1, &submit, fence);
+        const auto submitEnd = std::chrono::steady_clock::now();
+        if (submitResult != VK_SUCCESS) {
+            context.unsafePendingTestResources = true;
+            for (auto& buffer : buffers) buffer.unsafe = true;
+            staging.unsafe = true;
+            throw std::runtime_error("submit recovery-churn readback failed: " +
+                                     std::to_string(submitResult));
+        }
+        const auto waitStart = std::chrono::steady_clock::now();
+        const auto waitResult = vkWaitForFences(context.device, 1, &fence, VK_TRUE,
+                                                 2ull * 1000ull * 1000ull * 1000ull);
+        const auto waitEnd = std::chrono::steady_clock::now();
+        if (waitResult != VK_SUCCESS) {
+            context.unsafePendingTestResources = true;
+            for (auto& buffer : buffers) buffer.unsafe = true;
+            staging.unsafe = true;
+            throw std::runtime_error("wait for recovery-churn readback did not complete: " +
+                                     std::to_string(waitResult));
+        }
+        vkDestroyFence(context.device, fence, nullptr);
+        fence = VK_NULL_HANDLE;
+        vkDestroyCommandPool(context.device, pool, nullptr);
+        pool = VK_NULL_HANDLE;
+        const auto after = context.stats();
+        std::uint32_t afterType = UINT32_MAX;
+        const auto afterTypeResult = getBackingType(context.device, buffers[index].memory, 0, &afterType);
+        require(afterTypeResult == VK_SUCCESS || afterTypeResult == VK_ERROR_FEATURE_NOT_PRESENT,
+                "query post-access recovery-churn backing");
+        if (afterTypeResult == VK_ERROR_FEATURE_NOT_PRESENT) afterType = UINT32_MAX;
+        const auto afterHeap = afterType < context.memory.memoryTypeCount
+            ? context.memory.memoryTypes[afterType].heapIndex : UINT32_MAX;
+        const bool possibleWarmTransition = beforeType != afterType &&
+            after.restores == before.restores && afterHeap < context.memory.memoryHeapCount &&
+            (context.memory.memoryHeaps[afterHeap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
+        for (std::uint32_t word = 0; word < ChurnWords; ++word)
+            require(words[word] == patternWord(word, index),
+                    "recovery-churn full-byte pattern mismatch");
+        const auto micros = [](auto start, auto end) {
+            return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        };
+        std::cout << "recovery-churn {\"access\":" << access
+                  << ",\"buffer\":" << index
+                  << ",\"queue_submit_us\":" << micros(submitStart, submitEnd)
+                  << ",\"fence_wait_us\":" << micros(waitStart, waitEnd)
+                  << ",\"freezes_delta\":" << (after.freezes >= before.freezes ? after.freezes - before.freezes : 0)
+                  << ",\"restores_delta\":" << (after.restores >= before.restores ? after.restores - before.restores : 0)
+                  << ",\"backing_before\":";
+        if (beforeType == UINT32_MAX) std::cout << "null";
+        else std::cout << beforeType;
+        std::cout << ",\"backing_after\":";
+        if (afterType == UINT32_MAX) std::cout << "null";
+        else std::cout << afterType;
+        std::cout
+                  << ",\"warm_transition_without_restore\":" << (possibleWarmTransition ? "true" : "false")
+                  << "}\n";
+        requestCap(12);
+        // Identical idle cadence in both cases; recovery age is per child,
+        // so only actual layer events establish which recoveries occurred.
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    const auto churnStats = context.stats();
+    check(vkQueueWaitIdle(context.queue), "finish recovery-churn submissions");
+    for (auto& buffer : buffers) {
+        vkDestroyBuffer(context.device, buffer.handle, nullptr);
+        buffer.handle = VK_NULL_HANDLE;
+        vkFreeMemory(context.device, buffer.memory, nullptr);
+        buffer.memory = VK_NULL_HANDLE;
+    }
+    if (staging.mapped) {
+        vkUnmapMemory(context.device, staging.memory);
+        staging.mapped = nullptr;
+    }
+    vkDestroyBuffer(context.device, staging.buffer, nullptr);
+    staging.buffer = VK_NULL_HANDLE;
+    vkFreeMemory(context.device, staging.memory, nullptr);
+    staging.memory = VK_NULL_HANDLE;
+    const auto final = context.stats();
+    require(!final.residentBytes && !final.coldLogicalBytes && !final.coldStoredBytes &&
+            !final.failures,
+            "recovery-churn cleanup retained resident or cold accounting");
+    std::cout << "recovery-churn-summary {\"accesses\":" << Accesses
+              << ",\"freeze_count\":" << churnStats.freezes
+              << ",\"restore_count\":" << churnStats.restores
+              << ",\"resident_after_cleanup\":" << final.residentBytes
+              << ",\"cold_after_cleanup\":" << final.coldLogicalBytes
+              << ",\"stored_after_cleanup\":" << final.coldStoredBytes
+              << ",\"failures_after_cleanup\":" << final.failures
+              << ",\"backing_transitions_are_candidates_only\":true"
+              << ",\"synthetic_forced_nonlocal\":true}\n"
+              << "PASS: recovery-churn full bytes and cleanup verified\n";
+}
 
 void coldCycleRecoveryFixtureCheck(Context& context, ForceNextBackingType forceType,
                                    GetBackingType getBackingType,
@@ -4328,6 +4652,7 @@ int main(int argc, char** argv) try {
     bool pressureOnlyFixture = false;
     bool pressureOnlyLiveCapFixture = false;
     bool coldCycleRecoveryFixture = false;
+    bool recoveryChurnFixture = false;
     bool expectDirectRecovery = false;
     bool unlockedRecoveryWaitFixture = false;
     bool finiteBarrierRecoveryFixture = false;
@@ -4412,6 +4737,9 @@ int main(int argc, char** argv) try {
         else if (std::strcmp(argv[i], "--cold-cycle-recovery-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
         }
+        else if (std::strcmp(argv[i], "--recovery-churn-fixture") == 0) {
+            rangeSubmit=true; rangePressure=true; recoveryChurnFixture=true;
+        }
         else if (std::strcmp(argv[i], "--direct-recovery-batch-fixture") == 0) {
             rangeSubmit=true; rangePressure=true; coldCycleRecoveryFixture=true;
             directRecoveryBatchFixture=true; expectDirectRecovery=true;
@@ -4470,7 +4798,7 @@ int main(int argc, char** argv) try {
             require(controlHoldMilliseconds<=15000,"--control-hold-ms maximum is 15000");
         }
         else if (std::strcmp(argv[i], "--active-submit") == 0) { selectiveSubmit = true; activeSubmit = true; }
-        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--pressure-only-fixture|--pressure-only-live-cap-fixture|--cold-cycle-recovery-fixture|--async-encode-overlap-fixture|--async-pressure-raise-discard-fixture|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues] [--control-hold-ms 0..15000]");
+        else throw std::runtime_error("usage: zvram-vulkan-auto-check [--expect-budget-refusal|--expect-budget-release|--expect-partial-freeze|--expect-partial-restore|--expect-pipeline-restore|--expect-pipeline-partial-restore] [--bda] [--native-allocation] [--two-queues|--two-families|--exclusive-families] [--pending-wait|--pending-bind] [--concurrent-wait] [--suballocation|--suballocation-auto] [--suballocation-api2] [--selective-bind|--selective-bind-api2] [--selective-submit|--selective-submit-api2|--selective-submit-unknown] [--range-submit|--range-compressed [--zero-pattern]|--range-pressure|--pressure-only-fixture|--pressure-only-live-cap-fixture|--cold-cycle-recovery-fixture|--recovery-churn-fixture|--async-encode-overlap-fixture|--async-pressure-raise-discard-fixture|--range-cache|--range-cache-bootstrap|--range-cache-quota|--range-cache-unknown] [--active-submit --two-queues] [--control-hold-ms 0..15000]");
     }
     require(!useZeroPattern || rangeCompressed,
             "--zero-pattern requires --range-compressed");
@@ -4538,6 +4866,9 @@ int main(int argc, char** argv) try {
             "hot recovery fixture requires native allocation without BDA or refusal mode");
     require(!pressureOnlyLiveCapFixture || (!nativeAllocation && !twoQueues && !twoFamilies && !exclusiveFamilies),
             "pressure-only live-cap fixture uses synthetic single-queue backing");
+    require(!recoveryChurnFixture || (!nativeAllocation && !bdaMode && !twoQueues && !twoFamilies &&
+                                      !exclusiveFamilies && rangePressure && !coldCycleRecoveryFixture),
+            "recovery-churn fixture uses synthetic single-queue tracked buffers");
     require(!(asyncEncodeOverlapFixture && asyncPressureRaiseDiscardFixture),
             "choose one deterministic async overlap fixture");
     require(static_cast<unsigned>(asyncEncodeOverlapFixture) +
@@ -4595,6 +4926,20 @@ int main(int argc, char** argv) try {
                        pendingWait, pendingBind, activeSubmit,
                        (rangePressure && twoQueues) || asyncCandidateHeldReadFixture, robustCore,
                        coldCycleRecoveryFixture && bdaMode);
+    if (recoveryChurnFixture) {
+        const auto forceType = reinterpret_cast<ForceNextBackingType>(
+            vkGetDeviceProcAddr(context.device, "vkZVramForceNextBackingTypeNX"));
+        const auto getBackingType = reinterpret_cast<GetBackingType>(
+            vkGetDeviceProcAddr(context.device, "vkZVramGetBackingTypeNX"));
+        const auto setRecoveryPaused = reinterpret_cast<SetRecoveryPaused>(
+            vkGetDeviceProcAddr(context.device, "vkZVramSetRecoveryPausedNX"));
+        if (!forceType || !getBackingType || !setRecoveryPaused) {
+            std::cerr << "UNSUPPORTED: recovery-churn fixture requires ZVRAM_TEST_ASYNC_HOOK layer build\n";
+            return 77;
+        }
+        recoveryChurnFixtureCheck(context, forceType, getBackingType, setRecoveryPaused);
+        return 0;
+    }
     if (coldCycleRecoveryFixture) {
         const auto forceType = reinterpret_cast<ForceNextBackingType>(
             vkGetDeviceProcAddr(context.device, "vkZVramForceNextBackingTypeNX"));

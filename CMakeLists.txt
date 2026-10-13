@@ -607,6 +607,20 @@ if(ZVRAM_TEST_ASYNC_HOOK)
             ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS=1000;VK_LOADER_LAYERS_DISABLE=~implicit~"
             LABELS "hardware;vulkan;direct-recovery;range-sensitivity;native-allocation;test-hook")
     endforeach()
+    foreach(recovery_churn_quiet_ms 0 1000)
+        set(recovery_churn_test vulkan-recovery-churn-quiet-${recovery_churn_quiet_ms})
+        add_test(NAME ${recovery_churn_test}
+            COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
+                --vulkan-virtual-mib 16 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 8
+                --vulkan-selective-restore --vulkan-active-eviction --vulkan-range-mib 4
+                --vulkan-resident-mib 12 --vulkan-eviction-trigger pressure
+                --vulkan-lazy-backing --vulkan-headroom-mib 1 --vulkan-recover-local
+                --vulkan-recover-local-quiet-ms ${recovery_churn_quiet_ms} --
+                $<TARGET_FILE:zvram-vulkan-auto-check> --recovery-churn-fixture)
+        set_tests_properties(${recovery_churn_test} PROPERTIES TIMEOUT 30
+            ENVIRONMENT "ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1;VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1"
+            LABELS "hardware;vulkan;cold-cycle;recovery-churn;synthetic-spill;test-hook")
+    endforeach()
 endif()
 add_test(NAME vulkan-graphics-pressure-retention
     COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers
@@ -1098,5 +1112,7 @@ if(ZVRAM_TEST_ASYNC_HOOK)
         vulkan-cold-cycle-unlocked-cold-peer-wait
         vulkan-async-candidate-read-completed
         vulkan-async-candidate-read-held
-        vulkan-async-candidate-write-completed PROPERTIES TIMEOUT 30)
+        vulkan-async-candidate-write-completed
+        vulkan-recovery-churn-quiet-0
+        vulkan-recovery-churn-quiet-1000 PROPERTIES TIMEOUT 30)
 endif()

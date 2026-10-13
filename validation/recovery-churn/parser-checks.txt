@@ -1,0 +1,2 @@
+Valid real quiet0/quiet1000 captures accepted.
+Negative checks rejected: missing row, validation error, missing byte proof, wrong quiet mode, nonzero cleanup.

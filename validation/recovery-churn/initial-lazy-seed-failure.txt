@@ -1,0 +1,73 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 85
+    Start 85: vulkan-recovery-churn-quiet-0
+
+85: Test command: /usr/bin/python3.14 "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "16" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "8" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "4" "--vulkan-resident-mib" "12" "--vulkan-eviction-trigger" "pressure" "--vulkan-lazy-backing" "--vulkan-headroom-mib" "1" "--vulkan-recover-local" "--vulkan-recover-local-quiet-ms" "0" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/zvram-vulkan-auto-check" "--recovery-churn-fixture"
+85: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+85: Environment variables: 
+85:  ZVRAM_VULKAN_COLD_CYCLE_RECOVERY=1
+85:  VK_LOADER_LAYERS_DISABLE=~implicit~
+85:  VK_VALIDATION_VALIDATE_SYNC=1
+85: Test timeout computed to be: 30
+85: [zvram] Vulkan snapshot transfer staging bytes=33554432
+85: [zvram] Vulkan snapshot decode max-workers=1
+85: [zvram] Vulkan snapshot lookahead staging bytes=33554432
+85: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=8388608
+85: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+85: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+85: [zvram] cold-cycle backing recovery enabled quiet-ms=0 max-child-bytes=33554432 unlocked-wait=0; no in-place TTM migration
+85: [zvram] Vulkan range residency enabled chunk-bytes=4194304
+85: [zvram] Vulkan resident admission enabled limit-bytes=12582912
+85: [zvram] Vulkan eviction policy=lru
+85: [zvram] Vulkan snapshot minimum savings percent=0
+85: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+85: [zvram] virtual allocate bytes=4194304 heap-capacity=16777216
+85: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=4194304 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+85: [zvram] virtual allocate bytes=4194304 heap-capacity=16777216
+85: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=8388608 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+85: [zvram] virtual allocate bytes=4194304 heap-capacity=16777216
+85: [zvram] snapshot state event=bootstrap-bind resident=0 cold-logical=12582912 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+85: [zvram] resident budget native-heap=1 budget=12400005120 usage=8839168 tracked-local=0 reserve=1048576 effective-limit=12582912 hard-limit=12582912
+85: [zvram] snapshot state event=restore resident=4194304 cold-logical=8388608 cold-stored=0 freezes=0 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+85: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=2
+85: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+85: [zvram] snapshot state event=restore resident=8388608 cold-logical=4194304 cold-stored=0 freezes=0 restores=2 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+85: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=1
+85: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+85: [zvram] snapshot state event=restore resident=12582912 cold-logical=0 cold-stored=0 freezes=0 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+85: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+85: [zvram] snapshot pipeline prefetches=0 prepared-restores=0 wait-ns=0
+85: [zvram] virtual free bytes=4194304
+85: [zvram] virtual free bytes=4194304
+85: [zvram] virtual free bytes=4194304
+85: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=3 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+85: [zvram] snapshot transfer profile copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0
+85: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=8388608 live-nonlocal=0 peak-nonlocal=8388608 allocation-failures=0
+85: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+85: error: recovery-churn test-hook seed did not produce nonlocal backing
+1/1 Test #85: vulkan-recovery-churn-quiet-0 ....***Failed    0.25 sec
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+cold-cycle         =   0.25 sec*proc (1 test)
+hardware           =   0.25 sec*proc (1 test)
+recovery-churn     =   0.25 sec*proc (1 test)
+synthetic-spill    =   0.25 sec*proc (1 test)
+test-hook          =   0.25 sec*proc (1 test)
+vulkan             =   0.25 sec*proc (1 test)
+
+Total Test time (real) =   0.25 sec
+
+The following tests FAILED:
+	 85 - vulkan-recovery-churn-quiet-0 (Failed)            cold-cycle hardware recovery-churn synthetic-spill test-hook vulkan
+Errors while running CTest
+Output from these tests are in: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race/Testing/Temporary/LastTest.log
+Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.

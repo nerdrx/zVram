@@ -1,0 +1,6 @@
+-- Configuring done (0.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/async-race
+[ 50%] Building CXX object CMakeFiles/zvram_layer.dir/layer.cpp.o
+[100%] Linking CXX shared library libzvram_layer.so
+[100%] Built target zvram_layer
