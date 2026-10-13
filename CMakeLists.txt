@@ -88,6 +88,9 @@ target_compile_features(zvram-vulkan-auto-check PRIVATE cxx_std_17)
 target_compile_definitions(zvram-vulkan-auto-check PRIVATE ZVRAM_CHECK_SHADER_PATH="${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv")
 target_compile_definitions(zvram-vulkan-auto-check PRIVATE ZVRAM_BDA_SHADER_PATH="${CMAKE_CURRENT_BINARY_DIR}/vulkan_auto_bda.spv")
 target_link_libraries(zvram-vulkan-auto-check PRIVATE Vulkan::Vulkan Threads::Threads)
+add_executable(zvram-vulkan-requirements-check vulkan_requirements_check.cpp)
+target_compile_features(zvram-vulkan-requirements-check PRIVATE cxx_std_17)
+target_link_libraries(zvram-vulkan-requirements-check PRIVATE Vulkan::Vulkan)
 foreach(stage vert frag)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/graphics_check.${stage}.spv
         COMMAND ${ZVRAM_GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/graphics_check.${stage}
@@ -140,6 +143,17 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/ctest_launcher.py.in
 file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 set(ZVRAM_TEST_LAUNCH ${Python3_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py)
+add_test(NAME vulkan-maintenance4-requirements
+    COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 16 --
+        $<TARGET_FILE:zvram-vulkan-requirements-check>)
+add_test(NAME vulkan-maintenance4-auto-requirements
+    COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 16
+        --vulkan-auto-idle-ms 100 --vulkan-cold-mib 8 --vulkan-selective-restore
+        --vulkan-active-eviction --vulkan-range-mib 4 --vulkan-resident-mib 12 --
+        $<TARGET_FILE:zvram-vulkan-requirements-check>)
+set_tests_properties(vulkan-maintenance4-requirements vulkan-maintenance4-auto-requirements PROPERTIES SKIP_RETURN_CODE 77
+    ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1"
+    LABELS "hardware;vulkan;compatibility;maintenance4")
 set(graphics_check_launch ${ZVRAM_TEST_LAUNCH}
     --validate --isolate-layers --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64)
 add_test(NAME vulkan-graphics-cold-restore COMMAND ${graphics_check_launch}
@@ -1116,3 +1130,5 @@ if(ZVRAM_TEST_ASYNC_HOOK)
         vulkan-recovery-churn-quiet-0
         vulkan-recovery-churn-quiet-1000 PROPERTIES TIMEOUT 30)
 endif()
+
+set_tests_properties(vulkan-maintenance4-requirements vulkan-maintenance4-auto-requirements PROPERTIES TIMEOUT 15)

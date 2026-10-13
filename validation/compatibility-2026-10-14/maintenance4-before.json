@@ -1,0 +1,7 @@
+{
+  "source_runtime": "333b9ec unchanged by fixture834f386",
+  "path": "/tmp/zvram-maintenance4-before",
+  "test_hooks": true,
+  "library_sha256": "b7abc2049d86dbc5a720305c08daec1d3da4658e34b018824ef3b20417bc0827",
+  "scope": "pre-fix query/create consistency comparator; no compile-only API used"
+}
