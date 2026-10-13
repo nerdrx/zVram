@@ -16,8 +16,11 @@ User authorized compatibility improvements until 2026-10-14 08:00 Europe/Berlin 
 ## Current progress and next work
 
 - Launcher diagnostic committed as `c757cb7`; root reviewed and all 16 package/manager/control tests passed.
-- Maintenance4 core/KHR query fix and standalone consistency checker completed; normal build, 14 CPU tests, before/after real-driver query comparison, and automatic-range query case all passed. See README.md and raw evidence. Root committing this batch.
-- `/root/active_queue_markers` now auditing Vulkan 1.4 / KHR map_memory2 dispatch and wrapped-memory handle translation READONLY. Return concrete reachable gap or no issue. No edits/build/GPU authorized yet.
+- Maintenance4 core/KHR query fix and standalone consistency checker completed; normal build, 14 CPU tests, before/after real-driver query comparison, and automatic-range query case all passed. See README.md and raw evidence. Committed `3442397`, pushed; draft PR https://github.com/nerdrx/zVram/pull/4. Check CI once on a future pass.
+- Map2 audit complete: no fix needed. Valid map2/unmap2 memory is host-visible and remains an unwrapped native handle; synthetic/wrapped memory is GPU-only and cannot validly use mapping APIs.
+- Maintenance6 fix completed and root-reviewed: enabled feature tracks KHR/core1.4, valid status chain accepted for promoted buffers, all enabled batch entries attempted with per-bind results. All 14 normal CPU tests passed in 5.09s; test-only older-header mock guard corrected and bootstrap rebuilt/passed afterward. Tiny same-checker old-backend expected failure/current normal PASS 0.05s; both bind statuses SUCCESS, validation clean, final live local/nonlocal zero. Normal hooks OFF/six APIs absent. See maintenance6 evidence and README. Ready to commit/push in this pass.
+- Previous 3442397 PR4 CI both SUCCESS: 38482501131 and 38482508048 checked 23:21 UTC.
+- `/root/auto_docs_update` now has a bounded READONLY CPU-only launcher Steam/Proton command/env/exit propagation audit. Other owners holding. No new production edits or GPU authorized for that audit.
 - Other agents completed/holding. No root-owned running jobs. No GPU timing reruns needed.
 
 ## Operating constraints

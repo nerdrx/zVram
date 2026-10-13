@@ -1,0 +1,5 @@
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] virtual allocate bytes=4194304 heap-capacity=16777216
+[zvram] virtual free bytes=4194304
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=4096 allocation-failures=0
+FAIL: bind-status batch failed: return=-8 virtual=-13 native=-13

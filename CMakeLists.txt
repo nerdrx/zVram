@@ -151,9 +151,15 @@ add_test(NAME vulkan-maintenance4-auto-requirements
         --vulkan-auto-idle-ms 100 --vulkan-cold-mib 8 --vulkan-selective-restore
         --vulkan-active-eviction --vulkan-range-mib 4 --vulkan-resident-mib 12 --
         $<TARGET_FILE:zvram-vulkan-requirements-check>)
+add_test(NAME vulkan-maintenance6-bind-status
+    COMMAND ${ZVRAM_TEST_LAUNCH} --validate --isolate-layers --vulkan-virtual-mib 16 --
+        $<TARGET_FILE:zvram-vulkan-requirements-check> --bind-status)
 set_tests_properties(vulkan-maintenance4-requirements vulkan-maintenance4-auto-requirements PROPERTIES SKIP_RETURN_CODE 77
     ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1"
     LABELS "hardware;vulkan;compatibility;maintenance4")
+set_tests_properties(vulkan-maintenance6-bind-status PROPERTIES SKIP_RETURN_CODE 77
+    ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1"
+    LABELS "hardware;vulkan;compatibility;maintenance6;bind-status")
 set(graphics_check_launch ${ZVRAM_TEST_LAUNCH}
     --validate --isolate-layers --vulkan-virtual-mib 128 --vulkan-auto-idle-ms 100 --vulkan-cold-mib 64)
 add_test(NAME vulkan-graphics-cold-restore COMMAND ${graphics_check_launch}
@@ -1131,4 +1137,5 @@ if(ZVRAM_TEST_ASYNC_HOOK)
         vulkan-recovery-churn-quiet-1000 PROPERTIES TIMEOUT 30)
 endif()
 
-set_tests_properties(vulkan-maintenance4-requirements vulkan-maintenance4-auto-requirements PROPERTIES TIMEOUT 15)
+set_tests_properties(vulkan-maintenance4-requirements vulkan-maintenance4-auto-requirements
+    vulkan-maintenance6-bind-status PROPERTIES TIMEOUT 15)

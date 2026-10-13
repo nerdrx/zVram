@@ -308,6 +308,101 @@ struct Fixture {
     VirtualMemory& state() { return device.virtualMemory.at(memory); }
 };
 
+#ifdef VK_KHR_maintenance6
+unsigned maintenance6BindCalls{};
+VkBuffer maintenance6FailBuffer{};
+std::vector<VkBuffer> maintenance6BoundBuffers;
+VKAPI_ATTR VkResult VKAPI_CALL mockMaintenance6BindBufferMemory2(VkDevice,std::uint32_t count,const VkBindBufferMemoryInfo* infos) {
+    ++maintenance6BindCalls;
+    for(std::uint32_t i=0;i<count;i++) {
+        maintenance6BoundBuffers.push_back(infos[i].buffer);
+        for(auto* p=static_cast<const VkBaseInStructure*>(infos[i].pNext);p;p=p->pNext)
+#ifdef VK_KHR_maintenance6
+            if(p->sType==VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR)
+                *reinterpret_cast<const VkBindMemoryStatusKHR*>(p)->pResult=
+                    infos[i].buffer==maintenance6FailBuffer?VK_ERROR_OUT_OF_DEVICE_MEMORY:VK_SUCCESS;
+#endif
+    }
+    return infos[0].buffer==maintenance6FailBuffer?VK_ERROR_OUT_OF_DEVICE_MEMORY:VK_SUCCESS;
+}
+#endif
+
+void checkMaintenance6BindStatus() {
+#ifdef VK_KHR_maintenance6
+    VkPhysicalDeviceMaintenance6FeaturesKHR features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR};
+    VkDeviceCreateInfo deviceCreate{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; deviceCreate.pNext=&features;
+    features.maintenance6=VK_TRUE;
+    require(maintenance6Requested(&deviceCreate),"KHR maintenance6 enabled feature was not detected");
+    features.maintenance6=VK_FALSE;
+    require(!maintenance6Requested(&deviceCreate),"disabled KHR maintenance6 feature was detected");
+#endif
+#ifdef VK_VERSION_1_4
+    VkPhysicalDeviceVulkan14Features coreFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES};
+    VkDeviceCreateInfo coreCreate{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; coreCreate.pNext=&coreFeatures;
+    coreFeatures.maintenance6=VK_TRUE;
+    require(maintenance6Requested(&coreCreate),"core 1.4 maintenance6 enabled feature was not detected");
+#endif
+#ifdef VK_KHR_maintenance6
+    {
+        Fixture f(2*MiB,2*MiB); f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+        auto& d=f.device; d.handle=f.handle; d.maintenance6Enabled=true; d.virtualBytes=2*MiB;
+        const auto prior=f.bind(0,MiB);
+        (void)prior;
+        const auto buffer=tokenHandle<VkBuffer>(0x6b01);
+        PromotedBuffer promoted{}; promoted.size=MiB; promoted.requirements={MiB,4096,1};
+        d.promotedBuffers.emplace(buffer,promoted);
+        { std::lock_guard<std::mutex> lock(mapsMutex); devices[key(d.handle)]=std::shared_ptr<Device>(&d,[](Device*){}); }
+        VkResult statusResult=VK_ERROR_UNKNOWN;
+        VkBindMemoryStatusKHR status{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR}; status.pResult=&statusResult;
+        VkBindBufferMemoryInfo info{VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO};
+        info.pNext=&status; info.buffer=buffer; info.memory=f.memory; info.memoryOffset=MiB;
+        require(layerBindBufferMemory2(d.handle,1,&info)==VK_SUCCESS && statusResult==VK_SUCCESS,
+                "promoted buffer bind did not report maintenance6 status success");
+
+        VkBaseInStructure unsupported{}; unsupported.sType=VK_STRUCTURE_TYPE_MAX_ENUM;
+        unsupported.pNext=reinterpret_cast<const VkBaseInStructure*>(&status);
+        const auto rejected=tokenHandle<VkBuffer>(0x6b02);
+        PromotedBuffer rejectedPromoted{}; rejectedPromoted.size=MiB; rejectedPromoted.requirements={MiB,4096,1};
+        d.promotedBuffers.emplace(rejected,rejectedPromoted);
+        info.buffer=rejected; info.pNext=&unsupported; statusResult=VK_ERROR_UNKNOWN;
+        const auto sparseBefore=sparseBinds;
+        require(layerBindBufferMemory2(d.handle,1,&info)==VK_ERROR_FEATURE_NOT_PRESENT &&
+                statusResult==VK_ERROR_FEATURE_NOT_PRESENT && sparseBinds==sparseBefore,
+                "promoted bind bypassed unsupported pNext rejection or omitted per-bind error status");
+        { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(d.handle)); }
+    }
+    {
+        Fixture f; f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+        auto& d=f.device; d.handle=f.handle; d.maintenance6Enabled=true;
+        d.bindBufferMemory2=mockMaintenance6BindBufferMemory2;
+        { std::lock_guard<std::mutex> lock(mapsMutex); devices[key(d.handle)]=std::shared_ptr<Device>(&d,[](Device*){}); }
+        const auto first=tokenHandle<VkBuffer>(0x6b10),local=tokenHandle<VkBuffer>(0x6b11),last=tokenHandle<VkBuffer>(0x6b12);
+        VkResult firstStatus=VK_ERROR_UNKNOWN,localStatus=VK_ERROR_UNKNOWN,lastStatus=VK_ERROR_UNKNOWN;
+        VkBindMemoryStatusKHR firstInfoStatus{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR}; firstInfoStatus.pResult=&firstStatus;
+        VkBindMemoryStatusKHR localInfoStatus{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR}; localInfoStatus.pResult=&localStatus;
+        VkBindMemoryStatusKHR lastInfoStatus{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR}; lastInfoStatus.pResult=&lastStatus;
+        VkBindBufferMemoryInfo infos[3]{};
+        infos[0]={VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,&firstInfoStatus,first,tokenHandle<VkDeviceMemory>(0x6b20),0};
+        infos[1]={VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,&localInfoStatus,local,f.memory,0};
+        infos[2]={VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,&lastInfoStatus,last,tokenHandle<VkDeviceMemory>(0x6b21),0};
+        maintenance6BindCalls=0; maintenance6FailBuffer=first; maintenance6BoundBuffers.clear();
+        const auto batch=layerBindBufferMemory2(d.handle,3,infos);
+        require(batch==VK_ERROR_OUT_OF_DEVICE_MEMORY &&
+                maintenance6BindCalls==2 && maintenance6BoundBuffers==std::vector<VkBuffer>{first,last} &&
+                firstStatus==VK_ERROR_OUT_OF_DEVICE_MEMORY && localStatus==VK_ERROR_FEATURE_NOT_PRESENT &&
+                lastStatus==VK_SUCCESS,
+                "maintenance6 buffer batch did not attempt later binds or report each result");
+
+        d.maintenance6Enabled=false;
+        firstStatus=lastStatus=VK_ERROR_UNKNOWN; maintenance6BindCalls=0; maintenance6BoundBuffers.clear();
+        require(layerBindBufferMemory2(d.handle,2,infos)==VK_ERROR_OUT_OF_DEVICE_MEMORY && maintenance6BindCalls==1 &&
+                firstStatus==VK_ERROR_OUT_OF_DEVICE_MEMORY && lastStatus==VK_ERROR_UNKNOWN,
+                "disabled maintenance6 did not preserve early-exit batch behavior");
+        { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(d.handle)); }
+    }
+#endif
+}
+
 bool maintenance4CoreAvailable=true,maintenance4KhrAvailable=true;
 unsigned maintenance4CoreCalls{},maintenance4KhrCalls{};
 VkBufferCreateInfo maintenance4QueriedCreateInfo{};
@@ -2697,6 +2792,7 @@ void checkDecoderAbandonmentPrecedesNativeDeviceDestroy() {
 
 int main() try {
     checkMaintenance4BufferRequirements();
+    checkMaintenance6BindStatus();
     checkGatedRecoveryTeardownCleanup();
     checkQueueIdleTeardownFallback();
     checkDeferredPromotedBufferDestroy();

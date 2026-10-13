@@ -34,12 +34,21 @@ struct Candidate {
     std::uint32_t queueFamily{};
     bool maintenance4Core{};
     bool maintenance4Extension{};
+#ifdef VK_KHR_maintenance6
+    bool maintenance6Extension{};
+#endif
 };
 
 struct BufferGuard {
     VkDevice device{};
     VkBuffer handle{};
     ~BufferGuard() { if (handle) vkDestroyBuffer(device, handle, nullptr); }
+};
+
+struct MemoryGuard {
+    VkDevice device{};
+    VkDeviceMemory handle{};
+    ~MemoryGuard() { if (handle) vkFreeMemory(device, handle, nullptr); }
 };
 
 void compareRequirements(const char* label, const VkMemoryRequirements2& expected,
@@ -56,7 +65,13 @@ void compareRequirements(const char* label, const VkMemoryRequirements2& expecte
     }
 }
 
-int run() {
+int run(bool bindStatusMode) {
+#ifndef VK_KHR_maintenance6
+    if (bindStatusMode) {
+        std::cerr << "UNSUPPORTED: bind-status mode requires VK_KHR_maintenance6 headers\n";
+        return 77;
+    }
+#endif
     std::uint32_t loaderVersion = VK_API_VERSION_1_0;
     const auto enumerateVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
         vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
@@ -93,14 +108,26 @@ int run() {
                               properties.apiVersion >= VK_API_VERSION_1_3;
             const bool extension = hasExtension(physical, VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
             if (!core && !extension) continue;
+#ifdef VK_KHR_maintenance6
+            const bool maintenance6Extension = hasExtension(physical, VK_KHR_MAINTENANCE_6_EXTENSION_NAME);
+            if (bindStatusMode && !maintenance6Extension) continue;
+#endif
 
             VkPhysicalDeviceMaintenance4Features maintenance4{
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES};
             VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
             features.pNext = &maintenance4;
+#ifdef VK_KHR_maintenance6
+            VkPhysicalDeviceMaintenance6FeaturesKHR maintenance6{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR};
+            if (bindStatusMode) maintenance4.pNext = &maintenance6;
+#endif
             vkGetPhysicalDeviceFeatures2(physical, &features);
             if (!maintenance4.maintenance4 || !features.features.sparseBinding ||
                 !features.features.sparseResidencyBuffer) continue;
+#ifdef VK_KHR_maintenance6
+            if (bindStatusMode && !maintenance6.maintenance6) continue;
+#endif
 
             std::uint32_t familyCount{};
             vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, nullptr);
@@ -119,11 +146,16 @@ int run() {
             selected.queueFamily = sparseFamily;
             selected.maintenance4Core = core;
             selected.maintenance4Extension = extension;
+#ifdef VK_KHR_maintenance6
+            selected.maintenance6Extension = maintenance6Extension;
+#endif
             vkGetPhysicalDeviceMemoryProperties(physical, &selected.memory);
             break;
         }
         if (!selected.physical) {
-            std::cerr << "UNSUPPORTED: no device exposes maintenance4, sparse binding, sparse buffer residency, and a sparse queue\n";
+            std::cerr << (bindStatusMode
+                ? "UNSUPPORTED: no device exposes maintenance4+6, sparse binding/residency, and a sparse queue\n"
+                : "UNSUPPORTED: no device exposes maintenance4, sparse binding, sparse buffer residency, and a sparse queue\n");
             vkDestroyInstance(instance, nullptr);
             return 77;
         }
@@ -140,19 +172,146 @@ int run() {
         enabled.features.sparseBinding = VK_TRUE;
         enabled.features.sparseResidencyBuffer = VK_TRUE;
         enabled.pNext = &maintenance4;
-        const char* maintenanceExtension[] = {VK_KHR_MAINTENANCE_4_EXTENSION_NAME};
+        const char* maintenanceExtensions[2] = {VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
+#ifdef VK_KHR_maintenance6
+                                                  VK_KHR_MAINTENANCE_6_EXTENSION_NAME
+#else
+                                                  nullptr
+#endif
+        };
         const bool enableExtension = selected.maintenance4Extension;
+#ifdef VK_KHR_maintenance6
+        VkPhysicalDeviceMaintenance6FeaturesKHR enabledMaintenance6{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR};
+        if (bindStatusMode) {
+            enabledMaintenance6.maintenance6 = VK_TRUE;
+            maintenance4.pNext = &enabledMaintenance6;
+        }
+#endif
         VkDeviceCreateInfo deviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         deviceInfo.pNext = &enabled;
         deviceInfo.queueCreateInfoCount = 1;
         deviceInfo.pQueueCreateInfos = &queueInfo;
-        if (enableExtension) {
-            deviceInfo.enabledExtensionCount = 1;
-            deviceInfo.ppEnabledExtensionNames = maintenanceExtension;
-        }
+        if (enableExtension) deviceInfo.ppEnabledExtensionNames = maintenanceExtensions;
+#ifdef VK_KHR_maintenance6
+        if (bindStatusMode && selected.maintenance6Extension) {
+            deviceInfo.enabledExtensionCount = enableExtension ? 2 : 1;
+            deviceInfo.ppEnabledExtensionNames = enableExtension
+                ? maintenanceExtensions : &maintenanceExtensions[1];
+        } else
+#endif
+        if (enableExtension) deviceInfo.enabledExtensionCount = 1;
         VkDevice device{};
         check(vkCreateDevice(selected.physical, &deviceInfo, nullptr, &device), "create maintenance4 device");
         try {
+#ifdef VK_KHR_maintenance6
+            if (bindStatusMode) {
+                const char* virtualEnv = std::getenv("ZVRAM_VULKAN_VIRTUAL_MIB");
+                if (!virtualEnv || !*virtualEnv || std::strcmp(virtualEnv, "0") == 0)
+                    throw std::runtime_error("bind-status mode requires an exposed virtual memory type");
+                const std::uint32_t virtualType = selected.memory.memoryTypeCount
+                    ? selected.memory.memoryTypeCount - 1 : UINT32_MAX;
+                if (virtualType >= 32 ||
+                    !(selected.memory.memoryTypes[virtualType].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
+                    throw std::runtime_error("last advertised memory type is not the expected virtual device-local type");
+
+                {
+                VkBufferCreateInfo eligibleCreate{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                eligibleCreate.size = 4ull * 1024ull * 1024ull;
+                eligibleCreate.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                       VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                       VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+                eligibleCreate.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VkBufferCreateInfo nativeCreate{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                nativeCreate.size = 4ull * 1024ull;
+                nativeCreate.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+                nativeCreate.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+                MemoryGuard eligibleMemory{device};
+                BufferGuard eligibleBuffer{device};
+                check(vkCreateBuffer(device, &eligibleCreate, nullptr, &eligibleBuffer.handle),
+                      "create eligible bind-status buffer");
+                VkBufferMemoryRequirementsInfo2 eligibleInfo{
+                    VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
+                eligibleInfo.buffer = eligibleBuffer.handle;
+                VkMemoryDedicatedRequirements eligibleDedicated{
+                    VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
+                VkMemoryRequirements2 eligibleRequirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+                eligibleRequirements.pNext = &eligibleDedicated;
+                vkGetBufferMemoryRequirements2(device, &eligibleInfo, &eligibleRequirements);
+                const VkMemoryRequirements& eligibleReq = eligibleRequirements.memoryRequirements;
+                const std::uint32_t virtualMask = 1u << virtualType;
+                if (!(eligibleReq.memoryTypeBits & virtualMask))
+                    throw std::runtime_error("eligible bind-status buffer omits the advertised virtual type");
+                VkMemoryDedicatedAllocateInfo eligibleDedicatedInfo{
+                    VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO};
+                eligibleDedicatedInfo.buffer = eligibleBuffer.handle;
+                VkMemoryAllocateInfo eligibleAllocate{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+                eligibleAllocate.allocationSize = eligibleReq.size;
+                eligibleAllocate.memoryTypeIndex = virtualType;
+                if (eligibleDedicated.requiresDedicatedAllocation)
+                    eligibleAllocate.pNext = &eligibleDedicatedInfo;
+                check(vkAllocateMemory(device, &eligibleAllocate, nullptr, &eligibleMemory.handle),
+                      "allocate eligible virtual bind-status memory");
+
+                MemoryGuard nativeMemory{device};
+                BufferGuard nativeBuffer{device};
+                check(vkCreateBuffer(device, &nativeCreate, nullptr, &nativeBuffer.handle),
+                      "create native bind-status buffer");
+                VkBufferMemoryRequirementsInfo2 nativeInfo{
+                    VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
+                nativeInfo.buffer = nativeBuffer.handle;
+                VkMemoryDedicatedRequirements nativeDedicated{
+                    VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
+                VkMemoryRequirements2 nativeRequirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+                nativeRequirements.pNext = &nativeDedicated;
+                vkGetBufferMemoryRequirements2(device, &nativeInfo, &nativeRequirements);
+                const auto& nativeReq = nativeRequirements.memoryRequirements;
+                std::uint32_t nativeType = UINT32_MAX;
+                for (std::uint32_t i = 0; i < selected.memory.memoryTypeCount && i < 32; ++i) {
+                    if (i != virtualType && (nativeReq.memoryTypeBits & (1u << i)) &&
+                        (selected.memory.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+                        nativeType = i;
+                        break;
+                    }
+                }
+                if (nativeType == UINT32_MAX)
+                    throw std::runtime_error("no compatible native host-visible memory type for uniform buffer");
+                VkMemoryDedicatedAllocateInfo nativeDedicatedInfo{
+                    VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO};
+                nativeDedicatedInfo.buffer = nativeBuffer.handle;
+                VkMemoryAllocateInfo nativeAllocate{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+                nativeAllocate.allocationSize = nativeReq.size;
+                nativeAllocate.memoryTypeIndex = nativeType;
+                if (nativeDedicated.requiresDedicatedAllocation)
+                    nativeAllocate.pNext = &nativeDedicatedInfo;
+                check(vkAllocateMemory(device, &nativeAllocate, nullptr, &nativeMemory.handle),
+                      "allocate native bind-status memory");
+
+                VkResult eligibleResult = VK_ERROR_UNKNOWN;
+                VkResult nativeResult = VK_ERROR_UNKNOWN;
+                VkBindMemoryStatusKHR eligibleStatus{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR};
+                eligibleStatus.pResult = &eligibleResult;
+                VkBindMemoryStatusKHR nativeStatus{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR};
+                nativeStatus.pResult = &nativeResult;
+                VkBindBufferMemoryInfo binds[2] = {
+                    {VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO, &eligibleStatus,
+                     eligibleBuffer.handle, eligibleMemory.handle, 0},
+                    {VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO, &nativeStatus,
+                     nativeBuffer.handle, nativeMemory.handle, 0}
+                };
+                const VkResult batchResult = vkBindBufferMemory2(device, 2, binds);
+                if (batchResult != VK_SUCCESS || eligibleResult != VK_SUCCESS || nativeResult != VK_SUCCESS)
+                    throw std::runtime_error("bind-status batch failed: return=" +
+                        std::to_string(batchResult) + " virtual=" + std::to_string(eligibleResult) +
+                        " native=" + std::to_string(nativeResult));
+                std::cout << "PASS: maintenance6 bind-status batch; virtual and native binds succeeded\n";
+                }
+                vkDestroyDevice(device, nullptr);
+                vkDestroyInstance(instance, nullptr);
+                return 0;
+            }
+#endif
             const auto getDeviceRequirements = reinterpret_cast<PFN_vkGetDeviceBufferMemoryRequirements>(
                 vkGetDeviceProcAddr(device, "vkGetDeviceBufferMemoryRequirements"));
             const auto getDeviceRequirementsKHR = enableExtension
@@ -249,9 +408,14 @@ int run() {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     try {
-        return run();
+        bool bindStatusMode = false;
+        for (int i = 1; i < argc; ++i) {
+            if (std::strcmp(argv[i], "--bind-status") == 0) bindStatusMode = true;
+            else throw std::runtime_error(std::string("unknown option: ") + argv[i]);
+        }
+        return run(bindStatusMode);
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
         return 1;

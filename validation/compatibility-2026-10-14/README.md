@@ -25,3 +25,15 @@ Linux `VK_LAYER_PATH` is colon-delimited. A build/install path containing `:` pr
 Package/manager/control tests pass: 16 checks in 3.886 s. The focused checks prove the colon path cannot execute its child and a space-containing path is preserved. No actual Steam/Proton game was launched.
 
 No release, installation, default-policy change, or user application/GPU-setting change occurred.
+
+## Maintenance6 buffer bind status
+
+The layer rejected the valid VkBindMemoryStatusKHR chain for promoted buffers, and returned immediately on the first buffer bind failure even when the application enabled maintenance6. The fix tracks the requested KHR or Vulkan 1.4 feature, accepts only the status node for promoted binds, attempts all entries when required, populates each result, and preserves an aggregate failure. Unknown promoted-buffer chains remain rejected. Native binds retain their original pNext chain; no feature is enabled for the application.
+
+- Root reviewed the patch and independent review found no blocker. CPU tests exercise actual wrappers, feature detection, promoted status success, unsupported-chain rejection, native failure followed by later success, and disabled-feature early exit. All 14 normal CPU tests passed in 5.09 seconds (`maintenance6-cpu.txt`).
+- New optional `--bind-status` checker/CTest uses a 4 MiB virtual eligible buffer and a 4 KiB host-visible native uniform buffer in one batch, with a status output for each. Buffers are destroyed before their memory on normal and exception paths. It skips with code 77 when extension support is unavailable; it submits no rendering or copy commands.
+- Same checker with preserved 3442397 normal library failed as expected: return -8, both status sentinels untouched (-13). With the patched normal library, both bind results and batch result were SUCCESS, CTest passed in 0.05 seconds. Synchronization validation reported no VUIDs/errors, and final driver local/nonlocal live allocations were zero in both runs. Raw logs and fresh health snapshots are retained as `maintenance6-before*` and `maintenance6-after*`. This proves the KHR extension path on RADV/RX 7900 XTX, not broad driver compatibility or performance.
+- Production library remains hooks OFF with all six compile-only API strings absent; SHA and CPU result are in `maintenance6-normal-build.json`.
+- Root caught a test-only preprocessor issue for older headers during review; the owner guarded the maintenance6 mock as a unit before final handoff. No production behavior changed for that correction.
+
+Specification: [vkBindBufferMemory2](https://docs.vulkan.org/refpages/latest/refpages/source/vkBindBufferMemory2.html), [VkBindMemoryStatus](https://docs.vulkan.org/refpages/latest/refpages/source/VkBindMemoryStatus.html).
