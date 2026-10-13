@@ -35,7 +35,7 @@ class ControlChecks(unittest.TestCase):
 
     def test_launcher_layer_paths_include_steam_import_and_native_dirs(self):
         with tempfile.TemporaryDirectory() as temporary:
-            build = Path(temporary) / 'build'
+            build = Path(temporary) / 'build with spaces'
             build.mkdir()
             (build / 'VK_LAYER_NX_zvram.json').touch()
             (build / 'libzvram_layer.so').touch()
@@ -67,6 +67,22 @@ class ControlChecks(unittest.TestCase):
             search, additional = layer_paths(VK_LAYER_PATH='/custom/one:/custom/two')
             self.assertEqual(search.split(os.pathsep), [str(build), '/custom/one', '/custom/two'])
             self.assertEqual(additional, '/extra/layers')
+
+    def test_launcher_rejects_colon_build_path_before_child_exec(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            build = Path(temporary) / 'build:steam'
+            build.mkdir()
+            for filename in ('VK_LAYER_NX_zvram.json', 'libzvram_layer.so'):
+                (build / filename).touch()
+            sentinel = Path(temporary) / 'child-ran'
+            launcher = Path(__file__).with_name('zvram')
+            result = subprocess.run(
+                [sys.executable, str(launcher), '--build-dir', str(build), '--no-live-control',
+                 '--', sys.executable, '-c', f"open({str(sentinel)!r}, 'w').write('ran')"],
+                text=True, capture_output=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("move the build/install to a path without colon", result.stderr)
+            self.assertFalse(sentinel.exists(), result.stdout)
 
     def test_launcher_defaults_and_opt_out(self):
         with tempfile.TemporaryDirectory() as temporary:
