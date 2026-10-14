@@ -4853,6 +4853,36 @@ VKAPI_ATTR VkResult VKAPI_CALL layerDeviceWaitIdle(VkDevice device) {
 
 #include "command_hooks.inc"
 
+bool isPhysicalMemoryProperties2Command(const char* name) {
+    return name && (std::strcmp(name,"vkGetPhysicalDeviceMemoryProperties2")==0 ||
+                    std::strcmp(name,"vkGetPhysicalDeviceMemoryProperties2KHR")==0);
+}
+bool isPhysicalMemoryPropertiesKhrCommand(const char* name) {
+    return name && std::strcmp(name,"vkGetPhysicalDeviceMemoryProperties2KHR")==0;
+}
+bool isBindMemory2Command(const char* name) {
+    return name && (std::strcmp(name,"vkBindBufferMemory2")==0 ||
+                    std::strcmp(name,"vkBindBufferMemory2KHR")==0 ||
+                    std::strcmp(name,"vkBindImageMemory2")==0 ||
+                    std::strcmp(name,"vkBindImageMemory2KHR")==0);
+}
+bool isBufferMemoryRequirements2Command(const char* name) {
+    return name && (std::strcmp(name,"vkGetBufferMemoryRequirements2")==0 ||
+                    std::strcmp(name,"vkGetBufferMemoryRequirements2KHR")==0);
+}
+bool isSynchronization2Command(const char* name) {
+    return name && (std::strcmp(name,"vkCmdPipelineBarrier2")==0 ||
+                    std::strcmp(name,"vkCmdPipelineBarrier2KHR")==0 ||
+                    std::strcmp(name,"vkCmdWaitEvents2")==0 ||
+                    std::strcmp(name,"vkCmdWaitEvents2KHR")==0);
+}
+bool isLayerOwnedProcName(const char* name) {
+    return name && (std::strcmp(name,"vkCreateInstance")==0 ||
+                    std::strcmp(name,"vkGetInstanceProcAddr")==0 ||
+                    std::strcmp(name,"vk_layerGetPhysicalDeviceProcAddr")==0 ||
+                    std::strncmp(name,"vkZVram",7)==0);
+}
+
 PFN_vkVoidFunction lookup(const char* name) {
     if(!name) return nullptr;
     if(auto f=submissionHookLookup(name)) return f;
@@ -4906,6 +4936,22 @@ PFN_vkVoidFunction lookup(const char* name) {
 }
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetInstanceProcAddr(VkInstance instance,const char* name) {
     if(name && std::strcmp(name,"vkZVramArmRestoreFailureNX")==0) return nullptr;
+    if(!instance) {
+        if(name && (std::strcmp(name,"vkCreateInstance")==0 ||
+                    std::strcmp(name,"vkGetInstanceProcAddr")==0)) return lookup(name);
+        const bool globalCommand=name && (
+            std::strcmp(name,"vkEnumerateInstanceVersion")==0 ||
+            std::strcmp(name,"vkEnumerateInstanceExtensionProperties")==0 ||
+            std::strcmp(name,"vkEnumerateInstanceLayerProperties")==0);
+        if(!globalCommand) return nullptr;
+        PFN_vkGetInstanceProcAddr next{};
+        { std::lock_guard<std::mutex> lock(mapsMutex); next=globalGipa; }
+        return next?next(VK_NULL_HANDLE,name):nullptr;
+    }
+    if(isPhysicalMemoryProperties2Command(name)) {
+        auto s=findInstance(key(instance));
+        return s && s->gipa && s->gipa(instance,name)?lookup(name):nullptr;
+    }
     if(name && (std::strcmp(name,"vkGetDeviceBufferMemoryRequirements")==0 ||
                 std::strcmp(name,"vkGetDeviceBufferMemoryRequirementsKHR")==0)) {
         auto s=findInstance(key(instance));
@@ -4914,7 +4960,11 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetInstanceProcAddr(VkInstance ins
             ?reinterpret_cast<PFN_vkVoidFunction>(layerGetDeviceBufferMemoryRequirements)
             :reinterpret_cast<PFN_vkVoidFunction>(layerGetDeviceBufferMemoryRequirementsKHR);
     }
-    if(auto f=lookup(name)) return f;
+    if(auto f=lookup(name)) {
+        if(isLayerOwnedProcName(name)) return f;
+        auto s=findInstance(key(instance));
+        return s && s->gipa && s->gipa(instance,name)?f:nullptr;
+    }
     auto s=findInstance(key(instance)); if(s&&s->gipa) {
         auto f=s->gipa(instance,name);
         if(f && name && std::strncmp(name,"vkCmd",5)==0) unknownCommandProc=true;
@@ -4989,6 +5039,13 @@ VKAPI_ATTR VkResult VKAPI_CALL layerGetWarmRecoveryWaiters(VkDevice device,std::
 #endif
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,const char* name) {
     auto d=findDevice(device);
+    if(isBindMemory2Command(name) || isBufferMemoryRequirements2Command(name) ||
+       isSynchronization2Command(name)) {
+        auto next=d&&d->gdpa?d->gdpa(device,name):nullptr;
+        if(!next) return nullptr;
+        return isSynchronization2Command(name) && d && !d->autoInitialized
+            ?next:lookup(name);
+    }
     if(name && std::strcmp(name,"vkGetDeviceBufferMemoryRequirements")==0)
         return d && d->gdpa && d->gdpa(device,name)
             ?reinterpret_cast<PFN_vkVoidFunction>(layerGetDeviceBufferMemoryRequirements):nullptr;
@@ -5029,10 +5086,6 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,
     if(barrierCommand && d && !d->autoInitialized) return d->gdpa?d->gdpa(device,name):nullptr;
     if(name && (std::strcmp(name,"vkQueuePresentKHR")==0 || std::strcmp(name,"vkQueueSubmit2")==0 || std::strcmp(name,"vkQueueSubmit2KHR")==0))
         if(!d || !d->gdpa || !d->gdpa(device,name)) return nullptr;
-    if(name && (std::strcmp(name,"vkCmdPipelineBarrier2")==0 || std::strcmp(name,"vkCmdPipelineBarrier2KHR")==0))
-        if(!d || !d->gdpa || (!d->gdpa(device,name) && !d->gdpa(device,"vkCmdPipelineBarrier2") && !d->gdpa(device,"vkCmdPipelineBarrier2KHR"))) return nullptr;
-    if(name && (std::strcmp(name,"vkCmdWaitEvents2")==0 || std::strcmp(name,"vkCmdWaitEvents2KHR")==0))
-        if(!d || !d->gdpa || (!d->gdpa(device,name) && !d->gdpa(device,"vkCmdWaitEvents2") && !d->gdpa(device,"vkCmdWaitEvents2KHR"))) return nullptr;
     if(name && (std::strcmp(name,"vkGetDeviceMemoryOpaqueCaptureAddress")==0 ||
                 std::strcmp(name,"vkGetDeviceMemoryOpaqueCaptureAddressKHR")==0))
         if(!d || !d->gdpa || !d->gdpa(device,name)) return nullptr;
@@ -5055,7 +5108,12 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,
     return f;
 }
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetPhysicalDeviceProcAddr(VkInstance instance,const char* name) {
-    if(auto f=lookup(name)) return f;
+    if(isPhysicalMemoryPropertiesKhrCommand(name)) {
+        auto s=findInstance(key(instance));
+        auto next=s?(s->physProc?s->physProc(instance,name):(s->gipa?s->gipa(instance,name):nullptr)):nullptr;
+        return next?lookup(name):nullptr;
+    }
+    if(lookup(name)) return nullptr;
     auto s=findInstance(key(instance)); if(!s) return nullptr;
     auto f=s->physProc?s->physProc(instance,name):s->gipa(instance,name);
     if(f && name && std::strncmp(name,"vkCmd",5)==0) unknownCommandProc=true;

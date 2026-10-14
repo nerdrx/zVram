@@ -37,3 +37,19 @@ The layer rejected the valid VkBindMemoryStatusKHR chain for promoted buffers, a
 - Root caught a test-only preprocessor issue for older headers during review; the owner guarded the maintenance6 mock as a unit before final handoff. No production behavior changed for that correction.
 
 Specification: [vkBindBufferMemory2](https://docs.vulkan.org/refpages/latest/refpages/source/vkBindBufferMemory2.html), [VkBindMemoryStatus](https://docs.vulkan.org/refpages/latest/refpages/source/VkBindMemoryStatus.html).
+
+## Bounded read-only compatibility audits
+
+- Map2/unmap2: valid host-visible allocations remain native, so no handle translation fix was indicated.
+- Launcher fake-child audit preserved spaced/non-ASCII arguments, exit 37, signal return -15, and inherited layer/preload environment strings. The supplied dummy LD_PRELOAD path did not exist and emitted loader warnings; this proves string forwarding, not actual preload loading. No Steam/Proton game run was performed.
+- External memory and capture addresses: export/import/host-pointer nodes and capture-replay flags prevent native-allocation wrapping while the original allocation is forwarded. FD and host-pointer property queries take no VkDeviceMemory. Opaque-address queries translate handles. Root verified the full chain parser and adoption guard; no patch or hardware test was needed.
+
+Both CI builds for 7f46f01 passed (38483965983, 38483970567).
+
+## Proc-address availability
+
+The layer previously returned intercepted function pointers even when the exact core/KHR spelling was unavailable downstream. Synchronization2 queries could also expose the KHR spelling solely because the core spelling existed, and null-instance queries exposed nonglobal wrappers. The fix keeps bootstrap globals and explicit layer-owned APIs available while checking exact downstream names for Vulkan wrappers. The physical-device extension callback no longer returns recognized instance/device/private wrappers. Unknown commands retain downstream forwarding and conservative tracking.
+
+Independent review caught and corrected remaining GIPA and physical-callback gaps before final root validation. The actual-wrapper CPU matrix covers available/unavailable core/KHR aliases, null-instance globals, private APIs, and physical-callback negatives. All 14 CPU checks passed in 5.03s. Three existing tiny driver checks were rerun because dispatch changed: maintenance4 normal/automatic queries and maintenance6 mixed binds all passed in 0.36s, with synchronization validation clean and final live allocations zero. Raw logs: `proc-address-cpu.txt`, `proc-address-driver.txt`; fresh health and normal-library provenance are adjacent. No rendering, game test, or performance claim.
+
+References: [GIPA](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetInstanceProcAddr.html), [GDPA](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDeviceProcAddr.html), [loader-layer interface](https://github.com/KhronosGroup/Vulkan-Loader/blob/main/docs/LoaderLayerInterface.md).

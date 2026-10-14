@@ -410,6 +410,106 @@ std::vector<std::uint32_t> maintenance4QueriedFamilies;
 const void* maintenance4OuterPnext{};
 VkBufferCreateInfo maintenance4CreatedInfo{};
 std::vector<std::uint32_t> maintenance4CreatedFamilies;
+std::unordered_set<std::string> availableProcNames;
+VKAPI_ATTR void VKAPI_CALL mockAvailableCommand() {}
+PFN_vkVoidFunction mockProcAddress(const char* name) {
+    return name && availableProcNames.count(name)
+        ?reinterpret_cast<PFN_vkVoidFunction>(mockAvailableCommand):nullptr;
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockAvailabilityGIPA(VkInstance,const char* name) {
+    if(name && (std::strcmp(name,"vkEnumerateInstanceVersion")==0 ||
+                std::strcmp(name,"vkEnumerateInstanceExtensionProperties")==0 ||
+                std::strcmp(name,"vkEnumerateInstanceLayerProperties")==0))
+        return reinterpret_cast<PFN_vkVoidFunction>(mockAvailableCommand);
+    return mockProcAddress(name);
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockAvailabilityPhysicalProc(VkInstance,const char* name) {
+    return mockProcAddress(name);
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockAvailabilityGDPA(VkDevice,const char* name) {
+    return mockProcAddress(name);
+}
+void checkProcAddressAvailability() {
+    availableProcNames.clear();
+    std::uintptr_t instanceWord=0x5151;
+    const auto instance=reinterpret_cast<VkInstance>(&instanceWord);
+    auto state=std::make_shared<Instance>(); state->handle=instance;
+    state->gipa=mockAvailabilityGIPA; state->physProc=mockAvailabilityPhysicalProc;
+    PFN_vkGetInstanceProcAddr previousGlobal{};
+    { std::lock_guard<std::mutex> lock(mapsMutex); instances[key(instance)]=state; previousGlobal=globalGipa; globalGipa=mockAvailabilityGIPA; }
+    require(layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkCreateInstance")!=nullptr &&
+            layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkGetInstanceProcAddr")!=nullptr &&
+            layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkEnumerateInstanceVersion")!=nullptr,
+            "null-instance GIPA lost loader bootstrap globals");
+    require(layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkCreateDevice")==nullptr &&
+            layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkGetPhysicalDeviceMemoryProperties2KHR")==nullptr,
+            "null-instance GIPA exposed non-global commands");
+    require(layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")==nullptr,
+            "unavailable properties2 aliases were exposed");
+    availableProcNames.insert("vkGetPhysicalDeviceMemoryProperties2");
+    require(layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")!=nullptr &&
+            layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")==nullptr,
+            "GIPA properties2 core availability leaked to PFP or its unavailable KHR alias");
+    availableProcNames.clear(); availableProcNames.insert("vkGetPhysicalDeviceMemoryProperties2KHR");
+    require(layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")!=nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")!=nullptr,
+            "properties2 KHR availability was not kept exact across GIPA and PFP");
+    availableProcNames.clear();
+    require(layerGetInstanceProcAddr(instance,"vkBindBufferMemory2")==nullptr &&
+            layerGetInstanceProcAddr(instance,"vkBindBufferMemory2KHR")==nullptr &&
+            layerGetInstanceProcAddr(instance,"vkCmdPipelineBarrier2KHR")==nullptr,
+            "GIPA exposed unavailable intercepted device commands");
+    availableProcNames.insert("vkBindBufferMemory2");
+    availableProcNames.insert("vkCmdPipelineBarrier2");
+    require(layerGetInstanceProcAddr(instance,"vkBindBufferMemory2")!=nullptr &&
+            layerGetInstanceProcAddr(instance,"vkBindBufferMemory2KHR")==nullptr &&
+            layerGetInstanceProcAddr(instance,"vkCmdPipelineBarrier2")!=nullptr &&
+            layerGetInstanceProcAddr(instance,"vkCmdPipelineBarrier2KHR")==nullptr,
+            "GIPA device alias availability was not checked by exact name");
+    require(layerGetPhysicalDeviceProcAddr(instance,"vkBindBufferMemory2")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkZVramGetSnapshotStatsNX")==nullptr,
+            "physical-device proc lookup exposed non-physical commands");
+
+    Fixture f; f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+    auto& d=f.device; d.handle=f.handle; d.gdpa=mockAvailabilityGDPA;
+    d.autoInitialized=true; d.selectiveRestore=true;
+    { std::lock_guard<std::mutex> lock(mapsMutex); devices[key(d.handle)]=std::shared_ptr<Device>(&d,[](Device*){}); }
+    availableProcNames.clear();
+    require(layerGetDeviceProcAddr(d.handle,"vkBindBufferMemory2")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkBindBufferMemory2KHR")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkGetBufferMemoryRequirements2KHR")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkCmdPipelineBarrier2KHR")==nullptr,
+            "unavailable device aliases were exposed");
+    availableProcNames.insert("vkBindBufferMemory2");
+    availableProcNames.insert("vkGetBufferMemoryRequirements2KHR");
+    availableProcNames.insert("vkCmdPipelineBarrier2");
+    require(layerGetDeviceProcAddr(d.handle,"vkBindBufferMemory2")==
+                reinterpret_cast<PFN_vkVoidFunction>(layerBindBufferMemory2) &&
+            layerGetDeviceProcAddr(d.handle,"vkBindBufferMemory2KHR")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkGetBufferMemoryRequirements2")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkGetBufferMemoryRequirements2KHR")==
+                reinterpret_cast<PFN_vkVoidFunction>(layerGetBufferMemoryRequirements2) &&
+            layerGetDeviceProcAddr(d.handle,"vkCmdPipelineBarrier2")==
+                reinterpret_cast<PFN_vkVoidFunction>(layerCmdPipelineBarrier2) &&
+            layerGetDeviceProcAddr(d.handle,"vkCmdPipelineBarrier2KHR")==nullptr,
+            "device alias availability was not checked by exact name");
+    availableProcNames.insert("vkQueueSubmit2KHR");
+    require(layerGetDeviceProcAddr(d.handle,"vkQueueSubmit2KHR")==
+                reinterpret_cast<PFN_vkVoidFunction>(layerQueueSubmit2KHR) &&
+            layerGetDeviceProcAddr(d.handle,"vkQueueSubmit2")==nullptr,
+            "submit2 exact-name availability regressed");
+    require(layerGetDeviceProcAddr(d.handle,"vkZVramGetSnapshotStatsNX")!=nullptr,
+            "layer-owned device command was hidden by Vulkan availability gates");
+    { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(d.handle)); instances.erase(key(instance)); globalGipa=previousGlobal; }
+    availableProcNames.clear();
+}
+
 VKAPI_ATTR void VKAPI_CALL mockMaintenance4Query(VkDevice,const VkDeviceBufferMemoryRequirements* info,VkMemoryRequirements2* out) {
     maintenance4QueriedCreateInfo=*info->pCreateInfo;
     maintenance4QueriedFamilies.clear();
@@ -2791,6 +2891,7 @@ void checkDecoderAbandonmentPrecedesNativeDeviceDestroy() {
 } // namespace
 
 int main() try {
+    checkProcAddressAvailability();
     checkMaintenance4BufferRequirements();
     checkMaintenance6BindStatus();
     checkGatedRecoveryTeardownCleanup();
