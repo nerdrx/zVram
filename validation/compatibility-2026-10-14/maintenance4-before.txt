@@ -1,0 +1,3 @@
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=0 allocation-failures=0
+FAIL: eligible pre-create query omitted expected virtual memory type

@@ -1,0 +1,48 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 7
+    Start 7: vulkan-maintenance4-auto-requirements
+
+7: Test command: /usr/bin/python3.14 "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "16" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "8" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "4" "--vulkan-resident-mib" "12" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-requirements-check"
+7: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+7: Environment variables: 
+7:  VK_LOADER_LAYERS_DISABLE=~implicit~
+7:  VK_VALIDATION_VALIDATE_SYNC=1
+7: Test timeout computed to be: 15
+7: [zvram] Vulkan snapshot transfer staging bytes=33554432
+7: [zvram] Vulkan snapshot decode max-workers=1
+7: [zvram] Vulkan snapshot lookahead staging bytes=33554432
+7: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=8388608
+7: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+7: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+7: [zvram] Vulkan range residency enabled chunk-bytes=4194304
+7: [zvram] Vulkan resident admission enabled limit-bytes=12582912
+7: [zvram] Vulkan eviction policy=lru
+7: [zvram] Vulkan snapshot minimum savings percent=0
+7: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+7: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+7: [zvram] snapshot transfer profile copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0
+7: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=0 allocation-failures=0
+7: PASS: eligible storage+transfer requirements match; virtual-bit=1
+7: PASS: noneligible uniform-only requirements match; virtual-bit=0
+7: PASS: maintenance4 requirements queries match created buffers api=1.4 khr-alias-enabled=1
+1/1 Test #7: vulkan-maintenance4-auto-requirements ...   Passed    0.06 sec
+
+The following tests passed:
+	vulkan-maintenance4-auto-requirements
+
+100% tests passed out of 1
+
+Label Time Summary:
+compatibility    =   0.06 sec*proc (1 test)
+hardware         =   0.06 sec*proc (1 test)
+maintenance4     =   0.06 sec*proc (1 test)
+vulkan           =   0.06 sec*proc (1 test)
+
+Total Test time (real) =   0.07 sec

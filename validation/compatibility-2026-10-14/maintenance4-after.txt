@@ -1,0 +1,5 @@
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+[zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=0 live-nonlocal=0 peak-nonlocal=0 allocation-failures=0
+PASS: eligible storage+transfer requirements match; virtual-bit=1
+PASS: noneligible uniform-only requirements match; virtual-bit=0
+PASS: maintenance4 requirements queries match created buffers api=1.4 khr-alias-enabled=1

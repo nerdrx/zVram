@@ -1,0 +1,37 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 8
+    Start 8: vulkan-maintenance6-bind-status
+
+8: Test command: /usr/bin/python3.14 "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "16" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/zvram-vulkan-requirements-check" "--bind-status"
+8: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+8: Environment variables: 
+8:  VK_LOADER_LAYERS_DISABLE=~implicit~
+8:  VK_VALIDATION_VALIDATE_SYNC=1
+8: Test timeout computed to be: 15
+8: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+8: [zvram] virtual allocate bytes=4194304 heap-capacity=16777216
+8: [zvram] virtual free bytes=4194304
+8: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=4194304 live-nonlocal=0 peak-nonlocal=4096 allocation-failures=0
+8: PASS: maintenance6 bind-status batch; virtual and native binds succeeded
+1/1 Test #8: vulkan-maintenance6-bind-status ...   Passed    0.05 sec
+
+The following tests passed:
+	vulkan-maintenance6-bind-status
+
+100% tests passed out of 1
+
+Label Time Summary:
+bind-status      =   0.05 sec*proc (1 test)
+compatibility    =   0.05 sec*proc (1 test)
+hardware         =   0.05 sec*proc (1 test)
+maintenance6     =   0.05 sec*proc (1 test)
+vulkan           =   0.05 sec*proc (1 test)
+
+Total Test time (real) =   0.06 sec

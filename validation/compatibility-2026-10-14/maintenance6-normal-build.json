@@ -1,0 +1,7 @@
+{
+  "library_sha256": "d4613249e354606177bb46261830e44a74e03625431a3f8059736ed413e77afb",
+  "test_hooks": false,
+  "six_test_api_strings_absent": true,
+  "cpu_tests": 14,
+  "cpu_seconds": 5.09
+}

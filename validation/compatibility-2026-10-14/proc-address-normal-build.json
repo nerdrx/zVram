@@ -1,0 +1,9 @@
+{
+  "sha256": "e451ef20dd9d84bdfd81e7470ed7cab6e8a8d33d92a3d31310f4d3162f8905c0",
+  "test_hooks": false,
+  "six_test_api_strings_absent": true,
+  "cpu_tests": 14,
+  "cpu_seconds": 5.03,
+  "driver_checks": 3,
+  "driver_seconds": 0.36
+}

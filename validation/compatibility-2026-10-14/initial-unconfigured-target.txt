@@ -1,0 +1,1 @@
+make: *** No rule to make target 'zvram-vulkan-requirements-check'.  Stop.

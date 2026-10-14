@@ -308,6 +308,304 @@ struct Fixture {
     VirtualMemory& state() { return device.virtualMemory.at(memory); }
 };
 
+#ifdef VK_KHR_maintenance6
+unsigned maintenance6BindCalls{};
+VkBuffer maintenance6FailBuffer{};
+std::vector<VkBuffer> maintenance6BoundBuffers;
+VKAPI_ATTR VkResult VKAPI_CALL mockMaintenance6BindBufferMemory2(VkDevice,std::uint32_t count,const VkBindBufferMemoryInfo* infos) {
+    ++maintenance6BindCalls;
+    for(std::uint32_t i=0;i<count;i++) {
+        maintenance6BoundBuffers.push_back(infos[i].buffer);
+        for(auto* p=static_cast<const VkBaseInStructure*>(infos[i].pNext);p;p=p->pNext)
+#ifdef VK_KHR_maintenance6
+            if(p->sType==VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR)
+                *reinterpret_cast<const VkBindMemoryStatusKHR*>(p)->pResult=
+                    infos[i].buffer==maintenance6FailBuffer?VK_ERROR_OUT_OF_DEVICE_MEMORY:VK_SUCCESS;
+#endif
+    }
+    return infos[0].buffer==maintenance6FailBuffer?VK_ERROR_OUT_OF_DEVICE_MEMORY:VK_SUCCESS;
+}
+#endif
+
+void checkMaintenance6BindStatus() {
+#ifdef VK_KHR_maintenance6
+    VkPhysicalDeviceMaintenance6FeaturesKHR features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR};
+    VkDeviceCreateInfo deviceCreate{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; deviceCreate.pNext=&features;
+    features.maintenance6=VK_TRUE;
+    require(maintenance6Requested(&deviceCreate),"KHR maintenance6 enabled feature was not detected");
+    features.maintenance6=VK_FALSE;
+    require(!maintenance6Requested(&deviceCreate),"disabled KHR maintenance6 feature was detected");
+#endif
+#ifdef VK_VERSION_1_4
+    VkPhysicalDeviceVulkan14Features coreFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES};
+    VkDeviceCreateInfo coreCreate{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; coreCreate.pNext=&coreFeatures;
+    coreFeatures.maintenance6=VK_TRUE;
+    require(maintenance6Requested(&coreCreate),"core 1.4 maintenance6 enabled feature was not detected");
+#endif
+#ifdef VK_KHR_maintenance6
+    {
+        Fixture f(2*MiB,2*MiB); f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+        auto& d=f.device; d.handle=f.handle; d.maintenance6Enabled=true; d.virtualBytes=2*MiB;
+        const auto prior=f.bind(0,MiB);
+        (void)prior;
+        const auto buffer=tokenHandle<VkBuffer>(0x6b01);
+        PromotedBuffer promoted{}; promoted.size=MiB; promoted.requirements={MiB,4096,1};
+        d.promotedBuffers.emplace(buffer,promoted);
+        { std::lock_guard<std::mutex> lock(mapsMutex); devices[key(d.handle)]=std::shared_ptr<Device>(&d,[](Device*){}); }
+        VkResult statusResult=VK_ERROR_UNKNOWN;
+        VkBindMemoryStatusKHR status{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR}; status.pResult=&statusResult;
+        VkBindBufferMemoryInfo info{VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO};
+        info.pNext=&status; info.buffer=buffer; info.memory=f.memory; info.memoryOffset=MiB;
+        require(layerBindBufferMemory2(d.handle,1,&info)==VK_SUCCESS && statusResult==VK_SUCCESS,
+                "promoted buffer bind did not report maintenance6 status success");
+
+        VkBaseInStructure unsupported{}; unsupported.sType=VK_STRUCTURE_TYPE_MAX_ENUM;
+        unsupported.pNext=reinterpret_cast<const VkBaseInStructure*>(&status);
+        const auto rejected=tokenHandle<VkBuffer>(0x6b02);
+        PromotedBuffer rejectedPromoted{}; rejectedPromoted.size=MiB; rejectedPromoted.requirements={MiB,4096,1};
+        d.promotedBuffers.emplace(rejected,rejectedPromoted);
+        info.buffer=rejected; info.pNext=&unsupported; statusResult=VK_ERROR_UNKNOWN;
+        const auto sparseBefore=sparseBinds;
+        require(layerBindBufferMemory2(d.handle,1,&info)==VK_ERROR_FEATURE_NOT_PRESENT &&
+                statusResult==VK_ERROR_FEATURE_NOT_PRESENT && sparseBinds==sparseBefore,
+                "promoted bind bypassed unsupported pNext rejection or omitted per-bind error status");
+        { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(d.handle)); }
+    }
+    {
+        Fixture f; f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+        auto& d=f.device; d.handle=f.handle; d.maintenance6Enabled=true;
+        d.bindBufferMemory2=mockMaintenance6BindBufferMemory2;
+        { std::lock_guard<std::mutex> lock(mapsMutex); devices[key(d.handle)]=std::shared_ptr<Device>(&d,[](Device*){}); }
+        const auto first=tokenHandle<VkBuffer>(0x6b10),local=tokenHandle<VkBuffer>(0x6b11),last=tokenHandle<VkBuffer>(0x6b12);
+        VkResult firstStatus=VK_ERROR_UNKNOWN,localStatus=VK_ERROR_UNKNOWN,lastStatus=VK_ERROR_UNKNOWN;
+        VkBindMemoryStatusKHR firstInfoStatus{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR}; firstInfoStatus.pResult=&firstStatus;
+        VkBindMemoryStatusKHR localInfoStatus{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR}; localInfoStatus.pResult=&localStatus;
+        VkBindMemoryStatusKHR lastInfoStatus{VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS_KHR}; lastInfoStatus.pResult=&lastStatus;
+        VkBindBufferMemoryInfo infos[3]{};
+        infos[0]={VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,&firstInfoStatus,first,tokenHandle<VkDeviceMemory>(0x6b20),0};
+        infos[1]={VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,&localInfoStatus,local,f.memory,0};
+        infos[2]={VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,&lastInfoStatus,last,tokenHandle<VkDeviceMemory>(0x6b21),0};
+        maintenance6BindCalls=0; maintenance6FailBuffer=first; maintenance6BoundBuffers.clear();
+        const auto batch=layerBindBufferMemory2(d.handle,3,infos);
+        require(batch==VK_ERROR_OUT_OF_DEVICE_MEMORY &&
+                maintenance6BindCalls==2 && maintenance6BoundBuffers==std::vector<VkBuffer>{first,last} &&
+                firstStatus==VK_ERROR_OUT_OF_DEVICE_MEMORY && localStatus==VK_ERROR_FEATURE_NOT_PRESENT &&
+                lastStatus==VK_SUCCESS,
+                "maintenance6 buffer batch did not attempt later binds or report each result");
+
+        d.maintenance6Enabled=false;
+        firstStatus=lastStatus=VK_ERROR_UNKNOWN; maintenance6BindCalls=0; maintenance6BoundBuffers.clear();
+        require(layerBindBufferMemory2(d.handle,2,infos)==VK_ERROR_OUT_OF_DEVICE_MEMORY && maintenance6BindCalls==1 &&
+                firstStatus==VK_ERROR_OUT_OF_DEVICE_MEMORY && lastStatus==VK_ERROR_UNKNOWN,
+                "disabled maintenance6 did not preserve early-exit batch behavior");
+        { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(d.handle)); }
+    }
+#endif
+}
+
+bool maintenance4CoreAvailable=true,maintenance4KhrAvailable=true;
+unsigned maintenance4CoreCalls{},maintenance4KhrCalls{};
+VkBufferCreateInfo maintenance4QueriedCreateInfo{};
+std::vector<std::uint32_t> maintenance4QueriedFamilies;
+const void* maintenance4OuterPnext{};
+VkBufferCreateInfo maintenance4CreatedInfo{};
+std::vector<std::uint32_t> maintenance4CreatedFamilies;
+std::unordered_set<std::string> availableProcNames;
+VKAPI_ATTR void VKAPI_CALL mockAvailableCommand() {}
+PFN_vkVoidFunction mockProcAddress(const char* name) {
+    return name && availableProcNames.count(name)
+        ?reinterpret_cast<PFN_vkVoidFunction>(mockAvailableCommand):nullptr;
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockAvailabilityGIPA(VkInstance,const char* name) {
+    if(name && (std::strcmp(name,"vkEnumerateInstanceVersion")==0 ||
+                std::strcmp(name,"vkEnumerateInstanceExtensionProperties")==0 ||
+                std::strcmp(name,"vkEnumerateInstanceLayerProperties")==0))
+        return reinterpret_cast<PFN_vkVoidFunction>(mockAvailableCommand);
+    return mockProcAddress(name);
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockAvailabilityPhysicalProc(VkInstance,const char* name) {
+    return mockProcAddress(name);
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockAvailabilityGDPA(VkDevice,const char* name) {
+    return mockProcAddress(name);
+}
+void checkProcAddressAvailability() {
+    availableProcNames.clear();
+    std::uintptr_t instanceWord=0x5151;
+    const auto instance=reinterpret_cast<VkInstance>(&instanceWord);
+    auto state=std::make_shared<Instance>(); state->handle=instance;
+    state->gipa=mockAvailabilityGIPA; state->physProc=mockAvailabilityPhysicalProc;
+    PFN_vkGetInstanceProcAddr previousGlobal{};
+    { std::lock_guard<std::mutex> lock(mapsMutex); instances[key(instance)]=state; previousGlobal=globalGipa; globalGipa=mockAvailabilityGIPA; }
+    require(layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkCreateInstance")!=nullptr &&
+            layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkGetInstanceProcAddr")!=nullptr &&
+            layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkEnumerateInstanceVersion")!=nullptr,
+            "null-instance GIPA lost loader bootstrap globals");
+    require(layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkCreateDevice")==nullptr &&
+            layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetInstanceProcAddr(VK_NULL_HANDLE,"vkGetPhysicalDeviceMemoryProperties2KHR")==nullptr,
+            "null-instance GIPA exposed non-global commands");
+    require(layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")==nullptr,
+            "unavailable properties2 aliases were exposed");
+    availableProcNames.insert("vkGetPhysicalDeviceMemoryProperties2");
+    require(layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")!=nullptr &&
+            layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")==nullptr,
+            "GIPA properties2 core availability leaked to PFP or its unavailable KHR alias");
+    availableProcNames.clear(); availableProcNames.insert("vkGetPhysicalDeviceMemoryProperties2KHR");
+    require(layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetInstanceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")!=nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkGetPhysicalDeviceMemoryProperties2KHR")!=nullptr,
+            "properties2 KHR availability was not kept exact across GIPA and PFP");
+    availableProcNames.clear();
+    require(layerGetInstanceProcAddr(instance,"vkBindBufferMemory2")==nullptr &&
+            layerGetInstanceProcAddr(instance,"vkBindBufferMemory2KHR")==nullptr &&
+            layerGetInstanceProcAddr(instance,"vkCmdPipelineBarrier2KHR")==nullptr,
+            "GIPA exposed unavailable intercepted device commands");
+    availableProcNames.insert("vkBindBufferMemory2");
+    availableProcNames.insert("vkCmdPipelineBarrier2");
+    require(layerGetInstanceProcAddr(instance,"vkBindBufferMemory2")!=nullptr &&
+            layerGetInstanceProcAddr(instance,"vkBindBufferMemory2KHR")==nullptr &&
+            layerGetInstanceProcAddr(instance,"vkCmdPipelineBarrier2")!=nullptr &&
+            layerGetInstanceProcAddr(instance,"vkCmdPipelineBarrier2KHR")==nullptr,
+            "GIPA device alias availability was not checked by exact name");
+    require(layerGetPhysicalDeviceProcAddr(instance,"vkBindBufferMemory2")==nullptr &&
+            layerGetPhysicalDeviceProcAddr(instance,"vkZVramGetSnapshotStatsNX")==nullptr,
+            "physical-device proc lookup exposed non-physical commands");
+
+    Fixture f; f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+    auto& d=f.device; d.handle=f.handle; d.gdpa=mockAvailabilityGDPA;
+    d.autoInitialized=true; d.selectiveRestore=true;
+    { std::lock_guard<std::mutex> lock(mapsMutex); devices[key(d.handle)]=std::shared_ptr<Device>(&d,[](Device*){}); }
+    availableProcNames.clear();
+    require(layerGetDeviceProcAddr(d.handle,"vkBindBufferMemory2")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkBindBufferMemory2KHR")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkGetBufferMemoryRequirements2KHR")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkCmdPipelineBarrier2KHR")==nullptr,
+            "unavailable device aliases were exposed");
+    availableProcNames.insert("vkBindBufferMemory2");
+    availableProcNames.insert("vkGetBufferMemoryRequirements2KHR");
+    availableProcNames.insert("vkCmdPipelineBarrier2");
+    require(layerGetDeviceProcAddr(d.handle,"vkBindBufferMemory2")==
+                reinterpret_cast<PFN_vkVoidFunction>(layerBindBufferMemory2) &&
+            layerGetDeviceProcAddr(d.handle,"vkBindBufferMemory2KHR")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkGetBufferMemoryRequirements2")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkGetBufferMemoryRequirements2KHR")==
+                reinterpret_cast<PFN_vkVoidFunction>(layerGetBufferMemoryRequirements2) &&
+            layerGetDeviceProcAddr(d.handle,"vkCmdPipelineBarrier2")==
+                reinterpret_cast<PFN_vkVoidFunction>(layerCmdPipelineBarrier2) &&
+            layerGetDeviceProcAddr(d.handle,"vkCmdPipelineBarrier2KHR")==nullptr,
+            "device alias availability was not checked by exact name");
+    availableProcNames.insert("vkQueueSubmit2KHR");
+    require(layerGetDeviceProcAddr(d.handle,"vkQueueSubmit2KHR")==
+                reinterpret_cast<PFN_vkVoidFunction>(layerQueueSubmit2KHR) &&
+            layerGetDeviceProcAddr(d.handle,"vkQueueSubmit2")==nullptr,
+            "submit2 exact-name availability regressed");
+    require(layerGetDeviceProcAddr(d.handle,"vkZVramGetSnapshotStatsNX")!=nullptr,
+            "layer-owned device command was hidden by Vulkan availability gates");
+    { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(d.handle)); instances.erase(key(instance)); globalGipa=previousGlobal; }
+    availableProcNames.clear();
+}
+
+VKAPI_ATTR void VKAPI_CALL mockMaintenance4Query(VkDevice,const VkDeviceBufferMemoryRequirements* info,VkMemoryRequirements2* out) {
+    maintenance4QueriedCreateInfo=*info->pCreateInfo;
+    maintenance4QueriedFamilies.clear();
+    if(info->pCreateInfo->queueFamilyIndexCount) maintenance4QueriedFamilies.assign(info->pCreateInfo->pQueueFamilyIndices,
+        info->pCreateInfo->pQueueFamilyIndices+info->pCreateInfo->queueFamilyIndexCount);
+    maintenance4OuterPnext=info->pNext;
+    out->memoryRequirements={8*MiB,8192,0x5};
+    auto* dedicated=reinterpret_cast<VkMemoryDedicatedRequirements*>(out->pNext);
+    if(dedicated) { dedicated->prefersDedicatedAllocation=VK_TRUE; dedicated->requiresDedicatedAllocation=VK_FALSE; }
+}
+VKAPI_ATTR void VKAPI_CALL mockMaintenance4QueryCore(VkDevice d,const VkDeviceBufferMemoryRequirements* info,VkMemoryRequirements2* out) {
+    ++maintenance4CoreCalls; mockMaintenance4Query(d,info,out);
+}
+VKAPI_ATTR void VKAPI_CALL mockMaintenance4QueryKhr(VkDevice d,const VkDeviceBufferMemoryRequirements* info,VkMemoryRequirements2* out) {
+    ++maintenance4KhrCalls; mockMaintenance4Query(d,info,out);
+}
+VKAPI_ATTR VkResult VKAPI_CALL mockMaintenance4Create(VkDevice,const VkBufferCreateInfo* info,const VkAllocationCallbacks*,VkBuffer* out) {
+    maintenance4CreatedInfo=*info;
+    maintenance4CreatedFamilies.assign(info->pQueueFamilyIndices,info->pQueueFamilyIndices+info->queueFamilyIndexCount);
+    *out=tokenHandle<VkBuffer>(nextHandle++); return VK_SUCCESS;
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockMaintenance4GDPA(VkDevice,const char* name) {
+    if(std::strcmp(name,"vkGetDeviceBufferMemoryRequirements")==0 && maintenance4CoreAvailable)
+        return reinterpret_cast<PFN_vkVoidFunction>(mockMaintenance4QueryCore);
+    if(std::strcmp(name,"vkGetDeviceBufferMemoryRequirementsKHR")==0 && maintenance4KhrAvailable)
+        return reinterpret_cast<PFN_vkVoidFunction>(mockMaintenance4QueryKhr);
+    return nullptr;
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockMaintenance4GIPA(VkInstance,const char* name) {
+    return mockMaintenance4GDPA(VK_NULL_HANDLE,name);
+}
+void checkMaintenance4BufferRequirements() {
+    Fixture f; f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+    auto& d=f.device; d.handle=f.handle; d.virtualEnabled=true; d.virtualType=3; d.gdpa=mockMaintenance4GDPA;
+    d.getDeviceBufferMemoryRequirements=mockMaintenance4QueryCore;
+    d.getDeviceBufferMemoryRequirementsKHR=mockMaintenance4QueryKhr;
+    d.createBuffer=mockMaintenance4Create; d.queueFamilies={2,5};
+    maintenance4CoreAvailable=maintenance4KhrAvailable=true;
+    maintenance4CoreCalls=maintenance4KhrCalls=0;
+    {
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices[key(d.handle)]=std::shared_ptr<Device>(&d,[](Device*){});
+    }
+    VkBufferCreateInfo create{}; create.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    create.size=MiB; create.usage=VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    create.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+    VkBuffer actual{};
+    require(layerCreateBuffer(d.handle,&create,nullptr,&actual)==VK_SUCCESS,"maintenance4 comparison buffer create failed");
+
+    VkBaseOutStructure inputPnext{}; inputPnext.sType=VK_STRUCTURE_TYPE_MAX_ENUM;
+    VkDeviceBufferMemoryRequirements info{}; info.sType=VK_STRUCTURE_TYPE_DEVICE_BUFFER_MEMORY_REQUIREMENTS;
+    info.pNext=&inputPnext; info.pCreateInfo=&create;
+    VkMemoryDedicatedRequirements dedicated{}; dedicated.sType=VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
+    VkMemoryRequirements2 output{}; output.sType=VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2; output.pNext=&dedicated;
+    auto core=reinterpret_cast<PFN_vkGetDeviceBufferMemoryRequirements>(layerGetDeviceProcAddr(d.handle,"vkGetDeviceBufferMemoryRequirements"));
+    require(core!=nullptr,"core maintenance4 entrypoint was not wrapped");
+    core(d.handle,&info,&output);
+    require(maintenance4CoreCalls==1 && maintenance4QueriedCreateInfo.flags==maintenance4CreatedInfo.flags &&
+            maintenance4QueriedCreateInfo.usage==maintenance4CreatedInfo.usage &&
+            maintenance4QueriedCreateInfo.sharingMode==maintenance4CreatedInfo.sharingMode &&
+            maintenance4QueriedFamilies==maintenance4CreatedFamilies && maintenance4OuterPnext==&inputPnext &&
+            output.memoryRequirements.memoryTypeBits==(0x5u|(1u<<3)) && output.memoryRequirements.size==8*MiB &&
+            output.memoryRequirements.alignment==8192 && dedicated.prefersDedicatedAllocation==VK_TRUE,
+            "core maintenance4 query diverged from actual transformed buffer or damaged outputs");
+
+    output={}; output.sType=VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2; output.pNext=&dedicated;
+    auto khr=reinterpret_cast<PFN_vkGetDeviceBufferMemoryRequirementsKHR>(layerGetDeviceProcAddr(d.handle,"vkGetDeviceBufferMemoryRequirementsKHR"));
+    require(khr!=nullptr,"KHR maintenance4 entrypoint was not wrapped");
+    khr(d.handle,&info,&output);
+    require(maintenance4KhrCalls==1 && maintenance4QueriedCreateInfo.flags==maintenance4CreatedInfo.flags &&
+            maintenance4QueriedCreateInfo.usage==maintenance4CreatedInfo.usage &&
+            maintenance4QueriedFamilies==maintenance4CreatedFamilies &&
+            output.memoryRequirements.memoryTypeBits==(0x5u|(1u<<3)),
+            "KHR maintenance4 query diverged from actual transformed buffer");
+
+    VkBufferCreateInfo ineligible=create; ineligible.usage=VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    info.pCreateInfo=&ineligible; output={}; output.sType=VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+    core(d.handle,&info,&output);
+    require(maintenance4QueriedCreateInfo.usage==ineligible.usage && output.memoryRequirements.memoryTypeBits==0x5u,
+            "ineligible maintenance4 query did not pass through unchanged");
+
+    maintenance4CoreAvailable=false; maintenance4KhrAvailable=true;
+    require(layerGetDeviceProcAddr(d.handle,"vkGetDeviceBufferMemoryRequirements")==nullptr &&
+            layerGetDeviceProcAddr(d.handle,"vkGetDeviceBufferMemoryRequirementsKHR")!=nullptr,
+            "maintenance4 GDPA exposed unsupported alias");
+    std::uintptr_t instanceDispatchWord=0x3141;
+    VkInstance instance=reinterpret_cast<VkInstance>(&instanceDispatchWord); auto instanceState=std::make_shared<Instance>();
+    instanceState->handle=instance; instanceState->gipa=mockMaintenance4GIPA;
+    { std::lock_guard<std::mutex> lock(mapsMutex); instances[key(instance)]=instanceState; }
+    require(layerGetInstanceProcAddr(instance,"vkGetDeviceBufferMemoryRequirements")==nullptr &&
+            layerGetInstanceProcAddr(instance,"vkGetDeviceBufferMemoryRequirementsKHR")!=nullptr,
+            "maintenance4 GIPA exposed unsupported alias");
+    { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(d.handle)); instances.erase(key(instance)); }
+    maintenance4CoreAvailable=maintenance4KhrAvailable=true;
+}
+
 void configureNativeTypeFallback(Fixture& f) {
     auto& d=f.device; auto& m=f.state();
     d.memory.memoryTypeCount=3; d.memory.memoryHeapCount=3;
@@ -2593,6 +2891,9 @@ void checkDecoderAbandonmentPrecedesNativeDeviceDestroy() {
 } // namespace
 
 int main() try {
+    checkProcAddressAvailability();
+    checkMaintenance4BufferRequirements();
+    checkMaintenance6BindStatus();
     checkGatedRecoveryTeardownCleanup();
     checkQueueIdleTeardownFallback();
     checkDeferredPromotedBufferDestroy();

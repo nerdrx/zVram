@@ -1,0 +1,33 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build
+      Start  1: cpu-vulkan-queue-flags
+ 1/14 Test  #1: cpu-vulkan-queue-flags ...........   Passed    0.00 sec
+      Start  2: cpu-live-control
+ 2/14 Test  #2: cpu-live-control .................   Passed    0.00 sec
+      Start  3: cpu-bp16-codec
+ 3/14 Test  #3: cpu-bp16-codec ...................   Passed    0.02 sec
+      Start  4: cpu-resident-budget
+ 4/14 Test  #4: cpu-resident-budget ..............   Passed    0.00 sec
+      Start  5: cpu-resident-bootstrap
+ 5/14 Test  #5: cpu-resident-bootstrap ...........   Passed    0.00 sec
+      Start 16: cpu-vulkan-ram-guard
+ 6/14 Test #16: cpu-vulkan-ram-guard .............   Passed    0.25 sec
+      Start 17: cpu-vulkan-compression-options
+ 7/14 Test #17: cpu-vulkan-compression-options ...   Passed    2.56 sec
+      Start 18: cpu-vulkan-model-budget
+ 8/14 Test #18: cpu-vulkan-model-budget ..........   Passed    2.20 sec
+      Start 19: cpu-compression-policy
+ 9/14 Test #19: cpu-compression-policy ...........   Passed    0.01 sec
+      Start 20: cpu-clean-cache-policy
+10/14 Test #20: cpu-clean-cache-policy ...........   Passed    0.00 sec
+      Start 21: cpu-snapshot-decode
+11/14 Test #21: cpu-snapshot-decode ..............   Passed    0.03 sec
+      Start 22: cpu-gdeflate-envelope
+12/14 Test #22: cpu-gdeflate-envelope ............   Passed    0.00 sec
+      Start 23: cpu-snapshot-pipeline
+13/14 Test #23: cpu-snapshot-pipeline ............   Passed    0.01 sec
+      Start 25: cpu-active-refs
+14/14 Test #25: cpu-active-refs ..................   Passed    0.00 sec
+
+100% tests passed out of 14
+
+Total Test time (real) =   5.09 sec

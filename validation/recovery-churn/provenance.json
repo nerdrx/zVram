@@ -1,0 +1,12 @@
+{
+  "base": "333b9ec7808ba9ac21e667ed7f611fc20c81acf9",
+  "branch": "test/recovery-churn",
+  "scope": "fixture and CTest only; no production policy change",
+  "sha256": {
+    "layer.cpp": "009fa3eb9c8d10b74a3ea6579dab44ca8640884928c240432f8c8116e8671740",
+    "vulkan_auto_check.cpp": "335c97b5463e0e7965ef6cb30787c00d9c0dd650e79fa7f510b56156e444224a",
+    "CMakeLists.txt": "eca9b466366802fc6ed6593b5a3a81c9cb1f9d35a6d1c3c5b7f8b735783c3311",
+    "build/async-race/libzvram_layer.so": "b7abc2049d86dbc5a720305c08daec1d3da4658e34b018824ef3b20417bc0827",
+    "build/async-race/zvram-vulkan-auto-check": "78475e4e4a93a0f9b0fc9229f3a87ff2f5ceb3bbf9ba58beb2d1653dd1f8e53a"
+  }
+}

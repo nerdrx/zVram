@@ -1,0 +1,224 @@
+{
+  "runs": [
+    {
+      "quiet_ms": 0,
+      "synthetic_forced_nonlocal": true,
+      "queue_submit": {
+        "samples": 8,
+        "median_us": 3828.0,
+        "max_us": 5685
+      },
+      "fence_wait": {
+        "samples": 8,
+        "median_us": 299.5,
+        "max_us": 369
+      },
+      "actual_warm_copy_events": 3,
+      "actual_warm_copy_bytes": 12582912,
+      "freeze_count": 9,
+      "restore_count": 11,
+      "accesses_with_restore": 8,
+      "rows": [
+        {
+          "access": 0,
+          "buffer": 0,
+          "queue_submit_us": 4776,
+          "fence_wait_us": 295,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 1,
+          "buffer": 1,
+          "queue_submit_us": 4442,
+          "fence_wait_us": 297,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 2,
+          "buffer": 2,
+          "queue_submit_us": 5685,
+          "fence_wait_us": 288,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 3,
+          "buffer": 0,
+          "queue_submit_us": 3880,
+          "fence_wait_us": 307,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 4,
+          "buffer": 1,
+          "queue_submit_us": 3776,
+          "fence_wait_us": 369,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 5,
+          "buffer": 2,
+          "queue_submit_us": 3401,
+          "fence_wait_us": 325,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 6,
+          "buffer": 0,
+          "queue_submit_us": 3536,
+          "fence_wait_us": 302,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 7,
+          "buffer": 1,
+          "queue_submit_us": 3446,
+          "fence_wait_us": 291,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        }
+      ],
+      "scope": "one synthetic workload per quiet setting; no stable latency or game FPS conclusion"
+    },
+    {
+      "quiet_ms": 1000,
+      "synthetic_forced_nonlocal": true,
+      "queue_submit": {
+        "samples": 8,
+        "median_us": 3724.0,
+        "max_us": 4382
+      },
+      "fence_wait": {
+        "samples": 8,
+        "median_us": 323.5,
+        "max_us": 349
+      },
+      "actual_warm_copy_events": 1,
+      "actual_warm_copy_bytes": 4194304,
+      "freeze_count": 9,
+      "restore_count": 11,
+      "accesses_with_restore": 8,
+      "rows": [
+        {
+          "access": 0,
+          "buffer": 0,
+          "queue_submit_us": 4382,
+          "fence_wait_us": 288,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 1,
+          "buffer": 1,
+          "queue_submit_us": 3521,
+          "fence_wait_us": 294,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 2,
+          "buffer": 2,
+          "queue_submit_us": 4090,
+          "fence_wait_us": 330,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 3,
+          "buffer": 0,
+          "queue_submit_us": 3864,
+          "fence_wait_us": 349,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 4,
+          "buffer": 1,
+          "queue_submit_us": 3842,
+          "fence_wait_us": 324,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 5,
+          "buffer": 2,
+          "queue_submit_us": 3565,
+          "fence_wait_us": 316,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 6,
+          "buffer": 0,
+          "queue_submit_us": 3606,
+          "fence_wait_us": 323,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        },
+        {
+          "access": 7,
+          "buffer": 1,
+          "queue_submit_us": 3575,
+          "fence_wait_us": 340,
+          "freezes_delta": 1,
+          "restores_delta": 1,
+          "backing_before": null,
+          "backing_after": 0,
+          "warm_transition_without_restore": false
+        }
+      ],
+      "scope": "one synthetic workload per quiet setting; no stable latency or game FPS conclusion"
+    }
+  ]
+}

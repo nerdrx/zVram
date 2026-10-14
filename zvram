@@ -94,6 +94,8 @@ if command and command[0] == "--":
 if not command:
     parser.error("supply an application after --")
 build = args.build_dir.expanduser().resolve() if args.build_dir else Path(__file__).resolve().parent / "build"
+if not args.hip and os.pathsep in str(build):
+    parser.error("Vulkan build/install path contains ':'; move the build/install to a path without colon because VK_LAYER_PATH uses ':' as its separator")
 if args.hip and args.validate:
     parser.error("--validate applies to the Vulkan backend")
 if args.vulkan_virtual_mib is not None:

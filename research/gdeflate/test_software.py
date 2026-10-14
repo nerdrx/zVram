@@ -9,6 +9,7 @@ from pathlib import Path
 import struct
 import subprocess
 import sys
+from typing import Optional
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -102,7 +103,7 @@ def expected_pattern(path: Path, size: int) -> None:
             out.write(block)
 
 
-def pick_icd(requested: str | None) -> Path:
+def pick_icd(requested: Optional[str]) -> Path:
     if requested:
         path = Path(requested).expanduser().resolve(strict=True)
     else:

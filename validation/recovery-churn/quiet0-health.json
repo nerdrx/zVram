@@ -1,0 +1,23 @@
+{
+  "psi": "some avg10=0.00 avg60=0.00 avg300=0.05 total=102836800\nfull avg10=0.00 avg60=0.00 avg300=0.05 total=100723454\n",
+  "available_kib": 28262288,
+  "gpu": {
+    "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0": {
+      "gpu_busy_percent": "0",
+      "mem_info_vram_used": "13352968192",
+      "mem_info_vram_total": "25753026560",
+      "power_dpm_force_performance_level": "manual"
+    },
+    "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0": {
+      "gpu_busy_percent": "0",
+      "mem_info_vram_used": "16760832",
+      "mem_info_vram_total": "2147483648",
+      "power_dpm_force_performance_level": "auto"
+    }
+  },
+  "apps": [
+    "   1764 ollama",
+    " 873407 llama-server",
+    " 937552 llama-server"
+  ]
+}

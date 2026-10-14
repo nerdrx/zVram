@@ -1,0 +1,6 @@
+{
+  "library_sha256": "dbcf9abbd219c634f3b49476d31cd8cf8e2da03fe45cc637e396f47b699c0fac",
+  "test_hooks": false,
+  "six_compile_only_api_strings_absent": true,
+  "cpu_ctest": "14 passed, 5.76s"
+}
