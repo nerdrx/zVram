@@ -34,6 +34,7 @@
 #include "snapshot_pipeline.hpp"
 #include "gdeflate_gpu.hpp"
 #include "vulkan_queue_flags.hpp"
+#include "device_features_chain.hpp"
 
 namespace {
 using zvram::kAllowedQueueCreateFlags;
@@ -998,6 +999,9 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     std::uint32_t sparseFamily=UINT32_MAX, familyCount=0, sparseQueueFlags=0;
     std::uint32_t appSparseFamily=UINT32_MAX, appSparseQueueFlags=0;
     std::uint32_t privateFamily=UINT32_MAX, privateIndex=UINT32_MAX;
+    std::uint32_t privateSparseIndex=0;
+    VkDeviceQueueCreateFlags privateSparseFlags{};
+    bool separateSparseQueue=false;
     VkDeviceQueueCreateFlags privateQueueFlags{};
     bool unsupportedQueueFlags=false;
     bool queuePlanOutOfHostMemory=false;
@@ -1066,15 +1070,78 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             }
         }
     }
+    // Some RADV versions expose sparse binding only on a dedicated family.
+    // Keep both queues private; the snapshot semaphore bridge orders bind/copy.
+    if(snapshotRequested && view.enabled && !privateQueuePlanned && !deviceGroupRequested &&
+       !unsupportedQueueFlags && !queuePlanOutOfHostMemory) {
+        auto unusedQueue = [&](VkQueueFlags required, bool commandQueue,
+                               std::uint32_t& family, std::uint32_t& index,
+                               VkDeviceQueueCreateFlags& flags) {
+            for(std::uint32_t i=0;i<familyCount;i++) {
+                if((queueProps[i].queueFlags&required)!=required ||
+                   (commandQueue && !(queueProps[i].queueFlags&(VK_QUEUE_COMPUTE_BIT|VK_QUEUE_GRAPHICS_BIT)))) continue;
+                std::uint32_t used=0; VkDeviceQueueCreateFlags requestedFlags=0;
+                for(std::uint32_t q=0;q<ci->queueCreateInfoCount;q++)
+                    if(ci->pQueueCreateInfos[q].queueFamilyIndex==i) {
+                        used=ci->pQueueCreateInfos[q].queueCount; requestedFlags=ci->pQueueCreateInfos[q].flags;
+                    }
+                if(used>=queueProps[i].queueCount || (requestedFlags&~kAllowedQueueCreateFlags)) continue;
+                family=i; index=used; flags=requestedFlags; return true;
+            }
+            return false;
+        };
+        std::uint32_t bindFamily=UINT32_MAX, bindIndex=0, copyFamily=UINT32_MAX, copyIndex=0;
+        VkDeviceQueueCreateFlags bindFlags=0, copyFlags=0;
+        if(unusedQueue(VK_QUEUE_SPARSE_BINDING_BIT,false,bindFamily,bindIndex,bindFlags) &&
+           unusedQueue(0,true,copyFamily,copyIndex,copyFlags) && bindFamily!=copyFamily) {
+            try {
+                queueInfos.assign(ci->pQueueCreateInfos,ci->pQueueCreateInfos+ci->queueCreateInfoCount);
+                queuePriorities.clear(); queuePriorities.reserve(queueInfos.size()+2);
+                for(const auto& q:queueInfos)
+                    queuePriorities.emplace_back(q.pQueuePriorities,q.pQueuePriorities+q.queueCount);
+                auto appendQueue = [&](std::uint32_t family,VkDeviceQueueCreateFlags flags) {
+                    std::size_t i=0;
+                    while(i<queueInfos.size() && queueInfos[i].queueFamilyIndex!=family) ++i;
+                    if(i==queueInfos.size()) {
+                        queueInfos.push_back(VkDeviceQueueCreateInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO});
+                        queueInfos.back().queueFamilyIndex=family; queueInfos.back().flags=flags;
+                        queuePriorities.emplace_back();
+                    }
+                    ++queueInfos[i].queueCount; queuePriorities[i].push_back(1.0f);
+                };
+                appendQueue(copyFamily,copyFlags); appendQueue(bindFamily,bindFlags);
+                for(std::size_t i=0;i<queueInfos.size();i++) queueInfos[i].pQueuePriorities=queuePriorities[i].data();
+                privateFamily=copyFamily; privateIndex=copyIndex; privateQueueFlags=copyFlags;
+                sparseFamily=bindFamily; sparseQueueFlags=queueProps[bindFamily].queueFlags;
+                privateSparseIndex=bindIndex; privateSparseFlags=bindFlags;
+                separateSparseQueue=true; privateQueuePlanned=true;
+                logf("private Vulkan queues: copy family=%u index=%u, sparse family=%u index=%u",
+                     privateFamily,privateIndex,sparseFamily,privateSparseIndex);
+            } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+        }
+    }
+    if(snapshotRequested && sparseFamily==UINT32_MAX) {
+        logf("sparse queue planning failed: family-count=%u app-count=%u",familyCount,ci->queueCreateInfoCount);
+        for(std::uint32_t i=0;i<familyCount;i++) logf("queue family=%u flags=%u count=%u",i,queueProps[i].queueFlags,queueProps[i].queueCount);
+        for(std::uint32_t i=0;i<ci->queueCreateInfoCount;i++) logf("app queue family=%u flags=%u count=%u",ci->pQueueCreateInfos[i].queueFamilyIndex,ci->pQueueCreateInfos[i].flags,ci->pQueueCreateInfos[i].queueCount);
+    }
     bool virtualEnabled=view.enabled && sparseFamily!=UINT32_MAX;
     VkPhysicalDeviceFeatures injectedFeatures{};
     VkPhysicalDeviceFeatures2 injectedFeatures2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+    std::vector<VkLayerDeviceCreateInfo> loaderFeaturePrefix;
     const auto* featureChain=static_cast<const VkBaseInStructure*>(ci->pNext);
     const VkPhysicalDeviceFeatures2* requestedFeatures2=nullptr;
     for(auto* p=featureChain;p;p=p->pNext)
         if(p->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) { requestedFeatures2=reinterpret_cast<const VkPhysicalDeviceFeatures2*>(p); break; }
     const bool hasFeatures2=requestedFeatures2!=nullptr;
-    const bool features2AtHead=ci->pNext && static_cast<const VkBaseInStructure*>(ci->pNext)->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    const void* amendedFeatureChain=nullptr;
+    bool features2Amendable=false;
+    if(hasFeatures2) {
+        try {
+            features2Amendable=zvram::amendableFeatures2Chain(
+                ci->pNext,injectedFeatures2,loaderFeaturePrefix,amendedFeatureChain);
+        } catch(const std::bad_alloc&) { return VK_ERROR_OUT_OF_HOST_MEMORY; }
+    }
     const bool sparseBindingEnabled=hasFeatures2?requestedFeatures2->features.sparseBinding!=VK_FALSE:
         (ci->pEnabledFeatures && ci->pEnabledFeatures->sparseBinding!=VK_FALSE);
     const bool coreRobustEnabled=hasFeatures2?requestedFeatures2->features.robustBufferAccess!=VK_FALSE:
@@ -1086,7 +1153,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     const bool residencyEnabled=hasFeatures2?requestedFeatures2->features.sparseResidencyBuffer!=VK_FALSE:
         (ci->pEnabledFeatures && ci->pEnabledFeatures->sparseResidencyBuffer!=VK_FALSE);
     const bool rangeEnabled=rangeMiB && snapshotRequested && physicalFeatures.sparseResidencyBuffer &&
-        (!hasFeatures2 || features2AtHead || residencyEnabled);
+        (!hasFeatures2 || features2Amendable || residencyEnabled);
     bool gpuRestorePlanned=false, injectGpuSubgroup=false, gpuRequiresInt64=false;
     bool gpuImportHostPlanned=false;
     VkDeviceSize gpuImportHostAlignment=0;
@@ -1112,7 +1179,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             (!app13 || (app13->subgroupSizeControl && app13->computeFullSubgroups));
         auto getFeatures=reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2>(in->gipa(in->handle,"vkGetPhysicalDeviceFeatures2"));
         auto getProperties=reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(in->gipa(in->handle,"vkGetPhysicalDeviceProperties2"));
-        if(getFeatures && getProperties && appAllowsSubgroup && (!hasFeatures2 || features2AtHead || int64Enabled)) {
+        if(getFeatures && getProperties && appAllowsSubgroup && (!hasFeatures2 || features2Amendable || int64Enabled)) {
             VkPhysicalDeviceFeatures2 available{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
             available.pNext=&gpuSubgroup; getFeatures(physical,&available);
             VkPhysicalDeviceSubgroupProperties subgroups{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
@@ -1245,13 +1312,18 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             properties.pNext=&robustProperties; properties2(physical,&properties);
             const auto alignment=robustProperties.robustStorageBufferAccessSizeAlignment;
             if(injectedRobustness.robustBufferAccess2 && alignment && !(alignment&(alignment-1)) &&
-               (!hasFeatures2 || features2AtHead || coreRobustEnabled)) {
+               (!hasFeatures2 || features2Amendable || coreRobustEnabled)) {
                 strictRobustnessEnabled=true; robustAlignment=alignment;
             }
         }
     }
 #endif
-    if(hasFeatures2 && !features2AtHead && !sparseBindingEnabled) {
+    if(hasFeatures2 && !features2Amendable && !sparseBindingEnabled) {
+        for(auto* p=featureChain;p && p->sType!=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;p=p->pNext)
+            if(p->sType!=VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO) {
+                logf("sparse feature injection blocked by device pNext structure type=%u",static_cast<unsigned>(p->sType));
+                break;
+            }
         virtualEnabled=false;
         if(privateQueuePlanned) {
             privateQueuePlanned=false; privateFamily=privateIndex=UINT32_MAX;
@@ -1290,13 +1362,13 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
     if(virtualEnabled) {
         if(hasFeatures2) {
             if(!sparseBindingEnabled || (rangeEnabled && !residencyEnabled) || (strictRobustnessEnabled && !appRobustnessPresent && !coreRobustEnabled) ||
-               (gpuRequiresInt64 && features2AtHead && !requestedFeatures2->features.shaderInt64)) {
-                injectedFeatures2=*requestedFeatures2; injectedFeatures2.features.sparseBinding=VK_TRUE;
+               (gpuRequiresInt64 && features2Amendable && !requestedFeatures2->features.shaderInt64)) {
+                injectedFeatures2.features.sparseBinding=VK_TRUE;
                 if(rangeEnabled) injectedFeatures2.features.sparseResidencyBuffer=VK_TRUE;
                 if(strictRobustnessEnabled) injectedFeatures2.features.robustBufferAccess=VK_TRUE;
                 if(gpuRequiresInt64) injectedFeatures2.features.shaderInt64=VK_TRUE;
-                if(copy.pNext==ci->pNext) copy.pNext=&injectedFeatures2;
-                else behavior.pNext=&injectedFeatures2;
+                if(inject) behavior.pNext=amendedFeatureChain;
+                else copy.pNext=amendedFeatureChain;
             }
         } else if(!sparseBindingEnabled || (rangeEnabled && !residencyEnabled) || strictRobustnessEnabled || gpuRequiresInt64) {
             if(ci->pEnabledFeatures) injectedFeatures=*ci->pEnabledFeatures;
@@ -1444,16 +1516,18 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                 if(std::find(d->queueFamilies.begin(),d->queueFamilies.end(),privateFamily)==d->queueFamilies.end())
                     d->queueFamilies.push_back(privateFamily);
             }
-            if(privateQueuePlanned && d->copyQueue) d->sparseQueue=d->copyQueue;
+            if(privateQueuePlanned && d->copyQueue && !separateSparseQueue) d->sparseQueue=d->copyQueue;
             else if(virtualEnabled) {
-                if(d->getDeviceQueue) d->getDeviceQueue(*out,sparseFamily,0,&d->sparseQueue);
+                if(privateSparseFlags==0 && d->getDeviceQueue) d->getDeviceQueue(*out,sparseFamily,privateSparseIndex,&d->sparseQueue);
                 else if(d->getDeviceQueue2) {
                     VkDeviceQueueInfo2 queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_INFO_2};
-                    queueInfo.queueFamilyIndex=sparseFamily; queueInfo.queueIndex=0;
+                    queueInfo.flags=privateSparseFlags; queueInfo.queueFamilyIndex=sparseFamily; queueInfo.queueIndex=privateSparseIndex;
                     d->getDeviceQueue2(*out,&queueInfo,&d->sparseQueue);
                 }
             }
         }
+        if(separateSparseQueue && d->sparseQueue && d->setDeviceLoaderData &&
+           d->setDeviceLoaderData(*out,d->sparseQueue)!=VK_SUCCESS) d->sparseQueue=VK_NULL_HANDLE;
         if(!d->getDeviceQueue && !d->getDeviceQueue2) queueInventoryComplete=false;
         if(virtualEnabled && !d->sparseQueue) queueInventoryComplete=false;
         d->queueInventoryComplete=queueInventoryComplete;
@@ -1467,8 +1541,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             else if(queuePlanOutOfHostMemory)
                 logf("automatic Vulkan snapshots disabled: host memory exhausted while planning private queue");
             else if(!virtualEnabled)
-                logf("automatic Vulkan snapshots disabled: sparse-binding queue or safe sparse feature chain unavailable");
-            else if(!privateQueuePlanned || !virtualEnabled || !d->copyQueue)
+                logf("automatic Vulkan snapshots disabled: sparse-binding queue or safe sparse feature chain unavailable (virtual-heap=%u sparse-family=%u features2=%u amendable=%u sparse-requested=%u)",view.enabled,sparseFamily,hasFeatures2,features2Amendable,sparseBindingEnabled);
+            else if(!privateQueuePlanned || !virtualEnabled || !d->copyQueue || !d->sparseQueue)
                 logf("automatic Vulkan snapshots disabled: no unused sparse+transfer+compute/graphics queue and virtual-memory opt-in");
             else if(!snapshotConfig(*d,d->idleMilliseconds,d->coldBudget))
                 logf("automatic Vulkan snapshots disabled: invalid idle interval or cold budget");
@@ -1604,7 +1678,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
                         d->restoreQueueGenerations.emplace_back(queue,0);
                 }
                 catch(const std::bad_alloc&) { autoResult=VK_ERROR_OUT_OF_HOST_MEMORY; }
-                if(autoResult==VK_SUCCESS) autoResult=d->autoQueues.init(*out,nextGdpa,d->copyQueue,handles,d->activeEviction);
+                if(autoResult==VK_SUCCESS) autoResult=d->autoQueues.init(*out,nextGdpa,d->copyQueue,handles,d->activeEviction,d->sparseQueue);
                 if(autoResult==VK_SUCCESS) {
                     d->autoInitialized=true;
                     if(!initSnapshotResources(*d,privateFamily)) autoResult=VK_ERROR_FEATURE_NOT_PRESENT;

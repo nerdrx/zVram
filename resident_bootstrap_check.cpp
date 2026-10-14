@@ -206,6 +206,42 @@ VKAPI_ATTR VkResult VKAPI_CALL mockSubmit(VkQueue,std::uint32_t count,const VkSu
                           (applicationSubmitInfo && infos==applicationSubmitInfo))) ++submitCalls;
     return VK_SUCCESS;
 }
+struct QueueOperation { char kind{}; VkQueue queue{}; VkSemaphore wait{},signal{}; };
+std::vector<QueueOperation> tracedQueueOperations;
+VKAPI_ATTR VkResult VKAPI_CALL traceQueueSubmit(VkQueue queue,std::uint32_t count,const VkSubmitInfo* infos,VkFence) {
+    QueueOperation op{'S',queue};
+    if(count && infos) {
+        if(infos[0].waitSemaphoreCount) op.wait=infos[0].pWaitSemaphores[0];
+        if(infos[0].signalSemaphoreCount) op.signal=infos[0].pSignalSemaphores[0];
+    }
+    tracedQueueOperations.push_back(op);
+    return VK_SUCCESS;
+}
+VKAPI_ATTR VkResult VKAPI_CALL traceQueueBindSparse(VkQueue queue,std::uint32_t count,const VkBindSparseInfo* infos,VkFence) {
+    QueueOperation op{'B',queue};
+    if(count && infos) {
+        if(infos[0].waitSemaphoreCount) op.wait=infos[0].pWaitSemaphores[0];
+        if(infos[0].signalSemaphoreCount) op.signal=infos[0].pSignalSemaphores[0];
+    }
+    tracedQueueOperations.push_back(op);
+    return VK_SUCCESS;
+}
+VKAPI_ATTR VkResult VKAPI_CALL traceQueueWaitIdle(VkQueue queue) {
+    tracedQueueOperations.push_back({'I',queue});
+    return VK_SUCCESS;
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL traceQueueGetDeviceProcAddr(VkDevice,const char* name) {
+    if(std::strcmp(name,"vkCreateFence")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCreateFence);
+    if(std::strcmp(name,"vkDestroyFence")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockDestroyFence);
+    if(std::strcmp(name,"vkGetFenceStatus")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockFenceStatus);
+    if(std::strcmp(name,"vkResetFences")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockResetFences);
+    if(std::strcmp(name,"vkCreateSemaphore")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCreateSemaphore);
+    if(std::strcmp(name,"vkDestroySemaphore")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockDestroySemaphore);
+    if(std::strcmp(name,"vkQueueSubmit")==0) return reinterpret_cast<PFN_vkVoidFunction>(traceQueueSubmit);
+    if(std::strcmp(name,"vkQueueBindSparse")==0) return reinterpret_cast<PFN_vkVoidFunction>(traceQueueBindSparse);
+    if(std::strcmp(name,"vkQueueWaitIdle")==0) return reinterpret_cast<PFN_vkVoidFunction>(traceQueueWaitIdle);
+    return nullptr;
+}
 VKAPI_ATTR VkResult VKAPI_CALL mockResetCommandPool(VkDevice,VkCommandPool,VkCommandPoolResetFlags) {
     ++mockResetCommandPoolCalls; return VK_SUCCESS;
 }
@@ -2039,6 +2075,42 @@ void checkDefaultBudgetDoesNotQuery() {
             "default resident admission queried hardware budget or changed the hard cap");
 }
 
+void checkAutoSparseBindUsesDedicatedQueue() {
+    tracedQueueOperations.clear();
+    const auto device=tokenHandle<VkDevice>(0x1a01);
+    const auto appQueue=tokenHandle<VkQueue>(0x1a02);
+    const auto copyQueue=tokenHandle<VkQueue>(0x1a03);
+    const auto sparseQueue=tokenHandle<VkQueue>(0x1a04);
+    ZvramAutoQueues queues;
+    require(queues.init(device,traceQueueGetDeviceProcAddr,copyQueue,{appQueue,copyQueue},false,sparseQueue)==VK_SUCCESS,
+            "dedicated sparse queue fixture failed to initialize");
+    VkSparseMemoryBind memoryBind{};
+    memoryBind.size=4096;
+    VkSparseBufferMemoryBindInfo bufferBind{};
+    bufferBind.buffer=tokenHandle<VkBuffer>(0x1a05);
+    bufferBind.bindCount=1;
+    bufferBind.pBinds=&memoryBind;
+    require(queues.sparseBind(bufferBind)==VK_SUCCESS,"dedicated sparse bind failed");
+    require(tracedQueueOperations.size()==4,"dedicated sparse bind emitted an unexpected queue sequence");
+    const auto& before=tracedQueueOperations[0];
+    const auto& bind=tracedQueueOperations[1];
+    const auto& after=tracedQueueOperations[2];
+    const auto& idle=tracedQueueOperations[3];
+    require(before.kind=='S' && before.queue==copyQueue && before.signal,
+            "pre-bind semaphore signal did not stay on the copy queue");
+    require(bind.kind=='B' && bind.queue==sparseQueue && bind.wait==before.signal && bind.signal,
+            "sparse bind did not use the dedicated queue and semaphore bridge");
+    require(after.kind=='S' && after.queue==copyQueue && after.wait==bind.signal,
+            "post-bind semaphore wait did not return to the copy queue");
+    require(idle.kind=='I' && idle.queue==copyQueue,
+            "sparse-bind completion did not wait on the copy queue bridge");
+    bool marked=false;
+    require(queues.submitted(sparseQueue,marked)==VK_ERROR_FEATURE_NOT_PRESENT &&
+            tracedQueueOperations.size()==4,
+            "internal sparse queue was incorrectly added to application queue markers");
+    queues.destroy();
+}
+
 void registerPresentFixture(Fixture& f,bool enabled=true) {
     // Dispatchable Vulkan handles point at objects whose first word is a
     // dispatch pointer; key() intentionally follows that same representation.
@@ -2907,6 +2979,7 @@ int main() try {
     checkResidentBudgetAccounting();
     checkBudgetRefusalBeforeAllocation();
     checkDefaultBudgetDoesNotQuery();
+    checkAutoSparseBindUsesDedicatedQueue();
     checkBasePresentPassthrough();
     checkPresentGateAndFallback();
     checkPresentMetadataAllowlist();
