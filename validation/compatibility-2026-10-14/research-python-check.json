@@ -1,0 +1,6 @@
+{
+  "python39_grammar_parse": "pass",
+  "cli_help": "pass on host Python",
+  "python39_interpreter": null,
+  "runtime_gpu_tests": "not run"
+}

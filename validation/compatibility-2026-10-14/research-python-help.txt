@@ -1,0 +1,12 @@
+usage: test_software.py [-h] --binary BINARY [--icd ICD]
+                        [--output-dir OUTPUT_DIR]
+
+Run bounded GDeflate correctness fixtures on an explicitly selected lavapipe
+ICD.
+
+options:
+  -h, --help            show this help message and exit
+  --binary BINARY       compiled research Vulkan host binary
+  --icd ICD             lavapipe ICD JSON; default requires exactly one system
+                        lvp_icd*.json
+  --output-dir OUTPUT_DIR

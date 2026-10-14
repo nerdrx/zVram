@@ -25,8 +25,10 @@ User authorized compatibility improvements until 2026-10-14 08:00 Europe/Berlin 
 - External-memory/capture-address audit complete, no fix: export/import/host-pointer/capture-replay allocation chains remain native because the full adoption parser rejects those nodes/flags; handle-free property queries do not need translation, opaque-address queries translate handles. Root checked parser/adoption path.
 - Launcher audit LD_PRELOAD claim covers exact environment forwarding only: its dummy library path did not exist and produced loader warnings, so successful library loading was not tested.
 - Physical-memory reporting audit complete, no concrete issue: strict native count limits guard appended heap/type indices; sparse capability and queue gates precede exposure; properties2 forwards output chains and budget injection stays within the guarded slot.
-- Proc-address fix completed with root/independent review: exact-name alias availability, null-instance global-only behavior, physical-callback rejection of recognized nonphysical wrappers, loader/custom APIs preserved. All14CPU PASS5.03s and three tiny query/bind driver regressions PASS0.36s, sync validation clean/cleanup0; production hooksOFF/sixAPIstringsabsent. Ready for commit/push. No further GPU work needed.
-- All agents holding; next work should target a concrete remaining compatibility issue, not repeat completed audits or hardware timings.
+- Proc-address fix completed with root/independent review: exact-name alias availability, null-instance global-only behavior, physical-callback rejection of recognized nonphysical wrappers, loader/custom APIs preserved. All14CPU PASS5.03s and three tiny query/bind driver regressions PASS0.36s, sync validation clean/cleanup0; production hooksOFF/sixAPIstringsabsent. Committed/pushed e348d72; PR4 body/title updated. Check CI once on a future pass. No further GPU work needed.
+- e348d72 CI both SUCCESS: 38488820567 and 38488825419 checked 00:21 UTC. No pending CI for this revision.
+- Packaging/relocation audit completed, no shipping issue; existing package/control CPU tests passed10/10. Root fixed a research-only Python3.9 initialization mismatch (`str | None` to Optional[str]); host CLIhelp +3.9grammar parse PASS, no actual3.9interpreter available and noGPU run. Ready for commit.
+- All agents holding; no pending implementation or runtime checks.
 - Other agents completed/holding. No root-owned running jobs. No GPU timing reruns needed.
 
 ## Operating constraints
