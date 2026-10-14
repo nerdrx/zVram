@@ -68,6 +68,128 @@ class ModelIntegrationTest(unittest.TestCase):
             config.write_text(json.dumps({'checkout': str(root), 'port': 7000}))
             self.assertEqual(m.discover_xenium(config)['checkout'], str(root))
 
+    def test_projector_pairing_and_setup_persistence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = root / 'data/ollama/models'
+            model_digest, projector_digest = 'a' * 64, 'b' * 64
+            model_blob = store / 'blobs' / ('sha256-' + model_digest)
+            projector_blob = store / 'blobs' / ('sha256-' + projector_digest)
+            model_blob.parent.mkdir(parents=True)
+            model_blob.write_bytes(b'GGUF model')
+            projector_blob.write_bytes(b'GGUF projector')
+            manifest = store / 'manifests/registry.ollama.ai/library/qwen3.5/9b'
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({'layers': [
+                {'mediaType': 'application/vnd.ollama.image.model', 'digest': 'sha256:' + model_digest},
+                {'mediaType': 'application/vnd.ollama.image.projector', 'digest': 'sha256:' + projector_digest},
+            ]}))
+            server = root / 'llama-server'
+            server.write_text('#!/bin/sh\nexit 0\n')
+            server.chmod(0o700)
+
+            model = m.discover_models(root)[0]
+            self.assertEqual(model['name'], 'qwen3.5:9b')
+            self.assertEqual(model['mmproj_path'], str(projector_blob.resolve()))
+            command, _ = m.build_server_command(model['path'], model['name'], server=server)
+            self.assertEqual(command[command.index('--model') + 1], str(model_blob.resolve()))
+            self.assertEqual(command[command.index('--mmproj') + 1], str(projector_blob.resolve()))
+
+            args = ['zvram_model.py', 'setup', '--model', str(model_blob), '--name', 'qwen-test',
+                    '--alias', model['name'], '--server', str(server)]
+            with patch.object(sys, 'argv', args), patch('zvram_manager.Manager') as manager, patch('builtins.print'):
+                m.main()
+            profile = manager.return_value.save_profile.call_args.args[0]
+            saved_command = profile['command']
+            self.assertEqual(saved_command[saved_command.index('--mmproj') + 1], str(projector_blob.resolve()))
+            import zvram_manager
+            launcher = zvram_manager.Manager.__new__(zvram_manager.Manager)
+            with patch.object(zvram_manager, 'gpu_status', return_value=[]):
+                launch_command, _ = launcher.launch_command(profile)
+            self.assertEqual(launch_command[launch_command.index('--mmproj') + 1],
+                             str(projector_blob.resolve()))
+
+    def test_projector_absent_or_missing_keeps_text_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = root / 'data/ollama/models'
+            model_digest, missing_digest = 'c' * 64, 'd' * 64
+            model_blob = store / 'blobs' / ('sha256-' + model_digest)
+            model_blob.parent.mkdir(parents=True)
+            model_blob.write_bytes(b'GGUF model')
+            manifest = store / 'manifests/registry.ollama.ai/library/text-only/7b'
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({'layers': [
+                {'mediaType': 'application/vnd.ollama.image.model', 'digest': 'sha256:' + model_digest},
+                {'mediaType': 'application/vnd.ollama.image.projector', 'digest': 'sha256:' + missing_digest},
+            ]}))
+            server = root / 'llama-server'
+            server.write_text('#!/bin/sh\nexit 0\n')
+            server.chmod(0o700)
+            model = m.discover_models(root)[0]
+            self.assertNotIn('mmproj_path', model)
+            command, _ = m.build_server_command(model['path'], model['name'], server=server)
+            self.assertNotIn('--mmproj', command)
+            with self.assertRaisesRegex(ValueError, 'paired'):
+                m.build_server_command(model['path'], model['name'], server=server,
+                                       mmproj=model_blob)
+
+    def test_projector_without_manifest_pair_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = root / 'data/ollama/models'
+            digests = ('e' * 64, 'f' * 64)
+            model_blob, projector_blob = [store / 'blobs' / ('sha256-' + digest) for digest in digests]
+            model_blob.parent.mkdir(parents=True)
+            model_blob.write_bytes(b'GGUF model')
+            projector_blob.write_bytes(b'GGUF projector')
+            manifest = store / 'manifests/registry.ollama.ai/library/model/7b'
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({'layers': [
+                {'mediaType': 'application/vnd.ollama.image.model', 'digest': 'sha256:' + digests[0]},
+            ]}))
+            server = root / 'llama-server'
+            server.write_text('#!/bin/sh\nexit 0\n')
+            server.chmod(0o700)
+            with self.assertRaisesRegex(ValueError, 'paired'):
+                m.build_server_command(model_blob, 'model:7b', server=server, mmproj=projector_blob)
+
+    def test_projector_binding_uses_exact_manifest_when_blob_is_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = root / 'data/ollama/models'
+            model_digest, projector_digest = '1' * 64, '2' * 64
+            model_blob = store / 'blobs' / ('sha256-' + model_digest)
+            projector_blob = store / 'blobs' / ('sha256-' + projector_digest)
+            model_blob.parent.mkdir(parents=True)
+            model_blob.write_bytes(b'GGUF model')
+            projector_blob.write_bytes(b'GGUF projector')
+            manifests = store / 'manifests/registry.ollama.ai/library'
+            (manifests / 'vision').mkdir(parents=True)
+            (manifests / 'text').mkdir(parents=True)
+            model_layer = {'mediaType': 'application/vnd.ollama.image.model',
+                           'digest': 'sha256:' + model_digest}
+            (manifests / 'vision/7b').write_text(json.dumps({'layers': [model_layer, {
+                'mediaType': 'application/vnd.ollama.image.projector',
+                'digest': 'sha256:' + projector_digest}]}))
+            (manifests / 'text/7b').write_text(json.dumps({'layers': [model_layer]}))
+            server = root / 'llama-server'
+            server.write_text('#!/bin/sh\nexit 0\n')
+            server.chmod(0o700)
+
+            # A reused model blob alone cannot authorize borrowing another tag's projector.
+            command, _ = m.build_server_command(model_blob, 'custom-alias', server=server)
+            self.assertNotIn('--mmproj', command)
+            command, _ = m.build_server_command(model_blob, 'custom-alias', server=server,
+                                                model_name='text:7b')
+            self.assertNotIn('--mmproj', command)
+            command, _ = m.build_server_command(model_blob, 'custom-alias', server=server,
+                                                model_name='vision:7b')
+            self.assertEqual(command[command.index('--mmproj') + 1], str(projector_blob.resolve()))
+            with self.assertRaisesRegex(ValueError, 'paired'):
+                m.build_server_command(model_blob, 'custom-alias', server=server,
+                                       model_name='text:7b', mmproj=projector_blob)
+
     def test_webkit_cookie_scope_expiry_and_injection(self):
         with tempfile.TemporaryDirectory() as directory:
             cookie = Path(directory) / 'cookies'
