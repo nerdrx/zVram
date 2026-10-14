@@ -25,6 +25,7 @@ class ZvramAutoQueues {
     };
     VkDevice device_{};
     VkQueue copy_{};
+    VkQueue sparse_{};
     std::vector<Queue> queues_;
     std::vector<VkSemaphore> waits_;
     std::vector<VkPipelineStageFlags> stages_;
@@ -62,8 +63,9 @@ public:
     ZvramAutoQueues& operator=(const ZvramAutoQueues&)=delete;
 
     VkResult init(VkDevice device,PFN_vkGetDeviceProcAddr get,VkQueue copy,
-                  const std::vector<VkQueue>& handles,bool activeMarkers=false) {
-        device_=device; copy_=copy; activeMarkers_=activeMarkers;
+                  const std::vector<VkQueue>& handles,bool activeMarkers=false,
+                  VkQueue sparse=VK_NULL_HANDLE) {
+        device_=device; copy_=copy; sparse_=sparse?sparse:copy; activeMarkers_=activeMarkers;
 #define LOAD(field,type,name) field=reinterpret_cast<type>(get(device,name))
         LOAD(createFence_,PFN_vkCreateFence,"vkCreateFence");
         LOAD(destroyFence_,PFN_vkDestroyFence,"vkDestroyFence");
@@ -297,7 +299,7 @@ public:
         bind.waitSemaphoreCount=1; bind.pWaitSemaphores=&beforeSparse_;
         bind.signalSemaphoreCount=1; bind.pSignalSemaphores=&afterSparse_;
         bind.bufferBindCount=count; bind.pBufferBinds=buffers;
-        result=bindSparse_(copy_,1,&bind,VK_NULL_HANDLE); if(result!=VK_SUCCESS) return checked(result);
+        result=bindSparse_(sparse_,1,&bind,VK_NULL_HANDLE); if(result!=VK_SUCCESS) return checked(result);
         const VkPipelineStageFlags stage=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         VkSubmitInfo after{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         after.waitSemaphoreCount=1; after.pWaitSemaphores=&afterSparse_; after.pWaitDstStageMask=&stage;
@@ -319,6 +321,6 @@ public:
         if(beforeSparse_ && destroySemaphore_) destroySemaphore_(device_,beforeSparse_,nullptr);
         if(afterSparse_ && destroySemaphore_) destroySemaphore_(device_,afterSparse_,nullptr);
         queues_.clear(); waits_.clear(); stages_.clear(); restoreWaits_.clear();
-        beforeSparse_={}; afterSparse_={}; activeMarkers_=false;
+        beforeSparse_={}; afterSparse_={}; copy_={}; sparse_={}; activeMarkers_=false;
     }
 };
