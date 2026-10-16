@@ -63,6 +63,19 @@ class PackageChecks(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Test-hook builds"):
                 package(root, root / "dist", "0.4.9")
 
+    def test_malformed_codec_metadata_refused(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cases = [([], "JSON object"), (None, "JSON object")]
+            for field in ("gdeflate", "gdeflate_gpu", "bp16", "bp16_gpu", "test_hooks"):
+                cases.extend(({field: value}, "JSON boolean") for value in ("enabled", 1, 0, None))
+            for metadata, message in cases:
+                with self.subTest(metadata=metadata):
+                    (root / "zvram-codecs.json").write_text(json.dumps(metadata))
+                    with self.assertRaisesRegex(ValueError, message):
+                        package(root, root / "dist", "0.4.23")
+                    self.assertFalse(list((root / "dist").glob("*.tar.gz")))
+
     def test_missing_shader_refused(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

@@ -18,6 +18,11 @@ def package(build_dir, output, version):
     build_dir, output = Path(build_dir).resolve(), Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     codecs = json.loads((build_dir / "zvram-codecs.json").read_text())
+    if not isinstance(codecs, dict):
+        raise ValueError("Codec metadata must be a JSON object")
+    for name in ("gdeflate", "gdeflate_gpu", "bp16", "bp16_gpu", "test_hooks"):
+        if name in codecs and not isinstance(codecs[name], bool):
+            raise ValueError("Codec capability must be a JSON boolean: " + name)
     if codecs.get("test_hooks"):
         raise ValueError("Test-hook builds cannot be packaged for installation")
     backend = ["libzvram_layer.so", "VK_LAYER_NX_zvram.json", "zvram-codecs.json"]
