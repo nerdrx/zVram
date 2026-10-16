@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import sys
 sys.dont_write_bytecode = True
@@ -73,7 +74,20 @@ if args.live_control is None:
 if args.live_control:
     if args.hip:
         parser.error('--live-control currently requires the Vulkan backend')
-    from zvram_manager import gpu_status
+    from zvram_manager import gpu_status, PRIORITIES
+    steam_priority = None
+    steam_id = next((os.environ[key] for key in ("SteamAppId", "SteamGameId")
+                     if re.fullmatch(r"[1-9][0-9]{0,19}", os.environ.get(key, ""))), None)
+    if steam_id:
+        state_home = Path(os.environ.get("ZVRAM_MANAGER_HOME") or
+                          Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "zvram")
+        try:
+            preferences = json.loads((state_home / "steam-priorities.json").read_text())
+            candidate = preferences.get(steam_id) if isinstance(preferences, dict) else None
+            if isinstance(candidate, str) and candidate in PRIORITIES:
+                steam_priority = candidate
+        except (OSError, ValueError):
+            pass
     if args.vulkan_eviction_trigger is None:
         # Preserve explicit expert/model idle probes; ordinary apps avoid idle churn.
         args.vulkan_eviction_trigger = 'idle' if args.vulkan_auto_idle_ms is not None or args.vulkan_resident_after_cold else 'pressure'
@@ -81,6 +95,8 @@ if args.live_control:
         args.vulkan_virtual_gib = 96
     defaults = dict(vulkan_auto_idle_ms=1000, vulkan_cold_mib=4096, vulkan_range_mib=32,
                     vulkan_resident_mib=max(256, int(max((c['vram_total_mib'] for c in gpu_status()), default=8192))))
+    if steam_priority:
+        defaults['vulkan_resident_mib'] = max(256, int(defaults['vulkan_resident_mib'] * PRIORITIES[steam_priority]))
     if not args.vulkan_resident_after_cold:
         defaults['vulkan_headroom_mib'] = 1536
     for key, value in defaults.items():
@@ -242,6 +258,8 @@ if args.hip and not (build / "libzvram_hip.so").is_file():
 if not args.hip and (not (build / "VK_LAYER_NX_zvram.json").is_file() or not (build / "libzvram_layer.so").is_file()):
     parser.error("build first: cmake -S zvram -B zvram/build && cmake --build zvram/build")
 env = os.environ.copy()
+if args.live_control and not args.hip and steam_priority and args.vulkan_recover_local_quiet_ms is None:
+    env["ZVRAM_VULKAN_RECOVERY_PRIORITY"] = str(int(steam_priority == "high"))
 if not args.hip:
     import zvram_control
     try:

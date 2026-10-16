@@ -306,10 +306,13 @@ def check_gui():
     window.fields["resident_mib"].set("768")
     window.save()
     assert manager.calls[-1] == ("live_limit", EXTERNAL["name"], 768)
-    window.fields["resident_mib"].set("")
     window.fields["priority"].set("high")
+    window.field_widgets["priority"].event_generate("<<ComboboxSelected>>")
+    root.update()
+    assert window.fields["resident_mib"].get() == "", "Old cap silently overrides chosen priority"
     window.apply_live()
     assert manager.calls[-1] == ("live_priority", EXTERNAL["name"], "high")
+    assert not window.form_is_dirty(), "Submitted external controls still look unsaved"
     assert manager.profiles[EXTERNAL["name"]]["priority"] == "—"
     manager.profiles.pop(EXTERNAL["name"])
     window.refresh()
@@ -350,6 +353,21 @@ def check_gui():
     assert "test" not in delete_manager.profiles
     assert delete_window.selected() is None and not delete_window.form_is_dirty()
     assert delete_window.fields["name"].get() == ""
+    live_manager = FakeManager()
+    live_manager.profiles["test"].update(running=True, live_capable=True)
+    live_window = ManagerWindow(root, live_manager)
+    live_window.table.selection_set("test")
+    live_window.select()
+    live_window.fields["priority"].set("high")
+    live_window.field_widgets["priority"].event_generate("<<ComboboxSelected>>")
+    live_window.save()
+    assert live_manager.profiles["test"]["priority"] == "high"
+    assert live_manager.profiles["test"]["resident_mib"] is None
+    assert live_manager.calls[-1] == ("live_priority", "test", "high")
+    assert "Live change requested" in live_window.message.get()
+    with patch.object(live_manager, "set_live_priority", side_effect=ValueError("device unavailable")):
+        live_window.save()
+    assert "Profile saved, but live change failed" in live_window.message.get()
     if "--screenshot" in sys.argv:
         import subprocess
         from pathlib import Path

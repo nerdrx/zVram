@@ -154,7 +154,8 @@ def discovered_processes(exclude=(), proc_root=Path('/proc')):
             with (proc / 'environ').open('rb') as stream:
                 for entry in stream.read(131072).split(b'\0'):
                     key, sep, value = entry.partition(b'=')
-                    if sep and key in (b'VK_INSTANCE_LAYERS', b'LD_PRELOAD', b'ZVRAM_VULKAN_RESIDENT_MIB'):
+                    if sep and key in (b'VK_INSTANCE_LAYERS', b'LD_PRELOAD', b'ZVRAM_VULKAN_RESIDENT_MIB',
+                                       b'SteamAppId', b'SteamGameId'):
                         env[key.decode()] = os.fsdecode(value)
         except OSError:
             pass
@@ -176,8 +177,11 @@ def discovered_processes(exclude=(), proc_root=Path('/proc')):
         except (OSError, IndexError):
             continue
         cap = env.get('ZVRAM_VULKAN_RESIDENT_MIB', '')
+        steam_app_id = next((env[key] for key in ('SteamAppId', 'SteamGameId')
+                             if re.fullmatch(r'[1-9][0-9]{0,19}', env.get(key, ''))), None)
         row = dict(name=f'@{pid}-{start}', display_name=name, external=True, source='zVram',
                    mode='wrapped', priority='—', running=True, pid=pid, process_start=start,
+                   steam_app_id=steam_app_id,
                    backend_loaded=loaded,
                    state='Layer loaded' if loaded else 'Launch configured', command=[],
                    resident_mib=None, active_resident_mib=int(cap) if cap.isdecimal() else None)
@@ -208,11 +212,124 @@ class Manager:
 
     def set_live_limit(self, name, mib):
         import zvram_control
-        return zvram_control.request(self, name, mib=mib)
+        row, saved = self.control_target(name)
+        requests = zvram_control.request(self, name, mib=mib)
+        self._replace_live_priority(name, saved, row.get("steam_app_id"))
+        return requests
 
     def set_live_priority(self, name, priority):
         import zvram_control
-        return zvram_control.request(self, name, priority=priority)
+        row, saved = self.control_target(name)
+        requests = zvram_control.request(self, name, priority=priority)
+        self._remember_live_priority(name, saved, requests, priority, row.get("steam_app_id"))
+        return requests
+
+    def _live_priority_path(self):
+        return self.home / "live-priorities.json"
+
+    def _read_live_priorities(self):
+        value = read_json(self._live_priority_path(), {})
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _live_priority_key(saved):
+        return f"{saved['pid']}-{saved['start']}"
+
+    def _remember_live_priority(self, name, saved, requests, priority, steam_app_id=None):
+        try:
+            _, current = self.control_target(name)
+        except ValueError:
+            return
+        if current != saved or identity(saved['pid']) != saved:
+            return
+        with self.lock():
+            records = self._read_live_priorities()
+            for key, record in list(records.items()):
+                owner = record.get("identity") if isinstance(record, dict) else None
+                owner_pid = owner.get("pid") if isinstance(owner, dict) else None
+                if type(owner_pid) is not int or owner_pid <= 0 or identity(owner_pid) != owner:
+                    records.pop(key, None)
+            key = self._live_priority_key(saved)
+            record = records.get(key, {})
+            devices = record.get("devices", {}) if record.get("identity") == saved else {}
+            devices = devices if isinstance(devices, dict) else {}
+            for request in requests:
+                device = str(request["device"])
+                old = devices.get(device)
+                if isinstance(old, dict) and old.get("seq", 0) >= request["seq"]:
+                    continue
+                devices[device] = {"seq": request["seq"], "priority": priority}
+            records[key] = {"identity": saved, "devices": devices}
+            write_json(self._live_priority_path(), records)
+            self._update_steam_priority(steam_app_id, priority)
+
+    def _replace_live_priority(self, name, saved, steam_app_id=None):
+        try:
+            _, current = self.control_target(name)
+        except ValueError:
+            return
+        if current != saved or identity(saved['pid']) != saved:
+            return
+        with self.lock():
+            records = self._read_live_priorities()
+            if records.pop(self._live_priority_key(saved), None) is not None:
+                write_json(self._live_priority_path(), records)
+            self._update_steam_priority(steam_app_id, None)
+
+    def _update_steam_priority(self, app_id, priority):
+        if not isinstance(app_id, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", app_id):
+            return
+        path = self.home / "steam-priorities.json"
+        records = read_json(path, {})
+        records = records if isinstance(records, dict) else {}
+        if priority is None:
+            changed = records.pop(app_id, None) is not None
+        else:
+            changed = records.get(app_id) != priority
+            records[app_id] = priority
+        if changed:
+            write_json(path, records)
+
+    def _live_priority_view(self, saved, devices, records):
+        record = records.get(self._live_priority_key(saved), {})
+        if not isinstance(record, dict) or record.get("identity") != saved:
+            return None, "unknown"
+        requested = record.get("devices", {})
+        if not isinstance(requested, dict) or not requested:
+            return None, "unknown"
+        priorities = [item.get("priority") for item in requested.values() if isinstance(item, dict)]
+        if not priorities:
+            return None, "unknown"
+        priority = priorities[0] if all(item == priorities[0] for item in priorities) else "mixed"
+        current = {str(item.get("device")): item for item in devices}
+        states = []
+        for device, item in requested.items():
+            if not isinstance(item, dict):
+                states.append("pending")
+                continue
+            sequence = item.get("seq")
+            status = current.get(str(device))
+            if type(sequence) is not int or status is None:
+                states.append("pending")
+                continue
+            status_sequence = status.get("seq", 0)
+            acknowledged = status.get("ack", 0)
+            if status_sequence > sequence:
+                states.append("superseded")
+            elif status_sequence == sequence and acknowledged >= sequence:
+                states.append("applied" if status.get("result", 0) == 0 else
+                              "rejected" if status.get("result") == 2 else "pending")
+            else:
+                states.append("pending")
+        if states and all(state == "applied" for state in states):
+            state = "applied"
+        elif "superseded" in states:
+            state = "superseded"
+        elif "rejected" in states:
+            state = "rejected"
+        else:
+            state = "pending"
+        return priority, state
 
     @contextlib.contextmanager
     def lock(self):
@@ -296,7 +413,12 @@ class Manager:
         rows += [dict(row) for row in self._discovered if row['pid'] not in excluded and
                  (identity(row['pid']) or {}).get('start') == row['process_start']]
         import zvram_control
+        live_priorities = self._read_live_priorities()
+        steam_priorities = read_json(self.home / "steam-priorities.json", {})
         for row in rows:
+            row["steam_priority"] = steam_priorities.get(row.get("steam_app_id")) if isinstance(steam_priorities, dict) else None
+            row['live_priority'] = None
+            row['live_priority_state'] = 'unknown'
             saved = identity(row.get('pid')) if row.get('pid') else None
             if saved and saved['uid'] == os.getuid():
                 row['process_start'] = saved['start']
@@ -304,6 +426,8 @@ class Manager:
                 row['control_devices'] = report['devices']
                 row['control_diagnostics'] = report['diagnostics']
                 row['live_capable'] = any(d['capable'] for d in row['control_devices'])
+                row['live_priority'], row['live_priority_state'] = self._live_priority_view(
+                    saved, row['control_devices'], live_priorities)
         return rows
 
     def status(self):

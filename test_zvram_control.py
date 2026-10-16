@@ -143,6 +143,32 @@ class ControlChecks(unittest.TestCase):
             self.assertIn("move the build/install to a path without colon", result.stderr)
             self.assertFalse(sentinel.exists(), result.stdout)
 
+    def test_steam_priority_survives_new_launcher(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for filename in ('VK_LAYER_NX_zvram.json', 'libzvram_layer.so'):
+                (root / filename).touch()
+            (root / 'steam-priorities.json').write_text('{"123":"high"}')
+            env = {k:v for k,v in os.environ.items() if not k.startswith('ZVRAM_VULKAN_')}
+            env.update(SteamAppId='123', ZVRAM_MANAGER_HOME=str(root))
+            def launch(*flags):
+                out = subprocess.run([sys.executable, str(Path(__file__).with_name('zvram')),
+                    '--build-dir', str(root), *flags, '--', sys.executable, '-c',
+                    'import json,os;print(json.dumps(dict(os.environ)))'], env=env,
+                    capture_output=True, text=True, timeout=10)
+                self.assertEqual(out.returncode, 0, out.stderr)
+                return json.loads(out.stdout)
+            high = launch()
+            self.assertEqual(high['ZVRAM_VULKAN_RECOVERY_PRIORITY'], '1')
+            self.assertEqual(launch('--vulkan-resident-mib', '512')['ZVRAM_VULKAN_RESIDENT_MIB'], '512')
+            (root / 'steam-priorities.json').write_text('{"123":"low"}')
+            low = launch()
+            self.assertLess(int(low['ZVRAM_VULKAN_RESIDENT_MIB']), int(high['ZVRAM_VULKAN_RESIDENT_MIB']))
+            self.assertEqual(low['ZVRAM_VULKAN_RECOVERY_PRIORITY'], '0')
+            self.assertNotIn('ZVRAM_VULKAN_RECOVERY_PRIORITY', launch('--no-live-control'))
+            env['SteamAppId'] = '456'
+            self.assertNotIn('ZVRAM_VULKAN_RECOVERY_PRIORITY', launch())
+
     def test_launcher_defaults_and_opt_out(self):
         with tempfile.TemporaryDirectory() as temporary:
             build = Path(temporary)
