@@ -7,6 +7,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts.package import package
 
@@ -26,6 +27,8 @@ class PackageChecks(unittest.TestCase):
             stage = root / "relocated"
             with tarfile.open(asset) as archive:
                 names = archive.getnames()
+                self.assertIn("usr/share/zvram/0.3.0/assets/icon.png", names)
+                self.assertIn("usr/share/icons/hicolor/scalable/apps/zvram.svg", names)
                 self.assertTrue(all(name == "usr" or name.startswith("usr/") for name in names))
                 self.assertFalse(any("gguf" in name.lower() or "__pycache__" in name for name in names))
                 # Archive created entirely by this test from fixed, local package inputs.
@@ -41,6 +44,17 @@ class PackageChecks(unittest.TestCase):
             self.assertEqual(manifest["layer"]["library_path"], "./libzvram_layer.so")
             with self.assertRaises(ValueError):
                 package(build, root / "dist", "../bad")
+
+    def test_missing_manager_icon_refused(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "zvram-codecs.json").write_text('{}')
+            for name in ("libzvram_layer.so", "VK_LAYER_NX_zvram.json"):
+                (root / name).write_text("fixture")
+            with patch("scripts.package.ROOT", root):
+                with self.assertRaisesRegex(ValueError, "Missing runtime asset: assets/icon.png"):
+                    package(root, root / "dist", "0.4.23")
+            self.assertFalse(list((root / "dist").glob("*.tar.gz")))
 
     def test_test_hook_build_refused(self):
         with tempfile.TemporaryDirectory() as temp:

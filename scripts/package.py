@@ -28,6 +28,9 @@ def package(build_dir, output, version):
     for name in backend:
         if not (build_dir / name).is_file():
             raise ValueError("Missing runtime artifact: " + name)
+    for name in ("assets/icon.png", "assets/icon.svg"):
+        if not (ROOT / name).is_file():
+            raise ValueError("Missing runtime asset: " + name)
     asset = output / f"zvram-{version}-linux-x86_64.tar.gz"
     with tempfile.TemporaryDirectory(prefix="zvram-package-") as temp:
         stage = Path(temp)
