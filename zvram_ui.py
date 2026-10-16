@@ -96,6 +96,10 @@ def profile_details(profile):
             text += " · Apply live requires a running app with paging enabled"
         if profile.get("mode") == "wrapped":
             text += " · existing zVram command"
+    if profile.get("steam_priority"):
+        text += " | Saved Steam priority: %s (next launch)" % profile["steam_priority"]
+    if profile.get("live_priority"):
+        text += " | Live priority: %s (%s) · remembered for this process" % (profile["live_priority"], profile.get("live_priority_state", "pending"))
     if control_issue(profile):
         text += " | " + control_issue(profile)
     for index, device in enumerate(profile.get("control_devices", []), 1):
@@ -267,6 +271,8 @@ class ManagerWindow:
             self.fields[key] = variable
             widget = ttk.Combobox(right, textvariable=variable, values=PRIORITIES if key == "priority" else ("native", "vulkan", "wrapped"), state="readonly") if key in ("priority", "mode") else ttk.Entry(right, textvariable=variable)
             self.field_widgets[key] = widget
+            if key == "priority":
+                widget.bind("<<ComboboxSelected>>", lambda event: self.fields["resident_mib"].set(""))
             widget.grid(row=row + 1, column=column, columnspan=span, sticky="ew", pady=(0, 6), padx=(0, 10 if column == 0 and span == 1 else 0))
         guard = ttk.Checkbutton(right, text="Ignore swap-growth guard (RAM floor stays on)", variable=self.swap_guard, style="Card.TCheckbutton")
         guard.grid(row=10, column=0, columnspan=2, sticky="w", pady=(0, 8))
@@ -369,7 +375,7 @@ class ManagerWindow:
             if label == "Apply live":
                 enabled = live
             widget.configure(state="normal" if enabled else "disabled")
-        self.controls["Save settings"].configure(text="Save live cap" if external else "Save settings")
+        self.controls["Save settings"].configure(text="Apply live" if external else "Save settings")
         for key, widget in self.field_widgets.items():
             enabled = (not external or live and key in ("priority", "resident_mib")) if key != "ignore_swap_guard" else not external
             widget.configure(state="disabled" if not enabled else "readonly" if key in ("priority", "mode") or key == "name" and profile else "normal")
@@ -398,7 +404,9 @@ class ManagerWindow:
                     return
                 self.manager.set_live_priority(profile["name"], priority)
             self.refresh()
-            self.message.set("Live cap requested. Reductions may remain pending until resident data fits.")
+            if profile.get("external"):
+                self.mark_form_clean()
+            self.message.set("Live change requested. Check device acknowledgement; reductions may remain pending.")
         except Exception as error:
             self.message.set("Error: %s" % error)
 
@@ -418,7 +426,7 @@ class ManagerWindow:
             self.editing = profile["name"]
             for key in self.fields:
                 if key == "priority" and profile.get("external"):
-                    self.fields[key].set(profile.get("priority") if profile.get("priority") in PRIORITIES else "")
+                    self.fields[key].set(profile.get("live_priority") or profile.get("steam_priority") or (profile.get("priority") if profile.get("priority") in PRIORITIES else ""))
                     continue
                 self.fields[key].set(command_text(profile) if key == "command" else profile.get("display_name", profile["name"]) if key == "name" else str(profile.get(key) if profile.get(key) is not None else ""))
             self.mark_form_clean()
@@ -441,7 +449,7 @@ class ManagerWindow:
             for profile in profiles:
                 self.table.insert("", "end", iid=profile["name"], text=profile.get("display_name", profile["name"]), values=(
                     usage_mib(profile, "vram_mib"), usage_mib(profile, "gtt_mib"),
-                    usage_mib(profile, "rss_mib"), profile["priority"].upper(), table_state(profile)))
+                    usage_mib(profile, "rss_mib"), (profile["live_priority"] + " · " + profile.get("live_priority_state", "pending")).upper() if profile.get("live_priority") else profile["priority"].upper(), table_state(profile)))
             if focused in self.profiles:
                 self.table.focus(focused)
             if selected in self.profiles:
@@ -486,7 +494,17 @@ class ManagerWindow:
             self.refresh()
             self.mark_form_clean()
             self.table.selection_set(profile["name"])
-            self.message.set("Saved. Running processes keep their current residency until restarted.")
+            if self.profiles.get(profile["name"], {}).get("live_capable"):
+                try:
+                    if profile.get("resident_mib") is not None:
+                        self.manager.set_live_limit(profile["name"], profile["resident_mib"])
+                    else:
+                        self.manager.set_live_priority(profile["name"], profile["priority"])
+                    self.message.set("Profile saved. Live change requested; check device status for acknowledgement.")
+                except Exception as error:
+                    self.message.set("Profile saved, but live change failed: %s" % error)
+            else:
+                self.message.set("Profile saved for the next launch. No live change applied.")
         except Exception as error:
             self.message.set("Error: %s" % error)
 

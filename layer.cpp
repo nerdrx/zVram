@@ -1760,6 +1760,9 @@ VKAPI_ATTR VkResult VKAPI_CALL layerCreateDevice(VkPhysicalDevice physical,const
             std::lock_guard<std::mutex> lock(d->mutex);
             try { d->liveControl.init(std::getenv("ZVRAM_CONTROL_DIR"),handleToken(d->handle)); }
             catch(...) { d->liveControl.reset(); }
+            const char* initialRecoveryPriority=std::getenv("ZVRAM_VULKAN_RECOVERY_PRIORITY");
+            d->liveControl.state.recoveryPriority=d->coldCycleRecovery && initialRecoveryPriority &&
+                std::strcmp(initialRecoveryPriority,"1")==0;
             pollLiveControl(*d,true);
         }
         logf("device=%s policy=%s",d->gpu.c_str(),policy?"application-specified":inject?"allowed":"unchanged");

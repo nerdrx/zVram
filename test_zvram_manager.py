@@ -50,17 +50,20 @@ class ManagerChecks(unittest.TestCase):
                 p.joinpath('environ').write_bytes(env)
                 p.joinpath('maps').write_text(maps)
                 p.joinpath('comm').write_text('test-app\n')
-            process(10, b'VK_INSTANCE_LAYERS=VK_LAYER_NX_zvram\0ZVRAM_VULKAN_RESIDENT_MIB=512\0SECRET=hidden\0')
+            process(10, b'VK_INSTANCE_LAYERS=VK_LAYER_NX_zvram\0ZVRAM_VULKAN_RESIDENT_MIB=512\0'
+                       b'SteamAppId=123\0SteamGameId=456\0SECRET=hidden\0')
             process(11, b'VK_INSTANCE_LAYERS=VK_LAYER_NX_zvram_fake\0')
             process(12, maps='0 0 0 0 0 /old/version/libzvram_layer.so (deleted)\n')
-            process(13, b'LD_PRELOAD=/path/libzvram_hip.so\0')
+            process(13, b'LD_PRELOAD=/path/libzvram_hip.so\0SteamGameId=789\0')
             process(14, b'VK_INSTANCE_LAYERS=VK_LAYER_NX_zvram\0', parent=10)
             process(15, b'ZVRAM_VERBOSE=1\0')
             with patch('zvram_manager.process_usage', return_value={}):
                 rows = discovered_processes(proc_root=root)
                 self.assertEqual([r['pid'] for r in rows], [10, 12, 13, 14])
                 self.assertEqual(rows[0]['active_resident_mib'], 512)
+                self.assertEqual(rows[0]['steam_app_id'], '123')
                 self.assertEqual(rows[1]['state'], 'Layer loaded')
+                self.assertEqual(rows[2]['steam_app_id'], '789')
                 self.assertNotIn('hidden', json.dumps(rows))
                 self.assertEqual([r['pid'] for r in discovered_processes([10], root)], [12, 13])
                 with patch('zvram_manager.os.getuid', return_value=os.getuid() + 1):
@@ -160,6 +163,60 @@ class ManagerChecks(unittest.TestCase):
             self.assertEqual(command[-2:], ["app", "--literal"])
             high, highcap = manager.launch_command(dict(profile, priority="high"))
             self.assertGreater(highcap, cap)
+
+    def test_live_priority_session_ack_and_steam_preference(self):
+        import zvram_control
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {
+                "ZVRAM_CONTROL_DIR": str(Path(temp) / "control"), "XDG_RUNTIME_DIR": ""}):
+            manager = Manager(Path(temp) / "state")
+            saved = identity(os.getpid())
+            name = f"@{os.getpid()}-{saved['start']}"
+            endpoint = manager.control_home / name[1:]
+            endpoint.mkdir(mode=0o700)
+            status = endpoint / "42.status"
+
+            def publish(seq=0, ack=0, result=0):
+                values = {"version": 1, "pid": os.getpid(), "start": saved["start"], "device": 42,
+                          "capable": 1, "resident_mib": 512, "current_limit_mib": 1700,
+                          "min_limit_mib": 32, "max_limit_mib": 2000, "requested_mib": 1700,
+                          "seq": seq, "ack": ack, "result": result, "reason": 0,
+                          "recovery_capable": 1, "recovery_priority": 1}
+                status.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
+                status.chmod(0o600)
+
+            publish()
+            devices = zvram_control.status(manager.control_home, os.getpid(), saved["start"])
+            row = {"name": name, "running": True, "external": True, "pid": os.getpid(),
+                   "process_start": saved["start"], "control_devices": devices, "steam_app_id": "123"}
+            with patch.object(manager, "control_target", return_value=(row, saved)):
+                requests = manager.set_live_priority(name, "high")
+            self.assertEqual(requests[0]["seq"], 1)
+            self.assertEqual(json.loads((manager.home / "steam-priorities.json").read_text()), {"123": "high"})
+
+            listed = dict(row, state="Layer loaded", priority="—", mode="wrapped", command=[])
+            manager._discovered = [listed]
+            manager._discovered_at = time.monotonic()
+            current = next(item for item in manager.list_profiles() if item["name"] == name)
+            self.assertEqual((current["live_priority"], current["live_priority_state"]), ("high", "pending"))
+
+            publish(seq=1, ack=1, result=0)
+            restarted_manager = Manager(Path(temp) / "state")
+            restarted_manager._discovered = [listed]
+            restarted_manager._discovered_at = time.monotonic()
+            current = next(item for item in restarted_manager.list_profiles() if item["name"] == name)
+            self.assertEqual((current["live_priority"], current["live_priority_state"]), ("high", "applied"))
+
+            publish(seq=1, ack=1, result=2)
+            current = next(item for item in restarted_manager.list_profiles() if item["name"] == name)
+            self.assertEqual(current["live_priority_state"], "rejected")
+            publish(seq=2, ack=2, result=0)
+            current = next(item for item in restarted_manager.list_profiles() if item["name"] == name)
+            self.assertEqual(current["live_priority_state"], "superseded")
+
+            with patch.object(manager, "control_target", return_value=(row, saved)):
+                manager.set_live_limit(name, 768)
+            self.assertEqual(json.loads((manager.home / "steam-priorities.json").read_text()), {})
+            self.assertNotIn(f"{os.getpid()}-{saved['start']}", json.loads(manager._live_priority_path().read_text()))
 
     def test_worker_pressure_cleanup(self):
         with tempfile.TemporaryDirectory() as temp:
