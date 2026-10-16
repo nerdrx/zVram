@@ -4669,7 +4669,16 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBufferToImage2(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer,"vkCmdCopyBufferToImage2");
+                if (!pCopyBufferToImageInfo || pCopyBufferToImageInfo->pNext ||
+                    (pCopyBufferToImageInfo->regionCount && !pCopyBufferToImageInfo->pRegions)) {
+                    d->submission.unknown(commandBuffer);
+                } else if (pCopyBufferToImageInfo->regionCount) {
+                    bool unknownRegion = false;
+                    for (std::uint32_t i = 0; i < pCopyBufferToImageInfo->regionCount; ++i)
+                        unknownRegion |= pCopyBufferToImageInfo->pRegions[i].pNext != nullptr;
+                    if (unknownRegion) d->submission.unknown(commandBuffer);
+                    else d->submission.bufferRange(commandBuffer, pCopyBufferToImageInfo->srcBuffer, 0, VK_WHOLE_SIZE, false);
+                }
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -4690,7 +4699,16 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdCopyBufferToImage2KHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer,"vkCmdCopyBufferToImage2KHR");
+                if (!pCopyBufferToImageInfo || pCopyBufferToImageInfo->pNext ||
+                    (pCopyBufferToImageInfo->regionCount && !pCopyBufferToImageInfo->pRegions)) {
+                    d->submission.unknown(commandBuffer);
+                } else if (pCopyBufferToImageInfo->regionCount) {
+                    bool unknownRegion = false;
+                    for (std::uint32_t i = 0; i < pCopyBufferToImageInfo->regionCount; ++i)
+                        unknownRegion |= pCopyBufferToImageInfo->pRegions[i].pNext != nullptr;
+                    if (unknownRegion) d->submission.unknown(commandBuffer);
+                    else d->submission.bufferRange(commandBuffer, pCopyBufferToImageInfo->srcBuffer, 0, VK_WHOLE_SIZE, false);
+                }
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;

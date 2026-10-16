@@ -299,6 +299,7 @@ struct Device {
     bool maintenance6Enabled{};
     bool bufferDeviceAddressEnabled{};
     bool nativeWrappingAllowed{true};
+    bool loggedUnmanagedBuffer{};
     std::uint64_t virtualUsage{};
     bool autoEnabled{};
     bool autoInitialized{};
@@ -505,10 +506,10 @@ void pollLiveControl(Device& d,bool force=false) noexcept {
         if(d.liveControl.read(request))
             applied=d.liveControl.state.accept(request,capable,d.rangeChunkBytes,maximum,
                 d.gpuLocalOwnerCombinedLimitBytes,d.gpuDecoder?d.gpuDecoder->localOwnerLimitBytes():0,
-                d.residentBytes,limit);
+                d.residentBytes,limit,d.coldCycleRecovery);
         applied=d.liveControl.state.settle(capable,d.residentBytes,limit)||applied;
         if(applied) { d.residentLimitBytes=limit; d.admissionBudgetSnapshotValid=false; }
-        if(!d.liveControl.publish(capable,d.residentBytes,d.residentLimitBytes,d.rangeChunkBytes,maximum))
+        if(!d.liveControl.publish(capable,d.residentBytes,d.residentLimitBytes,d.rangeChunkBytes,maximum,d.coldCycleRecovery && capable))
             d.liveControl.reset();
     } catch(...) { d.liveControl.reset(); }
 }
@@ -673,6 +674,11 @@ void logSnapshotState(const char* event,Device& d) {
 std::mutex mapsMutex;
 // Future command entry points absent from our build cannot be tracked safely.
 std::atomic<bool> unknownCommandProc{false};
+std::atomic<bool> unsupportedPresentMetadataLogged{false};
+void noteUnknownCommandProc(const char* name) {
+    if(!unknownCommandProc.exchange(true))
+        logf("access tracking fallback first-unwrapped-command-lookup=%s",name);
+}
 PFN_vkGetInstanceProcAddr globalGipa{};
 std::unordered_map<void*,std::shared_ptr<Instance>> instances;
 std::unordered_map<void*,std::shared_ptr<Device>> devices;
@@ -2503,13 +2509,15 @@ VkResult residentAdmissionLimit(Device& d,VkDeviceSize& limit) {
         d.admissionBudgetSnapshotLimit=limit;
         d.admissionBudgetSnapshotValid=true;
     }
-    if(limit!=d.lastBudgetLimit) {
+    // Budget sampling is frequent; keep normal logs useful for startup diagnostics.
+    if(limit!=d.lastBudgetLimit && (verbose() ||
+       d.lastBudgetLimit==std::numeric_limits<VkDeviceSize>::max())) {
         logf("resident budget native-heap=%u budget=%llu usage=%llu tracked-local=%llu reserve=%llu effective-limit=%llu hard-limit=%llu",
              d.budgetHeap,static_cast<unsigned long long>(total),static_cast<unsigned long long>(usage),
              static_cast<unsigned long long>(tracked),static_cast<unsigned long long>(d.budgetReserveBytes),
              static_cast<unsigned long long>(limit),static_cast<unsigned long long>(d.residentLimitBytes));
-        d.lastBudgetLimit=limit;
     }
+    d.lastBudgetLimit=limit;
     return VK_SUCCESS;
 }
 bool pressureOnlyFreezeNeeded(Device& d,VkDeviceSize& target) {
@@ -3416,7 +3424,7 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
        memory.coldGroups[child].cold || memory.coldGroups[child].pristine ||
        memory.coldGroups[child].restoreBound || d.activeRefs.busy(handle,child)) return false;
     const auto now=std::chrono::steady_clock::now();
-    if(now<memory.coldGroups[child].lastUse+std::chrono::milliseconds(d.coldCycleQuietMilliseconds)) return false;
+    if(now<memory.coldGroups[child].lastUse+std::chrono::milliseconds(d.liveControl.state.recoveryPriority?0:d.coldCycleQuietMilliseconds)) return false;
     const auto size=memory.childSizes[child];
     if(d.residentBytes>target || size>kAsyncSnapshotMaxRaw ||
        d.liveLocal>target || size>target-d.liveLocal) return false;
@@ -3581,7 +3589,7 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
                type>=d.memory.memoryTypeCount ||
                d.memory.memoryTypes[type].heapIndex>=d.memory.memoryHeapCount ||
                (d.memory.memoryHeaps[d.memory.memoryTypes[type].heapIndex].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) ||
-               now<group.lastUse+std::chrono::milliseconds(d.coldCycleQuietMilliseconds) ||
+               now<group.lastUse+std::chrono::milliseconds(d.liveControl.state.recoveryPriority?0:d.coldCycleQuietMilliseconds) ||
                d.liveLocal>target || size>target-d.liveLocal) continue;
             const auto compatible=memory.backingMemoryTypeBits&memory.poolViewMemoryTypeBits[i];
             bool hasLocalType=false;
@@ -4000,7 +4008,19 @@ VkResult bindPromoted(VkDevice device,const std::shared_ptr<Device>& d,VkBuffer 
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerCreateBuffer(VkDevice device,const VkBufferCreateInfo* ci,const VkAllocationCallbacks* allocator,VkBuffer* out) {
     auto d=findDevice(device); if(!d || !d->createBuffer) return VK_ERROR_INITIALIZATION_FAILED;
-    if(!eligibleBuffer(*d,ci)) return d->createBuffer(device,ci,allocator,out);
+    if(!eligibleBuffer(*d,ci)) {
+        if(d->virtualEnabled && ci && ci->size>=1024u*1024u) {
+            std::lock_guard<std::mutex> lock(d->mutex);
+            if(!d->loggedUnmanagedBuffer) {
+                logf("first unmanaged large buffer bytes=%llu usage=0x%llx flags=0x%x pnext-type=%d; native allocation remains outside recovery",
+                     static_cast<unsigned long long>(ci->size),static_cast<unsigned long long>(ci->usage),
+                     static_cast<unsigned>(ci->flags),ci->pNext?
+                     static_cast<int>(static_cast<const VkBaseInStructure*>(ci->pNext)->sType):-1);
+                d->loggedUnmanagedBuffer=true;
+            }
+        }
+        return d->createBuffer(device,ci,allocator,out);
+    }
     EffectiveBufferCreateInfo effective{};
     if(!effectiveBufferCreateInfo(*d,ci,effective)) return VK_ERROR_OUT_OF_HOST_MEMORY;
     VkResult r=d->createBuffer(device,&effective.info,allocator,out); if(r!=VK_SUCCESS) return r;
@@ -4625,6 +4645,7 @@ VkResult queueCall(VkQueue queue,const char* name,Args... args) {
     }
     const bool unsupportedOrdering=std::strcmp(name,"vkQueueBindSparse")==0 || std::strcmp(name,"vkQueuePresentKHR")==0;
     if(unsupportedOrdering && d->autoEnabled) {
+        logf("automatic paging disabled: unsupported ordering api=%s",name);
         d->autoEnabled=false; d->stopWorker.store(true); d->activity.notify_all();
     }
     if(d->activeEviction) {
@@ -4759,31 +4780,105 @@ VKAPI_ATTR VkResult VKAPI_CALL layerQueueWaitIdle(VkQueue q) {
 }
 bool supportedBufferPresentMetadata(const VkPresentInfoKHR* info) {
     if(!info) return false;
-    bool hasPresentId=false,hasRegions=false;
+    constexpr std::size_t maxNodes=16;
+    std::array<const VkBaseInStructure*,maxNodes> visited{};
+    std::array<VkStructureType,maxNodes> seenTypes{};
     auto* node=static_cast<const VkBaseInStructure*>(info->pNext);
     for(unsigned count=0;node;count++) {
-        if(count>=2) return false;
+        if(count>=maxNodes) return false;
+        for(unsigned i=0;i<count;i++)
+            if(visited[i]==node || seenTypes[i]==node->sType) return false;
+        visited[count]=node;
+        seenTypes[count]=node->sType;
         switch(node->sType) {
         case VK_STRUCTURE_TYPE_PRESENT_ID_KHR: {
-            if(hasPresentId) return false;
             const auto* presentId=reinterpret_cast<const VkPresentIdKHR*>(node);
             if(presentId->swapchainCount!=info->swapchainCount) return false;
-            hasPresentId=true;
             node=static_cast<const VkBaseInStructure*>(presentId->pNext);
             break;
         }
         case VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR: {
-            if(hasRegions) return false;
             const auto* regions=reinterpret_cast<const VkPresentRegionsKHR*>(node);
             if(regions->swapchainCount!=info->swapchainCount) return false;
-            hasRegions=true;
             node=static_cast<const VkBaseInStructure*>(regions->pNext);
             break;
         }
+#ifdef VK_KHR_present_id2
+        case VK_STRUCTURE_TYPE_PRESENT_ID_2_KHR: {
+            const auto* presentId=reinterpret_cast<const VkPresentId2KHR*>(node);
+            if(presentId->swapchainCount!=info->swapchainCount) return false;
+            node=static_cast<const VkBaseInStructure*>(presentId->pNext);
+            break;
+        }
+#endif
+#ifdef VK_GOOGLE_display_timing
+        case VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE: {
+            const auto* timing=reinterpret_cast<const VkPresentTimesInfoGOOGLE*>(node);
+            if(timing->swapchainCount!=info->swapchainCount) return false;
+            node=static_cast<const VkBaseInStructure*>(timing->pNext);
+            break;
+        }
+#endif
+#ifdef VK_EXT_present_timing
+        case VK_STRUCTURE_TYPE_PRESENT_TIMINGS_INFO_EXT: {
+            const auto* timing=reinterpret_cast<const VkPresentTimingsInfoEXT*>(node);
+            if(timing->swapchainCount!=info->swapchainCount) return false;
+            node=static_cast<const VkBaseInStructure*>(timing->pNext);
+            break;
+        }
+#endif
+#if defined(VK_KHR_swapchain_maintenance1)
+        case VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR: {
+            const auto* fence=reinterpret_cast<const VkSwapchainPresentFenceInfoKHR*>(node);
+            if(fence->swapchainCount!=info->swapchainCount) return false;
+            node=static_cast<const VkBaseInStructure*>(fence->pNext);
+            break;
+        }
+        case VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_KHR: {
+            const auto* mode=reinterpret_cast<const VkSwapchainPresentModeInfoKHR*>(node);
+            if(mode->swapchainCount!=info->swapchainCount) return false;
+            node=static_cast<const VkBaseInStructure*>(mode->pNext);
+            break;
+        }
+#elif defined(VK_EXT_swapchain_maintenance1)
+        case VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT: {
+            const auto* fence=reinterpret_cast<const VkSwapchainPresentFenceInfoEXT*>(node);
+            if(fence->swapchainCount!=info->swapchainCount) return false;
+            node=static_cast<const VkBaseInStructure*>(fence->pNext);
+            break;
+        }
+        case VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT: {
+            const auto* mode=reinterpret_cast<const VkSwapchainPresentModeInfoEXT*>(node);
+            if(mode->swapchainCount!=info->swapchainCount) return false;
+            node=static_cast<const VkBaseInStructure*>(mode->pNext);
+            break;
+        }
+#endif
         default: return false;
         }
     }
     return true;
+}
+void logUnsupportedPresentMetadataOnce(const VkPresentInfoKHR* info) {
+    if(unsupportedPresentMetadataLogged.exchange(true)) return;
+    char types[192]{};
+    std::size_t used=0;
+    auto* node=info?static_cast<const VkBaseInStructure*>(info->pNext):nullptr;
+    std::array<const VkBaseInStructure*,8> visited{};
+    unsigned count=0;
+    for(;node && count<visited.size();count++) {
+        bool cycle=false;
+        for(unsigned i=0;i<count;i++) if(visited[i]==node) { cycle=true; break; }
+        if(cycle) break;
+        visited[count]=node;
+        const int wrote=std::snprintf(types+used,sizeof(types)-used,"%s0x%x",
+            count?",":"",static_cast<unsigned>(node->sType));
+        if(wrote<0 || static_cast<std::size_t>(wrote)>=sizeof(types)-used) break;
+        used+=static_cast<std::size_t>(wrote);
+        node=static_cast<const VkBaseInStructure*>(node->pNext);
+    }
+    if(node && used+4<sizeof(types)) std::memcpy(types+used,"...",4);
+    logf("buffer presentation metadata fallback pnext-sTypes=[%s]",types);
 }
 VKAPI_ATTR VkResult VKAPI_CALL layerQueuePresent(VkQueue q,const VkPresentInfoKHR* info) {
     auto d=findDevice(reinterpret_cast<VkDevice>(q)); if(!d) return VK_ERROR_INITIALIZATION_FAILED;
@@ -4804,6 +4899,8 @@ VKAPI_ATTR VkResult VKAPI_CALL layerQueuePresent(VkQueue q,const VkPresentInfoKH
         }
         return result;
     }
+    if(d->bufferPresentation && d->autoInitialized)
+        logUnsupportedPresentMetadataOnce(info);
     return queueCall<PFN_vkQueuePresentKHR>(q,"vkQueuePresentKHR",info);
 }
 auto isForcedBuffer(const std::shared_ptr<Device>& d) {
@@ -5041,7 +5138,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetInstanceProcAddr(VkInstance ins
     }
     auto s=findInstance(key(instance)); if(s&&s->gipa) {
         auto f=s->gipa(instance,name);
-        if(f && name && std::strncmp(name,"vkCmd",5)==0) unknownCommandProc=true;
+        if(f && name && std::strncmp(name,"vkCmd",5)==0) noteUnknownCommandProc(name);
         return f;
     }
     if(!instance) { PFN_vkGetInstanceProcAddr next{}; { std::lock_guard<std::mutex> lock(mapsMutex); next=globalGipa; } return next?next(VK_NULL_HANDLE,name):nullptr; }
@@ -5178,7 +5275,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetDeviceProcAddr(VkDevice device,
         if(!d || !d->gdpa || !d->gdpa(device,name)) return nullptr;
     if(auto f=lookup(name)) return f;
     auto f=d&&d->gdpa?d->gdpa(device,name):nullptr;
-    if(f && name && std::strncmp(name,"vkCmd",5)==0) unknownCommandProc=true;
+    if(f && name && std::strncmp(name,"vkCmd",5)==0) noteUnknownCommandProc(name);
     return f;
 }
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetPhysicalDeviceProcAddr(VkInstance instance,const char* name) {
@@ -5190,7 +5287,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL layerGetPhysicalDeviceProcAddr(VkInstan
     if(lookup(name)) return nullptr;
     auto s=findInstance(key(instance)); if(!s) return nullptr;
     auto f=s->physProc?s->physProc(instance,name):s->gipa(instance,name);
-    if(f && name && std::strncmp(name,"vkCmd",5)==0) unknownCommandProc=true;
+    if(f && name && std::strncmp(name,"vkCmd",5)==0) noteUnknownCommandProc(name);
     return f;
 }
 } // namespace

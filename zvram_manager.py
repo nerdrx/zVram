@@ -17,7 +17,7 @@ PRIORITIES = {"high": 0.85, "normal": 0.5, "low": 0.25}
 
 
 def private_directory(path):
-    path = Path(path)
+    path = Path(os.path.abspath(path))
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     st = path.lstat()
     if path.is_symlink() or st.st_uid != os.getuid() or not path.is_dir():
@@ -29,9 +29,12 @@ def private_directory(path):
 def write_json(path, value):
     temp = path.with_name(path.name + "." + uuid.uuid4().hex)
     fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as stream:
-        json.dump(value, stream, indent=2)
-    os.replace(temp, path)
+    try:
+        with os.fdopen(fd, "w") as stream:
+            json.dump(value, stream, indent=2)
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def read_json(path, fallback):
@@ -297,7 +300,9 @@ class Manager:
             saved = identity(row.get('pid')) if row.get('pid') else None
             if saved and saved['uid'] == os.getuid():
                 row['process_start'] = saved['start']
-                row['control_devices'] = zvram_control.status(self.control_home, saved['pid'], saved['start'])
+                report = zvram_control.status_report(self.control_home, saved['pid'], saved['start'])
+                row['control_devices'] = report['devices']
+                row['control_diagnostics'] = report['diagnostics']
                 row['live_capable'] = any(d['capable'] for d in row['control_devices'])
         return rows
 
@@ -408,48 +413,61 @@ class Manager:
         signal.signal(signal.SIGTERM, lambda *_: stopping.append("Stopped by user"))
         signal.signal(signal.SIGINT, lambda *_: stopping.append("Stopped by user"))
         profile = job["profile"]
-        baseline = memory_status()["swap_used_mib"]
-        logfd = os.open(self.home / (name + ".log"), os.O_CREAT | os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(logfd, "w") as log:
-            log.write("\nManaged launch: " + json.dumps(job["command"]) + "\n")
-            log.flush()
-            child = None
-            try:
-                child = subprocess.Popen(job["command"], env=dict(os.environ, **profile.get("env", {})),
-                                         stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-                job.update(child_pid=child.pid, child_identity=identity(child.pid), state="running")
-                with self.lock():
-                    write_json(path, job)
-                while child.poll() is None and not stopping:
-                    usage = memory_status()
-                    if usage["mem_available_mib"] < job["min_available_mib"]:
-                        stopping.append("Stopped: available RAM guard")
-                    if not profile.get("ignore_swap_guard", False) and usage["swap_used_mib"] - baseline > profile.get("max_swap_growth_mib", 4096):
-                        stopping.append("Stopped: system swap growth guard")
-                    time.sleep(0.5)
-                if child.poll() is None:
-                    os.killpg(child.pid, signal.SIGTERM)
-                    try:
-                        child.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(child.pid, signal.SIGKILL)
-                        child.wait()
-                job.update(state="stopped" if stopping else "exited", returncode=child.returncode,
-                           reason=stopping[0] if stopping else f"Process exited ({child.returncode})")
-            except OSError as exc:
-                job.update(state="failed", reason=str(exc))
-            finally:
-                if child is not None and child.poll() is None:
-                    os.killpg(child.pid, signal.SIGTERM)
-                    try:
-                        child.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(child.pid, signal.SIGKILL)
-                        child.wait()
-            log.write(job["reason"] + "\n")
+        try:
+            baseline = memory_status()["swap_used_mib"]
+            logfd = os.open(self.home / (name + ".log"), os.O_CREAT | os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+        except OSError as exc:
+            job.update(state="failed", returncode=1, reason=str(exc))
+            with self.lock():
+                write_json(path, job)
+            return 1
+        child = None
+        try:
+            with os.fdopen(logfd, "w") as log:
+                try:
+                    log.write("\nManaged launch: " + json.dumps(job["command"]) + "\n")
+                    log.flush()
+                    child = subprocess.Popen(job["command"], env=dict(os.environ, **profile.get("env", {})),
+                                             stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+                    job.update(child_pid=child.pid, child_identity=identity(child.pid), state="running")
+                    with self.lock():
+                        write_json(path, job)
+                    while child.poll() is None and not stopping:
+                        usage = memory_status()
+                        if usage["mem_available_mib"] < job["min_available_mib"]:
+                            stopping.append("Stopped: available RAM guard")
+                        if not profile.get("ignore_swap_guard", False) and usage["swap_used_mib"] - baseline > profile.get("max_swap_growth_mib", 4096):
+                            stopping.append("Stopped: system swap growth guard")
+                        time.sleep(0.5)
+                    if child.poll() is None:
+                        os.killpg(child.pid, signal.SIGTERM)
+                        try:
+                            child.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            os.killpg(child.pid, signal.SIGKILL)
+                            child.wait()
+                    job.update(state="stopped" if stopping else "exited", returncode=child.returncode,
+                               reason=stopping[0] if stopping else f"Process exited ({child.returncode})")
+                except OSError as exc:
+                    job.update(state="failed", returncode=1, reason=str(exc))
+                finally:
+                    if child is not None and child.poll() is None:
+                        os.killpg(child.pid, signal.SIGTERM)
+                        try:
+                            child.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            os.killpg(child.pid, signal.SIGKILL)
+                            child.wait()
+                try:
+                    log.write(job["reason"] + "\n")
+                    log.flush()
+                except OSError as exc:
+                    job.update(state="failed", returncode=1, reason=f"Could not write manager log: {exc}")
+        except OSError as exc:
+            job.update(state="failed", returncode=1, reason=f"Could not close manager log: {exc}")
         with self.lock():
             write_json(path, job)
-        return 0
+        return 1 if job.get("state") == "failed" else 0
 
 
 def main(argv=None):
@@ -491,6 +509,8 @@ def main(argv=None):
         return manager.worker(args.name, args.token)
     if args.action == "run":
         command = args.command[1:] if args.command[:1] == ["--"] else args.command
+        if not command:
+            parser.error("run requires a command after --")
         name = args.name or (re.sub(r"[^A-Za-z0-9_.-]", "-", Path(command[0]).name)[:48] + "-" + str(os.getpid()))
         manager.save_profile(dict(name=name, priority=args.priority, mode=args.mode,
                                   resident_mib=args.resident_mib, command=command))

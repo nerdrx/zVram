@@ -7,6 +7,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts.package import package
 
@@ -26,6 +27,8 @@ class PackageChecks(unittest.TestCase):
             stage = root / "relocated"
             with tarfile.open(asset) as archive:
                 names = archive.getnames()
+                self.assertIn("usr/share/zvram/0.3.0/assets/icon.png", names)
+                self.assertIn("usr/share/icons/hicolor/scalable/apps/zvram.svg", names)
                 self.assertTrue(all(name == "usr" or name.startswith("usr/") for name in names))
                 self.assertFalse(any("gguf" in name.lower() or "__pycache__" in name for name in names))
                 # Archive created entirely by this test from fixed, local package inputs.
@@ -42,12 +45,36 @@ class PackageChecks(unittest.TestCase):
             with self.assertRaises(ValueError):
                 package(build, root / "dist", "../bad")
 
+    def test_missing_manager_icon_refused(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "zvram-codecs.json").write_text('{}')
+            for name in ("libzvram_layer.so", "VK_LAYER_NX_zvram.json"):
+                (root / name).write_text("fixture")
+            with patch("scripts.package.ROOT", root):
+                with self.assertRaisesRegex(ValueError, "Missing runtime asset: assets/icon.png"):
+                    package(root, root / "dist", "0.4.23")
+            self.assertFalse(list((root / "dist").glob("*.tar.gz")))
+
     def test_test_hook_build_refused(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / "zvram-codecs.json").write_text('{"test_hooks":true}')
             with self.assertRaisesRegex(ValueError, "Test-hook builds"):
                 package(root, root / "dist", "0.4.9")
+
+    def test_malformed_codec_metadata_refused(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cases = [([], "JSON object"), (None, "JSON object")]
+            for field in ("gdeflate", "gdeflate_gpu", "bp16", "bp16_gpu", "test_hooks"):
+                cases.extend(({field: value}, "JSON boolean") for value in ("enabled", 1, 0, None))
+            for metadata, message in cases:
+                with self.subTest(metadata=metadata):
+                    (root / "zvram-codecs.json").write_text(json.dumps(metadata))
+                    with self.assertRaisesRegex(ValueError, message):
+                        package(root, root / "dist", "0.4.23")
+                    self.assertFalse(list((root / "dist").glob("*.tar.gz")))
 
     def test_missing_shader_refused(self):
         with tempfile.TemporaryDirectory() as temp:

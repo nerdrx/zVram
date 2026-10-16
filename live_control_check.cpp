@@ -39,6 +39,17 @@ int main() try {
         overshoot.ack==1&&overshoot.result==0,"same cap overshoot incorrectly pending");
     check(overshoot.accept({2,128},true,32*MiB,256*MiB,0,0,192*MiB,overshootLimit)&&
         overshoot.ack==2&&overshootLimit==128*MiB,"raised cap overshoot incorrectly pending");
+    check(parse("version=1\nseq=9\nresident_mib=128\nrecovery_priority=1\n",request) && request.recoveryPriority==1,"recovery request parse");
+    State recovery; std::uint64_t recoveryLimit=64*MiB;
+    check(!recovery.accept(request,true,32*MiB,256*MiB,0,0,0,recoveryLimit) && !recovery.recoveryPriority && recoveryLimit==64*MiB,"unsupported recovery changed priority or cap");
+    request.seq=10;
+    check(recovery.accept(request,true,32*MiB,256*MiB,0,0,0,recoveryLimit,true) && recovery.recoveryPriority,"high did not request prompt recovery");
+    check(!recovery.accept({9,128,0},true,32*MiB,256*MiB,0,0,0,recoveryLimit,true) && recovery.recoveryPriority,"stale request changed recovery");
+    check(!recovery.accept({11,32,0},true,32*MiB,256*MiB,0,0,96*MiB,recoveryLimit,true) && recovery.recoveryPriority,"pending cap changed recovery early");
+    check(recovery.settle(true,32*MiB,recoveryLimit) && !recovery.recoveryPriority,"normal did not restore recovery delay");
+    check(!parse("version=1\nseq=12\nresident_mib=128\nrecovery_priority=2\n",request),"invalid priority accepted");
+    check(!parse("version=1\nseq=12\nresident_mib=128\nrecovery_priority=1\nrecovery_priority=0\n",request),"duplicate priority accepted");
+    check(parse("version=1\nseq=13\nresident_mib=128\n",request) && request.recoveryPriority==-1,"legacy parse retained stale priority");
     Sandbox sandbox; Endpoint endpoint;
     check(!endpoint.init(nullptr,1),"unset environment activated IPC");
     check(endpoint.init(sandbox.path.c_str(),42),"endpoint init");

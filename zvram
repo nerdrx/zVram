@@ -51,11 +51,11 @@ parser.add_argument("--vulkan-bp16-gpu", action="store_true", help="restore BP16
 parser.add_argument("--vulkan-selective-restore", action="store_true", help="restore only allocations referenced by tracked Vulkan submissions; unknown access restores all (experimental)")
 parser.add_argument("--vulkan-active-eviction", action="store_true", help="compress unused whole Vulkan allocations while other tracked submissions remain active; requires selective restore (experimental)")
 parser.add_argument("--vulkan-async-compression", action="store_true", help="encode one eligible idle range of at most 32 MiB outside submission locks; requires active range paging (experimental)")
-parser.add_argument("--vulkan-buffer-presentation", action="store_true", help="retain buffer paging across base presents and present-ID/region metadata; requires active eviction (experimental, native images remain unpaged)")
+parser.add_argument("--vulkan-buffer-presentation", action=argparse.BooleanOptionalAction, default=None, help="retain buffer paging across supported presentation metadata (default for automatic pressure paging; native images remain unpaged)")
 parser.add_argument("--vulkan-range-mib", type=int, help="enable sparse residency and chunk native pools at this positive MiB granularity; requires active eviction (experimental)")
 parser.add_argument("--vulkan-resident-mib", type=int, help="limit eligible resident backing at tracked submission admission; requires range mode (experimental, not a global VRAM cap)")
 parser.add_argument("--vulkan-headroom-mib", type=int, help="tighten the backing cap using native memory_budget and this positive MiB reserve; requires lazy backing (experimental)")
-parser.add_argument("--vulkan-recover-local", action="store_true", help="opt in to cold-cycle recovery of eligible GTT-backed ranges into local VRAM (experimental)")
+parser.add_argument("--vulkan-recover-local", action=argparse.BooleanOptionalAction, default=None, help="recover eligible GTT-backed ranges into local VRAM (default for automatic pressure paging)")
 parser.add_argument("--vulkan-recover-local-quiet-ms", type=int, help="minimum unused age before local recovery (default 1000 ms); 0 allows completed recent use; requires --vulkan-recover-local")
 parser.add_argument("--vulkan-lazy-backing", action="store_true", help="defer pristine range backing until admitted use; requires immediate resident admission (experimental)")
 parser.add_argument("--vulkan-resident-after-cold", action="store_true", help="arm resident admission after all eligible backing first becomes cold; startup can exceed limit")
@@ -76,16 +76,24 @@ if args.live_control:
     from zvram_manager import gpu_status
     if args.vulkan_eviction_trigger is None:
         # Preserve explicit expert/model idle probes; ordinary apps avoid idle churn.
-        args.vulkan_eviction_trigger = 'pressure' if args.vulkan_auto_idle_ms is None else 'idle'
+        args.vulkan_eviction_trigger = 'idle' if args.vulkan_auto_idle_ms is not None or args.vulkan_resident_after_cold else 'pressure'
     if args.vulkan_virtual_gib is None and args.vulkan_virtual_mib is None:
         args.vulkan_virtual_gib = 96
     defaults = dict(vulkan_auto_idle_ms=1000, vulkan_cold_mib=4096, vulkan_range_mib=32,
-                    vulkan_resident_mib=max(256, int(max((c['vram_total_mib'] for c in gpu_status()), default=8192))),
-                    vulkan_headroom_mib=1536)
+                    vulkan_resident_mib=max(256, int(max((c['vram_total_mib'] for c in gpu_status()), default=8192))))
+    if not args.vulkan_resident_after_cold:
+        defaults['vulkan_headroom_mib'] = 1536
     for key, value in defaults.items():
         if getattr(args, key) is None:
             setattr(args, key, value)
-    args.vulkan_selective_restore = args.vulkan_active_eviction = args.vulkan_lazy_backing = True
+    args.vulkan_selective_restore = args.vulkan_active_eviction = True
+    if not args.vulkan_resident_after_cold:
+        args.vulkan_lazy_backing = True
+    if args.vulkan_recover_local is None:
+        args.vulkan_recover_local = args.vulkan_eviction_trigger == 'pressure'
+    if args.vulkan_buffer_presentation is None:
+        args.vulkan_buffer_presentation = args.vulkan_eviction_trigger == 'pressure'
+
 if args.vulkan_virtual_gib is not None:
     args.vulkan_virtual_mib = args.vulkan_virtual_gib * 1024
 command = args.command
@@ -236,7 +244,10 @@ if not args.hip and (not (build / "VK_LAYER_NX_zvram.json").is_file() or not (bu
 env = os.environ.copy()
 if not args.hip:
     import zvram_control
-    env['ZVRAM_CONTROL_DIR'] = str(zvram_control.directory())
+    try:
+        env['ZVRAM_CONTROL_DIR'] = str(zvram_control.directory())
+    except (OSError, ValueError) as error:
+        parser.exit(1, f"zvram: Cannot initialize control directory: {error}\n")
     # Steam imports the layer but isolates /run/user; export only our private IPC directory.
     exported = env['ZVRAM_CONTROL_DIR'].replace('\\', '\\\\').replace(':', '\\:')
     existing = env.get('PRESSURE_VESSEL_FILESYSTEMS_RW', '')
@@ -302,14 +313,14 @@ else:
         env["ZVRAM_VULKAN_RESIDENT_MIB"] = str(args.vulkan_resident_mib)
     if args.vulkan_async_compression:
         env["ZVRAM_VULKAN_ASYNC_COMPRESSION"] = "1"
-    if args.vulkan_buffer_presentation:
-        env["ZVRAM_VULKAN_BUFFER_PRESENTATION"] = "1"
+    if args.vulkan_buffer_presentation is not None:
+        env["ZVRAM_VULKAN_BUFFER_PRESENTATION"] = str(int(args.vulkan_buffer_presentation))
     if args.vulkan_lazy_backing:
         env["ZVRAM_VULKAN_LAZY_BACKING"] = "1"
     if args.vulkan_headroom_mib is not None:
         env["ZVRAM_VULKAN_HEADROOM_MIB"] = str(args.vulkan_headroom_mib)
-    if args.vulkan_recover_local:
-        env["ZVRAM_VULKAN_COLD_CYCLE_RECOVERY"] = "1"
+    if args.vulkan_recover_local is not None:
+        env["ZVRAM_VULKAN_COLD_CYCLE_RECOVERY"] = str(int(args.vulkan_recover_local))
     if args.vulkan_recover_local_quiet_ms is not None:
         env["ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS"] = str(args.vulkan_recover_local_quiet_ms)
     if args.vulkan_resident_after_cold:

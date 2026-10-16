@@ -14,6 +14,32 @@ from zvram_manager import Manager, identity, owned_worker, write_json, discovere
 
 
 class ManagerChecks(unittest.TestCase):
+    def test_failed_json_update_preserves_original_and_removes_temp(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'profiles.json'
+            path.write_text('{"keep": true}')
+            with patch('zvram_manager.os.replace', side_effect=OSError('injected replace failure')):
+                with self.assertRaisesRegex(OSError, 'injected replace failure'):
+                    write_json(path, {'new': True})
+            self.assertEqual(json.loads(path.read_text()), {'keep': True})
+            self.assertEqual(list(Path(temporary).iterdir()), [path])
+            with self.assertRaises(TypeError):
+                write_json(path, {'invalid': object()})
+            self.assertEqual(json.loads(path.read_text()), {'keep': True})
+            self.assertEqual(list(Path(temporary).iterdir()), [path])
+
+    def test_run_rejects_empty_command_after_separator(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).with_name('zvram')), 'run', '--', '--'],
+                env=os.environ | {'ZVRAM_MANAGER_HOME': temporary,
+                                  'ZVRAM_CONTROL_DIR': str(Path(temporary) / 'control')},
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('run requires a command', result.stderr)
+            self.assertNotIn('Traceback', result.stderr)
+            self.assertFalse((Path(temporary) / 'profiles.json').exists())
+
     def test_external_discovery_filters_and_identity(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -155,6 +181,104 @@ class ManagerChecks(unittest.TestCase):
             self.assertEqual(result["reason"], "Stopped: available RAM guard")
             self.assertEqual(result["returncode"], -signal.SIGTERM)
             self.assertIsNone(identity(result["child_pid"]))
+
+    def test_worker_setup_failure_is_recorded_without_following_log_symlink(self):
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {
+                "ZVRAM_CONTROL_DIR": str(Path(temp) / "control"), "XDG_RUNTIME_DIR": ""}):
+            manager = Manager(Path(temp) / "state")
+            target = Path(temp) / "target.log"
+            target.write_text("keep this intact\n")
+            (manager.home / "setup.log").symlink_to(target)
+            profile = {"name": "setup", "command": [sys.executable, "-c", "raise SystemExit(99)"],
+                       "min_available_mib": 1}
+            write_json(manager.job_path("setup"), {"token": "setup-token", "identity": identity(os.getpid()),
+                       "profile": profile, "command": profile["command"], "min_available_mib": 1})
+
+            with patch("zvram_manager.subprocess.Popen") as popen, patch("zvram_manager.signal.signal"):
+                result = manager.worker("setup", "setup-token")
+
+            job = json.loads(manager.job_path("setup").read_text())
+            self.assertEqual(result, 1)
+            self.assertEqual(job["state"], "failed")
+            self.assertEqual(job["returncode"], 1)
+            self.assertTrue(job["reason"])
+            popen.assert_not_called()
+            self.assertEqual(target.read_text(), "keep this intact\n")
+            self.assertTrue((manager.home / "setup.log").is_symlink())
+
+    def test_worker_log_write_and_close_failures_persist(self):
+        original_open, original_fdopen = os.open, os.fdopen
+
+        class ExitedChild:
+            pid = 2147483647
+            returncode = 0
+
+            def poll(self):
+                return self.returncode
+
+        class LogStream:
+            def __init__(self, stream, fail_write=None, fail_close=False):
+                self.stream, self.fail_write, self.fail_close = stream, fail_write, fail_close
+                self.writes = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.stream.close()
+                if self.fail_close:
+                    raise OSError("injected log close failure")
+
+            def write(self, value):
+                self.writes += 1
+                if self.writes == self.fail_write:
+                    raise OSError("injected log write failure")
+                return self.stream.write(value)
+
+            def flush(self):
+                return self.stream.flush()
+
+        for case, fail_write, fail_close, launches_child in (
+                ("header", 1, False, False), ("final", 2, False, True), ("close", None, True, True)):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {
+                    "ZVRAM_CONTROL_DIR": str(Path(temp) / "control"), "XDG_RUNTIME_DIR": ""}):
+                manager = Manager(Path(temp) / "state")
+                profile = {"name": "logging", "command": [sys.executable, "-c", "pass"], "env": {},
+                           "min_available_mib": 1}
+                write_json(manager.job_path("logging"), {
+                    "token": "logging-token", "identity": identity(os.getpid()), "profile": profile,
+                    "command": profile["command"], "min_available_mib": 1, "state": "starting"})
+                log_fds = set()
+
+                def tracked_open(path, *args, **kwargs):
+                    fd = original_open(path, *args, **kwargs)
+                    if Path(path).name == "logging.log":
+                        log_fds.add(fd)
+                    return fd
+
+                def wrapped_fdopen(fd, mode):
+                    stream = original_fdopen(fd, mode)
+                    if fd in log_fds:
+                        log_fds.remove(fd)
+                        return LogStream(stream, fail_write, fail_close)
+                    return stream
+
+                handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+                try:
+                    with patch("zvram_manager.os.open", side_effect=tracked_open), \
+                            patch("zvram_manager.os.fdopen", side_effect=wrapped_fdopen), \
+                            patch("zvram_manager.subprocess.Popen", return_value=ExitedChild()) as popen:
+                        result = manager.worker("logging", "logging-token")
+                finally:
+                    for sig, handler in handlers.items():
+                        signal.signal(sig, handler)
+
+                job = json.loads(manager.job_path("logging").read_text())
+                self.assertEqual(result, 1)
+                self.assertEqual(job["state"], "failed")
+                self.assertEqual(job["returncode"], 1)
+                self.assertIn("injected log", job["reason"])
+                self.assertEqual(popen.call_count, int(launches_child))
 
     def test_worker_swap_guard_opt_out(self):
         for ignore in (False, True):

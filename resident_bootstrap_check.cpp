@@ -50,6 +50,9 @@ std::unordered_map<VkQueue,VkResult> mockQueueWaitResults;
 const void* applicationSubmitPnext{};
 const VkSubmitInfo* applicationSubmitInfo{};
 unsigned presentCalls{};
+unsigned samplerHeapBindCalls{};
+unsigned copyBufferToImageForwards{};
+const VkCopyBufferToImageInfo2* forwardedCopyBufferToImage{};
 VkResult presentResult{VK_SUCCESS};
 const VkPresentInfoKHR* forwardedPresent{};
 std::uintptr_t nextHandle{0x1000};
@@ -269,6 +272,14 @@ VKAPI_ATTR void VKAPI_CALL mockPipelineBarrier2(VkCommandBuffer,const VkDependen
 VKAPI_ATTR void VKAPI_CALL mockWaitEvents2(VkCommandBuffer,std::uint32_t,const VkEvent*,
     const VkDependencyInfo*) { ++waitEvents2Forwards; }
 VKAPI_ATTR void VKAPI_CALL mockCopyBuffer(VkCommandBuffer,VkBuffer,VkBuffer,std::uint32_t,const VkBufferCopy*) {}
+#if defined(VK_VERSION_1_3) || defined(VK_KHR_copy_commands2)
+VKAPI_ATTR void VKAPI_CALL mockCopyBufferToImage2(VkCommandBuffer,const VkCopyBufferToImageInfo2* info) {
+    ++copyBufferToImageForwards; forwardedCopyBufferToImage=info;
+}
+#endif
+#ifdef VK_EXT_descriptor_heap
+VKAPI_ATTR void VKAPI_CALL mockBindSamplerHeapEXT(VkCommandBuffer,const VkBindHeapInfoEXT*) { ++samplerHeapBindCalls; }
+#endif
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const char* name) {
     if(std::strcmp(name,"vkQueuePresentKHR")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockPresent);
     if(std::strcmp(name,"vkCmdSetEvent")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSetEvent);
@@ -297,6 +308,18 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL mockGetDeviceProcAddr(VkDevice,const ch
     if(std::strcmp(name,"vkCmdWaitEvents2")==0 || std::strcmp(name,"vkCmdWaitEvents2KHR")==0)
         return reinterpret_cast<PFN_vkVoidFunction>(mockWaitEvents2);
     if(std::strcmp(name,"vkCmdCopyBuffer")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockCopyBuffer);
+#if defined(VK_VERSION_1_3)
+    if(std::strcmp(name,"vkCmdCopyBufferToImage2")==0)
+        return reinterpret_cast<PFN_vkVoidFunction>(mockCopyBufferToImage2);
+#endif
+#ifdef VK_KHR_copy_commands2
+    if(std::strcmp(name,"vkCmdCopyBufferToImage2KHR")==0)
+        return reinterpret_cast<PFN_vkVoidFunction>(mockCopyBufferToImage2);
+#endif
+#ifdef VK_EXT_descriptor_heap
+    if(std::strcmp(name,"vkCmdBindSamplerHeapEXT")==0)
+        return reinterpret_cast<PFN_vkVoidFunction>(mockBindSamplerHeapEXT);
+#endif
     if(std::strcmp(name,"vkQueueBindSparse")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockSparse);
     if(std::strcmp(name,"vkQueueWaitIdle")==0) return reinterpret_cast<PFN_vkVoidFunction>(mockQueueWait);
     return nullptr;
@@ -310,7 +333,7 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); freedMemoryUserData.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); mockWaitedQueues.clear(); mockQueueWaitResults.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr; mockDeviceWaitCalls=mockResetCommandPoolCalls=destroyedMockBuffers=destroyedMockFences=0; lastDestroyedBufferUserData=lastFreedMemoryUserData=nullptr; mockDeviceWaitResult=VK_SUCCESS;
+        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=samplerHeapBindCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); freedMemoryUserData.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); mockWaitedQueues.clear(); mockQueueWaitResults.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr; mockDeviceWaitCalls=mockResetCommandPoolCalls=destroyedMockBuffers=destroyedMockFences=0; lastDestroyedBufferUserData=lastFreedMemoryUserData=nullptr; mockDeviceWaitResult=VK_SUCCESS;
         pipelineBarrierForwards=waitEventsForwards=pipelineBarrier2Forwards=waitEvents2Forwards=0;
         { std::lock_guard<std::mutex> fenceLock(mockFenceMutex); mockFenceWaitEntered=false; mockFenceWaitRelease=false; mockFenceWaitResult=VK_SUCCESS; }
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
@@ -1298,6 +1321,31 @@ void checkColdCycleHotCompletedChild() {
             "zero-quiet recovery did not promote a recent completed child");
 }
 
+void checkRecoveryPriorityOverridesQuietAgeOnly() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    d.coldCycleQuietMilliseconds=1000;
+    const auto now=std::chrono::steady_clock::now();
+    m.coldGroups[0].lastUse=now-std::chrono::milliseconds(100);
+    VkDeviceMemory candidate{}; std::size_t child{};
+    require(!selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+            candidate==VK_NULL_HANDLE,
+            "default recovery selected a child before its quiet age elapsed");
+    d.liveControl.state.recoveryPriority=true;
+    require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+            candidate==c.f.memory && child==0,
+            "recovery priority did not admit an otherwise eligible recent child");
+    d.activeRefs.recordRanges(tokenHandle<VkQueue>(0xc005),{{c.f.memory,0}},true);
+    require(!selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+            candidate==VK_NULL_HANDLE,
+            "recovery priority bypassed the in-flight child guard");
+    d.liveControl.state.recoveryPriority=false;
+    d.activeRefs.cover(tokenHandle<VkQueue>(0xc005));
+    d.activeRefs.retire(tokenHandle<VkQueue>(0xc005));
+    require(!selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+            candidate==VK_NULL_HANDLE,
+            "disabling recovery priority did not restore the default quiet-age gate");
+}
+
 void checkColdCycleCandidateSkipsUnpromotableOldest() {
     for(bool adoptedCallbacks:{false,true}) {
         ColdCycleFixture c; auto& d=c.f.device; auto& old=c.f.state();
@@ -2202,8 +2250,10 @@ void checkPresentMetadataAllowlist() {
         auto info=makePresentInfo(semaphore,swapchain,index);
         VkPresentIdKHR presentId{VK_STRUCTURE_TYPE_PRESENT_ID_KHR};
         VkPresentRegionsKHR regions{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR};
+        VkPresentRegionKHR region{};
         presentId.swapchainCount=regions.swapchainCount=info.swapchainCount;
-        // Null metadata arrays are valid and remain the driver's responsibility.
+        regions.pRegions=&region;
+        // The present-ID array is optional; the region array has one empty entry.
         if(accepted==0) info.pNext=&presentId;
         else if(accepted==1) info.pNext=&regions;
         else { presentId.pNext=&regions; info.pNext=&presentId; }
@@ -2243,6 +2293,146 @@ void checkPresentMetadataAllowlist() {
                 "rejected present chain bypassed conservative restore/disable fallback");
         unregisterPresentFixture(f);
     }
+    auto checkAccepted=[&](const void* chain) {
+        Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); registerPresentFixture(f);
+        VkSemaphore semaphore{}; VkSwapchainKHR swapchain{}; std::uint32_t index{};
+        auto info=makePresentInfo(semaphore,swapchain,index); info.pNext=chain;
+        const auto q=reinterpret_cast<VkQueue>(f.handle);
+        require(layerQueuePresent(q,&info)==VK_SUCCESS && presentCalls==1 && forwardedPresent==&info &&
+                info.pNext==chain && allocations==0 && f.state().cold && f.device.autoEnabled,
+                "supported modern present metadata did not preserve paging fast path");
+        unregisterPresentFixture(f);
+    };
+#ifdef VK_KHR_present_id2
+    {
+        const std::uint64_t ids[]{0};
+        VkPresentId2KHR id{VK_STRUCTURE_TYPE_PRESENT_ID_2_KHR}; id.swapchainCount=1; id.pPresentIds=ids;
+        checkAccepted(&id);
+    }
+#endif
+#ifdef VK_GOOGLE_display_timing
+    {
+        const VkPresentTimeGOOGLE times[]{{0,0}};
+        VkPresentTimesInfoGOOGLE timing{VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE}; timing.swapchainCount=1; timing.pTimes=times;
+        checkAccepted(&timing);
+    }
+#endif
+#ifdef VK_EXT_present_timing
+    {
+        const VkPresentTimingInfoEXT times[]{{VK_STRUCTURE_TYPE_PRESENT_TIMING_INFO_EXT}};
+        VkPresentTimingsInfoEXT timing{VK_STRUCTURE_TYPE_PRESENT_TIMINGS_INFO_EXT}; timing.swapchainCount=1; timing.pTimingInfos=times;
+        checkAccepted(&timing);
+    }
+#endif
+#if defined(VK_KHR_swapchain_maintenance1)
+    {
+        const VkFence fences[]{VK_NULL_HANDLE}; const VkPresentModeKHR modes[]{VK_PRESENT_MODE_FIFO_KHR};
+        VkSwapchainPresentFenceInfoKHR fence{VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR};
+        VkSwapchainPresentModeInfoKHR mode{VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_KHR};
+        fence.swapchainCount=mode.swapchainCount=1; fence.pFences=fences; mode.pPresentModes=modes;
+        fence.pNext=&mode;
+        checkAccepted(&fence);
+    }
+#elif defined(VK_EXT_swapchain_maintenance1)
+    {
+        const VkFence fences[]{VK_NULL_HANDLE}; const VkPresentModeKHR modes[]{VK_PRESENT_MODE_FIFO_KHR};
+        VkSwapchainPresentFenceInfoEXT fence{VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT};
+        VkSwapchainPresentModeInfoEXT mode{VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT};
+        fence.swapchainCount=mode.swapchainCount=1; fence.pFences=fences; mode.pPresentModes=modes;
+        fence.pNext=&mode;
+        checkAccepted(&fence);
+    }
+#endif
+    for(unsigned rejected=0;rejected<3;rejected++) {
+        Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); registerPresentFixture(f);
+        VkSemaphore semaphore{}; VkSwapchainKHR swapchain{}; std::uint32_t index{};
+        auto info=makePresentInfo(semaphore,swapchain,index);
+        VkPresentIdKHR id{VK_STRUCTURE_TYPE_PRESENT_ID_KHR}; id.swapchainCount=1;
+        VkPresentRegionsKHR regions{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR}; regions.swapchainCount=1;
+        VkPresentIdKHR duplicate{VK_STRUCTURE_TYPE_PRESENT_ID_KHR}; duplicate.swapchainCount=1;
+        if(rejected==0) { id.pNext=&duplicate; info.pNext=&id; }
+        else if(rejected==1) { id.pNext=&regions; regions.pNext=&id; info.pNext=&id; }
+        else { id.swapchainCount=2; info.pNext=&id; }
+        const auto q=reinterpret_cast<VkQueue>(f.handle);
+        require(layerQueuePresent(q,&info)==VK_SUCCESS && presentCalls==1 && !f.device.autoEnabled &&
+                allocations==2,
+                "duplicate, cyclic, or mismatched present metadata bypassed conservative fallback");
+        unregisterPresentFixture(f);
+    }
+#ifdef VK_KHR_present_id2
+    for(bool duplicate:{false,true}) {
+        Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); registerPresentFixture(f);
+        VkSemaphore semaphore{}; VkSwapchainKHR swapchain{}; std::uint32_t index{};
+        const std::uint64_t ids[]{0};
+        VkPresentId2KHR first{VK_STRUCTURE_TYPE_PRESENT_ID_2_KHR}; first.swapchainCount=1; first.pPresentIds=ids;
+        VkPresentId2KHR second{VK_STRUCTURE_TYPE_PRESENT_ID_2_KHR}; second.swapchainCount=duplicate?1:2; second.pPresentIds=ids;
+        if(duplicate) first.pNext=&second;
+        auto info=makePresentInfo(semaphore,swapchain,index); info.pNext=duplicate?static_cast<const void*>(&first):static_cast<const void*>(&second);
+        require(layerQueuePresent(reinterpret_cast<VkQueue>(f.handle),&info)==VK_SUCCESS &&
+                presentCalls==1 && !f.device.autoEnabled && !f.device.coldLogicalBytes,
+                "duplicate or mismatched present-id2 metadata bypassed conservative fallback");
+        unregisterPresentFixture(f);
+    }
+#endif
+#if defined(VK_KHR_swapchain_maintenance1) || defined(VK_EXT_swapchain_maintenance1)
+    {
+        Fixture f(2*MiB,2*MiB); f.bind(0,2*MiB); registerPresentFixture(f);
+        VkSemaphore semaphore{}; VkSwapchainKHR swapchain{}; std::uint32_t index{};
+        const VkPresentModeKHR modes[]{VK_PRESENT_MODE_FIFO_KHR};
+#if defined(VK_KHR_swapchain_maintenance1)
+        VkSwapchainPresentModeInfoKHR first{VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_KHR};
+        VkSwapchainPresentModeInfoKHR second{VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_KHR};
+#else
+        VkSwapchainPresentModeInfoEXT first{VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT};
+        VkSwapchainPresentModeInfoEXT second{VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT};
+#endif
+        first.swapchainCount=second.swapchainCount=1; first.pPresentModes=second.pPresentModes=modes;
+        first.pNext=&second;
+        auto info=makePresentInfo(semaphore,swapchain,index); info.pNext=&first;
+        require(layerQueuePresent(reinterpret_cast<VkQueue>(f.handle),&info)==VK_SUCCESS &&
+                presentCalls==1 && !f.device.autoEnabled && !f.device.coldLogicalBytes,
+                "duplicate present-mode metadata bypassed conservative fallback");
+        unregisterPresentFixture(f);
+    }
+#endif
+}
+
+void checkDescriptorHeapRemainsUnmanaged() {
+#if defined(VK_EXT_descriptor_heap) && ((defined(VK_KHR_extended_flags) || defined(VK_KHR_maintenance5)) && (defined(VK_KHR_buffer_device_address) || defined(VK_VERSION_1_2)) || defined(VK_VERSION_1_4))
+    Fixture f(2*MiB,2*MiB);
+    f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+    auto& d=f.device; d.handle=f.handle; d.gdpa=mockGetDeviceProcAddr;
+    d.createBuffer=mockCreateBuffer; d.virtualEnabled=true; d.bufferDeviceAddressEnabled=true;
+    {
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices[key(f.handle)]=std::shared_ptr<Device>(&d,[](Device*){});
+    }
+    VkBufferCreateInfo ci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    ci.size=8*MiB;
+    ci.usage=VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT;
+    VkBuffer buffer{};
+    require(!eligibleBuffer(d,&ci) && layerCreateBuffer(f.handle,&ci,nullptr,&buffer)==VK_SUCCESS &&
+            buffer && bufferSizes.count(buffer) && !d.promotedBuffers.count(buffer),
+            "descriptor-heap buffer was incorrectly promoted into sparse recovery");
+    d.selectiveRestore=true;
+    const auto commandBuffer=reinterpret_cast<VkCommandBuffer>(&f.dispatchWord);
+    VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    allocate.commandBufferCount=1;
+    d.submission.allocateCommands(&allocate,&commandBuffer);
+    d.submission.beginCommand(commandBuffer);
+    const auto command=reinterpret_cast<PFN_vkCmdBindSamplerHeapEXT>(layerGetDeviceProcAddr(f.handle,"vkCmdBindSamplerHeapEXT"));
+    VkBindHeapInfoEXT bindInfo{VK_STRUCTURE_TYPE_BIND_HEAP_INFO_EXT};
+    const auto oldUnknown=unknownCommandProc.exchange(false);
+    require(command==trackedvkCmdBindSamplerHeapEXT &&
+            reinterpret_cast<PFN_vkCmdBindSamplerHeapEXT>(lookup("vkCmdBindSamplerHeapEXT"))==command,
+            "descriptor heap command lost its conservative tracker wrapper");
+    command(commandBuffer,&bindInfo);
+    std::vector<ActiveRefs::Use> uses;
+    require(samplerHeapBindCalls==1 && !commandMemories(d,{commandBuffer},uses,false) && uses.empty(),
+            "descriptor heap command did not force conservative unknown-access fallback");
+    unknownCommandProc.store(oldUnknown);
+    { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(f.handle)); }
+#endif
 }
 
 void checkAsyncSnapshotTransactionDecisions() {
@@ -2425,6 +2615,96 @@ void checkNoActionCommandHooksStaySelective() {
             std::strcmp(reason,"vkCmdSetLineWidth")==0,
             "unsupported command lost its specific diagnostic");
     { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(f.handle)); }
+}
+
+void checkCopyBufferToImage2TracksSourceRead() {
+#if defined(VK_VERSION_1_3) || defined(VK_KHR_copy_commands2)
+    Fixture f(4*MiB,4*MiB);
+    f.handle=reinterpret_cast<VkDevice>(&f.dispatchWord);
+    auto& d=f.device; d.handle=f.handle; d.gdpa=mockGetDeviceProcAddr;
+    d.virtualEnabled=true; d.selectiveRestore=true; d.rangeChunkBytes=MiB;
+    const auto command=reinterpret_cast<VkCommandBuffer>(&f.dispatchWord);
+    const auto pool=tokenHandle<VkCommandPool>(0xb200);
+    VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    allocate.commandPool=pool; allocate.commandBufferCount=1;
+    d.submission.allocateCommands(&allocate,&command);
+    const auto source=tokenHandle<VkBuffer>(0xb201);
+    d.promotedBuffers[source].size=4*MiB; d.promotedBuffers[source].memory=f.memory;
+    auto& memory=d.virtualMemory.at(f.memory);
+    memory.children.push_back(tokenHandle<VkDeviceMemory>(0xb202));
+    memory.childSizes.push_back(4*MiB); memory.childTypes.push_back(0);
+    memory.childGenerations.push_back(1); memory.coldGroups.resize(1);
+    memory.bindings.push_back({source,0,4*MiB,1});
+    {
+        std::lock_guard<std::mutex> lock(mapsMutex);
+        devices[key(f.handle)]=std::shared_ptr<Device>(&d,[](Device*){});
+    }
+    copyBufferToImageForwards=0; forwardedCopyBufferToImage=nullptr;
+    const auto previousUnknown=unknownCommandProc.exchange(false);
+    auto invoke=[&](const char* name,const VkCopyBufferToImageInfo2* info) {
+        d.submission.beginCommand(command);
+        const auto fn=reinterpret_cast<PFN_vkCmdCopyBufferToImage2>(trackedCommandLookup(name));
+        require(fn!=nullptr,"CopyBufferToImage2 tracking wrapper unavailable");
+        fn(command,info);
+        require(forwardedCopyBufferToImage==info,"CopyBufferToImage2 info was not forwarded unchanged");
+    };
+    auto requireReadOnlySource=[&](const char* name,const VkCopyBufferToImageInfo2* info) {
+        invoke(name,info);
+        std::vector<ActiveRefs::Use> reads,writes;
+        require(commandMemories(d,{command},reads,false) && reads.size()==1 &&
+                reads[0].memory==f.memory && reads[0].child==0,
+                "CopyBufferToImage2 source buffer was not tracked for restore");
+        require(commandMemories(d,{command},writes,true) && writes.empty(),
+                "CopyBufferToImage2 source read was marked as a write");
+    };
+    VkBufferImageCopy2 region{VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2};
+    VkCopyBufferToImageInfo2 info{VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2};
+    info.srcBuffer=source; info.regionCount=1; info.pRegions=&region;
+#ifdef VK_VERSION_1_3
+    requireReadOnlySource("vkCmdCopyBufferToImage2",&info);
+#endif
+#ifdef VK_KHR_copy_commands2
+    requireReadOnlySource("vkCmdCopyBufferToImage2KHR",&info);
+#endif
+    require(copyBufferToImageForwards==
+                static_cast<unsigned>(
+#if defined(VK_VERSION_1_3) && defined(VK_KHR_copy_commands2)
+                    2
+#else
+                    1
+#endif
+                ),"core/KHR CopyBufferToImage2 command did not reach downstream");
+
+    VkBaseInStructure extension{static_cast<VkStructureType>(0x7fffffff),nullptr};
+    auto requireUnknown=[&](const char* name,const VkCopyBufferToImageInfo2* invalid) {
+        invoke(name,invalid);
+        std::vector<ActiveRefs::Use> uses;
+        require(!commandMemories(d,{command},uses,false) && uses.empty(),
+                "unsupported CopyBufferToImage2 metadata did not keep conservative fallback");
+    };
+#ifdef VK_VERSION_1_3
+    info.pNext=&extension; requireUnknown("vkCmdCopyBufferToImage2",&info); info.pNext=nullptr;
+    requireUnknown("vkCmdCopyBufferToImage2",nullptr);
+    info.pRegions=nullptr; requireUnknown("vkCmdCopyBufferToImage2",&info); info.pRegions=&region;
+    region.pNext=&extension; requireUnknown("vkCmdCopyBufferToImage2",&info); region.pNext=nullptr;
+#endif
+#ifdef VK_KHR_copy_commands2
+    info.pNext=&extension; requireUnknown("vkCmdCopyBufferToImage2KHR",&info); info.pNext=nullptr;
+    requireUnknown("vkCmdCopyBufferToImage2KHR",nullptr);
+    region.pNext=&extension; requireUnknown("vkCmdCopyBufferToImage2KHR",&info); region.pNext=nullptr;
+#endif
+    info.regionCount=0;
+#ifdef VK_VERSION_1_3
+    invoke("vkCmdCopyBufferToImage2",&info);
+#elif defined(VK_KHR_copy_commands2)
+    invoke("vkCmdCopyBufferToImage2KHR",&info);
+#endif
+    std::vector<ActiveRefs::Use> empty;
+    require(commandMemories(d,{command},empty,false) && empty.empty(),
+            "empty CopyBufferToImage2 regions recorded an unnecessary source use");
+    unknownCommandProc.store(previousUnknown);
+    { std::lock_guard<std::mutex> lock(mapsMutex); devices.erase(key(f.handle)); }
+#endif
 }
 
 struct BarrierRangeFixture {
@@ -2983,10 +3263,12 @@ int main() try {
     checkBasePresentPassthrough();
     checkPresentGateAndFallback();
     checkPresentMetadataAllowlist();
+    checkDescriptorHeapRemainsUnmanaged();
     checkAsyncSnapshotTransactionDecisions();
     checkAsyncSnapshotEncodingRoundTrip();
     checkAsyncEncoderReleasesBothGates();
     checkNoActionCommandHooksStaySelective();
+    checkCopyBufferToImage2TracksSourceRead();
     checkFiniteBufferBarrierTracking();
     checkBarrierReadWriteClassification();
     checkPendingKnownHotQueueCallSkipsColdRestore();
@@ -2997,6 +3279,7 @@ int main() try {
     checkColdCyclePromotionAndFailureRetry();
     checkWarmRecoveryInitialBatchMapsDisjointAliases();
     checkColdCycleActiveReferenceGuard();
+    checkRecoveryPriorityOverridesQuietAgeOnly();
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();
     checkColdCycleCandidateZeroLiveOther();

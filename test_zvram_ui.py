@@ -85,17 +85,113 @@ def check_fields():
     assert "Configured cap: 1024 MiB" in profile_details(dict(EXTERNAL, active_resident_mib=1024))
     live = dict(EXTERNAL, live_capable=True, control_devices=[dict(device="2", current_limit_mib=1024, resident_mib=900, requested_mib=768, result=2, reason=7)])
     assert "GPU 1: cap 1024 MiB · resident 900 MiB · requested 768 MiB · rejected (request rejected)" in profile_details(live)
+    multi = dict(EXTERNAL, live_capable=True, control_devices=[
+        dict(recovery_capable=1, recovery_priority=1),
+        dict(recovery_capable=1, recovery_priority=0)])
+    sections = profile_details(multi).split(" | ")
+    gpu1 = next(part for part in sections if part.startswith("GPU 1:"))
+    gpu2 = next(part for part in sections if part.startswith("GPU 2:"))
+    assert "Recovery: prompt" in gpu1 and "configured delay" not in gpu1
+    assert "Recovery: configured delay" in gpu2 and "Recovery: prompt" not in gpu2
+    for state, title, hint in (("unreadable", "Unreadable", "ownership and permissions"),
+                               ("invalid", "Invalid status", "failed validation"),
+                               ("stale", "Stale status", "expired process"),
+                               ("partial", "Partial control", "only the available devices")):
+        row = dict(EXTERNAL, backend_loaded=True, control_diagnostics={"state": state})
+        assert table_state(row) == title
+        assert hint in profile_details(row)
+        assert "idle model router" not in profile_details(row)
     check_external_tui()
+    check_details_tui()
+    check_prompt_editing()
+    from unittest.mock import patch
+    from zvram_ui import _edit
+    original = FakeManager().profiles["test"]
+    with patch("zvram_ui._prompt", side_effect=["high", "", "vulkan", "/bin/true"]) as prompt:
+        edited = _edit(None, original)
+    assert edited["name"] == "test" and prompt.call_count == 4
+    assert edited["env"] == original["env"]
+
+
+def check_prompt_editing():
+    import curses
+    from unittest.mock import patch
+    from zvram_ui import _prompt
+    class Screen:
+        def __init__(self, keys): self.keys = iter(keys); self.timeouts = []
+        def getmaxyx(self): return (8, 30)
+        def timeout(self, value): self.timeouts.append(value)
+        def move(self, row, col): assert 0 <= col < 30
+        def clrtoeol(self): pass
+        def refresh(self): pass
+        def addnstr(self, *args): pass
+        def get_wch(self): return next(self.keys)
+    cases = [
+        ("abcd", [curses.KEY_LEFT, curses.KEY_LEFT, curses.KEY_DC, "X", "\n"], "abXd"),
+        ("abcd", [curses.KEY_HOME, curses.KEY_BACKSPACE, curses.KEY_RIGHT, curses.KEY_BACKSPACE,
+                  "Z", curses.KEY_END, "!", "\n"], "Zbcd!"),
+        ("x" * 80, [curses.KEY_HOME, "a", curses.KEY_END, "\x15", "ok", "\n"], "ok"),
+        ("unchanged", [curses.KEY_LEFT, "\x1b"], None),
+    ]
+    with patch.object(curses, "curs_set"):
+        for initial, keys, expected in cases:
+            screen = Screen(keys)
+            assert _prompt(screen, "Command: ", initial) == expected
+            assert screen.timeouts == [-1, 1000]
+
+
+def check_details_tui():
+    import curses
+    from zvram_ui import _details
+
+    class Screen:
+        def __init__(self):
+            self.keys = iter([curses.KEY_DOWN] * 100 + [ord("q")])
+            self.lines = set()
+            self.timeouts = []
+        def getmaxyx(self): return (7, 40)
+        def timeout(self, value): self.timeouts.append(value)
+        def erase(self): pass
+        def refresh(self): pass
+        def getch(self): return next(self.keys)
+        def addnstr(self, row, col, text, width, attr):
+            assert len(text) <= width or row in (0, 6)
+            self.lines.add(text[:width])
+
+    screen = Screen()
+    profile = dict(EXTERNAL, live_capable=True, control_devices=[dict(
+        device="2", current_limit_mib=1024, resident_mib=900,
+        requested_mib=768, result=2, reason=7)])
+    _details(screen, profile)
+    content = " ".join(screen.lines)
+    assert "rejected" in content and "768" in content and "GPU 1" in content
+    assert screen.timeouts == [-1, 1000]
 
 
 def check_gui():
     import tkinter as tk
     from zvram_ui import ManagerWindow
     root = tk.Tk()
+    root.withdraw()
     manager = FakeManager(external=True)
     window = ManagerWindow(root, manager)
     root.geometry("1200x920")
     root.update()
+    from unittest.mock import patch
+    with patch.object(window, "confirm_discard", return_value=False), patch.object(root, "destroy") as destroy:
+        root.tk.call(root.protocol("WM_DELETE_WINDOW"))
+        destroy.assert_not_called()
+    with patch.object(window, "confirm_discard", return_value=True), patch.object(root, "destroy") as destroy:
+        root.tk.call(root.protocol("WM_DELETE_WINDOW"))
+        destroy.assert_called_once()
+    from tkinter import ttk
+    from zvram_ui import NX
+    style = ttk.Style(root)
+    assert style.lookup("Accent.TButton", "background", ("disabled", "active")) == NX["panel"]
+    assert style.lookup("Accent.TButton", "foreground", ("disabled",)) == NX["muted"]
+    assert style.layout("Treeview")[0][0] == "Treeview.field"
+    assert style.lookup("Treeview", "bordercolor", ("focus",)) == NX["accent"]
+    assert style.lookup("Treeview", "bordercolor", ()) == NX["border"]
     assert len(window.table.get_children()) == 2
     assert window.table.item("test", "values") == ("512", "—", "0", "LOW", "Stopped")
     assert tuple(window.table.cget("columns")) == ("vram", "gtt", "rss", "priority", "state")
@@ -103,9 +199,37 @@ def check_gui():
     root.update()
     assert window.fields["priority"].get() == "low"
     window.fields["resident_mib"].set("2048")
+    window.table.focus("test")
     window.refresh()
+    assert window.table.focus() == "test", "Refresh reset keyboard navigation row"
     root.update()
     assert window.fields["resident_mib"].get() == "2048", "Refresh overwrote unsaved edit"
+    window.fields["priority"].set("high")
+    window.swap_guard.set(True)
+    window.refresh()
+    root.update()
+    assert window.swap_guard.get() is True, "Refresh overwrote unsaved swap-guard edit"
+    from unittest.mock import patch
+    window.fields["resident_mib"].set("3072")
+    with patch("tkinter.messagebox.askyesno", return_value=False):
+        window.table.selection_set(EXTERNAL["name"])
+        window.select()
+        root.update()
+        assert window.selected() == "test"
+        assert window.fields["resident_mib"].get() == "3072"
+        window.new()
+        assert window.editing == "test" and window.fields["resident_mib"].get() == "3072"
+    with patch("tkinter.messagebox.askyesno", return_value=True):
+        window.table.selection_set(EXTERNAL["name"])
+        window.select()
+        root.update()
+        assert window.editing == EXTERNAL["name"]
+        window.fields["resident_mib"].set("999")
+        window.new()
+        assert window.editing is None and window.fields["resident_mib"].get() == ""
+    window.table.selection_set("test")
+    window.select()
+    window.fields["resident_mib"].set("2048")
     window.fields["priority"].set("high")
     window.swap_guard.set(True)
     window.save()
@@ -115,6 +239,18 @@ def check_gui():
     assert manager.profiles["test"]["env"] == {"TEST": "1"}
     assert manager.profiles["test"]["min_available_mib"] == 16384
     assert manager.profiles["test"]["max_swap_growth_mib"] == 8192
+    assert window.field_widgets["name"].instate(["readonly"])
+    window.fields["name"].set("accidental-duplicate")
+    window.save()
+    assert "accidental-duplicate" not in manager.profiles
+    assert "Existing profile names" in window.message.get()
+    window.fields["name"].set("test")
+    saved_command = window.fields["command"].get()
+    window.fields["command"].set("/bin/echo unsaved")
+    window.act("start")
+    assert manager.calls == [], "Started stale saved settings despite unsaved edits"
+    assert "Save your profile changes" in window.message.get()
+    window.fields["command"].set(saved_command)
     window.act("start")
     window.act("stop")
     assert manager.calls == [("start", "test"), ("stop", "test")]
@@ -137,7 +273,6 @@ def check_gui():
     window.update_cards(dict(gpu=[dict(card="card0", vram_used_mib=20, vram_total_mib=2048), dict(card="card1", vram_used_mib=1024, vram_total_mib=24576)]))
     assert window.cards["gpu"][0].get() == "1.0 GiB / 24.0 GiB"
     assert "card0" in window.gpu_caption.get() and "card1" in window.gpu_caption.get()
-    from unittest.mock import patch
     window.table.selection_set(EXTERNAL["name"])
     root.update()
     assert window.fields["name"].get() == "vrchat.exe"
@@ -163,6 +298,11 @@ def check_gui():
     assert window.controls["Apply live"].instate(["!disabled"])
     assert window.field_widgets["priority"].instate(["!disabled"])
     assert window.field_widgets["command"].instate(["disabled"])
+    assert window.fields["priority"].get() == ""
+    before = list(manager.calls)
+    window.apply_live()
+    assert manager.calls == before, "External cap changed without an explicit choice"
+    assert "Choose a priority" in window.message.get()
     window.fields["resident_mib"].set("768")
     window.save()
     assert manager.calls[-1] == ("live_limit", EXTERNAL["name"], 768)
@@ -171,10 +311,45 @@ def check_gui():
     window.apply_live()
     assert manager.calls[-1] == ("live_priority", EXTERNAL["name"], "high")
     assert manager.profiles[EXTERNAL["name"]]["priority"] == "—"
+    manager.profiles.pop(EXTERNAL["name"])
+    window.refresh()
+    root.update()
+    assert window.editing is None and not window.read_only
+    assert window.fields["name"].get() == ""
+    assert window.controls["Apply live"].instate(["disabled"])
+    assert "no longer available" in window.message.get()
     window.new()
     assert not window.read_only
     assert all(not widget.instate(["disabled"]) for label, widget in window.controls.items() if label != "Apply live")
     assert all(not widget.instate(["disabled"]) for widget in window.field_widgets.values())
+    draft_manager = FakeManager()
+    draft_window = ManagerWindow(root, draft_manager)
+    draft_window.table.selection_set("test")
+    draft_window.select()
+    draft_window.fields["resident_mib"].set("4242")
+    draft_manager.profiles.pop("test")
+    draft_window.refresh()
+    assert draft_window.selected() is None and draft_window.editing is None
+    assert draft_window.fields["resident_mib"].get() == "4242"
+    assert not draft_window.read_only
+    with patch("tkinter.messagebox.askyesno", return_value=False):
+        draft_window.new()
+    assert draft_window.fields["resident_mib"].get() == "4242"
+    delete_manager = FakeManager()
+    delete_window = ManagerWindow(root, delete_manager)
+    delete_window.table.selection_set("test")
+    delete_window.select()
+    delete_window.fields["command"].set("/bin/echo unsaved")
+    with patch("tkinter.messagebox.askyesno", return_value=False) as confirm:
+        delete_window.delete()
+        confirm.assert_called_once()
+    assert "test" in delete_manager.profiles and delete_window.form_is_dirty()
+    with patch("tkinter.messagebox.askyesno", return_value=True) as confirm:
+        delete_window.delete()
+        confirm.assert_called_once()
+    assert "test" not in delete_manager.profiles
+    assert delete_window.selected() is None and not delete_window.form_is_dirty()
+    assert delete_window.fields["name"].get() == ""
     if "--screenshot" in sys.argv:
         import subprocess
         from pathlib import Path
