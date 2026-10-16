@@ -15,7 +15,7 @@
 
 namespace zvram::control {
 constexpr std::uint64_t MiB=1024ull*1024ull;
-struct Request { std::uint64_t seq{}, residentMiB{}; };
+struct Request { std::uint64_t seq{}, residentMiB{}; int recoveryPriority{-1}; };
 inline bool number(const std::string& text,std::uint64_t& value) {
     if(text.empty()) return false;
     value=0;
@@ -26,6 +26,7 @@ inline bool number(const std::string& text,std::uint64_t& value) {
     return true;
 }
 inline bool parse(const std::string& text,Request& request) {
+    request=Request{};
     if(text.size()>1024) return false;
     std::istringstream input(text); std::string line; unsigned fields=0;
     while(std::getline(input,line)) {
@@ -36,10 +37,11 @@ inline bool parse(const std::string& text,Request& request) {
         if(key=="version") { bit=1; if(value!=1) return false; }
         else if(key=="seq") { bit=2; request.seq=value; }
         else if(key=="resident_mib") { bit=4; request.residentMiB=value; }
+        else if(key=="recovery_priority") { bit=8; if(value>1) return false; request.recoveryPriority=static_cast<int>(value); }
         else return false;
         if(fields&bit) return false; fields|=bit;
     }
-    return fields==7 && request.seq;
+    return (fields==7 || fields==15) && request.seq;
 }
 inline std::uint64_t processStart() {
     std::ifstream input("/proc/self/stat"); std::string text; std::getline(input,text);
@@ -69,26 +71,31 @@ inline int openBase(const std::string& path) {
 struct State {
     std::uint64_t seq{},ack{},requestedMiB{};
     unsigned result{},reason{};
+    int requestedRecoveryPriority{-1};
+    bool recoveryPriority{};
     bool accept(const Request& request,bool capable,std::uint64_t minimumBytes,
                 std::uint64_t maximumBytes,std::uint64_t combinedBytes,std::uint64_t ownerBytes,
-                std::uint64_t residentBytes,std::uint64_t& limitBytes) {
+                std::uint64_t residentBytes,std::uint64_t& limitBytes,bool recoveryCapable=false) {
         if(request.seq<=seq) return false;
-        seq=request.seq; requestedMiB=request.residentMiB; reason=0;
-        if(!capable) reason=1;
+        seq=request.seq; requestedMiB=request.residentMiB; requestedRecoveryPriority=request.recoveryPriority; reason=0;
+        if(!capable || (requestedRecoveryPriority==1 && !recoveryCapable)) reason=1;
         else if(!requestedMiB || requestedMiB>UINT64_MAX/MiB ||
                 requestedMiB*MiB<minimumBytes) reason=2;
         else if(combinedBytes && (ownerBytes>combinedBytes || requestedMiB*MiB>combinedBytes-ownerBytes)) reason=3;
         else if(requestedMiB*MiB>maximumBytes) reason=2;
         if(reason) { result=2; ack=seq; return false; }
         result=requestedMiB*MiB<limitBytes && residentBytes>requestedMiB*MiB?1:0;
-        if(!result) { limitBytes=requestedMiB*MiB; ack=seq; }
+        if(!result) { limitBytes=requestedMiB*MiB; ack=seq;
+            if(requestedRecoveryPriority>=0) recoveryPriority=requestedRecoveryPriority==1; }
         return !result;
     }
     bool settle(bool capable,std::uint64_t residentBytes,std::uint64_t& limitBytes) {
         if(result!=1) return false;
         if(!capable) { result=2; reason=1; ack=seq; }
         else if(residentBytes<=requestedMiB*MiB) {
-            limitBytes=requestedMiB*MiB; result=0; ack=seq; return true;
+            limitBytes=requestedMiB*MiB; result=0; ack=seq;
+            if(requestedRecoveryPriority>=0) recoveryPriority=requestedRecoveryPriority==1;
+            return true;
         }
         return false;
     }
@@ -140,7 +147,7 @@ public:
         return size>0 && size<=1024 && parse(std::string(bytes,static_cast<std::size_t>(size)),request);
     }
     bool publish(bool capable,std::uint64_t residentBytes,std::uint64_t limitBytes,
-                 std::uint64_t minimumBytes,std::uint64_t maximumBytes) {
+                 std::uint64_t minimumBytes,std::uint64_t maximumBytes,bool recoveryCapable=false) {
         if(!active()) return false;
         const auto text=std::string("version=1\npid=")+std::to_string(getpid())+
             "\nstart="+std::to_string(start_)+"\ndevice="+device_+
@@ -150,7 +157,9 @@ public:
             "\nmax_limit_mib="+std::to_string(maximumBytes/MiB)+
             "\nrequested_mib="+std::to_string(state.requestedMiB)+"\nseq="+std::to_string(state.seq)+
             "\nack="+std::to_string(state.ack)+"\nresult="+std::to_string(state.result)+
-            "\nreason="+std::to_string(state.reason)+"\n";
+            "\nreason="+std::to_string(state.reason)+
+            "\nrecovery_capable="+std::to_string(recoveryCapable)+
+            "\nrecovery_priority="+std::to_string(state.recoveryPriority)+"\n";
         const int fd=openat(directory_,temporary_.c_str(),O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
         if(fd<0) return false;
         std::size_t offset=0;

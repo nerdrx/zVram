@@ -3,6 +3,8 @@
 Profiles affect wrapped launches only. Changed residency takes effect on restart.
 """
 import shlex
+import textwrap
+from pathlib import Path
 
 PRIORITIES = ("high", "normal", "low")
 NOTICE = "zVram launches only. Live controls set per-device residency caps, not global scheduling. Reductions can remain pending until resident data fits. Saved profile presets apply next launch; an explicit MiB cap overrides them. Native mode has no cap."
@@ -37,7 +39,20 @@ def status_text(profile):
     return str(profile.get("state", "stopped")).capitalize()
 
 
+def control_issue(profile):
+    state = profile.get("control_diagnostics", {}).get("state")
+    return {
+        "unreadable": "Control status cannot be read. Check the control directory's ownership and permissions; run the manager as the same user as the app.",
+        "invalid": "Control status failed validation. Check the control directory and use matching manager/backend versions; unsafe status was ignored.",
+        "stale": "Control status belongs to an expired process or disappeared during refresh. Refresh again before applying changes.",
+        "partial": "Some GPU control statuses were rejected or unreadable. Live changes affect only the available devices; check the control directory and refresh.",
+    }.get(state, "")
+
+
 def table_state(profile):
+    diagnostic = profile.get("control_diagnostics", {}).get("state")
+    if diagnostic in ("unreadable", "invalid", "stale", "partial"):
+        return {"unreadable": "Unreadable", "invalid": "Invalid status", "stale": "Stale status", "partial": "Partial control"}[diagnostic]
     if not profile.get('external'):
         return 'Running' if profile.get('running') else status_text(profile)
     if profile.get('live_capable'):
@@ -63,6 +78,8 @@ def profile_details(profile):
             if not profile.get('backend_loaded', profile.get('state') == 'Layer loaded'):
                 text += " · zVram layer is NOT loaded; inherited launch settings alone do not enable paging"
                 text += " · restart through updated zVram for live residency controls"
+            elif control_issue(profile):
+                pass  # The precise diagnostic is appended below.
             elif profile.get('control_devices'):
                 text += " · paging was disabled at launch; it cannot be enabled on an existing Vulkan device"
                 text += " · restart with live management enabled"
@@ -79,12 +96,16 @@ def profile_details(profile):
             text += " · Apply live requires a running app with paging enabled"
         if profile.get("mode") == "wrapped":
             text += " · existing zVram command"
+    if control_issue(profile):
+        text += " | " + control_issue(profile)
     for index, device in enumerate(profile.get("control_devices", []), 1):
         result = device.get("result", 0)
         state = {0: "applied/idle", 1: "pending", 2: "rejected"}.get(result, "unknown")
         text += " | GPU %s: cap %s MiB · resident %s MiB · requested %s MiB · %s" % (index, device.get("current_limit_mib", "?"), device.get("resident_mib", "?"), device.get("requested_mib", "?"), state)
         if result == 2:
             text += " (" + {1: 'paging unavailable', 2: 'outside supported bounds', 3: 'decoder memory reserve'}.get(device.get('reason'), 'request rejected') + ")"
+        if device.get("recovery_capable") == 1:
+            text += " · Recovery: " + ("prompt (safe completed buffers)" if device.get("recovery_priority") == 1 else "configured delay")
     if profile.get("pid"):
         text += " | PID %s" % profile["pid"]
     if profile.get("lastlog"):
@@ -115,6 +136,9 @@ class ManagerWindow:
         self.read_only = False
         self.controls, self.field_widgets = {}, {}
         root.title("zVram Manager")
+        self.app_icon = tk.PhotoImage(master=root, file=str(Path(__file__).resolve().parent / "assets/icon.png"))
+        self.header_icon = self.app_icon.subsample(2, 2)
+        root.iconphoto(True, self.app_icon)
         root.minsize(1080, 900)
         root.geometry("1200x920")
         root.configure(background=NX["bg"])
@@ -140,15 +164,16 @@ class ManagerWindow:
         style.configure("TButton", background=NX["panel"], foreground=NX["fg"], bordercolor=NX["border"], lightcolor=NX["border"], darkcolor=NX["border"], padding=(12, 9), focusthickness=2, focuscolor=NX["accent"])
         style.map("TButton", background=[("active", NX["selected"])], bordercolor=[("focus", NX["accent"])])
         style.configure("Accent.TButton", background=NX["accent"], foreground=NX["bg"], font=("DejaVu Sans", 10, "bold"))
-        style.map("Accent.TButton", background=[("active", "#c1a9e4")], foreground=[("active", NX["bg"])])
+        style.map("Accent.TButton", background=[("disabled", NX["panel"]), ("active", "#c1a9e4")],
+                  foreground=[("disabled", NX["muted"]), ("active", NX["bg"])])
         style.configure("TEntry", fieldbackground=NX["input"], foreground=NX["fg"], insertcolor=NX["fg"], bordercolor=NX["border"], lightcolor=NX["border"], darkcolor=NX["border"], padding=9)
         style.map("TEntry", bordercolor=[("focus", NX["accent"])])
         style.configure("TCombobox", fieldbackground=NX["input"], foreground=NX["fg"], background=NX["panel"], arrowcolor=NX["accent"], bordercolor=NX["border"], lightcolor=NX["border"], darkcolor=NX["border"], padding=8)
         style.map("TCombobox", fieldbackground=[("readonly", NX["input"])], foreground=[("readonly", NX["fg"])], selectbackground=[("readonly", NX["selected"])], selectforeground=[("readonly", NX["fg"])])
-        style.configure("Treeview", background=NX["panel"], fieldbackground=NX["panel"], foreground=NX["fg"], borderwidth=0, rowheight=40)
-        style.layout("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
+        style.configure("Treeview", background=NX["panel"], fieldbackground=NX["panel"], foreground=NX["fg"], borderwidth=1, bordercolor=NX["border"], lightcolor=NX["border"], rowheight=40)
         style.configure("Treeview.Heading", background=NX["panel"], foreground=NX["muted"], borderwidth=0, padding=(8, 10), font=("DejaVu Sans", 9, "bold"))
-        style.map("Treeview", background=[("selected", NX["selected"])], foreground=[("selected", NX["fg"])])
+        style.map("Treeview", background=[("selected", NX["selected"])], foreground=[("selected", NX["fg"])],
+                  bordercolor=[("focus", NX["accent"])], lightcolor=[("focus", NX["accent"])])
         style.map("Treeview.Heading", background=[("active", NX["selected"])])
         style.configure("Horizontal.TProgressbar", background=NX["accent"], troughcolor=NX["border"], bordercolor=NX["border"], lightcolor=NX["accent"], darkcolor=NX["accent"], borderwidth=0, thickness=5)
         root.columnconfigure(0, weight=1)
@@ -160,7 +185,7 @@ class ManagerWindow:
         header = ttk.Frame(body)
         header.grid(row=0, column=0, sticky="ew", pady=(0, 9))
         header.columnconfigure(0, weight=1)
-        ttk.Label(header, text="zVram", style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(header, text="zVram", image=self.header_icon, compound="left", style="Title.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(header, text="Memory, on your terms.", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
         ttk.Label(header, text="NX  /  MEMORY CONTROL", style="Badge.TLabel").grid(row=0, column=1, rowspan=2, sticky="e")
         overview = ttk.Frame(body)
@@ -199,7 +224,11 @@ class ManagerWindow:
         ttk.Label(titlebar, text="Profiles & zVram apps", style="Section.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Button(titlebar, text="+ New", command=self.new).grid(row=0, column=1, sticky="e")
         ttk.Label(left, text="Memory in MiB · VRAM/GTT show allocations.", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 12))
-        self.table = ttk.Treeview(left, columns=("vram", "gtt", "rss", "priority", "state"), height=7)
+        table_area = ttk.Frame(left, style="Panel.TFrame")
+        table_area.grid(row=2, column=0, sticky="nsew")
+        table_area.columnconfigure(0, weight=1)
+        table_area.rowconfigure(0, weight=1)
+        self.table = ttk.Treeview(table_area, columns=("vram", "gtt", "rss", "priority", "state"), height=7)
         self.table.heading("#0", text="APP / PROFILE", anchor="w")
         self.table.column("#0", width=150, minwidth=115, stretch=True)
         for key, label, width in (("vram", "VRAM", 78), ("gtt", "GTT", 72),
@@ -207,7 +236,12 @@ class ManagerWindow:
                                   ("state", "STATUS", 100)):
             self.table.heading(key, text=label, anchor="w")
             self.table.column(key, width=width, minwidth=width, stretch=False, anchor="e" if key in ("vram", "gtt", "rss") else "w")
-        self.table.grid(row=2, column=0, sticky="nsew")
+        self.table.grid(row=0, column=0, sticky="nsew")
+        vertical = ttk.Scrollbar(table_area, orient="vertical", command=self.table.yview)
+        vertical.grid(row=0, column=1, sticky="ns")
+        horizontal = ttk.Scrollbar(table_area, orient="horizontal", command=self.table.xview)
+        horizontal.grid(row=1, column=0, sticky="ew")
+        self.table.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
         self.table.bind("<<TreeviewSelect>>", self.select)
         leftactions = ttk.Frame(left, style="Panel.TFrame")
         leftactions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
@@ -241,20 +275,44 @@ class ManagerWindow:
         actions.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(2, 8))
         for label, callback, kind in (("Save settings", self.save, "TButton"), ("Start app", lambda: self.act("start"), "Accent.TButton"),
                                      ("Stop app", lambda: self.act("stop"), "TButton"), ("Apply live", self.apply_live, "TButton")):
-            button = ttk.Button(actions, text=label, command=callback, style=kind)
-            button.pack(side="left", padx=(0, 10))
+            button = ttk.Button(actions, text=label, command=callback, style=kind, width=0, padding=(8, 9))
+            button.pack(side="left", padx=(0, 6))
             self.controls[label] = button
         ttk.Label(right, text="PROCESS ACCOUNTING", style="CardMuted.TLabel", font=("DejaVu Sans", 9, "bold")).grid(row=12, column=0, columnspan=2, sticky="w")
         self.details = tk.StringVar(value="Select a profile to inspect its process.")
-        ttk.Label(right, textvariable=self.details, style="CardMuted.TLabel", wraplength=450, justify="left").grid(row=13, column=0, columnspan=2, sticky="nw", pady=(8, 0))
+        right.rowconfigure(13, weight=1)
+        details_area = ttk.Frame(right, style="Panel.TFrame")
+        details_area.grid(row=13, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+        details_area.columnconfigure(0, weight=1)
+        details_area.rowconfigure(0, weight=1)
+        self.details_text = tk.Text(details_area, height=3, width=1, wrap="word", relief="flat",
+                                    background=NX["panel"], foreground=NX["muted"],
+                                    font=("DejaVu Sans", 9), highlightthickness=1,
+                                    highlightbackground=NX["panel"], highlightcolor=NX["accent"])
+        self.details_text.grid(row=0, column=0, sticky="nsew")
+        details_scroll = ttk.Scrollbar(details_area, orient="vertical", command=self.details_text.yview)
+        details_scroll.grid(row=0, column=1, sticky="ns")
+        self.details_text.configure(yscrollcommand=details_scroll.set)
+        def update_details(*args):
+            text = self.details.get()
+            if self.details_text.get("1.0", "end-1c") == text:
+                return
+            self.details_text.configure(state="normal")
+            self.details_text.delete("1.0", "end")
+            self.details_text.insert("1.0", text)
+            self.details_text.configure(state="disabled")
+        self.details.trace_add("write", update_details)
+        update_details()
         self.telemetry = tk.StringVar(value="")
         footer = ttk.Frame(body)
         footer.grid(row=3, column=0, sticky="ew", pady=(16, 0))
         ttk.Label(footer, text=NOTICE, style="Muted.TLabel", wraplength=1120, font=("DejaVu Sans", 9)).pack(anchor="w")
         self.message = tk.StringVar(value="Ready · Ctrl+S saves settings · F5 refreshes")
         ttk.Label(footer, textvariable=self.message, wraplength=1120, font=("DejaVu Sans", 9)).pack(anchor="w", pady=(7, 0))
+        root.protocol("WM_DELETE_WINDOW", self.close)
         root.bind("<Control-s>", lambda event: self.save())
         root.bind("<F5>", lambda event: self.refresh())
+        self.mark_form_clean()
         self.refresh()
         self.root.after(2000, self.tick)
 
@@ -274,6 +332,34 @@ class ManagerWindow:
         selection = self.table.selection()
         return selection[0] if selection else None
 
+    def form_values(self):
+        return {**{key: value.get() for key, value in self.fields.items()},
+                "ignore_swap_guard": self.swap_guard.get()}
+
+    def mark_form_clean(self):
+        self.form_baseline = self.form_values()
+
+    def form_is_dirty(self):
+        return getattr(self, "form_baseline", None) is not None and self.form_values() != self.form_baseline
+
+    def confirm_discard(self):
+        if not self.form_is_dirty():
+            return True
+        from tkinter import messagebox
+        return messagebox.askyesno("Discard unsaved changes?", "Discard your unsaved profile changes?", parent=self.root)
+
+    def close(self):
+        if self.confirm_discard():
+            self.root.destroy()
+
+    def clear_form(self):
+        self.configure_controls()
+        self.editing = None
+        for key, variable in self.fields.items():
+            variable.set("normal" if key == "priority" else "vulkan" if key == "mode" else "")
+        self.swap_guard.set(False)
+        self.mark_form_clean()
+
     def configure_controls(self, profile=None):
         external = bool(profile and profile.get("external"))
         live = bool(profile and profile.get("live_capable"))
@@ -286,7 +372,7 @@ class ManagerWindow:
         self.controls["Save settings"].configure(text="Save live cap" if external else "Save settings")
         for key, widget in self.field_widgets.items():
             enabled = (not external or live and key in ("priority", "resident_mib")) if key != "ignore_swap_guard" else not external
-            widget.configure(state="disabled" if not enabled else "readonly" if key in ("priority", "mode") else "normal")
+            widget.configure(state="disabled" if not enabled else "readonly" if key in ("priority", "mode") or key == "name" and profile else "normal")
 
     def blocked(self, action=None):
         if self.read_only or self.profiles.get(self.selected(), {}).get("external"):
@@ -306,37 +392,48 @@ class ManagerWindow:
             if resident:
                 self.manager.set_live_limit(profile["name"], int(resident))
             else:
-                self.manager.set_live_priority(profile["name"], self.fields["priority"].get())
+                priority = self.fields["priority"].get()
+                if priority not in PRIORITIES:
+                    self.message.set("Choose a priority or enter a residency cap before applying live changes.")
+                    return
+                self.manager.set_live_priority(profile["name"], priority)
             self.refresh()
             self.message.set("Live cap requested. Reductions may remain pending until resident data fits.")
         except Exception as error:
             self.message.set("Error: %s" % error)
 
-    def select(self, event=None):
+    def select(self, event=None, confirm=True):
         profile = self.profiles.get(self.selected())
+        if profile and self.editing != profile["name"] and self.form_is_dirty() and (not confirm or not self.confirm_discard()):
+            if self.editing in self.profiles and self.table.exists(self.editing):
+                self.table.selection_set(self.editing)
+            else:
+                self.table.selection_remove(*self.table.selection())
+            return
         self.configure_controls(profile)
         if profile:
             self.details.set(profile_details(profile))
-            self.swap_guard.set(bool(profile.get("ignore_swap_guard", False)))
         if profile and self.editing != profile["name"]:
+            self.swap_guard.set(bool(profile.get("ignore_swap_guard", False)))
             self.editing = profile["name"]
             for key in self.fields:
                 if key == "priority" and profile.get("external"):
-                    self.fields[key].set(profile.get("priority") if profile.get("priority") in PRIORITIES else "normal")
+                    self.fields[key].set(profile.get("priority") if profile.get("priority") in PRIORITIES else "")
                     continue
                 self.fields[key].set(command_text(profile) if key == "command" else profile.get("display_name", profile["name"]) if key == "name" else str(profile.get(key) if profile.get(key) is not None else ""))
+            self.mark_form_clean()
 
     def new(self):
-        self.configure_controls()
-        self.editing = None
+        if not self.confirm_discard():
+            return
         self.table.selection_remove(*self.table.selection())
-        for key, variable in self.fields.items():
-            variable.set("normal" if key == "priority" else "vulkan" if key == "mode" else "")
-        self.swap_guard.set(False)
+        self.clear_form()
         self.message.set("New profile: enter a name and command, then Save")
 
     def refresh(self):
         selected = self.selected()
+        focused = self.table.focus()
+        previous = self.profiles.get(selected)
         try:
             profiles = self.manager.list_profiles()
             self.profiles = {profile["name"]: profile for profile in profiles}
@@ -345,10 +442,26 @@ class ManagerWindow:
                 self.table.insert("", "end", iid=profile["name"], text=profile.get("display_name", profile["name"]), values=(
                     usage_mib(profile, "vram_mib"), usage_mib(profile, "gtt_mib"),
                     usage_mib(profile, "rss_mib"), profile["priority"].upper(), table_state(profile)))
+            if focused in self.profiles:
+                self.table.focus(focused)
             if selected in self.profiles:
                 self.table.selection_set(selected)
-                self.select()
+                self.select(confirm=False)
             else:
+                if selected is not None:
+                    preserve_draft = bool(previous and not previous.get("external") and self.form_is_dirty())
+                    self.table.selection_remove(*self.table.selection())
+                    self.configure_controls()
+                    self.editing = None
+                    if not preserve_draft:
+                        for key, variable in self.fields.items():
+                            variable.set("normal" if key == "priority" else "vulkan" if key == "mode" else "")
+                        self.swap_guard.set(False)
+                        self.mark_form_clean()
+                    else:
+                        self.form_baseline = {"name": "", "priority": "normal", "mode": "vulkan",
+                                              "resident_mib": "", "command": "", "ignore_swap_guard": False}
+                    self.message.set("The selected app or profile is no longer available. Select another item or create a profile.")
                 self.details.set("Select a profile to inspect its process.")
             status = self.manager.status()
             self.telemetry.set(system_status(status))
@@ -366,9 +479,12 @@ class ManagerWindow:
             profile = profile_from_fields(**{key: value.get() for key, value in self.fields.items()})
             profile["ignore_swap_guard"] = self.swap_guard.get()
             if self.editing in self.profiles:
+                if profile["name"] != self.editing:
+                    raise ValueError("Existing profile names are fixed. Use New profile to create a different one.")
                 profile = dict(self.profiles[self.editing], **profile)
             self.manager.save_profile(profile)
             self.refresh()
+            self.mark_form_clean()
             self.table.selection_set(profile["name"])
             self.message.set("Saved. Running processes keep their current residency until restarted.")
         except Exception as error:
@@ -376,6 +492,9 @@ class ManagerWindow:
 
     def act(self, action):
         if self.blocked(action):
+            return
+        if action == "start" and self.form_is_dirty():
+            self.message.set("Save your profile changes before starting the app.")
             return
         name = self.selected()
         if not name:
@@ -415,10 +534,11 @@ class ManagerWindow:
             return
         from tkinter import messagebox
         name = self.selected()
-        if name and messagebox.askyesno("Delete profile", "Delete profile %s? Running jobs must be stopped first." % name, parent=self.root):
+        if name and messagebox.askyesno("Delete profile", "Delete profile %s and discard its unsaved edits? Running jobs must be stopped first." % name, parent=self.root):
             try:
                 self.manager.delete(name)
-                self.new()
+                self.table.selection_remove(*self.table.selection())
+                self.clear_form()
                 self.refresh()
                 self.message.set("Profile deleted")
             except Exception as error:
@@ -432,7 +552,7 @@ class ManagerWindow:
 def run_gui(manager):
     import tkinter as tk
     try:
-        root = tk.Tk()
+        root = tk.Tk(className="zVram")
     except tk.TclError as error:
         raise RuntimeError("Cannot open GUI display; use zvram tui instead") from error
     ManagerWindow(root, manager)
@@ -457,11 +577,15 @@ def _prompt(screen, label, initial=""):
     screen.timeout(-1)
     curses.curs_set(1)
     value = initial
+    cursor = len(value)
     try:
         while True:
             screen.move(height - 2, 0)
             screen.clrtoeol()
-            _draw(screen, height - 2, (label + value)[-(width - 1):])
+            caret = len(label) + cursor
+            start = max(0, caret - (width - 2))
+            _draw(screen, height - 2, (label + value)[start:])
+            screen.move(height - 2, caret - start)
             screen.refresh()
             key = screen.get_wch()
             if key in ("\n", "\r", curses.KEY_ENTER):
@@ -469,21 +593,39 @@ def _prompt(screen, label, initial=""):
             if key == "\x1b":
                 return None
             if key in (curses.KEY_BACKSPACE, "\x7f", "\b"):
-                value = value[:-1]
+                if cursor:
+                    value = value[:cursor - 1] + value[cursor:]
+                    cursor -= 1
+            elif key == curses.KEY_LEFT:
+                cursor = max(0, cursor - 1)
+            elif key == curses.KEY_RIGHT:
+                cursor = min(len(value), cursor + 1)
+            elif key == curses.KEY_HOME:
+                cursor = 0
+            elif key == curses.KEY_END:
+                cursor = len(value)
+            elif key == curses.KEY_DC:
+                value = value[:cursor] + value[cursor + 1:]
             elif key == "\x15":
                 value = ""
+                cursor = 0
             elif isinstance(key, str) and key.isprintable():
-                value += key
+                value = value[:cursor] + key + value[cursor:]
+                cursor += len(key)
     finally:
         curses.curs_set(0)
         screen.timeout(1000)
 
 
 def _edit(screen, profile=None):
+    existing_name = profile["name"] if profile else None
     profile = profile or dict(name="", priority="normal", resident_mib=None, command=[], mode="vulkan")
     fields = {}
     for key, label in (("name", "Name: "), ("priority", "Priority [high/normal/low]: "),
                        ("resident_mib", "Resident MiB [blank=default]: "), ("mode", "Mode [native/vulkan/wrapped]: "), ("command", "Command: ")):
+        if key == "name" and existing_name is not None:
+            fields[key] = existing_name
+            continue
         initial = command_text(profile) if key == "command" else str(profile.get(key) if profile.get(key) is not None else "")
         value = _prompt(screen, label, initial)
         if value is None:
@@ -491,6 +633,40 @@ def _edit(screen, profile=None):
         fields[key] = value
     edited = profile_from_fields(**fields)
     return dict(profile, **edited)
+
+
+def _details(screen, profile):
+    """Read-only, wrapped details; usable even when the main table is narrow."""
+    import curses
+    offset = 0
+    screen.timeout(-1)
+    try:
+        while True:
+            height, width = screen.getmaxyx()
+            lines = []
+            for section in profile_details(profile).split(" | "):
+                lines.extend(textwrap.wrap(section, max(1, width - 2)) or [""])
+            visible = max(1, height - 3)
+            offset = min(offset, max(0, len(lines) - visible))
+            screen.erase()
+            _draw(screen, 0, "App details · " + profile.get("display_name", profile["name"]))
+            for row, line in enumerate(lines[offset:offset + visible], 1):
+                _draw(screen, row, line)
+            _draw(screen, height - 1, "Up/Down: scroll · Esc/q: back")
+            screen.refresh()
+            key = screen.getch()
+            if key in (27, ord("q")):
+                return
+            if key == curses.KEY_DOWN:
+                offset = min(offset + 1, max(0, len(lines) - visible))
+            elif key == curses.KEY_UP:
+                offset = max(0, offset - 1)
+            elif key == curses.KEY_NPAGE:
+                offset = min(offset + visible, max(0, len(lines) - visible))
+            elif key == curses.KEY_PPAGE:
+                offset = max(0, offset - visible)
+    finally:
+        screen.timeout(1000)
 
 
 def _tui(screen, manager):
@@ -522,7 +698,7 @@ def _tui(screen, manager):
                 _draw(screen, height - 5, profile_details(profiles[index]))
         except Exception as error:
             message = "Error: %s" % error
-        _draw(screen, height - 4, "Arrows: select | n: new | e: edit | p: priority | s: start | x: stop | l: logs | d: delete | q: quit")
+        _draw(screen, height - 4, "Arrows: select | n: new | e: edit | i: details | p: priority | s: start | x: stop | l: logs | d: delete | q: quit")
         _draw(screen, height - 3, "Edits: Enter accepts, Esc cancels, Ctrl-U clears. Residency applies next launch.")
         _draw(screen, height - 1, message)
         screen.refresh()
@@ -550,7 +726,9 @@ def _tui(screen, manager):
                     else:
                         message = "External launch: restart through updated zVram for live residency controls" if key in map(ord, "ep") else "External launch has no saved profile or manager log"
                     continue
-                if key == ord("n") or key == ord("e") and profile:
+                if key == ord("i") and profile:
+                    _details(screen, profile)
+                elif key == ord("n") or key == ord("e") and profile:
                     edited = _edit(screen, profile if key == ord("e") else None)
                     if edited:
                         manager.save_profile(edited)

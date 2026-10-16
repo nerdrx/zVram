@@ -38,6 +38,23 @@ checksums. To reproduce packaging locally:
 python3 scripts/package.py --build-dir build --output dist --version 0.4.1
 ```
 
+## Steam launch options
+
+```sh
+zvram -- %command%
+```
+
+Normal Vulkan launches enable pressure paging, eligible-buffer recovery to local
+VRAM, and supported buffer presentation. Recovery still requires completed,
+tracked work and native memory headroom; images and descriptor heaps are not
+made pageable by these defaults. High live priority removes the recovery quiet
+age delay on supported backends, without bypassing those guards.
+
+Use `--no-vulkan-recover-local` or `--no-vulkan-buffer-presentation` to disable
+either behavior. `--no-live-control` disables automatic setup while preserving
+explicit settings. Explicit idle-eviction experiments and HIP launches do not
+implicitly enable recovery or presentation.
+
 ## What works today
 
 ### Userspace manager and Novum Xenium bridge

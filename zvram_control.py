@@ -15,8 +15,11 @@ def directory(home=None):
         return private_directory(explicit)
     if runtime:
         root = Path(runtime)
-        st = root.lstat()
-        if not root.is_symlink() and st.st_uid == os.getuid() and stat.S_ISDIR(st.st_mode) and st.st_mode & 0o077 == 0:
+        try:
+            st = root.lstat()
+        except OSError:
+            st = None
+        if st is not None and st.st_uid == os.getuid() and stat.S_ISDIR(st.st_mode) and st.st_mode & 0o077 == 0:
             return private_directory(root / 'zvram-control')
     return private_directory(Path(home or os.environ.get('ZVRAM_MANAGER_HOME') or
                                   Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'zvram') / 'control')
@@ -63,25 +66,69 @@ def read_file(fd, name):
     return values
 
 
-def status(base, pid, start):
+def status_report(base, pid, start):
+    """Return accepted rows and bounded endpoint diagnostics, without raw data."""
     devices = []
+    counts = {'unreadable': 0, 'invalid': 0, 'stale': 0}
+    endpoint_seen = False
     try:
         with process_directory(base, pid, start) as fd:
-            for filename in sorted(os.listdir(fd)):
-                if not re.fullmatch(r'\d+\.status', filename):
-                    continue
+            names = os.listdir(fd)
+            filenames = [name for name in names if re.fullmatch(r'\d+\.status', name)]
+            endpoint_seen = bool(filenames)
+            for filename in sorted(filenames):
                 try:
                     value = read_file(fd, filename)
-                    if value.get('pid') != pid or str(value.get('start')) != str(start) or str(value.get('device')) + '.status' != filename:
-                        continue
-                    value['device'] = str(value['device'])
-                    value['capable'] = value.get('capable') == 1
-                    devices.append(value)
-                except (OSError, ValueError, UnicodeError):
+                except FileNotFoundError:
+                    counts['stale'] += 1
                     continue
-    except (OSError, ValueError):
+                except OSError:
+                    counts['unreadable'] += 1
+                    continue
+                except (ValueError, UnicodeError):
+                    counts['invalid'] += 1
+                    continue
+                if (value.get('pid') != pid or str(value.get('start')) != str(start) or
+                        str(value.get('device')) + '.status' != filename):
+                    counts['stale'] += 1
+                    continue
+                value['device'] = str(value['device'])
+                value['capable'] = value.get('capable') == 1
+                devices.append(value)
+    except FileNotFoundError:
         pass
-    return devices
+    except PermissionError:
+        counts['unreadable'] += 1
+    except OSError:
+        counts['unreadable'] += 1
+    except ValueError:
+        counts['invalid'] += 1
+
+    has_issues = any(counts.values())
+    if devices and has_issues:
+        state = 'partial'
+    elif devices:
+        state = 'ready'
+    elif counts['unreadable']:
+        state = 'unreadable'
+    elif counts['invalid']:
+        state = 'invalid'
+    elif counts['stale']:
+        state = 'stale'
+    else:
+        state = 'missing'
+    return {'devices': devices, 'diagnostics': {
+        'state': state,
+        'unreadable_count': min(counts['unreadable'], 999),
+        'invalid_count': min(counts['invalid'], 999),
+        'stale_count': min(counts['stale'], 999),
+        'endpoint_files_seen': endpoint_seen,
+    }}
+
+
+def status(base, pid, start):
+    """Compatibility wrapper preserving the historic device-list API."""
+    return status_report(base, pid, start)['devices']
 
 
 def request(manager, name, mib=None, priority=None):
@@ -97,6 +144,8 @@ def request(manager, name, mib=None, priority=None):
             raise ValueError('Restart with the updated layer and --live-control to enable live residency controls')
         planned = []
         for device in devices:
+            if priority is not None and "max_limit_mib" not in device:
+                raise ValueError("Device did not report its maximum resident limit; set an explicit MiB limit instead")
             limit = mib if priority is None else max(device.get('min_limit_mib', 1), int(device['max_limit_mib'] * PRIORITIES[priority]))
             if not device.get('min_limit_mib', 1) <= limit <= device.get('max_limit_mib', 1048576):
                 raise ValueError('Limit is outside this device\'s supported range')
@@ -120,6 +169,8 @@ def request(manager, name, mib=None, priority=None):
                 try:
                     with os.fdopen(filefd, 'w') as stream:
                         stream.write(f'version=1\nseq={sequence}\nresident_mib={limit}\n')
+                        if priority is not None and device.get('recovery_capable') == 1:
+                            stream.write(f'recovery_priority={int(priority == "high")}\n')
                     os.replace(temp, filename, src_dir_fd=fd, dst_dir_fd=fd)
                 finally:
                     try:
