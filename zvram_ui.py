@@ -118,8 +118,8 @@ def profile_details(profile):
 
 
 # Novum Xenium static/style.css core palette; keep this stdlib app visually aligned.
-NX = dict(bg="#100f14", fg="#e9e6ef", panel="#19171e", border="#37323e",
-          accent="#a88bd6", muted="#b2aabc", input="#121016", selected="#3b2b51")
+NX = dict(bg="#101116", fg="#eeeef5", panel="#181a22", border="#2a2d39",
+          accent="#b9a0ef", muted="#a9afc1", input="#12141b", selected="#343047")
 
 
 def gib(value):
@@ -141,10 +141,10 @@ class ManagerWindow:
         self.controls, self.field_widgets = {}, {}
         root.title("zVram Manager")
         self.app_icon = tk.PhotoImage(master=root, file=str(Path(__file__).resolve().parent / "assets/icon.png"))
-        self.header_icon = self.app_icon.subsample(2, 2)
+        self.header_icon = self.app_icon.subsample(3, 3)
         root.iconphoto(True, self.app_icon)
-        root.minsize(1080, 900)
-        root.geometry("1200x920")
+        root.minsize(1000, 800)
+        root.geometry("1280x800")
         root.configure(background=NX["bg"])
         root.option_add("*TCombobox*Listbox.background", NX["input"])
         root.option_add("*TCombobox*Listbox.foreground", NX["fg"])
@@ -153,14 +153,14 @@ class ManagerWindow:
         style.theme_use("clam")
         style.configure(".", background=NX["bg"], foreground=NX["fg"], font=("DejaVu Sans", 10))
         style.configure("TFrame", background=NX["bg"])
-        style.configure("Card.TFrame", background=NX["panel"], bordercolor=NX["border"], lightcolor=NX["border"], darkcolor=NX["border"], relief="solid", borderwidth=1)
+        style.configure("Card.TFrame", background=NX["panel"], bordercolor=NX["border"], lightcolor=NX["border"], darkcolor=NX["border"], relief="flat", borderwidth=0)
         style.configure("Panel.TFrame", background=NX["panel"])
         style.configure("TLabel", background=NX["bg"], foreground=NX["fg"])
         style.configure("Muted.TLabel", foreground=NX["muted"])
         style.configure("Card.TLabel", background=NX["panel"], foreground=NX["fg"])
         style.configure("CardMuted.TLabel", background=NX["panel"], foreground=NX["muted"])
-        style.configure("CardValue.TLabel", background=NX["panel"], foreground=NX["fg"], font=("DejaVu Sans", 24, "bold"))
-        style.configure("Title.TLabel", font=("DejaVu Sans", 25, "bold"))
+        style.configure("CardValue.TLabel", background=NX["panel"], foreground=NX["fg"], font=("DejaVu Sans", 19, "bold"))
+        style.configure("Title.TLabel", font=("DejaVu Sans", 22, "bold"))
         style.configure("Section.TLabel", background=NX["panel"], foreground=NX["fg"], font=("DejaVu Sans", 13, "bold"))
         style.configure("Card.TCheckbutton", background=NX["panel"], foreground=NX["muted"])
         style.map("Card.TCheckbutton", background=[("active", NX["panel"])], foreground=[("disabled", NX["muted"])])
@@ -170,11 +170,11 @@ class ManagerWindow:
         style.configure("Accent.TButton", background=NX["accent"], foreground=NX["bg"], font=("DejaVu Sans", 10, "bold"))
         style.map("Accent.TButton", background=[("disabled", NX["panel"]), ("active", "#c1a9e4")],
                   foreground=[("disabled", NX["muted"]), ("active", NX["bg"])])
-        style.configure("TEntry", fieldbackground=NX["input"], foreground=NX["fg"], insertcolor=NX["fg"], bordercolor=NX["border"], lightcolor=NX["border"], darkcolor=NX["border"], padding=9)
+        style.configure("TEntry", fieldbackground=NX["input"], foreground=NX["fg"], insertcolor=NX["fg"], bordercolor=NX["border"], lightcolor=NX["border"], darkcolor=NX["border"], padding=8)
         style.map("TEntry", bordercolor=[("focus", NX["accent"])])
         style.configure("TCombobox", fieldbackground=NX["input"], foreground=NX["fg"], background=NX["panel"], arrowcolor=NX["accent"], bordercolor=NX["border"], lightcolor=NX["border"], darkcolor=NX["border"], padding=8)
         style.map("TCombobox", fieldbackground=[("readonly", NX["input"])], foreground=[("readonly", NX["fg"])], selectbackground=[("readonly", NX["selected"])], selectforeground=[("readonly", NX["fg"])])
-        style.configure("Treeview", background=NX["panel"], fieldbackground=NX["panel"], foreground=NX["fg"], borderwidth=1, bordercolor=NX["border"], lightcolor=NX["border"], rowheight=40)
+        style.configure("Treeview", background=NX["panel"], fieldbackground=NX["panel"], foreground=NX["fg"], borderwidth=1, bordercolor=NX["border"], lightcolor=NX["border"], rowheight=44)
         style.configure("Treeview.Heading", background=NX["panel"], foreground=NX["muted"], borderwidth=0, padding=(8, 10), font=("DejaVu Sans", 9, "bold"))
         style.map("Treeview", background=[("selected", NX["selected"])], foreground=[("selected", NX["fg"])],
                   bordercolor=[("focus", NX["accent"])], lightcolor=[("focus", NX["accent"])])
@@ -182,28 +182,27 @@ class ManagerWindow:
         style.configure("Horizontal.TProgressbar", background=NX["accent"], troughcolor=NX["border"], bordercolor=NX["border"], lightcolor=NX["accent"], darkcolor=NX["accent"], borderwidth=0, thickness=5)
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
-        body = ttk.Frame(root, padding=24)
+        body = ttk.Frame(root, padding=20)
         body.grid(sticky="nsew")
         body.columnconfigure(0, weight=1)
         body.rowconfigure(2, weight=1)
         header = ttk.Frame(body)
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 9))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text="zVram", image=self.header_icon, compound="left", style="Title.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(header, text="Memory, on your terms.", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
-        ttk.Label(header, text="NX  /  MEMORY CONTROL", style="Badge.TLabel").grid(row=0, column=1, rowspan=2, sticky="e")
+        ttk.Label(header, text="NX  /  zVram Manager", style="Badge.TLabel").grid(row=0, column=1, sticky="e")
         overview = ttk.Frame(body)
-        overview.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        overview.grid(row=1, column=0, sticky="ew", pady=(0, 16))
         self.cards = {}
-        for index, (key, title, caption) in enumerate((("gpu", "PHYSICAL GPU VRAM", "Device-wide usage · not per-process accounting"),
-                                                      ("ram", "SYSTEM RAM AVAILABLE", "Headroom for model spill and your desktop"),
-                                                      ("swap", "SYSTEM SWAP USED", "System-wide · includes other applications"))):
+        for index, (key, title, caption) in enumerate((("gpu", "GPU MEMORY", "Device-wide allocation"),
+                                                      ("ram", "AVAILABLE RAM", "Space for your apps and desktop"),
+                                                      ("swap", "SWAP IN USE", "Across all applications"))):
             overview.columnconfigure(index, weight=1, uniform="cards")
-            card = ttk.Frame(overview, padding=18, style="Card.TFrame")
+            card = ttk.Frame(overview, padding=(16, 12), style="Card.TFrame")
             card.grid(row=0, column=index, sticky="nsew", padx=(0 if index == 0 else 8, 0 if index == 2 else 8))
             ttk.Label(card, text=title, style="CardMuted.TLabel", font=("DejaVu Sans", 9, "bold")).pack(anchor="w")
             value = tk.StringVar(value="—")
-            ttk.Label(card, textvariable=value, style="CardValue.TLabel").pack(anchor="w", pady=(9, 8))
+            ttk.Label(card, textvariable=value, style="CardValue.TLabel").pack(anchor="w", pady=(6, 6))
             bar = ttk.Progressbar(card, maximum=100, value=0)
             if key == "gpu":
                 bar.pack(fill="x", pady=(0, 8))
@@ -215,19 +214,19 @@ class ManagerWindow:
             self.cards[key] = (value, bar)
         workspace = ttk.Frame(body)
         workspace.grid(row=2, column=0, sticky="nsew")
-        workspace.columnconfigure(0, weight=6)
-        workspace.columnconfigure(1, weight=4)
+        workspace.columnconfigure(0, weight=1)
+        workspace.columnconfigure(1, weight=0, minsize=340)
         workspace.rowconfigure(0, weight=1)
         left = ttk.Frame(workspace, style="Card.TFrame", padding=16)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 16))
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
         left.columnconfigure(0, weight=1)
         left.rowconfigure(2, weight=1)
         titlebar = ttk.Frame(left, style="Panel.TFrame")
         titlebar.grid(row=0, column=0, sticky="ew")
         titlebar.columnconfigure(0, weight=1)
-        ttk.Label(titlebar, text="Profiles & zVram apps", style="Section.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(titlebar, text="Your apps", style="Section.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Button(titlebar, text="+ New", command=self.new).grid(row=0, column=1, sticky="e")
-        ttk.Label(left, text="Memory in MiB · VRAM/GTT show allocations.", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 12))
+        ttk.Label(left, text="Live allocations in MiB · select an app to manage", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 12))
         table_area = ttk.Frame(left, style="Panel.TFrame")
         table_area.grid(row=2, column=0, sticky="nsew")
         table_area.columnconfigure(0, weight=1)
@@ -236,7 +235,7 @@ class ManagerWindow:
         self.table.heading("#0", text="APP / PROFILE", anchor="w")
         self.table.column("#0", width=150, minwidth=115, stretch=True)
         for key, label, width in (("vram", "VRAM", 78), ("gtt", "GTT", 72),
-                                  ("rss", "RAM", 72), ("priority", "PRIORITY", 80),
+                                  ("rss", "RAM", 72), ("priority", "PRIORITY", 155),
                                   ("state", "STATUS", 100)):
             self.table.heading(key, text=label, anchor="w")
             self.table.column(key, width=width, minwidth=width, stretch=False, anchor="e" if key in ("vram", "gtt", "rss") else "w")
@@ -254,41 +253,69 @@ class ManagerWindow:
             button.pack(side="left", padx=(0, 7))
             if label != "Refresh":
                 self.controls[label] = button
-        right = ttk.Frame(workspace, style="Card.TFrame", padding=20)
+        right = ttk.Frame(workspace, style="Card.TFrame", padding=16)
         right.grid(row=0, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
-        right.columnconfigure(1, weight=1)
-        ttk.Label(right, text="Profile settings", style="Section.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
-        ttk.Label(right, text="Save preferences, then launch when you are ready.", style="CardMuted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 14))
+        right.rowconfigure(2, weight=1)
+        self.inspector_title = tk.StringVar(value="App controls")
+        ttk.Label(right, textvariable=self.inspector_title, style="Section.TLabel", wraplength=300).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        self.inspector_hint = tk.StringVar(value="Select an app or create a profile")
+        ttk.Label(right, textvariable=self.inspector_hint, style="CardMuted.TLabel", wraplength=300).grid(row=1, column=0, sticky="w", pady=(0, 10))
+        style.configure("TNotebook", background=NX["panel"], borderwidth=0, bordercolor=NX["panel"], lightcolor=NX["panel"], darkcolor=NX["panel"])
+        style.configure("TNotebook.Tab", background=NX["panel"], foreground=NX["muted"], padding=(8, 8), borderwidth=0, bordercolor=NX["panel"], lightcolor=NX["panel"], darkcolor=NX["panel"])
+        style.map("TNotebook.Tab", background=[("selected", NX["selected"])], foreground=[("selected", NX["accent"])])
+        style.configure("TScrollbar", background=NX["border"], troughcolor=NX["panel"], arrowcolor=NX["muted"], borderwidth=0, lightcolor=NX["border"], darkcolor=NX["border"], bordercolor=NX["panel"])
+        style.layout("TNotebook.Tab", [("Notebook.padding", {"sticky": "nswe", "children": [
+            ("Notebook.focus", {"sticky": "nswe", "children": [("Notebook.label", {"sticky": ""})]})]})])
+        for scrollbar in ("Vertical.TScrollbar", "Horizontal.TScrollbar"):
+            style.configure(scrollbar, background=NX["border"], troughcolor=NX["panel"],
+                            arrowcolor=NX["muted"], bordercolor=NX["panel"],
+                            lightcolor=NX["border"], darkcolor=NX["border"], gripcount=0)
+            style.map(scrollbar, background=[("active", NX["muted"]), ("!active", NX["border"])])
+        self.inspector = ttk.Notebook(right)
+        self.inspector.grid(row=2, column=0, sticky="nsew")
+        controls_tab = ttk.Frame(self.inspector, style="Panel.TFrame", padding=(2, 12))
+        launch_tab = ttk.Frame(self.inspector, style="Panel.TFrame", padding=(2, 12))
+        details_tab = ttk.Frame(self.inspector, style="Panel.TFrame", padding=(2, 12))
+        safety_tab = ttk.Frame(self.inspector, style="Panel.TFrame", padding=(2, 12))
+        for tab, label in ((controls_tab, "Controls"), (launch_tab, "Launch"), (details_tab, "Details"), (safety_tab, "Safety")):
+            self.inspector.add(tab, text=label)
+            tab.columnconfigure(0, weight=1)
         self.fields = {}
         self.swap_guard = tk.BooleanVar(value=False)
-        fields = (("name", "Profile name", 2, 0, 2), ("priority", "VRAM priority", 4, 0, 1),
-                  ("mode", "Launch mode", 4, 1, 1), ("resident_mib", "Resident MiB · blank uses priority preset", 6, 0, 2),
-                  ("command", "Command · shell quoting supported; no shell invoked", 8, 0, 2))
-        for key, label, row, column, span in fields:
-            ttk.Label(right, text=label, style="CardMuted.TLabel", font=("DejaVu Sans", 9)).grid(row=row, column=column, columnspan=span, sticky="w", pady=(0, 5), padx=(0, 10 if span == 1 else 0))
+        fields = (("priority", "VRAM priority", controls_tab, 0),
+                  ("resident_mib", "Custom limit · MiB", controls_tab, 3),
+                  ("name", "Profile name", launch_tab, 0),
+                  ("mode", "Launch mode", launch_tab, 2),
+                  ("command", "Command", launch_tab, 4))
+        for key, label, tab, row in fields:
+            ttk.Label(tab, text=label, style="CardMuted.TLabel").grid(row=row, column=0, sticky="w", pady=(0, 6))
             variable = tk.StringVar(value="normal" if key == "priority" else "vulkan" if key == "mode" else "")
             self.fields[key] = variable
-            widget = ttk.Combobox(right, textvariable=variable, values=PRIORITIES if key == "priority" else ("native", "vulkan", "wrapped"), state="readonly") if key in ("priority", "mode") else ttk.Entry(right, textvariable=variable)
+            widget = ttk.Combobox(tab, width=24, textvariable=variable, values=PRIORITIES if key == "priority" else ("native", "vulkan", "wrapped"), state="readonly") if key in ("priority", "mode") else ttk.Entry(tab, width=24, textvariable=variable)
             self.field_widgets[key] = widget
             if key == "priority":
                 widget.bind("<<ComboboxSelected>>", lambda event: self.fields["resident_mib"].set(""))
-            widget.grid(row=row + 1, column=column, columnspan=span, sticky="ew", pady=(0, 6), padx=(0, 10 if column == 0 and span == 1 else 0))
-        guard = ttk.Checkbutton(right, text="Ignore swap-growth guard (RAM floor stays on)", variable=self.swap_guard, style="Card.TCheckbutton")
-        guard.grid(row=10, column=0, columnspan=2, sticky="w", pady=(0, 8))
+            widget.grid(row=row + 1, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(controls_tab, text="A preset clears the custom limit.", style="CardMuted.TLabel", wraplength=290).grid(row=2, column=0, sticky="w", pady=(0, 10))
+        ttk.Label(controls_tab, text="Blank uses the preset. Available memory and safety checks still apply.", style="CardMuted.TLabel", wraplength=290).grid(row=5, column=0, sticky="w")
+        guard = ttk.Checkbutton(safety_tab, text="Ignore swap-growth guard", variable=self.swap_guard, style="Card.TCheckbutton")
+        guard.grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(safety_tab, text="The available-RAM safety floor stays active. Leave this override off unless you understand the memory pressure risk.", style="CardMuted.TLabel", wraplength=290).grid(row=1, column=0, sticky="w")
         self.field_widgets["ignore_swap_guard"] = guard
         actions = ttk.Frame(right, style="Panel.TFrame")
-        actions.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(2, 8))
-        for label, callback, kind in (("Save settings", self.save, "TButton"), ("Start app", lambda: self.act("start"), "Accent.TButton"),
-                                     ("Stop app", lambda: self.act("stop"), "TButton"), ("Apply live", self.apply_live, "TButton")):
+        actions.grid(row=3, column=0, sticky="ew", pady=(14, 0))
+        for column in (0, 1):
+            actions.columnconfigure(column, weight=1, uniform="actions")
+        for index, (label, callback, kind) in enumerate((("Save settings", self.save, "TButton"), ("Apply live", self.apply_live, "Accent.TButton"),
+                                     ("Start app", lambda: self.act("start"), "TButton"), ("Stop app", lambda: self.act("stop"), "TButton"))):
             button = ttk.Button(actions, text=label, command=callback, style=kind, width=0, padding=(8, 9))
-            button.pack(side="left", padx=(0, 6))
+            button.grid(row=index // 2, column=index % 2, sticky="ew", padx=(0 if index % 2 == 0 else 4, 4 if index % 2 == 0 else 0), pady=(0, 8))
             self.controls[label] = button
-        ttk.Label(right, text="PROCESS ACCOUNTING", style="CardMuted.TLabel", font=("DejaVu Sans", 9, "bold")).grid(row=12, column=0, columnspan=2, sticky="w")
         self.details = tk.StringVar(value="Select a profile to inspect its process.")
-        right.rowconfigure(13, weight=1)
-        details_area = ttk.Frame(right, style="Panel.TFrame")
-        details_area.grid(row=13, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+        details_tab.rowconfigure(0, weight=1)
+        details_area = ttk.Frame(details_tab, style="Panel.TFrame")
+        details_area.grid(row=0, column=0, sticky="nsew")
         details_area.columnconfigure(0, weight=1)
         details_area.rowconfigure(0, weight=1)
         self.details_text = tk.Text(details_area, height=3, width=1, wrap="word", relief="flat",
@@ -300,7 +327,7 @@ class ManagerWindow:
         details_scroll.grid(row=0, column=1, sticky="ns")
         self.details_text.configure(yscrollcommand=details_scroll.set)
         def update_details(*args):
-            text = self.details.get()
+            text = self.details.get().replace(" | ", "\n\n")
             if self.details_text.get("1.0", "end-1c") == text:
                 return
             self.details_text.configure(state="normal")
@@ -312,7 +339,7 @@ class ManagerWindow:
         self.telemetry = tk.StringVar(value="")
         footer = ttk.Frame(body)
         footer.grid(row=3, column=0, sticky="ew", pady=(16, 0))
-        ttk.Label(footer, text=NOTICE, style="Muted.TLabel", wraplength=1120, font=("DejaVu Sans", 9)).pack(anchor="w")
+        ttk.Label(footer, text="Device allocations, not a physical VRAM guarantee. Live changes may wait for safe headroom.", style="Muted.TLabel", wraplength=1120, font=("DejaVu Sans", 9)).pack(anchor="w")
         self.message = tk.StringVar(value="Ready · Ctrl+S saves settings · F5 refreshes")
         ttk.Label(footer, textvariable=self.message, wraplength=1120, font=("DejaVu Sans", 9)).pack(anchor="w", pady=(7, 0))
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -359,6 +386,8 @@ class ManagerWindow:
             self.root.destroy()
 
     def clear_form(self):
+        self.inspector_title.set("New profile")
+        self.inspector_hint.set("Configure your app, then save")
         self.configure_controls()
         self.editing = None
         for key, variable in self.fields.items():
@@ -375,7 +404,13 @@ class ManagerWindow:
             if label == "Apply live":
                 enabled = live
             widget.configure(state="normal" if enabled else "disabled")
-        self.controls["Save settings"].configure(text="Apply live" if external else "Save settings")
+        self.controls["Save settings"].configure(text="Save settings")
+        if external:
+            self.controls["Save settings"].grid_remove()
+        else:
+            self.controls["Save settings"].grid()
+        self.inspector.tab(1, state="disabled" if external else "normal")
+        self.inspector.tab(3, state="disabled" if external else "normal")
         for key, widget in self.field_widgets.items():
             enabled = (not external or live and key in ("priority", "resident_mib")) if key != "ignore_swap_guard" else not external
             widget.configure(state="disabled" if not enabled else "readonly" if key in ("priority", "mode") or key == "name" and profile else "normal")
@@ -419,6 +454,8 @@ class ManagerWindow:
                 self.table.selection_remove(*self.table.selection())
             return
         self.configure_controls(profile)
+        self.inspector_title.set(profile.get("display_name", profile["name"]) if profile else "App controls")
+        self.inspector_hint.set("Steam preferences remembered" if profile and profile.get("steam_app_id") else "Live controls for this process" if profile and profile.get("external") else "Saved launch profile" if profile else "Select an app or create a profile")
         if profile:
             self.details.set(profile_details(profile))
         if profile and self.editing != profile["name"]:

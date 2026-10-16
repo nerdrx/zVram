@@ -198,6 +198,13 @@ def check_gui():
     window.table.selection_set("test")
     root.update()
     assert window.fields["priority"].get() == "low"
+    assert [window.inspector.tab(tab, 'text') for tab in window.inspector.tabs()] == ['Controls', 'Launch', 'Details', 'Safety']
+    window.fields['resident_mib'].set('777')
+    window.inspector.select(1)
+    window.inspector.select(2)
+    window.inspector.select(0)
+    assert window.fields['resident_mib'].get() == '777'
+    window.fields['resident_mib'].set('1024')
     window.fields["resident_mib"].set("2048")
     window.table.focus("test")
     window.refresh()
