@@ -2,9 +2,21 @@
 
 <p align="center"><b>Experimental GPU memory research · Vulkan · AMD RADV · HIP · C++17</b><br><a href="https://nerdrx.github.io/zVram/">Project website</a> · <a href="#quick-start">Quick start</a> · <a href="VALIDATION.md">Measured results</a> · <a href="KERNEL_PAGING.md">Linux paging research</a></p>
 
-zVram tests GPU memory beyond local VRAM: segmented Vulkan allocations, lossless idle snapshots for eligible Vulkan/HIP allocations, and an explicit managed buffer pool.
+zVram is an experimental Linux Vulkan memory layer with a desktop manager for
+app profiles, live memory limits, and eligible-buffer recovery. It combines
+bounded paging and lossless snapshots with driver-managed VRAM/GTT backing.
 
-**Status: experimental v0.4.1.** The managed pool controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing, plus opt-in automatic compression of idle, tracked VMM allocations on one exact ROCm HIP dispatch ABI. The VMM/GTT provider passed a 40 GiB single-pointer integrity check using 20 GiB each of VRAM and GTT. An official 39.73 GB InternLM2.5-20B F16 GGUF also loaded through HIP VMM/GTT with a 36,798.77 MiB GPU model buffer and all 49/49 layers offloaded; the native full-GPU HIP request OOMed. A separate native CPU/GPU HIP run offloaded 24/49 layers and matched VMM output. The same model also completed through the zVram Vulkan virtual heap and matched native Vulkan output. With llama.cpp's own n-gram self-drafting, a repeated-text prompt measured 6.33 versus 1.10 tokens/s and matched output; an ordinary code explanation measured 1.45 versus 1.43 tokens/s but diverged in output. These short sequential runs show workload-specific app behavior, not a zVram or general speedup. A 40 GiB GPU model buffer and broad app compatibility remain unverified. Idle compression is not transparent active-working-set paging.
+**Current release: [v0.4.25](https://github.com/nerdrx/zVram/releases/tag/v0.4.25).**
+The manager now has a compact memory overview, a wider app list, and separate
+Controls, Launch, Details, and Safety tabs. Steam priority preferences survive
+game restarts; live requests show whether the backend applied or rejected them.
+
+**Limits:** zVram does not create physical VRAM or force every game resource into
+VRAM. Native images and descriptor heaps remain outside its pageable buffer
+path. Compatibility is workload-dependent; actual game recovery and FPS gains
+are not established by the synthetic checks.
+
+<p align="center"><img src="assets/manager-preview.png" alt="zVram manager with a memory overview, app list and tabbed live controls" width="100%"><br><sub>Manager preview with illustrative app data; not a game benchmark.</sub></p>
 
 ## Install and update with NX Hub
 
@@ -35,7 +47,7 @@ Release tags build a versioned runtime archive, `nx-app.json`, and SHA-256
 checksums. To reproduce packaging locally:
 
 ```sh
-python3 scripts/package.py --build-dir build --output dist --version 0.4.1
+python3 scripts/package.py --build-dir build --output dist --version 0.4.25
 ```
 
 ## Steam launch options
@@ -54,6 +66,37 @@ Use `--no-vulkan-recover-local` or `--no-vulkan-buffer-presentation` to disable
 either behavior. `--no-live-control` disables automatic setup while preserving
 explicit settings. Explicit idle-eviction experiments and HIP launches do not
 implicitly enable recovery or presentation.
+
+## Using the manager
+
+Open `zvram gui` (or `zvram tui` for the terminal interface), then select a
+running zVram app or create a launch profile.
+
+| Tab | Purpose |
+|---|---|
+| **Controls** | Choose High, Normal, or Low priority, or enter an explicit resident limit in MiB. Choosing a preset clears the old custom limit. |
+| **Launch** | Edit a saved profile's command and launch mode. External launches keep these fields unavailable. |
+| **Details** | Inspect per-device caps, request acknowledgements, recovery policy, and endpoint diagnostics. |
+| **Safety** | Inspect the saved profile's swap-growth override. The available-RAM safety floor remains active. |
+
+- **Apply live** sends a request to a capable running Vulkan device. **Pending**
+  means the request has not settled; **Applied**, **Rejected**, and **Superseded**
+  reflect its device acknowledgement. A request is not proof of physical migration.
+- **Save settings** stores a managed launch profile and also requests its live
+  change when supported. If that request fails, the manager reports that the
+  profile was saved but the live change failed.
+- For a detected **Steam game ID**, a chosen live priority is remembered for
+  future `zvram -- %command%` launches. An explicit live MiB cap clears that saved
+  preset. Explicit launcher cap and quiet-time options take precedence.
+- External non-Steam requests are remembered for that exact running process,
+  not automatically reapplied to a new process with the same name.
+- High priority adjusts the residency preset and removes the quiet-age delay
+  for eligible recovery on supported backends. It does not override in-flight
+  work, memory headroom, or resource eligibility checks.
+
+Unsaved profile edits survive refreshes and tab changes. Switching profiles or
+closing the manager asks before discarding them. Reopen the manager after an
+update; restart a game to load a new Vulkan layer.
 
 ## What works today
 
@@ -164,7 +207,7 @@ With range residency and an immediate `--vulkan-resident-mib` cap, `--vulkan-laz
 
 `--vulkan-recover-local-quiet-ms N` adjusts that unused-age delay while recovery is enabled (default 1000; accepts 0 through 4294967295 milliseconds). Setting 0 permits recovery between completed uses of frequently accessed buffers; pending GPU work remains protected. This changes eligibility, not transaction cost: recovery still holds submission locks and may cause a frame spike. The equivalent environment variable is `ZVRAM_VULKAN_RECOVER_LOCAL_QUIET_MS`.
 
-An experimental `ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1` mode in the current source releases submission locks during the recovery copy-fence wait. It requires explicit local recovery and remains disabled by default. Exactly tracked, finite, resident and disjoint hot work can proceed even with unrelated cold data; matching, unknown, selected cold-restoration and mutation paths wait for safe completion. Sparse transitions still hold locks. The deterministic overlap and full-byte checks establish progress and correctness, not spike-free gaming. This prototype is not in installed v0.4.19; see [its evidence and teardown limits](validation/unlocked-recovery-wait/README.md).
+An experimental `ZVRAM_VULKAN_UNLOCKED_RECOVERY_WAIT=1` mode in the current source releases submission locks during the recovery copy-fence wait. It requires local recovery to be enabled and remains disabled by default. Exactly tracked, finite, resident and disjoint hot work can proceed even with unrelated cold data; matching, unknown, selected cold-restoration and mutation paths wait for safe completion. Sparse transitions still hold locks. The deterministic overlap and full-byte checks establish progress and correctness, not spike-free gaming. This mode remains experimental; see [its evidence and teardown limits](validation/unlocked-recovery-wait/README.md).
 
 `--vulkan-headroom-mib N` further tightens the tracked backing cap using `VK_EXT_memory_budget` on a single native device-local heap. It requires lazy backing, immediate resident admission, an enabled Vulkan 1.1 or `VK_KHR_get_physical_device_properties2` instance path, and device support for `VK_EXT_memory_budget`. Unsupported setups are rejected. A tiny hardware test verified budget queries and pre-allocation refusal at a zero effective limit. This dynamic budget estimate is not reserved capacity or a global VRAM guarantee; see [the calculation and limits](VALIDATION.md#vulkan-memory-budget-headroom-opt-in).
 
@@ -218,7 +261,7 @@ python3 check_vulkan_idle_model.py --binary /path/to/llama-completion \
 
 See [hardware evidence and limits](VALIDATION.md#automatic-vulkan-idle-snapshots).
 
-In automatic mode, eligible exact-size GPU-only native allocations use stable app-facing memory tokens and can be adopted into snapshots. A private sparse/transfer queue performs copies. In the default mode, completion markers postpone snapshots while app work is pending; opt-in active eviction can snapshot whole allocations unused by tracked pending submissions. Unknown access protects all candidates. The tested path supports ordinary and internally synchronized queues, BDA, and cross-family storage-buffer barriers. By default, app presentation or explicit sparse submissions keep the conservative restore-all/paging-disable behavior; `--vulkan-buffer-presentation` opts into base presents plus allowlisted present-ID/region metadata. Explicit application sparse submissions and other presentation chains retain the fallback. Active eviction is allocation-granularity, not frame-by-frame compression or general image paging.
+In automatic mode, eligible exact-size GPU-only native allocations use stable app-facing memory tokens and can be adopted into snapshots. A private sparse/transfer queue performs copies. In the default mode, completion markers postpone snapshots while app work is pending; opt-in active eviction can snapshot whole allocations unused by tracked pending submissions. Unknown access protects all candidates. The tested path supports ordinary and internally synchronized queues, BDA, and cross-family storage-buffer barriers. With buffer presentation disabled, app presentation keeps the conservative restore-all/paging-disable behavior. Normal pressure launches enable supported buffer presentation; explicit experiments can use `--vulkan-buffer-presentation`. Supported presentation metadata is validated conservatively. Explicit application sparse submissions and other presentation chains retain the fallback. Active eviction is allocation-granularity, not frame-by-frame compression or general image paging.
 
 Steam launch options can chain CPU affinity, using the installed `zvram` command:
 
@@ -311,6 +354,16 @@ sudo python3 dmem_probe.py --run
 The run creates one temporary cgroup, limits the selected AMDGPU VRAM region to 16 MiB by default, caps child RAM and swap, and runs only the 64 MiB capacity integrity check. It requires root cgroup-v2 `dmem` and `memory` controllers to already be available and enabled. The helper changes no global swap or TTM settings and removes its cgroup on exit. It measures cgroup accounting and integrity only; it does not prove that TTM shmem pages reached swap, nor that GPU data was compressed. See [the kernel paging notes](KERNEL_PAGING.md).
 
 ## Validation
+
+The observations below are historical, workload-specific evidence, not current
+game-performance guarantees. See [VALIDATION.md](VALIDATION.md) for exact setups.
+
+<details>
+<summary>Historical capacity and model checks</summary>
+
+The managed pool controls buffers an application explicitly gives it. HIP offers a narrow `hipMalloc` shim with native, mapped-host, and experimental VMM/GTT backing, plus opt-in automatic compression of idle, tracked VMM allocations on one exact ROCm HIP dispatch ABI. The VMM/GTT provider passed a 40 GiB single-pointer integrity check using 20 GiB each of VRAM and GTT. An official 39.73 GB InternLM2.5-20B F16 GGUF also loaded through HIP VMM/GTT with a 36,798.77 MiB GPU model buffer and all 49/49 layers offloaded; the native full-GPU HIP request OOMed. A separate native CPU/GPU HIP run offloaded 24/49 layers and matched VMM output. The same model also completed through the zVram Vulkan virtual heap and matched native Vulkan output. With llama.cpp's own n-gram self-drafting, a repeated-text prompt measured 6.33 versus 1.10 tokens/s and matched output; an ordinary code explanation measured 1.45 versus 1.43 tokens/s but diverged in output. These short sequential runs show workload-specific app behavior, not a zVram or general speedup. A 40 GiB GPU model buffer and broad app compatibility remain unverified. Idle compression is not transparent active-working-set paging.
+
+</details>
 
 The current hardware evidence and exact commands are in [VALIDATION.md](VALIDATION.md). An official 39.73 GB InternLM2.5-20B F16 model passed a VMM/GTT inference run with a 36,798.77 MiB GPU model buffer; native full-GPU allocation OOMed. A separate native CPU/GPU-offload run matched VMM output and measured 1.38 versus 1.09 tokens/s. This is not a full-GPU baseline or a 40 GiB GPU-weight test. A separate full-file roundtrip of the 270,885,952-byte SmolLM2 F16 GGUF stored 207,311,475 bytes (23.47% saved) under a 16 MiB resident budget, in both default and sparse modes. That is one measured file, not a prediction for other models or proof of universal application compatibility.
 
