@@ -17,6 +17,9 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_SERVER = ROOT / 'build/third-party/llama-vulkan-build/bin/llama-server'
+_OLLAMA_MODEL_LAYER = 'application/vnd.ollama.image.model'
+_OLLAMA_PROJECTOR_LAYER = 'application/vnd.ollama.image.projector'
+_OLLAMA_BLOB_RE = re.compile(r'sha256:[0-9a-f]{64}')
 
 
 def discover_xenium(config_path=None):
@@ -41,29 +44,112 @@ def discover_models(checkout):
     store = Path(checkout) / 'data/ollama/models'
     models = []
     for manifest in sorted((store / 'manifests').rglob('*')):
-        if not manifest.is_file():
+        if not manifest.is_file() or manifest.is_symlink():
             continue
         try:
             data = json.loads(manifest.read_text())
-            for layer in data.get('layers', []):
-                digest = layer.get('digest', '')
-                if (layer.get('mediaType') != 'application/vnd.ollama.image.model'
-                        or not re.fullmatch(r'sha256:[0-9a-f]{64}', digest)):
+            layers = data.get('layers', [])
+            if not isinstance(layers, list):
+                continue
+            model_layers = [layer for layer in layers
+                            if isinstance(layer, dict) and layer.get('mediaType') == _OLLAMA_MODEL_LAYER]
+            projector_paths = _projector_paths(store, layers)
+            relative = manifest.relative_to(store / 'manifests')
+            parts = relative.parts[1:]
+            if parts and parts[0] == 'library':
+                parts = parts[1:]
+            name = '/'.join(parts[:-1]) + ':' + parts[-1]
+            for layer in model_layers:
+                path = _verified_gguf_blob(store, layer.get('digest', ''))
+                if path is None:
                     continue
-                path = store / 'blobs' / digest.replace(':', '-')
-                with path.open('rb') as stream:
-                    if stream.read(4) != b'GGUF':
-                        continue
-                relative = manifest.relative_to(store / 'manifests')
-                parts = relative.parts[1:]
-                if parts and parts[0] == 'library':
-                    parts = parts[1:]
-                name = '/'.join(parts[:-1]) + ':' + parts[-1]
-                models.append({'name': name, 'path': str(path.resolve()),
-                               'size': path.stat().st_size})
+                row = {'name': name, 'path': str(path), 'size': path.stat().st_size}
+                if len(projector_paths) == 1:
+                    row['mmproj_path'] = str(projector_paths[0])
+                models.append(row)
         except (OSError, ValueError, KeyError, IndexError):
             continue
     return models
+
+
+def _verified_gguf_blob(store, digest):
+    if not isinstance(digest, str) or not _OLLAMA_BLOB_RE.fullmatch(digest):
+        return None
+    blobs = (Path(store) / 'blobs').resolve()
+    path = blobs / digest.replace(':', '-', 1)
+    try:
+        resolved = path.resolve(strict=True)
+        if resolved.parent != blobs or not resolved.is_file():
+            return None
+        with resolved.open('rb') as stream:
+            if stream.read(4) != b'GGUF':
+                return None
+        return resolved
+    except OSError:
+        return None
+
+
+def _projector_paths(store, layers):
+    return sorted({path for layer in layers
+                   if isinstance(layer, dict) and layer.get('mediaType') == _OLLAMA_PROJECTOR_LAYER
+                   and (path := _verified_gguf_blob(store, layer.get('digest', ''))) is not None})
+
+
+def _ollama_store_for_blob(path):
+    path = Path(path).resolve()
+    blobs = path.parent
+    store = blobs.parent
+    if (blobs.name != 'blobs' or store.name != 'models'
+            or store.parent.name != 'ollama' or path.name[0:7] != 'sha256-'
+            or not re.fullmatch(r'sha256-[0-9a-f]{64}', path.name)):
+        return None
+    return store
+
+
+def _manifest_model_name(store, manifest):
+    relative = Path(manifest).relative_to(Path(store) / 'manifests')
+    parts = relative.parts[1:]
+    if parts and parts[0] == 'library':
+        parts = parts[1:]
+    if len(parts) < 2:
+        return None
+    return '/'.join(parts[:-1]) + ':' + parts[-1]
+
+
+def _associated_projectors(model_path, model_name=None):
+    store = _ollama_store_for_blob(model_path)
+    if store is None:
+        return []
+    try:
+        model = Path(model_path).resolve(strict=True)
+        with model.open('rb') as stream:
+            if stream.read(4) != b'GGUF':
+                return []
+        digest = 'sha256:' + model.name[len('sha256-'):]
+        matching = []
+        for manifest in (store / 'manifests').rglob('*'):
+            if not manifest.is_file() or manifest.is_symlink():
+                continue
+            try:
+                layers = json.loads(manifest.read_text()).get('layers', [])
+            except (OSError, ValueError, AttributeError):
+                continue
+            if not isinstance(layers, list) or not any(
+                    isinstance(layer, dict) and layer.get('mediaType') == _OLLAMA_MODEL_LAYER
+                    and layer.get('digest') == digest for layer in layers):
+                continue
+            name = _manifest_model_name(store, manifest)
+            if model_name is None or name == model_name:
+                matching.append((name, _projector_paths(store, layers)))
+        # A blob may be reused by multiple Ollama tags. Without the exact
+        # manifest identity, attaching another tag's projector is unsafe.
+        if model_name is None and len(matching) != 1:
+            return []
+        if len(matching) != 1:
+            return []
+        return matching[0][1]
+    except OSError:
+        return []
 
 
 def session_cookie(cookie_file, now=None):
@@ -94,11 +180,25 @@ def build_server_command(model_path, alias, port=8097, compressed=False,
                          resident_mib=19456, cold_mib=26624,
                          clean_cache_mib=1024, headroom_mib=1536,
                          virtual_gib=96, context=4096, server=None, build_dir=None,
-                         mode='spill', live_control=True):
+                         mode='spill', live_control=True, mmproj=None,
+                         model_name=None):
     model = Path(model_path).expanduser().resolve()
     with model.open('rb') as stream:
         if stream.read(4) != b'GGUF':
             raise ValueError('model must be a GGUF file')
+    # The alias commonly is the source Ollama name; callers using a renamed
+    # alias can pass --model-name to retain that exact manifest binding.
+    projectors = _associated_projectors(model, model_name or alias)
+    if mmproj is not None:
+        projector = Path(mmproj).expanduser().resolve()
+        if projector not in projectors:
+            raise ValueError('projector must be paired with this Ollama model manifest')
+    elif len(projectors) == 1:
+        projector = projectors[0]
+    elif len(projectors) > 1:
+        raise ValueError('model has multiple paired projectors; select one with --mmproj')
+    else:
+        projector = None
     if not alias or len(alias) > 128 or not re.fullmatch(r'[A-Za-z0-9_.:/-]+', alias):
         raise ValueError('model alias must contain only letters, numbers, _ . : / -')
     port = checked_port(port)
@@ -148,6 +248,8 @@ def build_server_command(model_path, alias, port=8097, compressed=False,
                 '--host', '127.0.0.1', '--port', str(port), '--gpu-layers', '999',
                 '--ctx-size', str(context), '--parallel', '1', '--batch-size', '128',
                 '--fit', 'off', '--no-warmup']
+    if projector is not None:
+        command += ['--mmproj', str(projector)]
     if compressed:
         command += ['--load-mode', 'dio']
     if mode == 'native':
@@ -209,6 +311,8 @@ def main():
     parser.add_argument('action', choices=('list', 'command', 'setup', 'register'))
     parser.add_argument('--name', help='manager profile name (setup only)')
     parser.add_argument('--model', type=Path)
+    parser.add_argument('--mmproj', type=Path, help='select one projector paired to this Ollama model manifest')
+    parser.add_argument('--model-name', help='exact Ollama manifest name for safe projector pairing')
     parser.add_argument('--alias', default='zvram-local')
     parser.add_argument('--port', type=int, default=8097)
     parser.add_argument('--compressed', action='store_true', help='experimental lossless paging profile')

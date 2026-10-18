@@ -10,8 +10,13 @@ management GUI in Novum; the two projects share styling, not their UI lifetime.
 
 `zvram_model.py` reads the desktop checkout and port from
 `~/.config/dev.novum.xenium/config.json`. `discover_models(checkout)` resolves
-GGUF blobs from that checkout's existing Ollama manifests. Explicit GGUF paths
-also work. Model discovery does not start inference or copy weights.
+GGUF model blobs and their paired projector blobs from each Ollama manifest.
+When a selected model blob has one valid projector in its own manifest,
+`build_server_command` adds that exact blob as `--mmproj`; ambiguous or missing
+projectors are never guessed. If multiple Ollama tags reuse the same model
+blob, pass `--model-name` to bind pairing to the exact tag; a projector from a
+sibling tag is never borrowed. Explicit GGUF paths without an Ollama manifest
+remain text-only. Model discovery does not start inference or copy weights.
 
 The existing Ollama process cannot be retroactively wrapped in the zVram Vulkan
 layer. This bridge starts a separate Vulkan `llama-server` using the same model
@@ -54,6 +59,9 @@ Novum's existing `/api/model-endpoints` API. Re-registration updates only that
 port's existing zVram endpoint. It refuses to overwrite an endpoint belonging
 to another provider. Other endpoints and defaults remain unchanged. Login in
 the desktop app is required; the helper does not bypass authentication.
+The helper does not infer vision from manifest metadata. Novum derives loaded
+llama.cpp capabilities from the running worker's `/props`; vision is available
+only when that live response confirms it after launch.
 
 ## Suggested Novum PR
 
