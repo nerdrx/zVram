@@ -1382,6 +1382,46 @@ void checkColdCycleCandidateSkipsUnpromotableOldest() {
     }
 }
 
+void checkColdCycleCandidatePrefersMostRecentEligible() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& older=c.f.state();
+    d.coldCycleQuietMilliseconds=1000;
+    const auto now=std::chrono::steady_clock::now();
+    older.coldGroups[0].lastUse=now-std::chrono::seconds(2);
+
+    const auto recentHandle=tokenHandle<VkDeviceMemory>(0xc221);
+    auto recent=older;
+    recent.children[0]=tokenHandle<VkDeviceMemory>(0xc222);
+    recent.coldGroups[0].lastUse=now-std::chrono::milliseconds(100);
+    d.virtualMemory.emplace(recentHandle,std::move(recent));
+    d.liveOther+=MiB;
+
+    // This older child has no compatible local pool type, so it must not win
+    // merely because its last-use timestamp ranks first.
+    const auto incompatibleHandle=tokenHandle<VkDeviceMemory>(0xc223);
+    auto incompatible=older;
+    incompatible.children[0]=tokenHandle<VkDeviceMemory>(0xc224);
+    incompatible.backingMemoryTypeBits=2;
+    incompatible.poolViewMemoryTypeBits[0]=2;
+    incompatible.coldGroups[0].lastUse=now-std::chrono::milliseconds(1500);
+    d.virtualMemory.emplace(incompatibleHandle,std::move(incompatible));
+    d.liveOther+=MiB;
+
+    VkDeviceMemory candidate{}; std::size_t child{};
+    require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+            candidate==c.f.memory && child==0,
+            "quiet-age or local-pool compatibility exclusion was bypassed during cold-cycle selection");
+
+    d.coldCycleQuietMilliseconds=0;
+    require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+            candidate==recentHandle && child==0,
+            "cold-cycle selection did not prefer the most recently used eligible child");
+
+    d.activeRefs.recordRanges(tokenHandle<VkQueue>(0xc225),{{recentHandle,0}},true);
+    require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
+            candidate==c.f.memory && child==0,
+            "busy recent child blocked fallback to an older eligible child");
+}
+
 void checkColdCycleCandidateZeroLiveOther() {
     ColdCycleFixture c; auto& d=c.f.device;
     d.liveOther=0;
@@ -3282,6 +3322,7 @@ int main() try {
     checkRecoveryPriorityOverridesQuietAgeOnly();
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();
+    checkColdCycleCandidatePrefersMostRecentEligible();
     checkColdCycleCandidateZeroLiveOther();
     checkWarmRecoveryFinalPlanFailureRetainsOwnership();
     checkWarmRecoveryVisibilityFailureRetainsOldBacking();

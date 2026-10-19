@@ -3576,7 +3576,7 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
 #ifdef ZVRAM_TEST_ASYNC_HOOK
     if(d.testRecoveryPaused) return false;
 #endif
-    auto oldest=std::chrono::steady_clock::time_point::max();
+    auto newest=std::chrono::steady_clock::time_point::min();
     for(const auto& pair:d.virtualMemory) {
         const auto& memory=pair.second;
         if(!memory.trackPhysicalStats || memory.hasAdoptedCallbacks || memory.bindings.empty() ||
@@ -3605,8 +3605,8 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
                     hasLocalType=true; break;
                 }
             }
-            if(hasLocalType && group.lastUse<oldest) {
-                oldest=group.lastUse;
+            if(hasLocalType && (!candidateMemory || group.lastUse>newest)) {
+                newest=group.lastUse;
                 candidateMemory=pair.first;
                 candidateChild=i;
             }
