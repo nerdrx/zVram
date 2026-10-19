@@ -148,7 +148,6 @@ struct VirtualMemory {
         VkDeviceSize storedBytes{};
         VkDeviceSize importedPaddingBytes{};
         std::uint64_t failedBudgetGeneration{};
-        std::uint64_t failedBudgetSubmissionGeneration{};
         bool cold{};
         bool pristine{}; // Never submitted: undefined contents need no snapshot.
         bool restoreBound{};
@@ -394,6 +393,7 @@ struct Device {
     std::uint64_t coldLogicalBytes{};
     std::uint64_t residentBytes{};
     std::uint64_t freezeCount{}, restoreCount{}, snapshotFailures{};
+    bool budgetRefusalsSeen{}; // Conservative latch avoids submit parsing before the first refusal.
     std::uint64_t gpuSubmissionGeneration{};
     std::uint64_t coldBudgetGeneration{};
     std::uint64_t restoreFailureAfterGroups{};
@@ -2842,8 +2842,7 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
        i>=memory.childSizes.size() || i>=memory.poolViews.size()) return VK_ERROR_UNKNOWN;
     auto& group=memory.coldGroups[i];
     if(!memory.children[i] || group.cold ||
-       (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration &&
-        group.failedBudgetSubmissionGeneration==d.gpuSubmissionGeneration)) return VK_SUCCESS;
+       (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration)) return VK_SUCCESS;
     const auto dataSize=memory.childSizes[i];
     const auto logicalBytes=dataSize;
     auto r=bindChildAppsLocked(d.handle,d,memory,i,true);
@@ -3007,8 +3006,8 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
                 static_cast<unsigned long long>(logicalBytes),static_cast<unsigned long long>(stored),
                 static_cast<unsigned long long>(d.coldBytes),static_cast<unsigned long long>(d.cacheBytes),
                 static_cast<unsigned long long>(d.coldBudget));
+            d.budgetRefusalsSeen=true;
             group.budgetBlocked=true; group.failedBudgetGeneration=d.coldBudgetGeneration;
-            group.failedBudgetSubmissionGeneration=d.gpuSubmissionGeneration;
         }
         return failure;
     }
@@ -3117,8 +3116,7 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
         auto& group=memory.coldGroups[child]; rawSize=memory.childSizes[child];
         if(!d.asyncCompression || !d.autoEnabled || !d.activeEviction || !d.rangeChunkBytes || d.asyncFreezePending ||
            !memory.children[child] || group.cold || group.pristine || !group.chunks.empty() ||
-           (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration &&
-            group.failedBudgetSubmissionGeneration==d.gpuSubmissionGeneration) ||
+           (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration) ||
            d.minSavingsPercent>=100 || !rawSize || rawSize>kAsyncSnapshotMaxRaw ||
            rawSize>d.snapshot.stagingSize || d.activeRefs.busy(handle,child)) return false;
         // Allocate before alias handoff without zeroing bytes the readback will replace.
@@ -3190,9 +3188,9 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
     candidate.writeEpoch=token.writeEpoch;
     if(!asyncColdBudgetFits(d,stored)) trimCleanCacheLocked(d,stored);
     if(!asyncColdBudgetFits(d,stored)) {
+        d.budgetRefusalsSeen=true;
         currentGroup.budgetBlocked=true;
         currentGroup.failedBudgetGeneration=d.coldBudgetGeneration;
-        currentGroup.failedBudgetSubmissionGeneration=d.gpuSubmissionGeneration;
         ++d.snapshotFailures; d.lastSnapshotError=VK_ERROR_OUT_OF_DEVICE_MEMORY;
         return true;
     }
@@ -3639,6 +3637,27 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
     }
     return candidateMemory!=VK_NULL_HANDLE;
 }
+bool selectPressureCandidate(const Device& d,VkDeviceMemory& candidateMemory,std::size_t& candidateChild) {
+    candidateMemory=VK_NULL_HANDLE; candidateChild=0;
+    auto oldest=std::chrono::steady_clock::time_point::max();
+    for(const auto& pair:d.virtualMemory) {
+        const auto& memory=pair.second;
+        if(memory.children.size()!=memory.coldGroups.size() ||
+           memory.children.size()!=memory.childSizes.size() ||
+           memory.poolViews.size()!=memory.children.size()) continue;
+        for(std::size_t i=0;i<memory.children.size();i++) {
+            const auto& group=memory.coldGroups[i];
+            if(!memory.children[i] || group.cold || d.activeRefs.busy(pair.first,i) ||
+               (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration)) continue;
+            if(group.lastUse<oldest) {
+                oldest=group.lastUse;
+                candidateMemory=pair.first;
+                candidateChild=i;
+            }
+        }
+    }
+    return candidateMemory!=VK_NULL_HANDLE;
+}
 std::uint64_t activeWorkerDelayMilliseconds(std::uint64_t idleMilliseconds,bool madeProgress) {
     // Yield between successful batches; retain the slower poll when work is blocked.
     return std::max<std::uint64_t>(1,std::min<std::uint64_t>(idleMilliseconds,madeProgress?1:10));
@@ -3693,24 +3712,7 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
                 if(d.residentBytes>target) {
                     VkDeviceMemory candidateMemory{};
                     std::size_t candidateChild{};
-                    auto oldest=std::chrono::steady_clock::time_point::max();
-                    for(const auto& pair:d.virtualMemory) {
-                        const auto& memory=pair.second;
-                        if(memory.children.size()!=memory.coldGroups.size() ||
-                           memory.children.size()!=memory.childSizes.size() ||
-                           memory.poolViews.size()!=memory.children.size()) continue;
-                        for(std::size_t i=0;i<memory.children.size();i++) {
-                            const auto& group=memory.coldGroups[i];
-                            if(!memory.children[i] || group.cold || d.activeRefs.busy(pair.first,i) ||
-                               (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration &&
-                                group.failedBudgetSubmissionGeneration==d.gpuSubmissionGeneration)) continue;
-                            if(group.lastUse<oldest) {
-                                oldest=group.lastUse;
-                                candidateMemory=pair.first;
-                                candidateChild=i;
-                            }
-                        }
-                    }
+                    selectPressureCandidate(d,candidateMemory,candidateChild);
                     if(candidateMemory) {
                         bool consumed=false;
                         // Candidate age policy matches the synchronous pressure path: completed
@@ -3751,8 +3753,7 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
                     for(std::size_t i=0;i<memory.children.size();i++) {
                         const auto& group=memory.coldGroups[i];
                         if(!memory.children[i] || group.cold || group.pristine || !group.chunks.empty() ||
-                           (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration &&
-                            group.failedBudgetSubmissionGeneration==d.gpuSubmissionGeneration) ||
+                           (group.budgetBlocked && group.failedBudgetGeneration==d.coldBudgetGeneration) ||
                            !memory.childSizes[i] || memory.childSizes[i]>kAsyncSnapshotMaxRaw ||
                            memory.childSizes[i]>d.snapshot.stagingSize || d.activeRefs.busy(pair.first,i) ||
                            now<group.lastUse+std::chrono::milliseconds(d.idleMilliseconds)) continue;
@@ -3790,8 +3791,7 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
             for(std::size_t index=0;index<memory.coldGroups.size();index++) {
                 const auto& group=memory.coldGroups[index];
                 if(index<memory.children.size() && memory.children[index] && !group.cold &&
-                   (!group.budgetBlocked || group.failedBudgetGeneration!=d.coldBudgetGeneration ||
-                    group.failedBudgetSubmissionGeneration!=observedGeneration)) {
+                   (!group.budgetBlocked || group.failedBudgetGeneration!=d.coldBudgetGeneration)) {
                     canRetry=true; break;
                 }
             }
@@ -4568,22 +4568,27 @@ VkResult restoreForQueueWithBudgetRetry(Device& d,const char* name,Args... args)
 
 template<class... Args>
 void bumpAcceptedWriteEpochs(Device& d,const char* name,Args... args) {
-    if(!d.asyncCompression) return;
+    if(!d.asyncCompression && !d.budgetRefusalsSeen) return;
     std::vector<ActiveRefs::Use> writes;
     bool known=false;
     try { known=queueMemoryAccess(d,name,writes,true,args...); }
     catch(const std::bad_alloc&) { known=false; }
+    // Quota refusals remain valid until this child may change or quota is freed.
+    auto invalidate=[&](VirtualMemory::ColdGroup& group) {
+        group.budgetBlocked=false;
+        if(d.asyncCompression) bumpAsyncVersion(d,group.writeEpoch);
+    };
     auto bump=[&](VkDeviceMemory memory,std::size_t child) {
         const auto found=d.virtualMemory.find(memory);
         if(found==d.virtualMemory.end()) return;
         auto& groups=found->second.coldGroups;
         if(child==SIZE_MAX || child>=groups.size()) {
-            for(auto& group:groups) bumpAsyncVersion(d,group.writeEpoch);
-        } else bumpAsyncVersion(d,groups[child].writeEpoch);
+            for(auto& group:groups) invalidate(group);
+        } else invalidate(groups[child]);
     };
     if(!known) {
         for(auto& pair:d.virtualMemory)
-            for(auto& group:pair.second.coldGroups) bumpAsyncVersion(d,group.writeEpoch);
+            for(auto& group:pair.second.coldGroups) invalidate(group);
         return;
     }
     for(const auto& use:writes) bump(use.memory,use.child);

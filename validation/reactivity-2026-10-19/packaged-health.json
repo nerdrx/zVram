@@ -1,0 +1,11 @@
+{
+  "available_kib": 19846996,
+  "psi": "some avg10=0.00 avg60=0.16 avg300=0.35 total=122781168\nfull avg10=0.00 avg60=0.15 avg300=0.32 total=119473325\n",
+  "gpu_busy": 25,
+  "vram_free": 2901659648,
+  "related_process_names": [
+    "llama-server",
+    "llama-server",
+    "ollama"
+  ]
+}
