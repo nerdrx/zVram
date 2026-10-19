@@ -19,6 +19,9 @@ are not established by the synthetic checks.
 
 <p align="center"><img src="assets/manager-preview.png" alt="zVram manager with a memory overview, app list and tabbed live controls" width="100%"><br><sub>Manager preview with illustrative app data; not a game benchmark.</sub></p>
 
+See the [practical setup guide](docs/practical-guide.md) for manual package use,
+build options, memory-limit trade-offs, troubleshooting, and profile storage.
+
 ## Install and update with NX Hub
 
 Refresh NX Hub, select **zVram**, and install **Vulkan launcher and manager
@@ -48,7 +51,7 @@ Release tags build a versioned runtime archive, `nx-app.json`, and SHA-256
 checksums. To reproduce packaging locally:
 
 ```sh
-python3 scripts/package.py --build-dir build --output dist --version 0.4.28
+python3 scripts/package.py --build-dir build --output dist --version "$(cat VERSION)"
 ```
 
 ## Steam launch options
