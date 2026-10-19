@@ -676,6 +676,7 @@ std::mutex mapsMutex;
 std::atomic<bool> unknownCommandProc{false};
 std::atomic<bool> unsupportedPresentMetadataLogged{false};
 void noteUnknownCommandProc(const char* name) {
+    if(!unknownCommandNeedsConservativeFallback(name)) return;
     if(!unknownCommandProc.exchange(true))
         logf("access tracking fallback first-unwrapped-command-lookup=%s",name);
 }

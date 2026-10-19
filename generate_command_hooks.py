@@ -22,6 +22,8 @@ NO_ACTION = {
     "vkCmdPushConstants", "vkCmdPushConstants2", "vkCmdPushConstants2KHR",
     "vkCmdResetQueryPool", "vkCmdWriteTimestamp", "vkCmdWriteTimestamp2",
     "vkCmdWriteTimestamp2KHR",
+    # Dynamic line rasterization state has no buffer-access side effects.
+    "vkCmdSetLineStipple", "vkCmdSetLineStippleKHR", "vkCmdSetLineStippleEXT",
 }
 MIN_EXTENSION_VERSION = {
     "vkCmdSetDispatchParametersARM": ("VK_ARM_SCHEDULING_CONTROLS_SPEC_VERSION", 2),
@@ -272,7 +274,8 @@ def main():
     if args.selfcheck:
         for name in ("vkCmdSetEvent", "vkCmdResetEvent",
                      "vkCmdBeginDebugUtilsLabelEXT", "vkCmdEndDebugUtilsLabelEXT",
-                     "vkCmdInsertDebugUtilsLabelEXT"):
+                     "vkCmdInsertDebugUtilsLabelEXT", "vkCmdSetLineStipple",
+                     "vkCmdSetLineStippleKHR", "vkCmdSetLineStippleEXT"):
             if action(name, []) != []:
                 raise ValueError(f"command without buffer access unexpectedly invalidates tracking: {name}")
         required = ("trackedvkCmdCopyBuffer", "trackedvkCmdCopyBuffer2",
