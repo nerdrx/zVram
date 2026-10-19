@@ -6,8 +6,9 @@ zVram is an experimental Linux Vulkan memory layer with a desktop manager for
 app profiles, live memory limits, and eligible-buffer recovery. It combines
 bounded paging and lossless snapshots with driver-managed VRAM/GTT backing.
 
-**Current release: [v0.4.25](https://github.com/nerdrx/zVram/releases/tag/v0.4.25).**
-The manager now has a compact memory overview, a wider app list, and separate
+**Current release: [v0.4.27](https://github.com/nerdrx/zVram/releases/tag/v0.4.27).**
+The manager shows combined VRAM + GTT usage across all GPUs in one number,
+with separate device counters below it. It has a wider app list and separate
 Controls, Launch, Details, and Safety tabs. Steam priority preferences survive
 game restarts; live requests show whether the backend applied or rejected them.
 
@@ -47,7 +48,7 @@ Release tags build a versioned runtime archive, `nx-app.json`, and SHA-256
 checksums. To reproduce packaging locally:
 
 ```sh
-python3 scripts/package.py --build-dir build --output dist --version 0.4.25
+python3 scripts/package.py --build-dir build --output dist --version 0.4.27
 ```
 
 ## Steam launch options
