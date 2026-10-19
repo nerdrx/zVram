@@ -73,6 +73,10 @@ std::mutex mockFenceMutex;
 std::condition_variable mockFenceCondition;
 bool mockFenceWaitEntered{},mockFenceWaitRelease{};
 VkResult mockFenceWaitResult{VK_SUCCESS};
+std::mutex workerFreeMutex;
+std::condition_variable workerFreeCondition;
+bool observeWorkerFrees{};
+unsigned observedWorkerFrees{};
 std::uint32_t mockDeviceWaitCalls{},mockResetCommandPoolCalls{};
 VkResult mockDeviceWaitResult{VK_SUCCESS};
 std::uint32_t destroyedMockBuffers{},destroyedMockFences{};
@@ -123,6 +127,8 @@ VKAPI_ATTR VkResult VKAPI_CALL mockAllocate(VkDevice,const VkMemoryAllocateInfo*
 VKAPI_ATTR void VKAPI_CALL mockFree(VkDevice,VkDeviceMemory memory,const VkAllocationCallbacks* allocator) {
     ++frees; lastFreedMemoryUserData=allocator?allocator->pUserData:nullptr; liveAllocations.erase(memory);
     freedMemoryUserData[memory]=lastFreedMemoryUserData;
+    { std::lock_guard<std::mutex> lock(workerFreeMutex);
+      if(observeWorkerFrees) { ++observedWorkerFrees; workerFreeCondition.notify_all(); } }
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockSparse(VkQueue,std::uint32_t count,const VkBindSparseInfo* infos,VkFence) {
     ++sparseBinds;
@@ -1444,6 +1450,75 @@ void checkActiveWorkerDelayBounds() {
     require(activeWorkerDelayMilliseconds(UINT64_MAX,false)==10 &&
             activeWorkerDelayMilliseconds(UINT64_MAX,true)==1,
             "large idle interval overflowed or bypassed the bounded active cadence");
+}
+
+void checkActiveSnapshotWorkerDrainsPressureAndStops() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& busy=c.f.state();
+    d.handle=reinterpret_cast<VkDevice>(&c.f.dispatchWord); d.gdpa=mockGetDeviceProcAddr;
+    d.autoInitialized=true; d.autoEnabled=true; d.activeEviction=true; d.pressureOnly=true;
+    d.residentLimitBytes=MiB; d.residentBytes=3*MiB; d.liveOther=3*MiB;
+    mockNativeHeapSize=mockHeapBudget=8*MiB; mockHeapUsage=0;
+
+    const auto now=std::chrono::steady_clock::now();
+    busy.coldGroups[0].lastUse=now-std::chrono::seconds(10);
+    const auto queue=tokenHandle<VkQueue>(0xc901);
+    d.activeRefs.recordRanges(queue,{{c.f.memory,0}},true);
+    const auto makeSibling=[&](std::uintptr_t base,std::chrono::seconds age) {
+        const auto memoryHandle=tokenHandle<VkDeviceMemory>(base);
+        auto sibling=busy;
+        sibling.children[0]=tokenHandle<VkDeviceMemory>(base+1);
+        sibling.childTypes[0]=1; sibling.childSizes[0]=MiB;
+        sibling.poolViews[0]=tokenHandle<VkBuffer>(base+2);
+        sibling.poolViewMemoryTypeBits[0]=3; sibling.backingMemoryTypeBits=3;
+        sibling.bindings[0].buffer=tokenHandle<VkBuffer>(base+3);
+        sibling.coldGroups[0].lastUse=now-age;
+        sibling.residentBytes=MiB;
+        bufferSizes[sibling.poolViews[0]]=MiB;
+        bufferSizes[sibling.bindings[0].buffer]=MiB;
+        liveAllocations.insert(sibling.children[0]);
+        d.virtualMemory.emplace(memoryHandle,std::move(sibling));
+    };
+    makeSibling(0xc910,std::chrono::seconds(5));
+    makeSibling(0xc920,std::chrono::seconds(4));
+
+    require(d.autoQueues.init(d.handle,d.gdpa,d.copyQueue,{d.copyQueue},true)==VK_SUCCESS,
+            "active worker mock queue initialization failed");
+    {
+        std::lock_guard<std::mutex> lock(workerFreeMutex);
+        observedWorkerFrees=0; observeWorkerFrees=true;
+    }
+    auto shared=std::shared_ptr<Device>(&d,[](Device*){});
+    std::mutex stoppedMutex; std::condition_variable stoppedCondition; bool stopped=false;
+    std::thread worker([&] {
+        snapshotWorkerLoop(shared);
+        { std::lock_guard<std::mutex> lock(stoppedMutex); stopped=true; }
+        stoppedCondition.notify_all();
+    });
+
+    bool drained=false;
+    {
+        std::unique_lock<std::mutex> lock(workerFreeMutex);
+        drained=workerFreeCondition.wait_for(lock,std::chrono::seconds(10),[]{return observedWorkerFrees>=2;});
+    }
+    bool committed=false;
+    {
+        std::unique_lock<std::mutex> lock(d.mutex);
+        const auto busyFound=d.virtualMemory.find(c.f.memory);
+        committed=busyFound!=d.virtualMemory.end() && busyFound->second.children[0]==c.nonlocal &&
+            d.residentBytes==MiB && d.coldLogicalBytes==2*MiB && d.freezeCount==2 &&
+            d.liveOther==MiB && !busyFound->second.coldGroups[0].cold &&
+            busyFound->second.coldGroups[0].lastUse==now-std::chrono::seconds(10);
+        d.stopWorker.store(true); d.activity.notify_all();
+    }
+    bool stoppedInTime=false;
+    {
+        std::unique_lock<std::mutex> lock(stoppedMutex);
+        stoppedInTime=stoppedCondition.wait_for(lock,std::chrono::seconds(5),[&]{return stopped;});
+    }
+    worker.join();
+    { std::lock_guard<std::mutex> lock(workerFreeMutex); observeWorkerFrees=false; }
+    require(drained && committed && stoppedInTime,
+            "active snapshot worker failed to drain eligible pressure backlog, preserve a busy child, or stop");
 }
 
 PendingWarmRecovery pendingWarmRecoveryFor(ColdCycleFixture& c) {
@@ -3385,6 +3460,7 @@ int main() try {
     checkColdCycleCandidatePrefersMostRecentEligible();
     checkColdCycleCandidateZeroLiveOther();
     checkActiveWorkerDelayBounds();
+    checkActiveSnapshotWorkerDrainsPressureAndStops();
     checkWarmRecoveryFinalPlanFailureRetainsOwnership();
     checkWarmRecoveryVisibilityFailureRetainsOldBacking();
     checkWarmRecoveryFinalBatchMapsAllAliases();

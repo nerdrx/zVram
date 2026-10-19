@@ -57,3 +57,10 @@ Recent-first ranking committed as 5ee7321. Final cadence review passed (commit/f
 - Initial build/reactivity-hooks bootstrap PASS (timestamp-hook.log) was NOT hook coverage: inspection of flags.make showed no macro, because CMake option enabled only layer target. Added conditional bootstrap target definition and rebuilding genuine hook-enabled harness. Do not count initial hook-directory PASS as concurrent-read proof.
 
 - Genuine hook-enabled bootstrap (`CXX_DEFINES = -DZVRAM_TEST_ASYNC_HOOK=1`) PASS0.01s, including read timestamp update during unlocked encode; timestamp-hook-enabled.log. Production hooks stay OFF. No GPU needed for metadata copy change.
+
+## 14:45 UTC — end-to-end CPU worker
+- auto_docs_update added actual snapshotWorkerLoop mocked-driver fixture, not just delay arithmetic: three resident1MiB children, oldest marked busy, two eligible siblings drained to1MiB cap; asserts busy backing/use time preserved and stop notification joins. No narrow wall-clock assertions. Hook bootstrap PASS0.02s, worker-hook.log; normal build in progress.
+- PR14 latest9e5d6ba CI39271420902/39271423811 pending at14:43UTC. Avoid repeated polling until next pushed checkpoint.
+- Next review-only frequency design with auto_safety_review: bounded decaying known-submit heat, distinct from recency; unknown accesses must not boost all counters. No fields/policy added yet. Need behavioral tests demonstrating one-off access vs repeatedly used child, aging out idle heat, dedup, and guard preservation before adopting.
+
+- Normal worker bootstrap also PASS0.02s (worker-normal.log). All owned build/test processes complete.
