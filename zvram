@@ -8,6 +8,12 @@ from pathlib import Path
 import sys
 sys.dont_write_bytecode = True
 
+ROOT = Path(__file__).resolve().parent
+PYTHON_DIR = ROOT / "src" / "python"
+if not PYTHON_DIR.is_dir():
+    PYTHON_DIR = ROOT
+sys.path.insert(0, str(PYTHON_DIR))
+
 if sys.argv[1:] == ["--version"]:
     print("zVram " + (Path(__file__).resolve().parent / "VERSION").read_text().strip())
     sys.exit(0)
@@ -15,7 +21,7 @@ if sys.argv[1:] == ["--version"]:
 if len(sys.argv) > 1 and sys.argv[1] in ("gui", "tui", "manage", "model", "run"):
     if sys.argv[1] == "model":
         import zvram_model
-        sys.argv = [str(Path(__file__).resolve().parent / "zvram_model.py"), *sys.argv[2:]]
+        sys.argv = [str(PYTHON_DIR / "zvram_model.py"), *sys.argv[2:]]
         sys.exit(zvram_model.main())
     import zvram_manager
     try:

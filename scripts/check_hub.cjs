@@ -43,7 +43,7 @@ async function main() {
   const python = (script, args = []) => execFileSync("python3", ["-c", script, ...args], { encoding: "utf8", timeout: 15000 }).trim();
   const managerScript = () => path.join(path.dirname(fs.realpathSync(launcher)), "zvram_manager.py");
   const manager = (script, code) => python("import importlib.util,sys,json,time\ns=importlib.util.spec_from_file_location('zvram_manager',sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)\nx=m.Manager()\n" + code, [script]);
-  const sourceManager = path.resolve(__dirname, "../zvram_manager.py");
+  const sourceManager = path.resolve(__dirname, "../src/python/zvram_manager.py");
   let stopped = false;
   try {
     const installed = await engine.install({ app, artifact, filePath: firstArchive, ctx });

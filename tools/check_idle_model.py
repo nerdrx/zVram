@@ -94,7 +94,7 @@ def run_interactive(label, command, env, output_dir, timeout, automatic):
 
 
 def main():
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     parser = parser_for_script()
     parser.description = __doc__
     parser.set_defaults(tokens=128, output_dir=Path("build/idle-model-check"))

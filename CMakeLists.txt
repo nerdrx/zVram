@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(zvram VERSION 0.4.1 LANGUAGES CXX)
 find_package(Vulkan REQUIRED)
 find_package(Threads REQUIRED)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 option(ZVRAM_ENABLE_GDEFLATE "Build the experimental GDeflate snapshot codec and optional GPU restore" OFF)
@@ -43,7 +44,7 @@ if(ZVRAM_ENABLE_GDEFLATE)
 endif()
 file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
     CONTENT "{\"gdeflate\":${ZVRAM_GDEFLATE_CAPABILITY},\"gdeflate_gpu\":${ZVRAM_GDEFLATE_GPU_CAPABILITY},\"bp16\":true,\"bp16_gpu\":true,\"test_hooks\":${ZVRAM_TEST_HOOK_CAPABILITY}}\n")
-add_library(zvram_layer SHARED layer.cpp)
+add_library(zvram_layer SHARED src/layer.cpp)
 set_property(TARGET zvram_layer APPEND PROPERTY LINK_DEPENDS
     ${CMAKE_CURRENT_BINARY_DIR}/zvram-codecs-config.json
     ${CMAKE_CURRENT_BINARY_DIR}/bp16.spv
@@ -60,44 +61,44 @@ if(ZVRAM_TEST_ASYNC_HOOK)
 endif()
 target_link_libraries(zvram_layer PRIVATE Threads::Threads PkgConfig::ZSTD)
 target_link_options(zvram_layer PRIVATE -Wl,-Bsymbolic)
-configure_file(layer.json.in ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_NX_zvram.json @ONLY)
-add_executable(zvram-compression-check compression_check.cpp)
+configure_file(cmake/layer.json.in ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_NX_zvram.json @ONLY)
+add_executable(zvram-compression-check tests/compression_check.cpp)
 target_compile_features(zvram-compression-check PRIVATE cxx_std_17)
 target_link_libraries(zvram-compression-check PRIVATE Vulkan::Vulkan PkgConfig::ZSTD)
-add_executable(zvram-capacity-check capacity_check.cpp)
+add_executable(zvram-capacity-check tests/capacity_check.cpp)
 target_compile_features(zvram-capacity-check PRIVATE cxx_std_17)
 target_link_libraries(zvram-capacity-check PRIVATE Vulkan::Vulkan)
-add_library(zvram_pool STATIC managed_pool.cpp)
+add_library(zvram_pool STATIC src/managed_pool.cpp)
 target_compile_features(zvram_pool PUBLIC cxx_std_17)
-target_include_directories(zvram_pool PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(zvram_pool PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(zvram_pool PUBLIC Vulkan::Vulkan PkgConfig::ZSTD)
 find_program(ZVRAM_GLSLC glslc REQUIRED)
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv
-    COMMAND ${ZVRAM_GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/managed_check.comp -o ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv
-    DEPENDS managed_check.comp VERBATIM)
-add_executable(zvram-managed-check managed_check.cpp ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv)
+    COMMAND ${ZVRAM_GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/tests/shaders/managed_check.comp -o ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv
+    DEPENDS tests/shaders/managed_check.comp VERBATIM)
+add_executable(zvram-managed-check tests/managed_check.cpp ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv)
 target_compile_definitions(zvram-managed-check PRIVATE ZVRAM_CHECK_SHADER_PATH="${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv")
 target_link_libraries(zvram-managed-check PRIVATE zvram_pool)
-add_executable(zvram-sparse-check sparse_check.cpp ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv)
+add_executable(zvram-sparse-check tests/sparse_check.cpp ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv)
 target_link_libraries(zvram-sparse-check PRIVATE zvram_pool)
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/vulkan_auto_bda.spv
-    COMMAND ${ZVRAM_GLSLC} --target-env=vulkan1.2 ${CMAKE_CURRENT_SOURCE_DIR}/vulkan_auto_bda.comp -o ${CMAKE_CURRENT_BINARY_DIR}/vulkan_auto_bda.spv
-    DEPENDS vulkan_auto_bda.comp VERBATIM)
-add_executable(zvram-vulkan-auto-check vulkan_auto_check.cpp ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv ${CMAKE_CURRENT_BINARY_DIR}/vulkan_auto_bda.spv)
+    COMMAND ${ZVRAM_GLSLC} --target-env=vulkan1.2 ${CMAKE_CURRENT_SOURCE_DIR}/tests/shaders/vulkan_auto_bda.comp -o ${CMAKE_CURRENT_BINARY_DIR}/vulkan_auto_bda.spv
+    DEPENDS tests/shaders/vulkan_auto_bda.comp VERBATIM)
+add_executable(zvram-vulkan-auto-check tests/vulkan_auto_check.cpp ${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv ${CMAKE_CURRENT_BINARY_DIR}/vulkan_auto_bda.spv)
 target_compile_features(zvram-vulkan-auto-check PRIVATE cxx_std_17)
 target_compile_definitions(zvram-vulkan-auto-check PRIVATE ZVRAM_CHECK_SHADER_PATH="${CMAKE_CURRENT_BINARY_DIR}/managed_check.spv")
 target_compile_definitions(zvram-vulkan-auto-check PRIVATE ZVRAM_BDA_SHADER_PATH="${CMAKE_CURRENT_BINARY_DIR}/vulkan_auto_bda.spv")
 target_link_libraries(zvram-vulkan-auto-check PRIVATE Vulkan::Vulkan Threads::Threads)
-add_executable(zvram-vulkan-requirements-check vulkan_requirements_check.cpp)
+add_executable(zvram-vulkan-requirements-check tests/vulkan_requirements_check.cpp)
 target_compile_features(zvram-vulkan-requirements-check PRIVATE cxx_std_17)
 target_link_libraries(zvram-vulkan-requirements-check PRIVATE Vulkan::Vulkan)
 foreach(stage vert frag)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/graphics_check.${stage}.spv
-        COMMAND ${ZVRAM_GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/graphics_check.${stage}
+        COMMAND ${ZVRAM_GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/tests/shaders/graphics_check.${stage}
                 -o ${CMAKE_CURRENT_BINARY_DIR}/graphics_check.${stage}.spv
-        DEPENDS graphics_check.${stage} VERBATIM)
+        DEPENDS tests/shaders/graphics_check.${stage} VERBATIM)
 endforeach()
-add_executable(zvram-vulkan-graphics-check vulkan_graphics_check.cpp
+add_executable(zvram-vulkan-graphics-check tests/vulkan_graphics_check.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/graphics_check.vert.spv ${CMAKE_CURRENT_BINARY_DIR}/graphics_check.frag.spv)
 target_compile_features(zvram-vulkan-graphics-check PRIVATE cxx_std_17)
 target_compile_definitions(zvram-vulkan-graphics-check PRIVATE
@@ -109,30 +110,30 @@ if(SDL2_FOUND)
     target_compile_definitions(zvram-vulkan-graphics-check PRIVATE ZVRAM_GRAPHICS_SDL2=1)
     target_link_libraries(zvram-vulkan-graphics-check PRIVATE PkgConfig::SDL2)
 endif()
-add_executable(zvram-file-pool-check file_pool_check.cpp)
+add_executable(zvram-file-pool-check tests/file_pool_check.cpp)
 target_link_libraries(zvram-file-pool-check PRIVATE zvram_pool)
-add_executable(zvram-compression-policy-check compression_policy_check.cpp)
+add_executable(zvram-compression-policy-check tests/compression_policy_check.cpp)
 target_compile_features(zvram-compression-policy-check PRIVATE cxx_std_17)
-add_executable(zvram-clean-cache-policy-check clean_cache_policy_check.cpp)
+add_executable(zvram-clean-cache-policy-check tests/clean_cache_policy_check.cpp)
 target_compile_features(zvram-clean-cache-policy-check PRIVATE cxx_std_17)
-add_executable(zvram-bp16-codec-check bp16_codec_check.cpp)
+add_executable(zvram-bp16-codec-check tests/bp16_codec_check.cpp)
 target_compile_features(zvram-bp16-codec-check PRIVATE cxx_std_17)
 target_include_directories(zvram-bp16-codec-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(zvram-bp16-codec-check PRIVATE Threads::Threads)
-add_executable(zvram-resident-bootstrap-check resident_bootstrap_check.cpp)
+add_executable(zvram-resident-bootstrap-check tests/resident_bootstrap_check.cpp)
 target_include_directories(zvram-resident-bootstrap-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_compile_features(zvram-resident-bootstrap-check PRIVATE cxx_std_17)
 target_link_libraries(zvram-resident-bootstrap-check PRIVATE Threads::Threads PkgConfig::ZSTD)
-add_executable(zvram-resident-budget-check resident_budget_check.cpp)
+add_executable(zvram-resident-budget-check tests/resident_budget_check.cpp)
 target_compile_features(zvram-resident-budget-check PRIVATE cxx_std_17)
-add_executable(zvram-live-control-check live_control_check.cpp)
+add_executable(zvram-live-control-check tests/live_control_check.cpp)
 target_compile_features(zvram-live-control-check PRIVATE cxx_std_17)
 enable_testing()
-add_executable(zvram-vulkan-queue-flags-check vulkan_queue_flags_check.cpp)
+add_executable(zvram-vulkan-queue-flags-check tests/vulkan_queue_flags_check.cpp)
 target_include_directories(zvram-vulkan-queue-flags-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_compile_features(zvram-vulkan-queue-flags-check PRIVATE cxx_std_17)
 add_test(NAME cpu-vulkan-queue-flags COMMAND zvram-vulkan-queue-flags-check)
-add_executable(zvram-device-features-chain-check device_features_chain_check.cpp)
+add_executable(zvram-device-features-chain-check tests/device_features_chain_check.cpp)
 target_include_directories(zvram-device-features-chain-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_compile_features(zvram-device-features-chain-check PRIVATE cxx_std_17)
 add_test(NAME cpu-device-features-chain COMMAND zvram-device-features-chain-check)
@@ -142,7 +143,7 @@ add_test(NAME cpu-resident-budget COMMAND zvram-resident-budget-check)
 add_test(NAME cpu-resident-bootstrap COMMAND zvram-resident-bootstrap-check)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/zvram ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-source COPYONLY)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/ctest_launcher.py.in
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ctest_launcher.py.in
     ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py @ONLY)
 file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
@@ -186,7 +187,7 @@ find_file(ZVRAM_RADEON_ICD_PATH radeon_icd.json
 if(SDL2_FOUND AND ZVRAM_GAMESCOPE_EXECUTABLE AND ZVRAM_RADEON_ICD_PATH)
     foreach(present_metadata id regions both)
         add_test(NAME vulkan-graphics-present-metadata-${present_metadata}
-            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_graphics_presentation.py
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_graphics_presentation.py
                 --binary $<TARGET_FILE:zvram-vulkan-graphics-check>
                 --icd ${ZVRAM_RADEON_ICD_PATH} --build-dir ${CMAKE_CURRENT_BINARY_DIR}
                 --native-allocation --present-metadata ${present_metadata}
@@ -196,19 +197,19 @@ if(SDL2_FOUND AND ZVRAM_GAMESCOPE_EXECUTABLE AND ZVRAM_RADEON_ICD_PATH)
             LABELS "hardware;graphics;presentation;metadata;gamescope")
     endforeach()
 endif()
-add_test(NAME cpu-vulkan-ram-guard COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_ram_guard.py)
+add_test(NAME cpu-vulkan-ram-guard COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vulkan_ram_guard.py)
 set_tests_properties(cpu-vulkan-ram-guard PROPERTIES TIMEOUT 10)
-add_test(NAME cpu-vulkan-compression-options COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_compression_options.py)
+add_test(NAME cpu-vulkan-compression-options COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vulkan_compression_options.py)
 set_tests_properties(cpu-vulkan-compression-options PROPERTIES TIMEOUT 10)
-add_test(NAME cpu-vulkan-model-budget COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_model_budget.py)
+add_test(NAME cpu-vulkan-model-budget COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vulkan_model_budget.py)
 set_tests_properties(cpu-vulkan-model-budget PROPERTIES TIMEOUT 10)
 add_test(NAME cpu-compression-policy COMMAND zvram-compression-policy-check)
 add_test(NAME cpu-clean-cache-policy COMMAND zvram-clean-cache-policy-check)
-add_executable(zvram-snapshot-decode-check snapshot_decode_check.cpp)
+add_executable(zvram-snapshot-decode-check tests/snapshot_decode_check.cpp)
 target_compile_features(zvram-snapshot-decode-check PRIVATE cxx_std_17)
 target_link_libraries(zvram-snapshot-decode-check PRIVATE Threads::Threads PkgConfig::ZSTD)
 add_test(NAME cpu-snapshot-decode COMMAND zvram-snapshot-decode-check)
-add_executable(zvram-gdeflate-envelope-check gdeflate_envelope_check.cpp)
+add_executable(zvram-gdeflate-envelope-check tests/gdeflate_envelope_check.cpp)
 target_compile_features(zvram-gdeflate-envelope-check PRIVATE cxx_std_17)
 add_test(NAME cpu-gdeflate-envelope COMMAND zvram-gdeflate-envelope-check)
 option(ZVRAM_BUILD_GDEFLATE_RESEARCH "Build the standalone GDeflate research host (no production integration)" OFF)
@@ -218,15 +219,15 @@ if(ZVRAM_BUILD_GDEFLATE_RESEARCH)
     target_include_directories(zvram-gdeflate-research PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(zvram-gdeflate-research PRIVATE Vulkan::Vulkan)
 endif()
-add_executable(zvram-snapshot-pipeline-check snapshot_pipeline_check.cpp)
+add_executable(zvram-snapshot-pipeline-check tests/snapshot_pipeline_check.cpp)
 target_compile_features(zvram-snapshot-pipeline-check PRIVATE cxx_std_17)
 target_link_libraries(zvram-snapshot-pipeline-check PRIVATE Threads::Threads PkgConfig::ZSTD)
 add_test(NAME cpu-snapshot-pipeline COMMAND zvram-snapshot-pipeline-check)
-add_executable(zvram-submission-tracking-check submission_tracking_check.cpp)
+add_executable(zvram-submission-tracking-check tests/submission_tracking_check.cpp)
 target_compile_features(zvram-submission-tracking-check PRIVATE cxx_std_17)
 target_include_directories(zvram-submission-tracking-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 add_test(NAME vulkan-submission-tracking COMMAND zvram-submission-tracking-check)
-add_executable(zvram-active-refs-check active_refs_check.cpp)
+add_executable(zvram-active-refs-check tests/active_refs_check.cpp)
 target_compile_features(zvram-active-refs-check PRIVATE cxx_std_17)
 target_include_directories(zvram-active-refs-check PRIVATE ${Vulkan_INCLUDE_DIRS})
 add_test(NAME cpu-active-refs COMMAND zvram-active-refs-check)
@@ -684,7 +685,7 @@ foreach(batch_mode synthetic native)
     endforeach()
 endforeach()
 add_test(NAME vulkan-snapshot-pipeline
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_pipeline.py
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vulkan_pipeline.py
         ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>)
 set_tests_properties(vulkan-snapshot-pipeline PROPERTIES TIMEOUT 480
     ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
@@ -716,13 +717,13 @@ set_tests_properties(vulkan-range-clean-cache-readonly-barrier PROPERTIES TIMEOU
     ENVIRONMENT "VK_VALIDATION_VALIDATE_SYNC=1;VK_LOADER_LAYERS_DISABLE=~implicit~"
     LABELS "hardware;vulkan;range;clean-cache;readonly-barrier;native-allocation")
 add_test(NAME vulkan-range-clean-cache-bootstrap
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_cache_bootstrap.py
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vulkan_cache_bootstrap.py
         ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>)
 set_tests_properties(vulkan-range-clean-cache-bootstrap PROPERTIES TIMEOUT 60
     ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~")
 foreach(clean_cache_cap_mode synthetic native)
     add_test(NAME vulkan-range-clean-cache-cap-${clean_cache_cap_mode}
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_clean_cache_cap.py
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vulkan_clean_cache_cap.py
             ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py $<TARGET_FILE:zvram-vulkan-auto-check>
             ${clean_cache_cap_mode})
     set_tests_properties(vulkan-range-clean-cache-cap-${clean_cache_cap_mode} PROPERTIES TIMEOUT 60
@@ -871,7 +872,7 @@ if(ZVRAM_BUILD_HIP)
     find_path(ZVRAM_HIP_INCLUDE hip/hip_runtime_api.h HINTS /opt/rocm/include)
     find_library(ZVRAM_HIP_RUNTIME amdhip64 HINTS /opt/rocm/lib)
     if(ZVRAM_HIPCC AND ZVRAM_HIP_INCLUDE AND ZVRAM_HIP_RUNTIME)
-        add_library(zvram_hip SHARED hip_layer.cpp hip_activity.cpp)
+        add_library(zvram_hip SHARED src/hip_layer.cpp src/hip_activity.cpp)
         include(CheckCXXSourceCompiles)
         set(CMAKE_REQUIRED_INCLUDES ${ZVRAM_HIP_INCLUDE})
         set(CMAKE_REQUIRED_DEFINITIONS -D__HIP_PLATFORM_AMD__=1)
@@ -887,15 +888,15 @@ if(ZVRAM_BUILD_HIP)
         unset(CMAKE_REQUIRED_INCLUDES)
         unset(CMAKE_REQUIRED_DEFINITIONS)
         if(ZVRAM_CAN_HIP_DISPATCH)
-            target_sources(zvram_hip PRIVATE hip_dispatch.cpp)
+            target_sources(zvram_hip PRIVATE src/hip_dispatch.cpp)
             target_compile_definitions(zvram_hip PRIVATE ZVRAM_HAS_HIP_DISPATCH=1)
         else()
             message(STATUS "HIP dispatch ABI unsupported: automatic hibernation unavailable")
         endif()
         add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o
             COMMAND ${ZVRAM_HIPCC} --offload-arch=${ZVRAM_HIP_ARCH} -O2 -std=c++17 -fPIC -c
-                ${CMAKE_CURRENT_SOURCE_DIR}/hip_snapshot_copy.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o
-            DEPENDS hip_snapshot_copy.cpp VERBATIM)
+                ${CMAKE_CURRENT_SOURCE_DIR}/src/hip_snapshot_copy.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o
+            DEPENDS src/hip_snapshot_copy.cpp VERBATIM)
         set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o
             PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
         target_sources(zvram_hip PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/hip_snapshot_copy.o)
@@ -907,7 +908,7 @@ if(ZVRAM_BUILD_HIP)
         if(DRM_AMDGPU_FOUND)
             target_compile_definitions(zvram_hip PRIVATE ZVRAM_HAS_DRM_VMM=1)
             target_link_libraries(zvram_hip PRIVATE PkgConfig::DRM_AMDGPU)
-            add_executable(zvram-hip-vmm-fd-check hip_vmm_fd_check.cpp)
+            add_executable(zvram-hip-vmm-fd-check tests/hip_vmm_fd_check.cpp)
             target_include_directories(zvram-hip-vmm-fd-check PRIVATE ${ZVRAM_HIP_INCLUDE})
             target_compile_features(zvram-hip-vmm-fd-check PRIVATE cxx_std_17)
             target_compile_definitions(zvram-hip-vmm-fd-check PRIVATE __HIP_PLATFORM_AMD__=1)
@@ -915,29 +916,34 @@ if(ZVRAM_BUILD_HIP)
         else()
             message(STATUS "libdrm_amdgpu development files absent: hybrid HIP VMM unavailable")
         endif()
-        add_library(zvram_hip_oom_test SHARED test_hip_oom.cpp)
+        add_library(zvram_hip_oom_test SHARED tests/test_hip_oom.cpp)
         target_include_directories(zvram_hip_oom_test PRIVATE ${ZVRAM_HIP_INCLUDE})
         target_compile_definitions(zvram_hip_oom_test PRIVATE __HIP_PLATFORM_AMD__=1)
         target_link_libraries(zvram_hip_oom_test PRIVATE ${CMAKE_DL_LIBS})
-        add_executable(zvram-hip-capacity-check hip_capacity_check.cpp)
+        add_executable(zvram-hip-capacity-check tests/hip_capacity_check.cpp)
         target_include_directories(zvram-hip-capacity-check PRIVATE ${ZVRAM_HIP_INCLUDE})
         target_compile_definitions(zvram-hip-capacity-check PRIVATE __HIP_PLATFORM_AMD__=1)
         target_link_libraries(zvram-hip-capacity-check PRIVATE ${ZVRAM_HIP_RUNTIME})
-        add_executable(zvram-hip-proc-check hip_proc_check.cpp)
+        add_executable(zvram-hip-proc-check tests/hip_proc_check.cpp)
         target_include_directories(zvram-hip-proc-check PRIVATE ${ZVRAM_HIP_INCLUDE})
         target_compile_features(zvram-hip-proc-check PRIVATE cxx_std_17)
         target_compile_definitions(zvram-hip-proc-check PRIVATE __HIP_PLATFORM_AMD__=1)
         target_link_libraries(zvram-hip-proc-check PRIVATE ${ZVRAM_HIP_RUNTIME} ${CMAKE_DL_LIBS})
-        add_executable(zvram-hip-error-check hip_error_check.cpp)
+        add_executable(zvram-hip-error-check tests/hip_error_check.cpp)
         target_include_directories(zvram-hip-error-check PRIVATE ${ZVRAM_HIP_INCLUDE})
         target_compile_features(zvram-hip-error-check PRIVATE cxx_std_17)
         target_compile_definitions(zvram-hip-error-check PRIVATE __HIP_PLATFORM_AMD__=1)
         target_link_libraries(zvram-hip-error-check PRIVATE ${ZVRAM_HIP_RUNTIME} Threads::Threads)
         foreach(check hip_check hip_probe vmm_probe hip_hibernate_check hip_auto_check hip_auto_thread_check hip_auto_guard_check)
+            if(check MATCHES "_probe$")
+                set(check_source tools/${check}.cpp)
+            else()
+                set(check_source tests/${check}.cpp)
+            endif()
             add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${check}
                 COMMAND ${ZVRAM_HIPCC} --offload-arch=${ZVRAM_HIP_ARCH} -O2 -std=c++17 -pthread
-                    ${CMAKE_CURRENT_SOURCE_DIR}/${check}.cpp -ldl -o ${CMAKE_CURRENT_BINARY_DIR}/${check}
-                DEPENDS ${check}.cpp VERBATIM)
+                    ${CMAKE_CURRENT_SOURCE_DIR}/${check_source} -I${CMAKE_CURRENT_SOURCE_DIR}/src -ldl -o ${CMAKE_CURRENT_BINARY_DIR}/${check}
+                DEPENDS ${check_source} VERBATIM)
             add_custom_target(zvram-${check} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${check})
         endforeach()
         find_library(ZVRAM_HSA_RUNTIME hsa-runtime64 HINTS /opt/rocm/lib)
@@ -946,9 +952,9 @@ if(ZVRAM_BUILD_HIP)
             foreach(check hsa_vmm_probe ram_vmm_probe)
                 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${check}
                     COMMAND ${ZVRAM_HIPCC} --offload-arch=${ZVRAM_HIP_ARCH} -O2 -std=c++17
-                        ${CMAKE_CURRENT_SOURCE_DIR}/${check}.cpp -L${ZVRAM_HSA_LIBRARY_DIR} -lhsa-runtime64
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/${check}.cpp -I${CMAKE_CURRENT_SOURCE_DIR}/src -L${ZVRAM_HSA_LIBRARY_DIR} -lhsa-runtime64
                         -o ${CMAKE_CURRENT_BINARY_DIR}/${check}
-                    DEPENDS ${check}.cpp VERBATIM)
+                    DEPENDS tools/${check}.cpp VERBATIM)
                 add_custom_target(zvram-${check} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${check})
             endforeach()
         endif()
@@ -1023,15 +1029,15 @@ if(ZVRAM_ENABLE_GDEFLATE)
     foreach(codec_target zvram_layer zvram-snapshot-decode-check zvram-snapshot-pipeline-check)
         target_link_libraries(${codec_target} PRIVATE zvram_gdeflate)
     endforeach()
-    add_executable(zvram-gdeflate-codec-check gdeflate_codec_check.cpp)
+    add_executable(zvram-gdeflate-codec-check tests/gdeflate_codec_check.cpp)
     target_compile_features(zvram-gdeflate-codec-check PRIVATE cxx_std_17)
     target_link_libraries(zvram-gdeflate-codec-check PRIVATE zvram_gdeflate Threads::Threads)
     add_test(NAME cpu-gdeflate-codec COMMAND zvram-gdeflate-codec-check ${CMAKE_CURRENT_SOURCE_DIR}/research/gdeflate/fixtures)
-    add_executable(zvram-gdeflate-snapshot-check gdeflate_snapshot_check.cpp)
+    add_executable(zvram-gdeflate-snapshot-check tests/gdeflate_snapshot_check.cpp)
     target_compile_features(zvram-gdeflate-snapshot-check PRIVATE cxx_std_17)
     target_link_libraries(zvram-gdeflate-snapshot-check PRIVATE zvram_gdeflate Threads::Threads PkgConfig::ZSTD)
     add_test(NAME cpu-gdeflate-snapshot COMMAND zvram-gdeflate-snapshot-check)
-    set(gdeflate_gpu_launch ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_gdeflate_gpu_layer.py
+    set(gdeflate_gpu_launch ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_gdeflate_gpu_layer.py
         ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
         --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100
         --vulkan-cold-mib 512 --vulkan-codec gdeflate --vulkan-gdeflate-gpu)
@@ -1053,7 +1059,7 @@ if(ZVRAM_ENABLE_GDEFLATE)
     target_link_libraries(zvram-gdeflate-codec-model PRIVATE zvram_gdeflate Threads::Threads PkgConfig::ZSTD)
 endif()
 if(ZVRAM_ENABLE_BP16_GPU_TESTS)
-    set(bp16_gpu_launch ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_gdeflate_gpu_layer.py
+    set(bp16_gpu_launch ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_gdeflate_gpu_layer.py
         ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
         --validate --isolate-layers --vulkan-virtual-gib 96 --vulkan-auto-idle-ms 100
         --vulkan-cold-mib 512 --vulkan-codec bp16 --vulkan-bp16-gpu)
@@ -1104,20 +1110,20 @@ if(ZVRAM_ENABLE_BP16_GPU_TESTS)
     endforeach()
     foreach(raw_host_mode synthetic native)
         add_test(NAME vulkan-bp16-raw-host-input-${raw_host_mode}
-            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_raw_host_input.py
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vulkan_raw_host_input.py
                 ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
                 $<TARGET_FILE:zvram-vulkan-auto-check> ${raw_host_mode})
         set_tests_properties(vulkan-bp16-raw-host-input-${raw_host_mode} PROPERTIES TIMEOUT 120
             ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_BP16_RAW_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=512;ZVRAM_VULKAN_GPU_PROFILE=1")
     endforeach()
     add_test(NAME vulkan-bp16-raw-host-input-owner-budget
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_raw_host_input.py
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vulkan_raw_host_input.py
             ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
             $<TARGET_FILE:zvram-vulkan-auto-check> owner-budget)
     set_tests_properties(vulkan-bp16-raw-host-input-owner-budget PROPERTIES TIMEOUT 120
         ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_VALIDATION_VALIDATE_SYNC=1;ZVRAM_VULKAN_BP16_RAW_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_INPUT=1;ZVRAM_VULKAN_BP16_ALLOCATED_HOST_MIB=8;ZVRAM_VULKAN_GPU_PROFILE=1")
     add_test(NAME vulkan-bp16-raw-host-input-cold-budget
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_vulkan_raw_host_input.py
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vulkan_raw_host_input.py
             ${CMAKE_CURRENT_BINARY_DIR}/zvram-test-launcher.py
             $<TARGET_FILE:zvram-vulkan-auto-check> cold-budget)
     set_tests_properties(vulkan-bp16-raw-host-input-cold-budget PROPERTIES TIMEOUT 120

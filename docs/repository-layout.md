@@ -1,0 +1,171 @@
+# Repository layout
+
+The source-layout migration groups runtime code, tests, and developer tools
+under dedicated directories. Historical run records remain under `validation/`
+unchanged.
+
+| Content | Migration destination |
+| --- | --- |
+| C++ runtime headers, sources, and generated includes (`*.hpp`, `*.cpp`, `*.inc`) | `src/` |
+| C++ checks (`*_check.cpp` and related check programs) | `tests/` |
+| C++ probes (`*_probe.cpp`) | `tools/` |
+| `graphics_check.vert`, `graphics_check.frag`, `managed_check.comp`, `vulkan_auto_bda.comp` | `tests/shaders/` |
+| Runtime Python modules named `zvram_*.py` | `src/python/` |
+| Python tests (`test_*.py`) | `tests/` |
+| Python checks (`check_*.py`), `dmem_probe.py`, `generate_command_hooks.py` | `tools/` |
+| `layer.json.in`, `ctest_launcher.py.in` | `cmake/` |
+| `VALIDATION.md`, `KERNEL_PAGING.md` | `docs/` |
+
+The root keeps `zvram`, `CMakeLists.txt`, `README.md`, `LICENSE`, `VERSION`,
+and `nx-app.json`. The migration also updates CMake source paths, generated-file
+locations, package staging, and test/tool references. Build commands remain
+root-relative unless they explicitly invoke a file under one of these folders.
+
+## Validation guides
+
+- [Validation evidence and limits](VALIDATION.md)
+- [Kernel paging notes](KERNEL_PAGING.md)
+
+
+## Recorded moves
+
+The migration moves **101 tracked files**, reducing root files from **108 to 7**.
+The unrelated local `memtest_vulkan.log` is preserved and remains untracked.
+
+| Destination | Files moved |
+| --- | ---: |
+| `cmake/` | 2 |
+| `docs/` | 2 |
+| `src/` | 29 |
+| `src/python/` | 4 |
+| `tests/` | 49 |
+| `tests/shaders/` | 4 |
+| `tools/` | 11 |
+
+<details>
+<summary>Complete old-to-new file list</summary>
+
+| Previous root path | New path |
+| --- | --- |
+| `KERNEL_PAGING.md` | `docs/KERNEL_PAGING.md` |
+| `VALIDATION.md` | `docs/VALIDATION.md` |
+| `active_refs.hpp` | `src/active_refs.hpp` |
+| `active_refs_check.cpp` | `tests/active_refs_check.cpp` |
+| `auto_queues.hpp` | `src/auto_queues.hpp` |
+| `bp16_codec.hpp` | `src/bp16_codec.hpp` |
+| `bp16_codec_check.cpp` | `tests/bp16_codec_check.cpp` |
+| `buffer_barriers.hpp` | `src/buffer_barriers.hpp` |
+| `byte_shuffle.hpp` | `src/byte_shuffle.hpp` |
+| `capacity_check.cpp` | `tests/capacity_check.cpp` |
+| `check_idle_model.py` | `tools/check_idle_model.py` |
+| `check_model.py` | `tools/check_model.py` |
+| `check_primbench.py` | `tools/check_primbench.py` |
+| `check_vulkan_idle_model.py` | `tools/check_vulkan_idle_model.py` |
+| `clean_cache_policy.hpp` | `src/clean_cache_policy.hpp` |
+| `clean_cache_policy_check.cpp` | `tests/clean_cache_policy_check.cpp` |
+| `command_hooks.inc` | `src/command_hooks.inc` |
+| `compression_check.cpp` | `tests/compression_check.cpp` |
+| `compression_policy.hpp` | `src/compression_policy.hpp` |
+| `compression_policy_check.cpp` | `tests/compression_policy_check.cpp` |
+| `ctest_launcher.py.in` | `cmake/ctest_launcher.py.in` |
+| `device_features_chain.hpp` | `src/device_features_chain.hpp` |
+| `device_features_chain_check.cpp` | `tests/device_features_chain_check.cpp` |
+| `dmem_probe.py` | `tools/dmem_probe.py` |
+| `drm_vmm_probe.cpp` | `tools/drm_vmm_probe.cpp` |
+| `file_pool_check.cpp` | `tests/file_pool_check.cpp` |
+| `gdeflate_codec.hpp` | `src/gdeflate_codec.hpp` |
+| `gdeflate_codec_check.cpp` | `tests/gdeflate_codec_check.cpp` |
+| `gdeflate_envelope.hpp` | `src/gdeflate_envelope.hpp` |
+| `gdeflate_envelope_check.cpp` | `tests/gdeflate_envelope_check.cpp` |
+| `gdeflate_gpu.hpp` | `src/gdeflate_gpu.hpp` |
+| `gdeflate_snapshot_check.cpp` | `tests/gdeflate_snapshot_check.cpp` |
+| `generate_command_hooks.py` | `tools/generate_command_hooks.py` |
+| `graphics_check.frag` | `tests/shaders/graphics_check.frag` |
+| `graphics_check.vert` | `tests/shaders/graphics_check.vert` |
+| `hip_activity.cpp` | `src/hip_activity.cpp` |
+| `hip_activity.hpp` | `src/hip_activity.hpp` |
+| `hip_auto_check.cpp` | `tests/hip_auto_check.cpp` |
+| `hip_auto_guard_check.cpp` | `tests/hip_auto_guard_check.cpp` |
+| `hip_auto_thread_check.cpp` | `tests/hip_auto_thread_check.cpp` |
+| `hip_capacity_check.cpp` | `tests/hip_capacity_check.cpp` |
+| `hip_check.cpp` | `tests/hip_check.cpp` |
+| `hip_dispatch.cpp` | `src/hip_dispatch.cpp` |
+| `hip_dispatch_slots.inc` | `src/hip_dispatch_slots.inc` |
+| `hip_error_check.cpp` | `tests/hip_error_check.cpp` |
+| `hip_hibernate.hpp` | `src/hip_hibernate.hpp` |
+| `hip_hibernate_check.cpp` | `tests/hip_hibernate_check.cpp` |
+| `hip_layer.cpp` | `src/hip_layer.cpp` |
+| `hip_probe.cpp` | `tools/hip_probe.cpp` |
+| `hip_proc_check.cpp` | `tests/hip_proc_check.cpp` |
+| `hip_snapshot_copy.cpp` | `src/hip_snapshot_copy.cpp` |
+| `hip_vmm_fd_check.cpp` | `tests/hip_vmm_fd_check.cpp` |
+| `hsa_vmm_probe.cpp` | `tools/hsa_vmm_probe.cpp` |
+| `layer.cpp` | `src/layer.cpp` |
+| `layer.json.in` | `cmake/layer.json.in` |
+| `live_control.hpp` | `src/live_control.hpp` |
+| `live_control_check.cpp` | `tests/live_control_check.cpp` |
+| `managed_check.comp` | `tests/shaders/managed_check.comp` |
+| `managed_check.cpp` | `tests/managed_check.cpp` |
+| `managed_pool.cpp` | `src/managed_pool.cpp` |
+| `managed_pool.hpp` | `src/managed_pool.hpp` |
+| `ram_vmm_probe.cpp` | `tools/ram_vmm_probe.cpp` |
+| `resident_bootstrap_check.cpp` | `tests/resident_bootstrap_check.cpp` |
+| `resident_budget.hpp` | `src/resident_budget.hpp` |
+| `resident_budget_check.cpp` | `tests/resident_budget_check.cpp` |
+| `snapshot_decode.hpp` | `src/snapshot_decode.hpp` |
+| `snapshot_decode_check.cpp` | `tests/snapshot_decode_check.cpp` |
+| `snapshot_pipeline.hpp` | `src/snapshot_pipeline.hpp` |
+| `snapshot_pipeline_check.cpp` | `tests/snapshot_pipeline_check.cpp` |
+| `sparse_check.cpp` | `tests/sparse_check.cpp` |
+| `submission_hooks.inc` | `src/submission_hooks.inc` |
+| `submission_tracking.hpp` | `src/submission_tracking.hpp` |
+| `submission_tracking_check.cpp` | `tests/submission_tracking_check.cpp` |
+| `test_gdeflate_gpu_layer.py` | `tests/test_gdeflate_gpu_layer.py` |
+| `test_graphics_presentation.py` | `tests/test_graphics_presentation.py` |
+| `test_graphics_software.py` | `tests/test_graphics_software.py` |
+| `test_hip_oom.cpp` | `tests/test_hip_oom.cpp` |
+| `test_live_control_vulkan.py` | `tests/test_live_control_vulkan.py` |
+| `test_package.py` | `tests/test_package.py` |
+| `test_vulkan_cache_bootstrap.py` | `tests/test_vulkan_cache_bootstrap.py` |
+| `test_vulkan_clean_cache_cap.py` | `tests/test_vulkan_clean_cache_cap.py` |
+| `test_vulkan_compression_options.py` | `tests/test_vulkan_compression_options.py` |
+| `test_vulkan_model_budget.py` | `tests/test_vulkan_model_budget.py` |
+| `test_vulkan_pipeline.py` | `tests/test_vulkan_pipeline.py` |
+| `test_vulkan_ram_guard.py` | `tests/test_vulkan_ram_guard.py` |
+| `test_vulkan_raw_host_input.py` | `tests/test_vulkan_raw_host_input.py` |
+| `test_zvram_control.py` | `tests/test_zvram_control.py` |
+| `test_zvram_manager.py` | `tests/test_zvram_manager.py` |
+| `test_zvram_model.py` | `tests/test_zvram_model.py` |
+| `test_zvram_ui.py` | `tests/test_zvram_ui.py` |
+| `vmm_probe.cpp` | `tools/vmm_probe.cpp` |
+| `vulkan_auto_bda.comp` | `tests/shaders/vulkan_auto_bda.comp` |
+| `vulkan_auto_check.cpp` | `tests/vulkan_auto_check.cpp` |
+| `vulkan_graphics_check.cpp` | `tests/vulkan_graphics_check.cpp` |
+| `vulkan_queue_flags.hpp` | `src/vulkan_queue_flags.hpp` |
+| `vulkan_queue_flags_check.cpp` | `tests/vulkan_queue_flags_check.cpp` |
+| `vulkan_requirements_check.cpp` | `tests/vulkan_requirements_check.cpp` |
+| `zvram_control.py` | `src/python/zvram_control.py` |
+| `zvram_manager.py` | `src/python/zvram_manager.py` |
+| `zvram_model.py` | `src/python/zvram_model.py` |
+| `zvram_ui.py` | `src/python/zvram_ui.py` |
+
+</details>
+
+## Checks after the move
+
+From the repository root:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j2
+ctest --test-dir build -R '^(cpu-|vulkan-submission-tracking$)' --output-on-failure
+python3 -m unittest discover -s tests -p 'test_zvram_*.py'
+python3 tests/test_package.py
+python3 tests/test_zvram_ui.py --tui
+```
+
+Native runtime files are moved without logic changes. Source Python modules
+resolve assets and the launcher from the repository root; release packages
+retain their existing flat module layout. No regression checks or recorded
+results were deleted. Paths in three executable validation helpers were updated;
+historical result data was preserved.

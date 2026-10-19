@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """CPU-only model runner and endpoint safety checks."""
+from _bootstrap import ROOT
 import json
 import os
 from pathlib import Path

@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--run", action="store_true", help="run two small GPU integration checks after building")
     parser.add_argument("--arch", default="gfx1100", help="HIP compiler target (default: tested RX 7900 XTX)")
     args = parser.parse_args()
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     directory = root / "build/third-party/primbench"
     directory.mkdir(parents=True, exist_ok=True)
     for name, expected in FILES.items():

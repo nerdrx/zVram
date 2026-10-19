@@ -12,15 +12,15 @@ jobs:
       - name: Build
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j 2
       - name: Check launcher syntax
-        run: python3 -m py_compile zvram dmem_probe.py check_primbench.py check_model.py check_vulkan_idle_model.py test_vulkan_ram_guard.py test_vulkan_compression_options.py test_vulkan_pipeline.py test_gdeflate_gpu_layer.py test_graphics_presentation.py && ./zvram --help && python3 check_vulkan_idle_model.py --help
+        run: python3 -m py_compile zvram tools/dmem_probe.py tools/check_primbench.py tools/check_model.py tools/check_vulkan_idle_model.py tests/test_vulkan_ram_guard.py tests/test_vulkan_compression_options.py tests/test_vulkan_pipeline.py tests/test_gdeflate_gpu_layer.py tests/test_graphics_presentation.py && ./zvram --help && python3 tools/check_vulkan_idle_model.py --help
       - name: Check low-memory abort cleanup
-        run: python3 test_vulkan_ram_guard.py
+        run: python3 tests/test_vulkan_ram_guard.py
       - name: Check userspace manager, model bridge, and UI parsing
-        run: python3 -m unittest test_zvram_manager test_zvram_model test_package test_zvram_control && python3 test_zvram_ui.py --tui && python3 validation/log-line-coalescing/check.py
+        run: python3 -m unittest discover -s tests -p 'test_zvram_*.py' && python3 tests/test_package.py && python3 tests/test_zvram_ui.py --tui && python3 validation/log-line-coalescing/check.py
       - name: Check Vulkan compression options and CPU policy
-        run: python3 test_vulkan_compression_options.py && ctest --test-dir build -R '^cpu-(compression-policy|resident-bootstrap)$' --output-on-failure
+        run: python3 tests/test_vulkan_compression_options.py && ctest --test-dir build -R '^cpu-(compression-policy|resident-bootstrap)$' --output-on-failure
       - name: Check bounded model evidence
-        run: python3 test_vulkan_model_budget.py
+        run: python3 tests/test_vulkan_model_budget.py
       - name: Check lossless parallel snapshot decoding
         run: ctest --test-dir build -R cpu-snapshot-decode --output-on-failure
       - name: Check GDeflate envelope bounds without GPU execution
@@ -35,7 +35,7 @@ jobs:
       - name: Check bounded snapshot decode look-ahead
         run: ctest --test-dir build -R cpu-snapshot-pipeline --output-on-failure
       - name: Check offscreen graphics fixture on CPU Vulkan
-        run: python3 test_graphics_software.py --binary build/zvram-vulkan-graphics-check
+        run: python3 tests/test_graphics_software.py --binary build/zvram-vulkan-graphics-check
       - name: Build optional GDeflate codec and GPU decoder, run CPU checks
         run: |
           cmake -S . -B build/codecs -DZVRAM_ENABLE_GDEFLATE=ON -DCMAKE_BUILD_TYPE=Release
