@@ -147,6 +147,7 @@ struct VirtualMemory {
         VkDeviceSize logicalBytes{};
         VkDeviceSize storedBytes{};
         VkDeviceSize importedPaddingBytes{};
+        std::chrono::steady_clock::time_point recoveryRetryAfter{};
         std::uint64_t failedBudgetGeneration{};
         bool cold{};
         bool pristine{}; // Never submitted: undefined contents need no snapshot.
@@ -3435,6 +3436,7 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
        memory.coldGroups[child].restoreBound || d.activeRefs.busy(handle,child)) return false;
     const auto now=std::chrono::steady_clock::now();
     if(now<memory.coldGroups[child].lastUse+std::chrono::milliseconds(d.liveControl.state.recoveryPriority?0:d.coldCycleQuietMilliseconds)) return false;
+    if(now<memory.coldGroups[child].recoveryRetryAfter) return false;
     const auto size=memory.childSizes[child];
     if(d.residentBytes>target || size>kAsyncSnapshotMaxRaw ||
        d.liveLocal>target || size>target-d.liveLocal) return false;
@@ -3495,6 +3497,9 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
         if(result==VK_SUCCESS) { replacementType=type; break; }
     }
     if(result!=VK_SUCCESS) {
+        // Let smaller candidates try while retaining the device-wide failure rate limit.
+        if(result==VK_ERROR_OUT_OF_DEVICE_MEMORY)
+            memory.coldGroups[child].recoveryRetryAfter=std::chrono::steady_clock::now()+std::chrono::seconds(1);
         d.snapshot.destroyBuffer(d.handle,destinationView,nullptr);
         d.coldCycleBackoffUntil=std::chrono::steady_clock::now()+std::chrono::milliseconds(250);
         return false;
@@ -3609,7 +3614,7 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
             const auto type=memory.childTypes[i];
             const auto size=memory.childSizes[i];
             if(!memory.children[i] || !size || size>kAsyncSnapshotMaxRaw || group.cold || group.pristine ||
-               group.restoreBound || d.activeRefs.busy(pair.first,i) ||
+               group.restoreBound || now<group.recoveryRetryAfter || d.activeRefs.busy(pair.first,i) ||
                type>=d.memory.memoryTypeCount ||
                d.memory.memoryTypes[type].heapIndex>=d.memory.memoryHeapCount ||
                (d.memory.memoryHeaps[d.memory.memoryTypes[type].heapIndex].flags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) ||

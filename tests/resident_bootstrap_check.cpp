@@ -31,7 +31,9 @@ unsigned sparseBinds{};
 unsigned queueWaitCalls{};
 int failAllocations{};
 std::unordered_set<std::uint32_t> failAllocationTypes;
+std::unordered_set<VkDeviceSize> failAllocationSizes;
 std::vector<std::uint32_t> allocatedTypes;
+std::vector<VkDeviceSize> allocatedSizes;
 int failSparseBinds{};
 unsigned failQueueWaitAt{};
 VkResult failQueueWaitResult{VK_ERROR_DEVICE_LOST};
@@ -121,8 +123,10 @@ VKAPI_ATTR VkResult VKAPI_CALL mockAllocate(VkDevice,const VkMemoryAllocateInfo*
     const VkAllocationCallbacks*,VkDeviceMemory* out) {
     ++allocations;
     allocatedTypes.push_back(info->memoryTypeIndex);
+    allocatedSizes.push_back(info->allocationSize);
     if(failAllocations>0) { --failAllocations; return VK_ERROR_OUT_OF_DEVICE_MEMORY; }
     if(failAllocationTypes.count(info->memoryTypeIndex)) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    if(failAllocationSizes.count(info->allocationSize)) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
     *out=tokenHandle<VkDeviceMemory>(nextHandle++); liveAllocations.insert(*out); return VK_SUCCESS;
 }
 VKAPI_ATTR void VKAPI_CALL mockFree(VkDevice,VkDeviceMemory memory,const VkAllocationCallbacks* allocator) {
@@ -343,7 +347,7 @@ struct Fixture {
     VkMemoryRequirements req{MiB,4096,1};
 
     explicit Fixture(VkDeviceSize bytes=4*MiB,VkDeviceSize limit=2*MiB) {
-        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=samplerHeapBindCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); allocatedTypes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); freedMemoryUserData.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); mockWaitedQueues.clear(); mockQueueWaitResults.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr; mockDeviceWaitCalls=mockResetCommandPoolCalls=destroyedMockBuffers=destroyedMockFences=0; lastDestroyedBufferUserData=lastFreedMemoryUserData=nullptr; mockDeviceWaitResult=VK_SUCCESS;
+        allocations=sparseBinds=queueWaitCalls=frees=budgetQueries=presentCalls=submitCalls=samplerHeapBindCalls=0; failAllocations=failSparseBinds=0; failAllocationTypes.clear(); failAllocationSizes.clear(); allocatedTypes.clear(); allocatedSizes.clear(); failQueueWaitAt=failSparseBindAt=0; failQueueWaitResult=VK_ERROR_DEVICE_LOST; mockEndCommandResult=VK_SUCCESS; mockPoolViewTypeBits=1; nextHandle=0x1000; bufferSizes.clear(); liveAllocations.clear(); freedMemoryUserData.clear(); sparseBindCalls.clear(); capturedMemoryBarriers.clear(); mockBudgetSequence.clear(); mockWaitedQueues.clear(); mockQueueWaitResults.clear(); applicationSubmitPnext=nullptr; applicationSubmitInfo=nullptr; mockDeviceWaitCalls=mockResetCommandPoolCalls=destroyedMockBuffers=destroyedMockFences=0; lastDestroyedBufferUserData=lastFreedMemoryUserData=nullptr; mockDeviceWaitResult=VK_SUCCESS;
         pipelineBarrierForwards=waitEventsForwards=pipelineBarrier2Forwards=waitEvents2Forwards=0;
         { std::lock_guard<std::mutex> fenceLock(mockFenceMutex); mockFenceWaitEntered=false; mockFenceWaitRelease=false; mockFenceWaitResult=VK_SUCCESS; }
         presentResult=VK_SUCCESS; forwardedPresent=nullptr;
@@ -1430,6 +1434,100 @@ void checkColdCycleCandidatePrefersMostRecentEligible() {
     require(selectColdCycleCandidate(d,64*MiB,now,candidate,child) &&
             candidate==c.f.memory && child==0,
             "busy recent child blocked fallback to an older eligible child");
+}
+
+void checkRecoveryAllocationOomFallsBackToSmallerCandidate() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& hotter=c.f.state();
+    d.coldCycleQuietMilliseconds=0;
+    d.coldBudget=8*MiB;
+    hotter.childSizes[0]=2*MiB;
+    hotter.residentBytes=2*MiB;
+    hotter.bindings[0].size=2*MiB;
+    bufferSizes[hotter.bindings[0].buffer]=2*MiB;
+    bufferSizes[hotter.poolViews[0]]=2*MiB;
+    d.residentBytes=2*MiB;
+    d.liveOther=2*MiB;
+    const auto hotBacking=hotter.children[0];
+    const auto coolerHandle=tokenHandle<VkDeviceMemory>(0xc241);
+    const auto coolerBacking=tokenHandle<VkDeviceMemory>(0xc242);
+    const auto coolerView=tokenHandle<VkBuffer>(0xc243);
+    const auto coolerAppBuffer=tokenHandle<VkBuffer>(0xc244);
+    auto cooler=hotter;
+    cooler.children[0]=coolerBacking;
+    cooler.childSizes[0]=MiB;
+    cooler.residentBytes=MiB;
+    cooler.poolViews[0]=coolerView;
+    cooler.bindings[0].buffer=coolerAppBuffer;
+    cooler.bindings[0].size=MiB;
+    cooler.coldGroups[0].lastUse=std::chrono::steady_clock::now()-std::chrono::seconds(5);
+    bufferSizes[coolerAppBuffer]=MiB;
+    bufferSizes[coolerView]=MiB;
+    liveAllocations.insert(coolerBacking);
+    d.virtualMemory.emplace(coolerHandle,std::move(cooler));
+    d.residentBytes+=MiB;
+    d.liveOther+=MiB;
+
+    const auto now=std::chrono::steady_clock::now();
+    auto& hotGroup=hotter.coldGroups[0];
+    auto& coolGroup=d.virtualMemory.at(coolerHandle).coldGroups[0];
+    hotGroup.lastUse=now-std::chrono::seconds(4);
+    coolGroup.lastUse=now-std::chrono::seconds(3);
+    hotGroup.recoveryUseEpoch=coolGroup.recoveryUseEpoch=now-std::chrono::seconds(1);
+    hotGroup.recoveryUses=8;
+    coolGroup.recoveryUses=1;
+    VkDeviceMemory candidate{}; std::size_t child{};
+    require(selectColdCycleCandidate(d,8*MiB,now,candidate,child) &&
+            candidate==c.f.memory && child==0,
+            "recovery did not initially rank the hotter 2 MiB candidate first");
+
+    const auto viewsBefore=bufferSizes.size();
+    const auto destroyedBefore=destroyedMockBuffers;
+    const auto attemptedAt=std::chrono::steady_clock::now();
+    failAllocationSizes.insert(2*MiB);
+    require(!coldCyclePromoteLocked(d,c.f.memory,0,8*MiB) && allocations==1 &&
+            allocatedSizes.size()==1 && allocatedSizes[0]==2*MiB,
+            "hot recovery did not reach the injected size-specific device-memory OOM");
+    require(hotter.children[0]==hotBacking && hotter.childTypes[0]==1 &&
+            d.liveOther==3*MiB && d.liveLocal==0 && d.residentBytes==3*MiB &&
+            d.coldBytes==0 && d.coldLogicalBytes==0 && d.freezeCount==0 && d.restoreCount==0 &&
+            sparseBinds==0 && d.retainedWarmRecoveries.empty() && frees==0 &&
+            liveAllocations.count(hotBacking) && liveAllocations.count(coolerBacking) &&
+            bufferSizes.size()==viewsBefore && destroyedMockBuffers==destroyedBefore+1,
+            "safe recovery OOM changed backing/accounting, retained resources, bound aliases, or leaked its temporary view");
+    requireColdLogicalMatchesState(d,"safe recovery OOM changed logical cold accounting");
+
+    // Model expiry of the device-wide retry delay. The refused hot child must
+    // remain skipped so the smaller eligible child can make progress.
+    const auto retryAt=hotGroup.recoveryRetryAfter;
+    require(retryAt>=attemptedAt+std::chrono::seconds(1),
+            "safe allocation OOM did not assign a per-child retry deadline");
+    d.coldCycleBackoffUntil=std::chrono::steady_clock::time_point::min();
+    require(selectColdCycleCandidate(d,8*MiB,retryAt-std::chrono::nanoseconds(1),candidate,child) &&
+            candidate==coolerHandle && child==0,
+            "hot OOM candidate was not skipped before its retry deadline");
+    require(selectColdCycleCandidate(d,8*MiB,retryAt,candidate,child) &&
+            candidate==c.f.memory && child==0,
+            "hot OOM candidate did not become eligible at its retry deadline");
+
+    // Make the direct retry check deterministic without sleeping, then let the
+    // cooler candidate prove useful recovery work can proceed during that window.
+    hotGroup.recoveryRetryAfter=std::chrono::steady_clock::now()+std::chrono::hours(1);
+    const auto attemptsBeforeRetry=allocations;
+    require(!coldCyclePromoteLocked(d,c.f.memory,0,8*MiB) && allocations==attemptsBeforeRetry &&
+            bufferSizes.size()==viewsBefore && destroyedMockBuffers==destroyedBefore+1,
+            "direct recovery retried the OOM child before its per-child retry deadline");
+    hotGroup.recoveryRetryAfter=retryAt;
+    require(coldCyclePromoteLocked(d,coolerHandle,0,8*MiB),
+            "cooler candidate did not promote while the OOM child was deferred");
+    require(d.virtualMemory.at(coolerHandle).children[0] &&
+            d.virtualMemory.at(coolerHandle).children[0]!=coolerBacking &&
+            d.virtualMemory.at(coolerHandle).childTypes[0]==0 &&
+            d.liveOther==2*MiB && d.liveLocal==MiB && d.retainedWarmRecoveries.empty() &&
+            sparseBinds==2 && d.snapshot.copyCalls==1 && d.snapshot.copyBytes==MiB,
+            "cooler promotion did not commit its replacement and copy without retaining ambiguous resources");
+    require(selectColdCycleCandidate(d,8*MiB,retryAt,candidate,child) &&
+            candidate==c.f.memory && child==0,
+            "hot recovery candidate remained excluded after its retry deadline");
 }
 
 void checkRecoveryUseHeatSelectionAndDecay() {
@@ -3723,6 +3821,7 @@ int main() try {
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();
     checkColdCycleCandidatePrefersMostRecentEligible();
+    checkRecoveryAllocationOomFallsBackToSmallerCandidate();
     checkRecoveryUseHeatSelectionAndDecay();
     checkColdCycleCandidateZeroLiveOther();
     checkActiveWorkerDelayBounds();
