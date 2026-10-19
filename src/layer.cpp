@@ -3023,6 +3023,7 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     memory.bound=std::any_of(memory.children.begin(),memory.children.end(),[](VkDeviceMemory child){return child!=VK_NULL_HANDLE;});
     candidate.logicalBytes=logicalBytes; candidate.storedBytes=stored; candidate.cold=true;
     candidate.successfulFreezes=zvram::clean_cache::nextSuccessfulFreeze(group.successfulFreezes);
+    candidate.lastUse=group.lastUse;
     group=std::move(candidate);
     memory.cold=true; memory.coldStoredBytes+=group.accountedBytes(); memory.coldLogicalSize+=logicalBytes;
     d.coldBytes+=group.accountedBytes(); d.coldLogicalBytes+=logicalBytes; ++d.freezeCount;
@@ -3201,6 +3202,7 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
     releaseBackingChild(d,current,token.child);
     current.bound=std::any_of(current.children.begin(),current.children.end(),[](VkDeviceMemory value){return value!=VK_NULL_HANDLE;});
     candidate.successfulFreezes=zvram::clean_cache::nextSuccessfulFreeze(currentGroup.successfulFreezes);
+    candidate.lastUse=currentGroup.lastUse;
     currentGroup=std::move(candidate); current.cold=true;
     current.coldStoredBytes+=stored; current.coldLogicalSize+=rawSize;
     d.coldBytes+=stored; d.coldLogicalBytes+=rawSize; ++d.freezeCount;

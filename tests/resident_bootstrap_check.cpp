@@ -2591,6 +2591,50 @@ void checkAsyncSnapshotEncodingRoundTrip() {
             "async encoder accepted a child above its hard raw bound");
 }
 
+void checkFreezePreservesUseTimestamp() {
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        const auto used=std::chrono::steady_clock::now()-std::chrono::seconds(5);
+        m.coldGroups[0].lastUse=used;
+        require(freezeChildLocked(d,m,0)==VK_SUCCESS && m.coldGroups[0].cold &&
+                m.coldGroups[0].lastUse==used,
+                "synchronous freeze replaced the last-use timestamp");
+    }
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        d.asyncCompression=true; d.autoEnabled=true; d.coldBudget=2*MiB; d.residentLimitBytes=MiB/2;
+        m.childGenerations.assign(m.children.size(),1);
+        const auto used=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        m.coldGroups[0].lastUse=used;
+        std::unique_lock<std::mutex> deviceLock(d.mutex),queueLock(d.queueMutex);
+        require(freezeChildAsyncLocked(d,c.f.memory,0,deviceLock,queueLock) &&
+                m.coldGroups[0].cold && m.coldGroups[0].lastUse==used,
+                "asynchronous freeze replaced the last-use timestamp");
+    }
+#ifdef ZVRAM_TEST_ASYNC_HOOK
+    {
+        ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+        d.asyncCompression=true; d.autoEnabled=true; d.coldBudget=2*MiB; d.residentLimitBytes=MiB/2;
+        m.childGenerations.assign(m.children.size(),1);
+        const auto used=std::chrono::steady_clock::now()-std::chrono::seconds(3);
+        const auto touched=std::chrono::steady_clock::now();
+        m.coldGroups[0].lastUse=used;
+        struct TimestampUpdate { Device* device; VkDeviceMemory memory; std::chrono::steady_clock::time_point time; } update{
+            &d,c.f.memory,touched};
+        d.asyncEncodeTestHook=[](void* opaque) {
+            auto& state=*static_cast<TimestampUpdate*>(opaque);
+            std::lock_guard<std::mutex> lock(state.device->mutex);
+            markSubmittedUseTimes(*state.device,{{state.memory,0}},true,state.time);
+        };
+        d.asyncEncodeTestUserdata=&update;
+        std::unique_lock<std::mutex> deviceLock(d.mutex),queueLock(d.queueMutex);
+        require(freezeChildAsyncLocked(d,c.f.memory,0,deviceLock,queueLock) &&
+                m.coldGroups[0].cold && m.coldGroups[0].lastUse==touched,
+                "async freeze did not preserve the current timestamp changed during encoding");
+    }
+#endif
+}
+
 void checkAsyncEncoderReleasesBothGates() {
     std::mutex deviceMutex,queueMutex,signalMutex;
     std::condition_variable signal;
@@ -3321,6 +3365,7 @@ int main() try {
     checkDescriptorHeapRemainsUnmanaged();
     checkAsyncSnapshotTransactionDecisions();
     checkAsyncSnapshotEncodingRoundTrip();
+    checkFreezePreservesUseTimestamp();
     checkAsyncEncoderReleasesBothGates();
     checkNoActionCommandHooksStaySelective();
     checkCopyBufferToImage2TracksSourceRead();

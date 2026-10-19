@@ -37,3 +37,23 @@ Recent-first ranking committed as 5ee7321. Final cadence review passed (commit/f
 - No per-child completed-use frequency counter exists. writeEpoch/successfulFreezes/submission generation are not frequency metrics. MRU alone may refill with dormant data; consider a carefully defined freshness horizon, no arbitrary gate added yet.
 - Full-local-cap exchange needs special caution: residentBytes includes managed nonlocal bytes, liveLocal includes native allocations. A proposed freeze+promote exchange would be two commits with possible failure between them; not implemented. Audit evidence does not yet justify broad new policy.
 - No GPU work or owned test/build jobs remain after completion. Agents read-only except completed test edits. Historical dirty files preserved.
+
+## 14:36 UTC — bounded production GPU check
+- Fresh host: memory PSI avg10/60/300 all zero, MemAvailable 17,820,416 kB; RX7900XTX busy30%, VRAM23,092,690,944/25,753,026,560 bytes. Existing llama model server active, untouched. No games seen. Ran only existing small headless async live-cap fixture, no presentation/model/stress workload.
+- Normal production bee698c: vulkan-pressure-only-live-cap-async-regression PASS1.48s, all restored bytes matched, one32MiB freeze/restore, final resident/cold/cache/failures and driver live-local/nonlocal zero. Full log cadence-gpu.log. External20s timeout, no owned jobs left. Postcheck PSI averages still zero.
+- Worker CPU integration fixture in progress with auto_docs_update. Newly confirmed timestamp metadata bug: sync/async freeze replacement defaults lastUse to snapshot construction instead of preserving current application-use time. Tests first, then two explicit metadata copies; no production patch yet.
+
+## Review tracking
+- Draft PR14 https://github.com/nerdrx/zVram/pull/14 opened and attached; branch pushed through bee698c. CI may be pending; check once after next commit push.
+- Standing ten-hour work continues after user explicitly reiterated to keep going. Current root work: timestamp-preservation bug; auto_docs_update owns tests file (worker integration plus timestamp regressions). Other agents read-only audits complete.
+- Do not adopt proposed use-since-promotion latch without concrete sequence proof: cold groups are excluded from warm recovery until restored, so pressure freeze alone cannot immediately re-promote them. Bind/unknown conservative restoration without actual use may be a valid case, but must test first. No latch/frequency fields added.
+
+- PR14 initial CI runs 39270714532 and39270747117 pending at14:39UTC; no repeated polling needed until next change/checkpoint.
+
+## Timestamp regression work
+- Successful synchronous freeze reproducibly resets lastUse: timestamp-before.log records expected FAIL after successful snapshot.
+- Two source copies preserve group.lastUse immediately before sync/async candidate replacement; async uses current metadata after reacquiring locks, retaining reads accepted during encoding.
+- Final normal bootstrap PASS (timestamp-normal.log); normal layer rebuilt.
+- Initial build/reactivity-hooks bootstrap PASS (timestamp-hook.log) was NOT hook coverage: inspection of flags.make showed no macro, because CMake option enabled only layer target. Added conditional bootstrap target definition and rebuilding genuine hook-enabled harness. Do not count initial hook-directory PASS as concurrent-read proof.
+
+- Genuine hook-enabled bootstrap (`CXX_DEFINES = -DZVRAM_TEST_ASYNC_HOOK=1`) PASS0.01s, including read timestamp update during unlocked encode; timestamp-hook-enabled.log. Production hooks stay OFF. No GPU needed for metadata copy change.

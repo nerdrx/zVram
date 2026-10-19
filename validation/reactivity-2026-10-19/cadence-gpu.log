@@ -1,0 +1,58 @@
+UpdateCTestConfiguration  from :/home/nerdrx/Documents/ChatGPT/NX/zvram/build/layout/DartConfiguration.tcl
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/layout
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 61
+    Start 61: vulkan-pressure-only-live-cap-async-regression
+
+61: Test command: /usr/bin/python3.14 "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/layout/zvram-test-launcher.py" "--validate" "--isolate-layers" "--vulkan-virtual-mib" "128" "--vulkan-auto-idle-ms" "100" "--vulkan-cold-mib" "64" "--vulkan-selective-restore" "--vulkan-active-eviction" "--vulkan-range-mib" "32" "--vulkan-resident-mib" "96" "--vulkan-eviction-trigger" "pressure" "--vulkan-async-compression" "--" "/home/nerdrx/Documents/ChatGPT/NX/zvram/build/layout/zvram-vulkan-auto-check" "--pressure-only-live-cap-fixture"
+61: Working Directory: /home/nerdrx/Documents/ChatGPT/NX/zvram/build/layout
+61: Test timeout computed to be: 60
+61: [zvram] Vulkan snapshot transfer staging bytes=33554432
+61: [zvram] Vulkan snapshot decode max-workers=1
+61: [zvram] Vulkan snapshot lookahead staging bytes=33554432
+61: [zvram] automatic Vulkan snapshots enabled idle-ms=100 cold-budget=67108864
+61: [zvram] selective Vulkan restore enabled: tracked whole allocations; unknown commands and address shaders restore all
+61: [zvram] active Vulkan eviction enabled: completed resource epochs; whole allocations; unknown access blocks eviction
+61: [zvram] background range snapshot compression uses off-lock transactions max-raw-bytes=33554432
+61: [zvram] Vulkan range residency enabled chunk-bytes=33554432
+61: [zvram] Vulkan resident admission enabled limit-bytes=100663296
+61: [zvram] Vulkan eviction policy=lru
+61: [zvram] Vulkan snapshot minimum savings percent=0
+61: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) policy=allowed
+61: [zvram] virtual allocate bytes=67108864 heap-capacity=134217728
+61: [zvram] snapshot state event=bootstrap-bind resident=67108864 cold-logical=0 cold-stored=0 freezes=0 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=0 copy-bytes=0 copy-ns=0 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+61: [zvram] first unmanaged large buffer bytes=33554432 usage=0x3 flags=0x0 pnext-type=-1; native allocation remains outside recovery
+61: [zvram] async snapshot committed raw=33554432 stored=33554432
+61: [zvram] snapshot state event=async-freeze resident=33554432 cold-logical=33554432 cold-stored=33554432 freezes=1 restores=0 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=1 copy-bytes=33554432 copy-ns=6942353 decode-bytes=0 decode-ns=0 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=0 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+61: [zvram] snapshot app sparse bind batch count=1 unbind=0 view-release=1
+61: [zvram] snapshot state event=restore resident=67108864 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=67108864 copy-ns=12509109 decode-bytes=33554432 decode-ns=2942954 pipeline-prefetches=0 pipeline-restores=0 pipeline-wait-ns=30 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+61: [zvram] selective range restore selected-chunks=1 restored-chunks=1 cold-pools-left=0
+61: [zvram] snapshot pipeline prefetches=0 prepared-restores=1 wait-ns=30
+61: [zvram] virtual free bytes=67108864
+61: GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+61: resource-free-vkQueueSubmit-call samples=500 p50-us=2 p95-us=12 max-us=20421 cap-ack=1 freeze-delta=1
+61: live-cap pending-observed=0 stats-query-samples=1 stats-query-max-us=0
+61: PASS: idle private cap request settled one cold range; raised cap restored every byte
+61: [zvram] snapshot state event=destroy-cleanup resident=0 cold-logical=0 cold-stored=0 freezes=1 restores=1 failures=0 cache-stored=0 clean-reuses=0 cache-invalidations=0 copy-calls=2 copy-bytes=67108864 copy-ns=12509109 decode-bytes=33554432 decode-ns=2942954 pipeline-prefetches=0 pipeline-restores=1 pipeline-wait-ns=30 gpu-decode-calls=0 gpu-decode-bytes=0 gpu-decode-ns=0 gpu-decode-fallbacks=0
+61: [zvram] snapshot transfer profile copy-calls=2 copy-bytes=67108864 copy-ns=12509109 decode-bytes=33554432 decode-ns=2942954
+61: [zvram] device=AMD Radeon RX 7900 XTX (RADV NAVI31) live-local=0 peak-local=67108864 live-nonlocal=0 peak-nonlocal=33554432 allocation-failures=0
+1/1 Test #61: vulkan-pressure-only-live-cap-async-regression ...   Passed    1.48 sec
+
+The following tests passed:
+	vulkan-pressure-only-live-cap-async-regression
+
+100% tests passed out of 1
+
+Label Time Summary:
+async           =   1.48 sec*proc (1 test)
+hardware        =   1.48 sec*proc (1 test)
+live-control    =   1.48 sec*proc (1 test)
+pressure        =   1.48 sec*proc (1 test)
+vulkan          =   1.48 sec*proc (1 test)
+
+Total Test time (real) =   1.49 sec
