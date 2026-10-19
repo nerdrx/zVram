@@ -308,7 +308,7 @@ class ManagerWindow:
         ttk.Label(controls_tab, text="Blank uses the preset. Available memory and safety checks still apply.", style="CardMuted.TLabel", wraplength=290).grid(row=5, column=0, sticky="w")
         guard = ttk.Checkbutton(safety_tab, text="Ignore swap-growth guard", variable=self.swap_guard, style="Card.TCheckbutton")
         guard.grid(row=0, column=0, sticky="w", pady=(0, 6))
-        ttk.Label(safety_tab, text="The available-RAM safety floor stays active. Leave this override off unless you understand the memory pressure risk.", style="CardMuted.TLabel", wraplength=290).grid(row=1, column=0, sticky="w")
+        ttk.Label(safety_tab, text="This override changes only the swap-growth guard. The RAM floor is configured separately in the profile. Leave guards enabled unless you understand the memory pressure risk.", style="CardMuted.TLabel", wraplength=290).grid(row=1, column=0, sticky="w")
         self.field_widgets["ignore_swap_guard"] = guard
         actions = ttk.Frame(right, style="Panel.TFrame")
         actions.grid(row=3, column=0, sticky="ew", pady=(14, 0))

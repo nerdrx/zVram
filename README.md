@@ -78,7 +78,7 @@ running zVram app or create a launch profile.
 | **Controls** | Choose High, Normal, or Low priority, or enter an explicit resident limit in MiB. Choosing a preset clears the old custom limit. |
 | **Launch** | Edit a saved profile's command and launch mode. External launches keep these fields unavailable. |
 | **Details** | Inspect per-device caps, request acknowledgements, recovery policy, and endpoint diagnostics. |
-| **Safety** | Inspect the saved profile's swap-growth override. The available-RAM safety floor remains active. |
+| **Safety** | Inspect the saved profile's swap-growth override. The available-RAM safety floor is independently configured and enabled by default. |
 
 - **Apply live** sends a request to a capable running Vulkan device. **Pending**
   means the request has not settled; **Applied**, **Rejected**, and **Superseded**
