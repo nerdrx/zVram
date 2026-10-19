@@ -77,3 +77,12 @@ Recent-first ranking committed as 5ee7321. Final cadence review passed (commit/f
 - Source review passed: no arithmetic/lifecycle blocker. Failed-submit frequency increment gating reviewed in queueCall (only downstream success), not separately integration-fault-injected.
 - No latest-frequency GPU check yet; earlier cadence GPU pass is not proof of latest policy performance. Next: small fresh-health recovery integrity check, CI once exact pushed head, then review whether additional policy changes are justified. Do not add speculative heat-based eviction or arbitrary full-cap exchange.
 - All owned jobs finished; agents holding; unrelated historical files preserved.
+
+## 14:55 UTC — latest-policy GPU proof / release preparation
+- b74ac7f hook layer + auto fixture rebuilt from current source in build/reactivity-hooks. Production build/layout hooksOFF and all6 test API strings absent independently verified.
+- Fresh health frequency-gpu-health.json: RAM19,611,136kB available; PSI avg10/60=0, avg300=.02; GPU28%, ~2.77GB VRAMfree, two existing llama processes +ollama untouched, no games. Small headless native-recovery-BDA fixture PASS1.14s, fullbytes; 4MiB direct recovery, all final resident/cold/cache/failures and native driver live-local/nonlocal0. frequency-gpu-bda.log. Outer20s limit, no owned jobs remain. PSI avg10/60 still0 after.
+- b74ac7f CI39273003597/39273011439 pending at14:53; next sourceproof/version commit supersedes them. Avoid repeated polling.
+- Preparing verified checkpoint v0.4.29 under standing release authorization: VERSION bumped, accurate release-notes.md. No merge/tag/release/install yet. After push, require exact final-headCI success, then merge PR14 with match-head; tag actualmainmerge, verify Release+Build/publicarchive SHA/payload/hooksoff and sixAPIabsence, inspect install symlink before versioned publicpayload install. Do not call local artifacts published.
+- Ten-hour work continues after this checkpoint; no arbitrary extra patches needed. Existing userapps/settings untouched.
+
+- Release preparation package tests:5PASS0.180s.
