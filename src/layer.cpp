@@ -3614,15 +3614,21 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
     }
     return candidateMemory!=VK_NULL_HANDLE;
 }
+std::uint64_t activeWorkerDelayMilliseconds(std::uint64_t idleMilliseconds,bool madeProgress) {
+    // Yield between successful batches; retain the slower poll when work is blocked.
+    return std::max<std::uint64_t>(1,std::min<std::uint64_t>(idleMilliseconds,madeProgress?1:10));
+}
 } // namespace
 void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
     auto& d=*shared;
     std::unique_lock<std::mutex> lock(d.mutex);
+    bool madeProgress=false;
     while(!d.stopWorker.load()) {
         pollLiveControl(d);
         const auto deadline=d.activeEviction?
-            std::chrono::steady_clock::now()+std::chrono::milliseconds(std::min<std::uint64_t>(d.idleMilliseconds,10)):
+            std::chrono::steady_clock::now()+std::chrono::milliseconds(activeWorkerDelayMilliseconds(d.idleMilliseconds,madeProgress)):
             d.lastActivity+std::chrono::milliseconds(d.idleMilliseconds);
+        madeProgress=false;
         if(d.activeEviction) d.activity.wait_until(lock,deadline,[&]{return d.stopWorker.load();});
         else d.activity.wait_until(lock,deadline);
         if(d.stopWorker.load()) break;
@@ -3653,6 +3659,7 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
             queueLock.unlock(); continue;
         }
         if(d.pressureOnly) {
+            const auto freezesBefore=d.freezeCount;
             VkDeviceSize target{};
             if(residentAdmissionLimit(d,target)==VK_SUCCESS) {
                 const auto& live=d.liveControl.state;
@@ -3698,11 +3705,13 @@ void snapshotWorkerLoop(const std::shared_ptr<Device>& shared) {
                     std::size_t candidateChild{};
                     if(selectColdCycleCandidate(d,target,std::chrono::steady_clock::now(),
                                                 candidateMemory,candidateChild) &&
-                       coldCyclePromoteLocked(d,candidateMemory,candidateChild,target) &&
-                       d.pendingWarmRecovery.active)
-                        (void)finishPendingWarmRecoveryLocked(d,lock,queueLock);
+                       coldCyclePromoteLocked(d,candidateMemory,candidateChild,target)) {
+                        madeProgress=!d.pendingWarmRecovery.active ||
+                            finishPendingWarmRecoveryLocked(d,lock,queueLock);
+                    }
                 }
             }
+            madeProgress=madeProgress || d.freezeCount!=freezesBefore;
         } else {
             bool haveAsyncCandidate=false;
             VkDeviceMemory asyncMemory{}; std::size_t asyncChild{};

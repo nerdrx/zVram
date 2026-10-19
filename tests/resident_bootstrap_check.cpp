@@ -1431,6 +1431,21 @@ void checkColdCycleCandidateZeroLiveOther() {
             "zero tracked nonlocal bytes did not clear recovery candidate outputs");
 }
 
+void checkActiveWorkerDelayBounds() {
+    require(activeWorkerDelayMilliseconds(10,false)==10 &&
+            activeWorkerDelayMilliseconds(10,true)==1,
+            "active worker delay did not cap idle waits or shorten after progress");
+    require(activeWorkerDelayMilliseconds(5,false)==5 &&
+            activeWorkerDelayMilliseconds(5,true)==1,
+            "active worker delay changed the idle cadence below its cap");
+    require(activeWorkerDelayMilliseconds(0,false)==1 &&
+            activeWorkerDelayMilliseconds(0,true)==1,
+            "zero idle interval allowed a busy-spin worker cadence");
+    require(activeWorkerDelayMilliseconds(UINT64_MAX,false)==10 &&
+            activeWorkerDelayMilliseconds(UINT64_MAX,true)==1,
+            "large idle interval overflowed or bypassed the bounded active cadence");
+}
+
 PendingWarmRecovery pendingWarmRecoveryFor(ColdCycleFixture& c) {
     auto& m=c.f.state();
     PendingWarmRecovery pending{};
@@ -3324,6 +3339,7 @@ int main() try {
     checkColdCycleCandidateSkipsUnpromotableOldest();
     checkColdCycleCandidatePrefersMostRecentEligible();
     checkColdCycleCandidateZeroLiveOther();
+    checkActiveWorkerDelayBounds();
     checkWarmRecoveryFinalPlanFailureRetainsOwnership();
     checkWarmRecoveryVisibilityFailureRetainsOldBacking();
     checkWarmRecoveryFinalBatchMapsAllAliases();
