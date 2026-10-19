@@ -12,6 +12,16 @@
 #include <utility>
 #include <vector>
 
+inline bool knownResourceFreeCommandProc(const char* name) noexcept {
+    return name && (std::strcmp(name, "vkCmdSetLineStipple") == 0 ||
+                    std::strcmp(name, "vkCmdSetLineStippleKHR") == 0 ||
+                    std::strcmp(name, "vkCmdSetLineStippleEXT") == 0);
+}
+
+inline bool unknownCommandNeedsConservativeFallback(const char* name) noexcept {
+    return !knownResourceFreeCommandProc(name);
+}
+
 class VkSubmissionTracker {
 public:
     enum class ShaderKind { Unknown, Logical, PhysicalStorageBuffer };
