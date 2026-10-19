@@ -10,10 +10,14 @@ import time
 import unittest
 from unittest.mock import patch
 
-from zvram_manager import Manager, identity, owned_worker, write_json, discovered_processes
+from zvram_manager import (RAM_GUARD_CAN_DISABLE, Manager, identity, owned_worker,
+                           write_json, discovered_processes)
 
 
 class ManagerChecks(unittest.TestCase):
+    def test_ram_guard_disable_capability_is_advertised(self):
+        self.assertIs(RAM_GUARD_CAN_DISABLE, True)
+
     def test_failed_json_update_preserves_original_and_removes_temp(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'profiles.json'
@@ -149,6 +153,8 @@ class ManagerChecks(unittest.TestCase):
                     manager.save_profile(dict(name=name, command=["true"]))
             with self.assertRaises(ValueError):
                 manager.save_profile(dict(name="bad", command=["true"], resident_mib=0))
+            with self.assertRaises(ValueError):
+                manager.save_profile(dict(name="bad-floor", command=["true"], min_available_mib=-1))
             for value in ("false", 1, None):
                 with self.assertRaisesRegex(ValueError, "boolean"):
                     manager.save_profile(dict(name="bad", command=["true"], ignore_swap_guard=value))
@@ -163,6 +169,52 @@ class ManagerChecks(unittest.TestCase):
             self.assertEqual(command[-2:], ["app", "--literal"])
             high, highcap = manager.launch_command(dict(profile, priority="high"))
             self.assertGreater(highcap, cap)
+
+    def test_zero_ram_floor_disables_start_and_worker_guards(self):
+        with tempfile.TemporaryDirectory() as temp:
+            manager = Manager(temp)
+            saved = manager.save_profile(dict(name="zero-floor", command=["true"], min_available_mib=0))
+            self.assertEqual(saved["min_available_mib"], 0)
+            with patch("zvram_manager.memory_status", return_value={"mem_available_mib": 0, "swap_used_mib": 0}), \
+                 patch("zvram_manager.subprocess.Popen") as popen:
+                popen.return_value.pid = os.getpid()
+                manager.start("zero-floor")
+                popen.assert_called_once()
+            self.assertEqual(json.loads(manager.job_path("zero-floor").read_text())["min_available_mib"], 0)
+
+            profile = {"name": "zero-floor-worker", "command": ["ignored"],
+                       "min_available_mib": 0, "ignore_swap_guard": True}
+            write_json(manager.job_path(profile["name"]), {
+                "token": "zero-token", "identity": identity(os.getpid()), "profile": profile,
+                "command": profile["command"], "min_available_mib": 0,
+            })
+
+            class FakeChild:
+                pid = os.getpid()
+                returncode = 0
+
+                def __init__(self):
+                    self.poll_results = iter((None, 0, 0, 0))
+
+                def poll(self):
+                    return next(self.poll_results)
+
+                def wait(self, timeout=None):
+                    return self.returncode
+
+            fake_child = FakeChild()
+            previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+            try:
+                with patch("zvram_manager.memory_status", return_value={"mem_available_mib": 0, "swap_used_mib": 0}), \
+                     patch("zvram_manager.subprocess.Popen", return_value=fake_child), \
+                     patch("zvram_manager.time.sleep"):
+                    manager.worker(profile["name"], "zero-token")
+            finally:
+                for sig, handler in previous.items():
+                    signal.signal(sig, handler)
+            result = json.loads(manager.job_path(profile["name"]).read_text())
+            self.assertEqual(result["state"], "exited")
+            self.assertEqual(result["reason"], "Process exited (0)")
 
     def test_live_priority_session_ack_and_steam_preference(self):
         import zvram_control
