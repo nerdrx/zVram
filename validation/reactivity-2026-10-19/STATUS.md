@@ -153,3 +153,7 @@ Recent-first ranking committed as 5ee7321. Final cadence review passed (commit/f
 - Inspected0.4.29 symlink and absent0.4.30dir, copied exact publicpayload, bytecompared and atomically updated launcher; installed --version0.4.30. Release notes updated. Oldversions/userapps preserved.
 - Freshhealth: PSIall0, RAM19186492kB available, discreteGPU27%, ~2.69GBfree; existing2llama servers/ollama untouched, no games observed. Bounded installedpackage livecap PASSfullbytes, one32MiBfreeze/restore, finalresident/cold/cache/failures/driverlive0 (packaged-0430-live-cap.log). No latency/FPSclaim. Allownedjobscomplete.
 - New recoveryOOM fixture corrected to distinct matching appbindings; final normal/hook checks PASS, initial logs preserved. Production unchanged since full18CPU PASS6.31s. Preparing separate review commit; not in0.4.30.
+- Recovery OOM commitf9c706d pushed, PR16 https://github.com/nerdrx/zVram/pull/16 opened/attached. Await CI; VERSION still0.4.30 in this branch, must bump0.4.31 and validate finalhead before next release. Installed verified0.4.30. No owned jobs.
+
+## 16:55 UTC — next release preparation
+- PR16 f9c706d bothBuild39288101298/39288083092 SUCCESS. Prepared VERSION0.4.31/release-notes-0.4.31.md; runtime unchanged. Require final version commit CI before exact-head merge/tag. Installed0.4.30 remains verified.
