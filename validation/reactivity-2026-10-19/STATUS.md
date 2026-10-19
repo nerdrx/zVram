@@ -86,3 +86,40 @@ Recent-first ranking committed as 5ee7321. Final cadence review passed (commit/f
 - Ten-hour work continues after this checkpoint; no arbitrary extra patches needed. Existing userapps/settings untouched.
 
 - Release preparation package tests:5PASS0.180s.
+
+## 15:04 UTC — merged/tagged; publication in progress
+- Final099f8fb CI39273378286 and39273369361 bothSUCCESS. PR14 merged with exact-head match to main7894955a7ae710db78292eddb6ee9c33cafb837d; v0.4.29 tag pushed at that merge.
+- Release39274631502, tagBuild39274631578, mainBuild39274602495 in progress (pages39274601883 too). No publicartifact verification or install yet; current installed symlink still ../share/zvram/0.4.28/zvram, 0.4.29 versioneddir absent.
+- Next wait for CI, downloadpublicarchive, verify checksum/tagpayload/hooksOFF6APIsabsence/codecmanifest; update release notes from release-notes.md; install exact publicpayload into newversioneddir atomically, preserveoldversions/userapps. Root-only one small packagedlivecap after freshhealth ifsafe. No local owned jobs currently.
+
+## 15:08 UTC — v0.4.29 published and installed
+- Release39274631502, tagBuild39274631578, mainBuild39274602495 andpages39274601883 SUCCESS. Publicarchive SHA279e4d4e8cd383be387bb8597ad899bcf957edc4a1072acce882c40dc5249206; publiclib SHA45a1fe8597df3fb3434d8b8a3d51a0ab63be81a25a8390bd05079a66d5f728e5. published-payload.json verifies allchecksumassets, tagscripts/docs/assets, allcodecstrue/testhooksfalse, relative manifest andsixAPIsabsent. Accurate release notes uploaded.
+- Inspected oldsymlink0.4.28 and absent0.4.29dir; copied exact verified publicpayload to ~/.local/share/zvram/0.4.29, bytecompared allfiles, atomically changed launcher. Installed --version0.4.29. Preservedoldversions, apps/profiles/settings.
+- Fresh packaged-health.json: ~19GiB available, PSIavg10=0 (avg60=.16/.15,avg300=.35/.32), GPU25%,2.90GBfree; modelserversleftuntouched/no games. One bounded installed-public-artifact async live-cap fixture PASSfullbytes,1freeze/1restore, allfinal resident/cold/cache/failures/driverlive0 (packaged-live-cap.log). Measured maxsubmit10.436ms is not a latencyguarantee. No further unchanged hardware tests warranted.
+- Read-only mixed-budget audit found documented intentional conservatism in docs/VALIDATION.md: heap-derived target applies to total tracked backing, may over-evict nonlocal fallback. Do not change only worker predicate; coordinated alternativecontract would be needed. No concretebug found.
+- Allownedlocaljobscomplete/agentsholding. Runtimecheckpointshipped; ten-hour window stillactive until00:18:47UTC. Continue concrete CPUaudits/newissues, preserveevidence, do not inventpatches or claim gameimprovement. Current branchfeat/reactive-residency remains at099f8fb (merged PR14); origin/main+tag7894955. Create/rebase appropriate followupbranch only for justified newchanges.
+
+## 15:17 UTC — bounded pressure retry audit
+- Root inspecting pressure candidate retries; auto_safety_review owns read-only source audit and auto_docs_update owns read-only deterministic CPU fixture design. No edits/build/GPU authorized to agents in this pass.
+- Hypothesis only: global submission generation can re-enable an oldest cold-budget-refused candidate after unrelated submissions, potentially delaying another candidate that fits. Must reproduce before changing retry semantics; no confirmed bug or new runtime patch yet.
+- v0.4.29 remains shipped/installed. No owned test processes started; historical dirty evidence preserved.
+
+## 15:26 UTC — pressure retry fix under test
+- Branch fix/pressure-budget-retry created from origin/main7894955; all existing dirt retained. Root extracted unchanged pressure selector into selectPressureCandidate so a deterministic regression can exercise production selection.
+- Both read-only audits confirmed reachable starvation: unrelated accepted submissions invalidate the oldest child's quota refusal, so it can repeatedly beat a smaller fitting sibling. auto_docs_update owns test source/build-before failure proof; root owns production source.
+- Planned fix: invalidate per-child quota refusal on accepted writes (unknown writes invalidate all), retain coldBudgetGeneration for newly freed quota. Avoid using writeEpoch as refusal token: it only advances in async mode and saturates. Existing activity wake remains global. No behavioral patch yet; no GPU work.
+
+## 15:31 UTC — reproduced retry starvation; patch pending validation
+- Correctly registered deterministic CPU regression failed on original retry behavior: actual 1MiB snapshot exceeds512KiB quota, unrelated generation increment makes it win over a256KiB candidate. budget-retry-before.log records expected failure. Initial unregistered PASS preserved in budget-retry-initial-unregistered.log; corrected fixture explicitly asserts oldest/younger ordering.
+- Root removed global submission generation from cold quota refusal validity. Accepted writes now clear refusal only for touched children; unknown writes clear all. Cold-budget generation still invalidates refusals when quota changes; async token epochs remain conditional on async mode. Selector extraction preserves LRU/busy checks.
+- auto_docs_update owns regression guards and normal/hook bootstrap builds; auto_safety_review reviews production diff. Do not ship until final tests/review complete. No GPU jobs started.
+- Review found no semantic blocker, but noted extra submit parsing for sync-only devices. Added conservative Device budgetRefusalsSeen latch, set by both actual quota refusal paths, so sync-only devices skip this parsing until their first refusal. No per-submit full-child scan or counter bookkeeping. Agent tests must set latch when manually modeling a refusal; actual-refusal regression establishes it through production. Agent now completing normal/hook CPU checks.
+
+## 15:36 UTC — normal regression passed
+- Final normal bootstrap passes budget-retry-normal.log: actual quota refusal, smaller candidate progresses despite unrelated submission generation, quota change permits retry, read/empty/unrelated writes preserve block, own/unknown writes invalidate correctly, sync/async/saturated epochs covered.
+- Fixture required exact uint32_t, const VkSubmitInfo*, VkFence types to select typed queueMemoryAccess rather than generic unknown fallback; initial fixture failures are not production failures. Hook bootstrap currently building under auto_docs_update; root waits before production build/full CPU suite. Final source review found no blocker.
+- README now states current per-child refusal invalidation; historical VALIDATION measurements left historical. No GPU/release/install in this pass.
+
+## 15:39 UTC — retry fix validated, preparing review
+- Normal and hook-enabled bootstrap PASS (budget-retry-normal.log, budget-retry-hook-enabled.log). Root rebuilt authoritative build/layout production layer; full18 CPU/submission tests PASS7.82s (budget-retry-build.log, budget-retry-cpu.log). Final readonly source review: no blocker.
+- VERSION prepared0.4.30 with release-notes-0.4.30.md; no release/install yet. Next commit/push PR and exact-head CI, then versioned publication/package verification. Installed remains0.4.29. No owned local jobs left, no new GPU tests run.

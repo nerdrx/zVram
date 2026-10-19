@@ -1619,6 +1619,149 @@ void checkActiveSnapshotWorkerDrainsPressureAndStops() {
             "active snapshot worker failed to drain eligible pressure backlog, preserve a busy child, or stop");
 }
 
+void checkPressureBudgetRetryIgnoresUnrelatedSubmissions() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& older=c.f.state();
+    d.minSavingsPercent=100; // Keep the 1 MiB snapshot raw and above the cold quota.
+    d.coldBudget=MiB/2;
+
+    const auto youngerHandle=tokenHandle<VkDeviceMemory>(0xc931);
+    auto younger=older;
+    younger.children[0]=tokenHandle<VkDeviceMemory>(0xc932);
+    younger.childSizes[0]=MiB/4;
+    younger.childTypes[0]=1;
+    younger.poolViews[0]=tokenHandle<VkBuffer>(0xc933);
+    younger.poolViewMemoryTypeBits[0]=3;
+    younger.backingMemoryTypeBits=3;
+    younger.bindings[0].buffer=tokenHandle<VkBuffer>(0xc934);
+    younger.bindings[0].size=MiB/4;
+    younger.residentBytes=MiB/4;
+    younger.coldGroups[0].lastUse+=std::chrono::seconds(1);
+    require(older.coldGroups[0].lastUse<younger.coldGroups[0].lastUse,
+            "pressure retry fixture does not rank the refusing child oldest");
+    bufferSizes[younger.poolViews[0]]=MiB/4;
+    bufferSizes[younger.bindings[0].buffer]=MiB/4;
+    liveAllocations.insert(younger.children[0]);
+    d.virtualMemory.emplace(youngerHandle,std::move(younger));
+    d.liveOther+=MiB/4; d.residentBytes+=MiB/4;
+
+    require(freezeChildLocked(d,older,0)==VK_ERROR_OUT_OF_DEVICE_MEMORY &&
+            older.coldGroups[0].budgetBlocked &&
+            older.coldGroups[0].failedBudgetGeneration==d.coldBudgetGeneration,
+            "oversized oldest child did not establish a real cold-quota refusal");
+
+    VkDeviceMemory candidate{}; std::size_t child{};
+    require(selectPressureCandidate(d,candidate,child) && candidate==youngerHandle && child==0,
+            "same-generation budget refusal did not let the smaller child proceed");
+
+    // A successful submission from unrelated application work must not release
+    // this candidate's quota refusal and repeatedly put it ahead of the fit child.
+    ++d.gpuSubmissionGeneration;
+    require(selectPressureCandidate(d,candidate,child) && candidate==youngerHandle && child==0,
+            "unrelated successful submission retried the oldest refused child ahead of a fitting child");
+
+    ++d.coldBudgetGeneration;
+    require(selectPressureCandidate(d,candidate,child) && candidate==c.f.memory && child==0,
+            "cold-quota generation change did not make the refused child retryable");
+    require(freezeChildLocked(d,older,0)==VK_ERROR_OUT_OF_DEVICE_MEMORY &&
+            older.coldGroups[0].budgetBlocked &&
+            older.coldGroups[0].failedBudgetGeneration==d.coldBudgetGeneration,
+            "quota-generation retry did not record the renewed cold-quota refusal");
+
+    auto& smaller=d.virtualMemory.at(youngerHandle);
+    require(selectPressureCandidate(d,candidate,child) && candidate==youngerHandle && child==0,
+            "renewed same-generation refusal did not allow smaller child to proceed");
+    require(freezeChildLocked(d,smaller,0)==VK_SUCCESS && smaller.coldGroups[0].cold &&
+            d.coldLogicalBytes==MiB/4,
+            "smaller child did not fit the remaining cold quota after the older refusal");
+}
+
+void checkPressureBudgetBlockWriteInvalidation() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
+    d.selectiveRestore=true; d.narrowDescriptorRanges=true;
+    d.budgetRefusalsSeen=true;
+    const auto priorUnknown=unknownCommandProc.exchange(false);
+    m.children.push_back(tokenHandle<VkDeviceMemory>(0xc941));
+    m.childSizes.push_back(MiB); m.childTypes.push_back(1); m.childGenerations.push_back(1);
+    m.coldGroups.emplace_back(); m.poolViews.push_back(tokenHandle<VkBuffer>(0xc942));
+    m.poolViewMemoryTypeBits.push_back(3); m.backingMemoryTypeBits=3;
+    const auto first=m.bindings[0].buffer;
+    const auto second=tokenHandle<VkBuffer>(0xc943);
+    m.bindings.push_back({second,MiB,MiB,1});
+    for(const auto buffer:{first,second}) {
+        PromotedBuffer promoted{}; promoted.size=MiB; promoted.memory=c.f.memory;
+        d.promotedBuffers[buffer]=promoted;
+    }
+
+    struct AccessResult { bool known; std::size_t writes; };
+    auto accepted=[&](VkBuffer buffer,bool writes,const void* pNext=nullptr) {
+        const auto command=tokenHandle<VkCommandBuffer>(nextHandle++);
+        VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        allocate.commandPool=tokenHandle<VkCommandPool>(0xc944); allocate.commandBufferCount=1;
+        d.submission.allocateCommands(&allocate,&command);
+        d.submission.beginCommand(command);
+        d.submission.bufferRange(command,buffer,0,MiB,writes);
+        std::vector<VkSubmissionTracker::BufferRange> ranges; const char* reason=nullptr;
+        require(d.submission.collectRanges(1,&command,ranges,&reason),
+                reason?reason:"pressure retry command ranges were not tracked");
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.pNext=pNext; submit.commandBufferCount=1; submit.pCommandBuffers=&command;
+        std::vector<ActiveRefs::Use> writeUses;
+        const auto* submitInfo=static_cast<const VkSubmitInfo*>(&submit);
+        const auto knownAccess=queueMemoryAccess(d,"vkQueueSubmit",writeUses,true,
+            std::uint32_t{1},submitInfo,VkFence{});
+        bumpAcceptedWriteEpochs(d,"vkQueueSubmit",std::uint32_t{1},submitInfo,VkFence{});
+        return AccessResult{knownAccess,writeUses.size()};
+    };
+
+    auto& firstGroup=m.coldGroups[0]; auto& secondGroup=m.coldGroups[1];
+    firstGroup.budgetBlocked=secondGroup.budgetBlocked=true;
+    firstGroup.failedBudgetGeneration=secondGroup.failedBudgetGeneration=d.coldBudgetGeneration;
+    firstGroup.writeEpoch=7;
+    d.reportedAccessFallback=false;
+    const auto read=accepted(first,false); // Known read only.
+    require(read.known,"read-only accepted access became unknown");
+    require(read.writes==0,"read-only access was classified as a write");
+    require(firstGroup.budgetBlocked && secondGroup.budgetBlocked,
+            "read-only accepted work cleared a cold-quota refusal");
+
+    VkSubmitInfo empty{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    const auto* emptyInfo=static_cast<const VkSubmitInfo*>(&empty);
+    bumpAcceptedWriteEpochs(d,"vkQueueSubmit",std::uint32_t{1},emptyInfo,VkFence{});
+    require(firstGroup.budgetBlocked && secondGroup.budgetBlocked,
+            "known empty accepted work cleared a cold-quota refusal");
+
+    const auto otherWrite=accepted(second,true); // A write to another child must stay scoped.
+    require(otherWrite.known && otherWrite.writes==1 && firstGroup.budgetBlocked &&
+            !secondGroup.budgetBlocked && firstGroup.writeEpoch==7,
+            "accepted write to another child cleared the wrong quota refusal");
+
+    secondGroup.budgetBlocked=true;
+    const auto ownWrite=accepted(first,true); // Exact refused child.
+    require(ownWrite.known && ownWrite.writes==1 && !firstGroup.budgetBlocked &&
+            secondGroup.budgetBlocked && firstGroup.writeEpoch==7,
+            "sync-only accepted write did not clear only the matching quota refusal");
+
+    firstGroup.budgetBlocked=secondGroup.budgetBlocked=true;
+    unknownCommandProc.store(true);
+    const auto unknown=accepted(first,true);
+    unknownCommandProc.store(false);
+    require(!unknown.known && !firstGroup.budgetBlocked && !secondGroup.budgetBlocked,
+            "unknown accepted access did not conservatively clear all quota refusals");
+
+    firstGroup.budgetBlocked=true; firstGroup.writeEpoch=19; d.asyncCompression=true;
+    const auto asyncOwnWrite=accepted(first,true);
+    require(asyncOwnWrite.known && asyncOwnWrite.writes==1 && !firstGroup.budgetBlocked &&
+            firstGroup.writeEpoch==20 && d.asyncCompression,
+            "async accepted write did not clear the refusal and advance its write epoch");
+
+    firstGroup.budgetBlocked=true; firstGroup.writeEpoch=UINT64_MAX;
+    const auto saturatedWrite=accepted(first,true);
+    require(saturatedWrite.known && saturatedWrite.writes==1 && !firstGroup.budgetBlocked &&
+            firstGroup.writeEpoch==UINT64_MAX && !d.asyncCompression,
+            "write-epoch saturation did not fail closed while clearing the quota refusal");
+    unknownCommandProc.store(priorUnknown);
+}
+
 PendingWarmRecovery pendingWarmRecoveryFor(ColdCycleFixture& c) {
     auto& m=c.f.state();
     PendingWarmRecovery pending{};
@@ -1951,7 +2094,6 @@ void checkColdCycleIgnoresSnapshotBudgetBlock() {
     d.coldCycleQuietMilliseconds=0; d.coldBudget=0;
     auto& group=m.coldGroups[0]; group.budgetBlocked=true;
     group.failedBudgetGeneration=d.coldBudgetGeneration;
-    group.failedBudgetSubmissionGeneration=d.gpuSubmissionGeneration;
     require(coldCyclePromoteLocked(d,c.f.memory,0,2*MiB) && m.childTypes[0]==0 &&
             d.coldBytes==0 && d.coldLogicalBytes==0 && d.freezeCount==0 && d.restoreCount==0,
             "snapshot-quota block incorrectly prevented direct recovery copy");
@@ -3585,6 +3727,8 @@ int main() try {
     checkColdCycleCandidateZeroLiveOther();
     checkActiveWorkerDelayBounds();
     checkActiveSnapshotWorkerDrainsPressureAndStops();
+    checkPressureBudgetRetryIgnoresUnrelatedSubmissions();
+    checkPressureBudgetBlockWriteInvalidation();
     checkWarmRecoveryFinalPlanFailureRetainsOwnership();
     checkWarmRecoveryVisibilityFailureRetainsOldBacking();
     checkWarmRecoveryFinalBatchMapsAllAliases();
