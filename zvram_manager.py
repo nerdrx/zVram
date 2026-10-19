@@ -14,6 +14,7 @@ import uuid
 
 ROOT = Path(__file__).resolve().parent
 PRIORITIES = {"high": 0.85, "normal": 0.5, "low": 0.25}
+RAM_GUARD_CAN_DISABLE = True
 
 
 def private_directory(path):
@@ -363,8 +364,10 @@ class Manager:
             raise ValueError("Command must be a nonempty argument list")
         for key in ("resident_mib", "cold_mib", "min_available_mib", "max_swap_growth_mib"):
             value = profile.get(key)
-            if value is not None and (type(value) is not int or not 0 < value <= 1048576):
-                raise ValueError(key + " must be positive MiB, at most 1048576")
+            minimum = 0 if key == "min_available_mib" else 1
+            if value is not None and (type(value) is not int or value < minimum or value > 1048576):
+                qualifier = "nonnegative" if key == "min_available_mib" else "positive"
+                raise ValueError(key + f" must be {qualifier} MiB, at most 1048576")
         if type(profile.get("ignore_swap_guard", False)) is not bool:
             raise ValueError("ignore_swap_guard must be a boolean")
         env = profile.get("env", {})
