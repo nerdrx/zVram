@@ -15,7 +15,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ROOT = Path(__file__).resolve().parent
+_MODULE_DIR = Path(__file__).resolve().parent
+ROOT = (_MODULE_DIR.parents[1] if _MODULE_DIR.parent.name == "src" and _MODULE_DIR.name == "python"
+        else _MODULE_DIR)
 DEFAULT_SERVER = ROOT / 'build/third-party/llama-vulkan-build/bin/llama-server'
 _OLLAMA_MODEL_LAYER = 'application/vnd.ollama.image.model'
 _OLLAMA_PROJECTOR_LAYER = 'application/vnd.ollama.image.projector'

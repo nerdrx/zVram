@@ -41,7 +41,10 @@ def package(build_dir, output, version):
         stage = Path(temp)
         app = stage / "usr/share/zvram" / version
         app.mkdir(parents=True)
-        for name in ("zvram", "zvram_manager.py", "zvram_control.py", "zvram_model.py", "zvram_ui.py", "LICENSE", "README.md"):
+        shutil.copyfile(ROOT / "zvram", app / "zvram")
+        for name in ("zvram_manager.py", "zvram_control.py", "zvram_model.py", "zvram_ui.py"):
+            shutil.copyfile(ROOT / "src/python" / name, app / name)
+        for name in ("LICENSE", "README.md"):
             shutil.copyfile(ROOT / name, app / name)
         (app / "zvram").chmod(0o755)
         (app / "VERSION").write_text(version + "\n")

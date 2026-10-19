@@ -12,7 +12,9 @@ import sys
 import time
 import uuid
 
-ROOT = Path(__file__).resolve().parent
+_MODULE_DIR = Path(__file__).resolve().parent
+ROOT = (_MODULE_DIR.parents[1] if _MODULE_DIR.parent.name == "src" and _MODULE_DIR.name == "python"
+        else _MODULE_DIR)
 PRIORITIES = {"high": 0.85, "normal": 0.5, "low": 0.25}
 RAM_GUARD_CAN_DISABLE = True
 

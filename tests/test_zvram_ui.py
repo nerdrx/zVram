@@ -1,4 +1,5 @@
 """Small UI checks; --gui exercises actual Tk widgets on an isolated display."""
+from _bootstrap import ROOT
 import sys
 from zvram_ui import profile_from_fields, command_text, system_status, profile_details, table_state, usage_mib, total_gpu_usage_mib
 
@@ -433,8 +434,10 @@ def check_tui():
         script = ("import curses,json; from test_zvram_ui import FakeManager; "
                   "from zvram_ui import _tui; m=FakeManager(); curses.wrapper(_tui,m); "
                   "json.dump([m.profiles,m.calls],open(%r,'w'))" % result)
+        python_path = os.pathsep.join((str(ROOT / "tests"), str(ROOT / "src/python"),
+                                      str(ROOT / "tools"), str(ROOT), os.environ.get("PYTHONPATH", "")))
         child = subprocess.Popen([sys.executable, "-c", script], stdin=slave, stdout=slave, stderr=slave,
-                                 env=dict(os.environ, TERM="xterm-256color"))
+                                 env=dict(os.environ, TERM="xterm-256color", PYTHONPATH=python_path))
         os.close(slave)
         output = bytearray()
         output_cursor = 0

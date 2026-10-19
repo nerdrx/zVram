@@ -378,7 +378,7 @@ def run_interactive(label, command, env, output_dir, timeout, automatic,
 
 
 def main():
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--model", required=True, type=Path)

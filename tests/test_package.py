@@ -1,4 +1,5 @@
 """Verify package relocation, versioned backend files, and checksum sidecar."""
+from _bootstrap import ROOT
 import hashlib
 import json
 import os

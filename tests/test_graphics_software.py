@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate the offscreen graphics fixture using an explicitly selected CPU ICD."""
+from _bootstrap import ROOT
 import argparse
 import os
 from pathlib import Path

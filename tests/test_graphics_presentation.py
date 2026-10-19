@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Bounded hidden Gamescope presentation correctness gate, not a game benchmark."""
+from _bootstrap import ROOT
 import argparse
 import hashlib
 import json
@@ -51,7 +52,7 @@ def main():
     if args.cpu and not args.native:
         parser.error("CPU control requires --native; this does not validate zVram paging")
     binary, icd = args.binary.resolve(strict=True), args.icd.resolve(strict=True)
-    root = Path(__file__).resolve().parent
+    root = ROOT
     env = os.environ.copy()
     for key in ("LD_PRELOAD", "VK_INSTANCE_LAYERS", "VK_ICD_FILENAMES", "VK_ADD_DRIVER_FILES",
                 "VK_LAYER_PATH", "VK_ADD_LAYER_PATH", "VK_LOADER_LAYERS_ENABLE", "DRI_PRIME"):

@@ -31,16 +31,16 @@ The kernel exposes cgroup-v2 `dmem.max`, `dmem.current`, and `dmem.capacity` for
 
 The AMDGPU debugfs `amdgpu_evict_vram` file evicts all buffers from the VRAM pool. It is useful for driver debugging, but too broad to use as an application-level pressure API. No generic userspace per-BO request to swap a Vulkan allocation was identified in this review. [AMDGPU DebugFS](https://docs.kernel.org/next/gpu/amdgpu/debugfs.html#amdgpu-evict-vram)
 
-[`dmem_probe.py`](dmem_probe.py) provides the next bounded experiment:
+[`tools/dmem_probe.py`](../tools/dmem_probe.py) provides the next bounded experiment:
 
 ```sh
-python3 dmem_probe.py --inspect
-sudo python3 dmem_probe.py --run
+python3 tools/dmem_probe.py --inspect
+sudo python3 tools/dmem_probe.py --run
 ```
 
 `--run` requires the root cgroup to already expose and enable `dmem` and `memory`. It creates a unique child cgroup, sets a 16 MiB VRAM limit by default (configurable from 1 to 256 MiB), a 512 MiB memory limit, and a 256 MiB swap limit, then runs the 64 MiB capacity integrity check by default. The child drops to the invoking sudo user; a 30-second timeout kills only that child cgroup/process group, and cleanup removes the temporary cgroup. It does not alter global swap, TTM parameters, or other cgroups.
 
-The first privileged run passed full upload/readback of 64 MiB under a 16 MiB VRAM limit. Its child used no swap. This establishes scoped reclaim with preserved data, not compressed GPU backing. [Raw result](validation/dmem-scoped-first-run.txt). The probe reports cgroup `dmem.current`, memory, and swap peaks plus integrity. Establishing TTM shmem swapout or zram compression would require correlated driver evidence of BO placement and swap activity.
+The first privileged run passed full upload/readback of 64 MiB under a 16 MiB VRAM limit. Its child used no swap. This establishes scoped reclaim with preserved data, not compressed GPU backing. [Raw result](../validation/dmem-scoped-first-run.txt). The probe reports cgroup `dmem.current`, memory, and swap peaks plus integrity. Establishing TTM shmem swapout or zram compression would require correlated driver evidence of BO placement and swap activity.
 
 The helper requires a working `cgroup.kill` before launching a child, so detached descendants are covered by timeout cleanup. Temporary names include a random suffix to avoid PID-namespace collisions. The validated run used an ephemeral helper through existing local Docker administrative access, with network disabled and the GPU workload dropped to the original unprivileged user; no persistent service or global controller setting was changed.
 
@@ -55,7 +55,7 @@ The HIP `--hip-report-capacity` option is separate from Linux TTM paging: it cha
 The same helper accepts an explicit command after `--`, executed as the original unprivileged sudo user without a shell. `--gpu-limit-mib`, `--memory-high-mib`, `--memory-max-mib`, `--swap-max-mib`, and `--timeout-sec` set only that temporary child cgroup. Timeout is bounded to 300 seconds. With multiple AMD GPU regions, arbitrary commands require an exact `--dmem-region` token from `--inspect`; the built-in check retains its largest-region selection. SIGINT, SIGTERM, and SIGHUP trigger scoped cleanup.
 
 ```sh
-sudo python3 dmem_probe.py --run --dmem-region drm/0000:03:00.0/vram \
+sudo python3 tools/dmem_probe.py --run --dmem-region drm/0000:03:00.0/vram \
   --gpu-limit-mib 16 --memory-high-mib 384 --memory-max-mib 512 \
   --swap-max-mib 256 --timeout-sec 30 -- /path/to/application arguments
 ```

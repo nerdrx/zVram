@@ -1,4 +1,5 @@
 """CPU integration checks: literal argv, owned stop, stale PID and RAM guard."""
+from _bootstrap import ROOT
 import json
 import os
 import signal
@@ -35,7 +36,7 @@ class ManagerChecks(unittest.TestCase):
     def test_run_rejects_empty_command_after_separator(self):
         with tempfile.TemporaryDirectory() as temporary:
             result = subprocess.run(
-                [sys.executable, str(Path(__file__).with_name('zvram')), 'run', '--', '--'],
+                [sys.executable, str(ROOT / 'zvram'), 'run', '--', '--'],
                 env=os.environ | {'ZVRAM_MANAGER_HOME': temporary,
                                   'ZVRAM_CONTROL_DIR': str(Path(temporary) / 'control')},
                 capture_output=True, text=True, timeout=5)
@@ -76,7 +77,7 @@ class ManagerChecks(unittest.TestCase):
     def test_external_launcher_visible_without_ownership(self):
         with tempfile.TemporaryDirectory() as temp:
             manager = Manager(temp)
-            wrapped = subprocess.Popen([str(Path(__file__).parent / 'zvram'), '--', sys.executable,
+            wrapped = subprocess.Popen([str(ROOT / 'zvram'), '--', sys.executable,
                                         '-c', 'import time; time.sleep(60)'])
             unrelated = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
             try:

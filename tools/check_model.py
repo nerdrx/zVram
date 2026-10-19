@@ -174,7 +174,7 @@ def inspect_vmm_summary(text):
 
 
 def main():
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parents[1]
     parser = parser_for_script()
     args = parser.parse_args()
     try:

@@ -5,5 +5,5 @@ import sys
 
 build = Path(__file__).resolve().parent
 source = build / "zvram-test-source"
-os.environ['PYTHONPATH'] = r"@CMAKE_CURRENT_SOURCE_DIR@" + os.pathsep + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = r"@CMAKE_CURRENT_SOURCE_DIR@/src/python" + os.pathsep + os.environ.get('PYTHONPATH', '')
 os.execv(sys.executable, [sys.executable, str(source), "--no-live-control", "--build-dir", str(build), *sys.argv[1:]])

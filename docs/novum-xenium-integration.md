@@ -8,7 +8,7 @@ management GUI in Novum; the two projects share styling, not their UI lifetime.
 
 ## Current bridge
 
-`zvram_model.py` reads the desktop checkout and port from
+`src/python/zvram_model.py` reads the desktop checkout and port from
 `~/.config/dev.novum.xenium/config.json`. `discover_models(checkout)` resolves
 GGUF model blobs and their paired projector blobs from each Ollama manifest.
 When a selected model blob has one valid projector in its own manifest,
@@ -27,7 +27,7 @@ Build the server if absent:
 
 ```sh
 cmake --build build/third-party/llama-vulkan-build --target llama-server -j 4
-python3 zvram_model.py list
+python3 src/python/zvram_model.py list
 ```
 
 `build_server_command(path, alias, ...)` returns `(argv, environment)` for a
@@ -97,4 +97,4 @@ Runtime priority changes may require restarting an owned model server. Label
 that behavior clearly and preserve chat history. Show memory limits as zVram
 eligible allocation budgets, not reserved physical VRAM.
 
-CPU-only bridge checks: `python3 -m unittest -v test_zvram_model.py`.
+CPU-only bridge checks: `PYTHONPATH=src/python python3 -m unittest discover -s tests -p test_zvram_model.py`.

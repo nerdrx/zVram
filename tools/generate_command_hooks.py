@@ -7,6 +7,8 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+
 EXCLUDED = {
     "vkCmdPipelineBarrier", "vkCmdWaitEvents",
     "vkCmdPipelineBarrier2", "vkCmdPipelineBarrier2KHR",
@@ -266,7 +268,7 @@ def generate(registry):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("registry", help="path to Vulkan vk.xml")
-    parser.add_argument("output", nargs="?", default="command_hooks.inc")
+    parser.add_argument("output", nargs="?", default=str(ROOT / "src/command_hooks.inc"))
     parser.add_argument("--check", action="store_true", help="fail if output is stale")
     parser.add_argument("--selfcheck", action="store_true", help="check required action coverage")
     args = parser.parse_args()

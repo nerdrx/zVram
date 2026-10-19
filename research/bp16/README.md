@@ -42,7 +42,7 @@ Compile the reusable smoke host outside the repository build tree, then run
 only structural CPU preflight with:
 
 ```sh
-c++ -std=c++17 -I. research/gdeflate/vulkan_gdeflate_smoke.cpp \
+c++ -std=c++17 -I. -Isrc research/gdeflate/vulkan_gdeflate_smoke.cpp \
   -lvulkan -o /tmp/zvram-gdeflate-bp16-host
 /tmp/zvram-gdeflate-bp16-host --codec bp16 --preflight-only \
   research/bp16/decode.spv \
@@ -155,7 +155,7 @@ The layer reports `GPU BP16 imported input imports=N reuses=N bytes=N`; these
 are cumulative successful-use counters, not current RAM usage. GPU completion
 errors retain potentially in-flight owners and disable further restoration.
 This path does not guarantee driver pinning, universal Vulkan compatibility, or
-native inference speed. [Layer checks](../../VALIDATION.md#cached-bp16-imported-host-input).
+native inference speed. [Layer checks](../../docs/VALIDATION.md#cached-bp16-imported-host-input).
 
 A full InternLM2.5-20B F16 run with this mode preserved exact output and all
 49/49 layers, but took **166,980.73 ms** for 12 decode runs (**0.0718646
@@ -165,7 +165,7 @@ evidence, not a speed path. It recorded
 2,120 imports and 6,495 reuses covering **43,318,460,416 cumulative bytes**;
 those counts do not describe resident memory. Host input preparation was
 **9.62 ms**, while submit/wait was **121.59 s**. A possible driver BO-overhead
-explanation remains unproven. [Full-model result and limits](../../VALIDATION.md#cached-bp16-imported-host-input).
+explanation remains unproven. [Full-model result and limits](../../docs/VALIDATION.md#cached-bp16-imported-host-input).
 
 ### Imported-input per-submission cost component check
 
@@ -247,7 +247,7 @@ exact output and zero fallback. Sampled live cache stayed within its byte cap;
 14.19 GB is cumulative accepted-use traffic, not resident memory. This is
 numerically 13.8% above the prior 0.40653 run, but those sequential runs had
 unlocked clocks and different RAM conditions; it is not a controlled
-improvement claim. [Run summary and limits](../../VALIDATION.md#earlier-best-bp16-run-bounded-allocated-host-cache-32-workers).
+improvement claim. [Run summary and limits](../../docs/VALIDATION.md#earlier-best-bp16-run-bounded-allocated-host-cache-32-workers).
 
 A separate same-prompt 92-token native/allocated-host comparison produced
 identical stdout and 49/49 layers: native **1.6993468 tokens/s**, allocated
@@ -255,13 +255,13 @@ host **0.4397801 tokens/s**. The latter stayed within the 8 GiB live-cache
 limit; the cumulative byte counter is not resident memory. Runs were sequential
 with unlocked clocks and different RAM conditions, so this is not a controlled
 comparison. It is a long-run result, not a replacement for the best measured
-**0.61020197 tokens/s** result. [Comparison and archive](../../VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
+**0.61020197 tokens/s** result. [Comparison and archive](../../docs/VALIDATION.md#same-prompt-92-token-nativeallocated-host-comparison).
 
 A later child-only glibc 128 KiB mmap/trim-threshold run completed the same
 92-token output at **0.4652449 tokens/s**. The default-threshold retry stopped
 at the RAM floor, so this is not a controlled allocator-speed comparison. It
 remains separate from and below the best 12-token short-run result; the
-thresholds are not application defaults. [Tuned run and monitored baseline](../../VALIDATION.md#92-token-bp16-run-with-child-only-allocator-thresholds).
+thresholds are not application defaults. [Tuned run and monitored baseline](../../docs/VALIDATION.md#92-token-bp16-run-with-child-only-allocator-thresholds).
 
 The same thresholds were used in two short 12-token runs: normal upload reuse
 measured **0.5423239 tokens/s** and the cached-upload preference measured
@@ -275,7 +275,7 @@ tokens/s**) and one 92-token run (**0.5727251**). The latter used the same
 child-only allocator thresholds as the earlier 0.4652449 run and matched the
 native 92-token output. This sequential evidence does not isolate the encoder's
 effect. Both rates remain distinct from and below the **0.61020197** short-run
-best. [Run records and limits](../../VALIDATION.md#bmi2-bp16-model-run-follow-ups).
+best. [Run records and limits](../../docs/VALIDATION.md#bmi2-bp16-model-run-follow-ups).
 
 At source `23c05842cebf2fe3c7093191ba7f448626505d6e`, focused GPU checks passed
 8/8 in 7.30 s with the default budget and 8/8 in 7.08 s with the cache
@@ -310,13 +310,13 @@ compatible non-device-local type. It is off by default and has no effect unless
 BP16 host input is enabled. The full-model trial preserved exact output with no
 GPU fallback, but measured **0.3941293 tokens/s**, below the separate best
 **0.61020197 tokens/s** result. These sequential, uncontrolled runs do not show
-a speed improvement. [Run and correctness evidence](../../VALIDATION.md#bp16-cached-direct-host-upload-preference).
+a speed improvement. [Run and correctness evidence](../../docs/VALIDATION.md#bp16-cached-direct-host-upload-preference).
 
 A later allocated-host run with sampled profiling completed at **0.3967118
 tokens/s**, with the same exact output, 49/49 layers and zero fallback. The
 last sampled profile covered 8,304 calls, short of the final snapshot's 8,363
 GPU restores, so its phase totals are partial. It does not replace the best
-**0.61020197 tokens/s** result or prove a speed gain. [Run limits and archive](../../VALIDATION.md#bp16-allocated-host-run-with-sampled-profiling).
+**0.61020197 tokens/s** result or prove a speed gain. [Run limits and archive](../../docs/VALIDATION.md#bp16-allocated-host-run-with-sampled-profiling).
 
 The allocation-free profiling change passed the focused **8/8 GPU CTests**
 with GPU profiling and allocated-host input enabled. The logs show the marker

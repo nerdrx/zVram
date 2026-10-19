@@ -151,7 +151,9 @@ class ManagerWindow:
         self.read_only = False
         self.controls, self.field_widgets = {}, {}
         root.title("zVram Manager")
-        self.app_icon = tk.PhotoImage(master=root, file=str(Path(__file__).resolve().parent / "assets/icon.png"))
+        module_dir = Path(__file__).resolve().parent
+        root_dir = module_dir.parents[1] if module_dir.parent.name == "src" and module_dir.name == "python" else module_dir
+        self.app_icon = tk.PhotoImage(master=root, file=str(root_dir / "assets/icon.png"))
         self.header_icon = self.app_icon.subsample(3, 3)
         root.iconphoto(True, self.app_icon)
         root.minsize(1000, 800)

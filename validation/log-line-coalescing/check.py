@@ -112,7 +112,7 @@ int main(int argc,char** argv) {{
 
 
 def main():
-    source = (ROOT / "layer.cpp").read_text()
+    source = (ROOT / "src/layer.cpp").read_text()
     actual, buffer_bytes, prefix = extract_logf(source)
     harness = build_harness(actual, buffer_bytes, prefix)
     with tempfile.TemporaryDirectory(prefix="zvram-log-coalescing-") as temp:

@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SOURCE = (ROOT / "layer.cpp").read_text()
+SOURCE = (ROOT / "src/layer.cpp").read_text()
 START = SOURCE.index("VkResult residentAdmissionLimit(Device& d,VkDeviceSize& limit) {")
 OPEN = SOURCE.index("{", START)
 depth = 0
@@ -80,7 +80,7 @@ int main(int argc,char** argv) {
 with tempfile.TemporaryDirectory() as td:
     cpp, exe = pathlib.Path(td) / "profile.cpp", pathlib.Path(td) / "profile"
     cpp.write_text(HARNESS.replace("#include \"resident_budget.hpp\"",
-                                   f'#include "{ROOT / "resident_budget.hpp"}"'))
+                                   f'#include "{ROOT / "src/resident_budget.hpp"}"'))
     subprocess.run(["c++", "-O2", "-std=c++17", str(cpp), "-o", str(exe)], check=True)
     for count in (3072, 100000):
         subprocess.run([str(exe), str(count)], check=True)

@@ -1,4 +1,5 @@
 """CPU protocol checks; fake endpoints never control an unrelated process."""
+from _bootstrap import ROOT
 import os
 import json
 import subprocess
@@ -58,7 +59,7 @@ class ControlChecks(unittest.TestCase):
             link = root / 'control-link'
             link.symlink_to(target, target_is_directory=True)
             result = subprocess.run(
-                [sys.executable, str(Path(__file__).with_name('zvram')), '--build-dir', str(build),
+                [sys.executable, str(ROOT / 'zvram'), '--build-dir', str(build),
                  '--no-live-control', '--', sys.executable, '-c', 'print("CHILD_STARTED")'],
                 env=os.environ | {'ZVRAM_CONTROL_DIR': str(link)},
                 capture_output=True, text=True, timeout=10)
@@ -83,7 +84,7 @@ class ControlChecks(unittest.TestCase):
                 env = os.environ | {'ZVRAM_CONTROL_DIR': configured,
                                     'PRESSURE_VESSEL_FILESYSTEMS_RW': previous}
                 result = subprocess.run(
-                    [sys.executable, str(Path(__file__).with_name('zvram')), '--build-dir', str(build),
+                    [sys.executable, str(ROOT / 'zvram'), '--build-dir', str(build),
                      '--no-live-control', '--', sys.executable, '-c',
                      'import os,json; print(json.dumps([os.environ["ZVRAM_CONTROL_DIR"],os.environ["PRESSURE_VESSEL_FILESYSTEMS_RW"]]))'],
                     env=env, cwd=temporary, text=True, capture_output=True, timeout=10)
@@ -103,7 +104,7 @@ class ControlChecks(unittest.TestCase):
             env.update(XDG_CONFIG_HOME='/user/config', XDG_CONFIG_DIRS='/etc/xdg:/opt/config',
                        XDG_DATA_HOME='/user/data', XDG_DATA_DIRS='/local/share:/usr/share',
                        VK_ADD_LAYER_PATH='/extra/layers')
-            launcher = Path(__file__).with_name('zvram')
+            launcher = ROOT / 'zvram'
 
             def layer_paths(**extra):
                 test_env = env | extra
@@ -134,7 +135,7 @@ class ControlChecks(unittest.TestCase):
             for filename in ('VK_LAYER_NX_zvram.json', 'libzvram_layer.so'):
                 (build / filename).touch()
             sentinel = Path(temporary) / 'child-ran'
-            launcher = Path(__file__).with_name('zvram')
+            launcher = ROOT / 'zvram'
             result = subprocess.run(
                 [sys.executable, str(launcher), '--build-dir', str(build), '--no-live-control',
                  '--', sys.executable, '-c', f"open({str(sentinel)!r}, 'w').write('ran')"],
@@ -152,7 +153,7 @@ class ControlChecks(unittest.TestCase):
             env = {k:v for k,v in os.environ.items() if not k.startswith('ZVRAM_VULKAN_')}
             env.update(SteamAppId='123', ZVRAM_MANAGER_HOME=str(root))
             def launch(*flags):
-                out = subprocess.run([sys.executable, str(Path(__file__).with_name('zvram')),
+                out = subprocess.run([sys.executable, str(ROOT / 'zvram'),
                     '--build-dir', str(root), *flags, '--', sys.executable, '-c',
                     'import json,os;print(json.dumps(dict(os.environ)))'], env=env,
                     capture_output=True, text=True, timeout=10)
@@ -175,7 +176,7 @@ class ControlChecks(unittest.TestCase):
             for filename in ('VK_LAYER_NX_zvram.json', 'libzvram_layer.so', 'libzvram_hip.so'):
                 (build / filename).touch()
             env = {k: v for k, v in os.environ.items() if not k.startswith('ZVRAM_VULKAN_')}
-            launcher = Path(__file__).with_name('zvram')
+            launcher = ROOT / 'zvram'
             def launch(*flags):
                 result = subprocess.run([sys.executable, str(launcher), '--build-dir', str(build), *flags,
                                          '--', sys.executable, '-c',

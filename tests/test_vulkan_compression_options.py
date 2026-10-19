@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """CPU-only CLI checks for Vulkan snapshot compression options."""
+from _bootstrap import ROOT
 
 from pathlib import Path
 import os
@@ -9,7 +10,7 @@ import sys
 import tempfile
 
 
-SOURCE = Path(__file__).with_name("zvram")
+SOURCE = ROOT / "zvram"
 KEY = "ZVRAM_VULKAN_MIN_SAVINGS_PERCENT"
 BASE = ["--vulkan-virtual-gib", "96", "--vulkan-cold-mib", "64"]
 
@@ -24,7 +25,7 @@ with tempfile.TemporaryDirectory() as temporary:
     launcher = root / "zvram"
     shutil.copyfile(SOURCE, launcher)
     for module in ('zvram_control.py', 'zvram_manager.py'):
-        shutil.copyfile(SOURCE.with_name(module), root / module)
+        shutil.copyfile(ROOT / 'src/python' / module, root / module)
     build = root / "build"
     build.mkdir()
     (build / "VK_LAYER_NX_zvram.json").touch()

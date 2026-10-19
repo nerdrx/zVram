@@ -291,7 +291,7 @@ def run_probe(limit_mib, command, args):
         baseline = sample(cgroup, region)
         baseline_stats = cgroup_stats(cgroup, region)
         zram_before = system_zram_stats()
-        repo = Path(__file__).resolve().parent
+        repo = Path(__file__).resolve().parents[1]
         if command:
             run_command = command
             cwd = Path.cwd()

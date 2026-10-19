@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """CPU-only checks for token budget and decode evidence validation."""
+from _bootstrap import ROOT
 
 import importlib.util
 import json
@@ -11,7 +12,7 @@ import tempfile
 from unittest import mock
 
 
-MODULE = Path(__file__).with_name("check_vulkan_idle_model.py")
+MODULE = ROOT / "tools/check_vulkan_idle_model.py"
 spec = importlib.util.spec_from_file_location("idle_model", MODULE)
 idle_model = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(idle_model)
