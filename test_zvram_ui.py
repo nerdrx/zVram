@@ -1,6 +1,6 @@
 """Small UI checks; --gui exercises actual Tk widgets on an isolated display."""
 import sys
-from zvram_ui import profile_from_fields, command_text, system_status, profile_details, table_state, usage_mib
+from zvram_ui import profile_from_fields, command_text, system_status, profile_details, table_state, usage_mib, total_gpu_usage_mib
 
 
 EXTERNAL = dict(name="@12345-678", display_name="vrchat.exe", external=True, source="zVram",
@@ -52,6 +52,13 @@ class FakeManager:
 
 
 def check_fields():
+    assert total_gpu_usage_mib(FakeManager().status()) == 150
+    assert total_gpu_usage_mib({"gpu": [{"vram_used_mib": 1024, "gtt_used_mib": 512},
+                                        {"vram_used_mib": 256, "gtt_used_mib": 0}]}) == 1792
+    assert total_gpu_usage_mib({"gpu": [{"vram_used_mib": 0, "gtt_used_mib": 0}]}) == 0
+    assert total_gpu_usage_mib({}) is None
+    assert total_gpu_usage_mib({"gpu": [{"vram_used_mib": 100}]}) is None
+    assert "Total GPU usage (VRAM + GTT):" in system_status(FakeManager().status())
     profile = profile_from_fields("tiny", "low", "", '/bin/echo "hello world"')
     assert profile["command"] == ["/bin/echo", "hello world"]
     assert profile["resident_mib"] is None
@@ -277,8 +284,8 @@ def check_gui():
     assert manager.profiles["second"]["mode"] == "wrapped"
     assert manager.profiles["second"]["ignore_swap_guard"] is False
     assert "RAM available: 20000" in window.telemetry.get()
-    window.update_cards(dict(gpu=[dict(card="card0", vram_used_mib=20, vram_total_mib=2048), dict(card="card1", vram_used_mib=1024, vram_total_mib=24576)]))
-    assert window.cards["gpu"][0].get() == "1.0 GiB / 24.0 GiB"
+    window.update_cards(dict(gpu=[dict(card="card0", vram_used_mib=20, vram_total_mib=2048, gtt_used_mib=492), dict(card="card1", vram_used_mib=1024, vram_total_mib=24576, gtt_used_mib=512)]))
+    assert window.cards["gpu"][0].get() == "2.0 GiB"
     assert "card0" in window.gpu_caption.get() and "card1" in window.gpu_caption.get()
     window.table.selection_set(EXTERNAL["name"])
     root.update()

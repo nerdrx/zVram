@@ -62,10 +62,17 @@ def table_state(profile):
     return 'Paging off' if profile.get('control_devices') else 'No endpoint'
 
 
+def total_gpu_usage_mib(status):
+    """Sum device counters, never treating missing telemetry as zero."""
+    gpus = status.get("gpu", [])
+    values = [gpu.get(key) for gpu in gpus for key in ("vram_used_mib", "gtt_used_mib")]
+    return sum(values) if values and all(value is not None for value in values) else None
+
+
 def system_status(status):
     ram = "RAM available: %s MiB | Swap used: %s MiB" % (status.get("mem_available_mib", "?"), status.get("swap_used_mib", "?"))
     gpu = ["%s VRAM %s/%s MiB, GTT %s MiB" % (item.get("card", "GPU"), item.get("vram_used_mib", "?"), item.get("vram_total_mib", "?"), item.get("gtt_used_mib", "?")) for item in status.get("gpu", [])]
-    return ram + (" | " + " | ".join(gpu) if gpu else "")
+    return "Total GPU usage (VRAM + GTT): %s | " % gib(total_gpu_usage_mib(status)) + ram + (" | " + " | ".join(gpu) if gpu else "")
 
 
 def profile_details(profile):
@@ -194,7 +201,7 @@ class ManagerWindow:
         overview = ttk.Frame(body)
         overview.grid(row=1, column=0, sticky="ew", pady=(0, 16))
         self.cards = {}
-        for index, (key, title, caption) in enumerate((("gpu", "GPU MEMORY", "Device-wide allocation"),
+        for index, (key, title, caption) in enumerate((("gpu", "TOTAL GPU USAGE", "VRAM + GTT · all GPUs"),
                                                       ("ram", "AVAILABLE RAM", "Space for your apps and desktop"),
                                                       ("swap", "SWAP IN USE", "Across all applications"))):
             overview.columnconfigure(index, weight=1, uniform="cards")
@@ -354,10 +361,10 @@ class ManagerWindow:
         primary = max(gpus, key=lambda gpu: gpu.get("vram_total_mib", 0) or 0, default={})
         used = primary.get("vram_used_mib")
         total = primary.get("vram_total_mib")
-        self.cards["gpu"][0].set(gib(used) + " / " + gib(total) if total else "Unavailable")
+        self.cards["gpu"][0].set(gib(total_gpu_usage_mib(status)))
         self.cards["gpu"][1]["value"] = min(100, used * 100 / total) if total and used is not None else 0
         captions = ["%s · VRAM %s/%s · GTT %s" % (gpu.get("card", "GPU"), gib(gpu.get("vram_used_mib")).removesuffix(" GiB"), gib(gpu.get("vram_total_mib")), gib(gpu.get("gtt_used_mib"))) for gpu in sorted(gpus, key=lambda gpu: gpu is not primary)]
-        self.gpu_caption.set("\n".join(captions) if captions else "Device statistics unavailable")
+        self.gpu_caption.set("VRAM + GTT · all GPUs\nBar: primary GPU VRAM\n" + "\n".join(captions) if captions else "Device statistics unavailable")
         self.cards["ram"][0].set(gib(status.get("mem_available_mib")))
         self.cards["swap"][0].set(gib(status.get("swap_used_mib")))
 
