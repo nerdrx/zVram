@@ -39,20 +39,24 @@ def status_text(profile):
     return str(profile.get("state", "stopped")).capitalize()
 
 
+# Keep each diagnostic's table label and actionable explanation together.
+CONTROL_DIAGNOSTICS = {
+    "unreadable": ("Unreadable", "Control status cannot be read. Check the control directory's ownership and permissions; run the manager as the same user as the app."),
+    "invalid": ("Invalid status", "Control status failed validation. Check the control directory and use matching manager/backend versions; unsafe status was ignored."),
+    "stale": ("Stale status", "Control status belongs to an expired process or disappeared during refresh. Refresh again before applying changes."),
+    "partial": ("Partial control", "Some GPU control statuses were rejected or unreadable. Live changes affect only the available devices; check the control directory and refresh."),
+}
+
+
 def control_issue(profile):
     state = profile.get("control_diagnostics", {}).get("state")
-    return {
-        "unreadable": "Control status cannot be read. Check the control directory's ownership and permissions; run the manager as the same user as the app.",
-        "invalid": "Control status failed validation. Check the control directory and use matching manager/backend versions; unsafe status was ignored.",
-        "stale": "Control status belongs to an expired process or disappeared during refresh. Refresh again before applying changes.",
-        "partial": "Some GPU control statuses were rejected or unreadable. Live changes affect only the available devices; check the control directory and refresh.",
-    }.get(state, "")
+    return CONTROL_DIAGNOSTICS.get(state, ("", ""))[1]
 
 
 def table_state(profile):
     diagnostic = profile.get("control_diagnostics", {}).get("state")
-    if diagnostic in ("unreadable", "invalid", "stale", "partial"):
-        return {"unreadable": "Unreadable", "invalid": "Invalid status", "stale": "Stale status", "partial": "Partial control"}[diagnostic]
+    if diagnostic in CONTROL_DIAGNOSTICS:
+        return CONTROL_DIAGNOSTICS[diagnostic][0]
     if not profile.get('external'):
         return 'Running' if profile.get('running') else status_text(profile)
     if profile.get('live_capable'):
