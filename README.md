@@ -6,8 +6,9 @@ zVram is an experimental Linux Vulkan memory layer with a desktop manager for
 app profiles, live memory limits, and eligible-buffer recovery. It combines
 bounded paging and lossless snapshots with driver-managed VRAM/GTT backing.
 
-**Current release: [v0.4.25](https://github.com/nerdrx/zVram/releases/tag/v0.4.25).**
-The manager now has a compact memory overview, a wider app list, and separate
+**Current release: [v0.4.27](https://github.com/nerdrx/zVram/releases/tag/v0.4.27).**
+The manager shows combined VRAM + GTT usage across all GPUs in one number,
+with separate device counters below it. It has a wider app list and separate
 Controls, Launch, Details, and Safety tabs. Steam priority preferences survive
 game restarts; live requests show whether the backend applied or rejected them.
 
@@ -47,7 +48,7 @@ Release tags build a versioned runtime archive, `nx-app.json`, and SHA-256
 checksums. To reproduce packaging locally:
 
 ```sh
-python3 scripts/package.py --build-dir build --output dist --version 0.4.25
+python3 scripts/package.py --build-dir build --output dist --version 0.4.27
 ```
 
 ## Steam launch options
@@ -77,7 +78,7 @@ running zVram app or create a launch profile.
 | **Controls** | Choose High, Normal, or Low priority, or enter an explicit resident limit in MiB. Choosing a preset clears the old custom limit. |
 | **Launch** | Edit a saved profile's command and launch mode. External launches keep these fields unavailable. |
 | **Details** | Inspect per-device caps, request acknowledgements, recovery policy, and endpoint diagnostics. |
-| **Safety** | Inspect the saved profile's swap-growth override. The available-RAM safety floor remains active. |
+| **Safety** | Inspect the saved profile's swap-growth override. The available-RAM safety floor is independently configured and enabled by default. |
 
 - **Apply live** sends a request to a capable running Vulkan device. **Pending**
   means the request has not settled; **Applied**, **Rejected**, and **Superseded**

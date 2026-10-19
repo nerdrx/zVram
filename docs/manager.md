@@ -164,3 +164,7 @@ separate provider in Novum and leaves the current model/default untouched.
 Use a different port for each simultaneously running model. The build needs
 the optional BP16 GPU codec for compressed profiles. See the
 [Novum handoff](novum-xenium-integration.md) for the provider integration API.
+
+The GPU overview shows total VRAM + GTT usage across all detected GPUs. Missing
+counters make the total unavailable; they are not counted as zero. The bar shows
+primary-GPU VRAM utilization, with individual device counters underneath.

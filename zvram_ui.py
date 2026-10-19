@@ -39,20 +39,24 @@ def status_text(profile):
     return str(profile.get("state", "stopped")).capitalize()
 
 
+# Keep each diagnostic's table label and actionable explanation together.
+CONTROL_DIAGNOSTICS = {
+    "unreadable": ("Unreadable", "Control status cannot be read. Check the control directory's ownership and permissions; run the manager as the same user as the app."),
+    "invalid": ("Invalid status", "Control status failed validation. Check the control directory and use matching manager/backend versions; unsafe status was ignored."),
+    "stale": ("Stale status", "Control status belongs to an expired process or disappeared during refresh. Refresh again before applying changes."),
+    "partial": ("Partial control", "Some GPU control statuses were rejected or unreadable. Live changes affect only the available devices; check the control directory and refresh."),
+}
+
+
 def control_issue(profile):
     state = profile.get("control_diagnostics", {}).get("state")
-    return {
-        "unreadable": "Control status cannot be read. Check the control directory's ownership and permissions; run the manager as the same user as the app.",
-        "invalid": "Control status failed validation. Check the control directory and use matching manager/backend versions; unsafe status was ignored.",
-        "stale": "Control status belongs to an expired process or disappeared during refresh. Refresh again before applying changes.",
-        "partial": "Some GPU control statuses were rejected or unreadable. Live changes affect only the available devices; check the control directory and refresh.",
-    }.get(state, "")
+    return CONTROL_DIAGNOSTICS.get(state, ("", ""))[1]
 
 
 def table_state(profile):
     diagnostic = profile.get("control_diagnostics", {}).get("state")
-    if diagnostic in ("unreadable", "invalid", "stale", "partial"):
-        return {"unreadable": "Unreadable", "invalid": "Invalid status", "stale": "Stale status", "partial": "Partial control"}[diagnostic]
+    if diagnostic in CONTROL_DIAGNOSTICS:
+        return CONTROL_DIAGNOSTICS[diagnostic][0]
     if not profile.get('external'):
         return 'Running' if profile.get('running') else status_text(profile)
     if profile.get('live_capable'):
@@ -62,10 +66,17 @@ def table_state(profile):
     return 'Paging off' if profile.get('control_devices') else 'No endpoint'
 
 
+def total_gpu_usage_mib(status):
+    """Sum device counters, never treating missing telemetry as zero."""
+    gpus = status.get("gpu", [])
+    values = [gpu.get(key) for gpu in gpus for key in ("vram_used_mib", "gtt_used_mib")]
+    return sum(values) if values and all(value is not None for value in values) else None
+
+
 def system_status(status):
     ram = "RAM available: %s MiB | Swap used: %s MiB" % (status.get("mem_available_mib", "?"), status.get("swap_used_mib", "?"))
     gpu = ["%s VRAM %s/%s MiB, GTT %s MiB" % (item.get("card", "GPU"), item.get("vram_used_mib", "?"), item.get("vram_total_mib", "?"), item.get("gtt_used_mib", "?")) for item in status.get("gpu", [])]
-    return ram + (" | " + " | ".join(gpu) if gpu else "")
+    return "Total GPU usage (VRAM + GTT): %s | " % gib(total_gpu_usage_mib(status)) + ram + (" | " + " | ".join(gpu) if gpu else "")
 
 
 def profile_details(profile):
@@ -194,7 +205,7 @@ class ManagerWindow:
         overview = ttk.Frame(body)
         overview.grid(row=1, column=0, sticky="ew", pady=(0, 16))
         self.cards = {}
-        for index, (key, title, caption) in enumerate((("gpu", "GPU MEMORY", "Device-wide allocation"),
+        for index, (key, title, caption) in enumerate((("gpu", "TOTAL GPU USAGE", "VRAM + GTT · all GPUs"),
                                                       ("ram", "AVAILABLE RAM", "Space for your apps and desktop"),
                                                       ("swap", "SWAP IN USE", "Across all applications"))):
             overview.columnconfigure(index, weight=1, uniform="cards")
@@ -301,7 +312,7 @@ class ManagerWindow:
         ttk.Label(controls_tab, text="Blank uses the preset. Available memory and safety checks still apply.", style="CardMuted.TLabel", wraplength=290).grid(row=5, column=0, sticky="w")
         guard = ttk.Checkbutton(safety_tab, text="Ignore swap-growth guard", variable=self.swap_guard, style="Card.TCheckbutton")
         guard.grid(row=0, column=0, sticky="w", pady=(0, 6))
-        ttk.Label(safety_tab, text="The available-RAM safety floor stays active. Leave this override off unless you understand the memory pressure risk.", style="CardMuted.TLabel", wraplength=290).grid(row=1, column=0, sticky="w")
+        ttk.Label(safety_tab, text="This override changes only the swap-growth guard. The RAM floor is configured separately in the profile. Leave guards enabled unless you understand the memory pressure risk.", style="CardMuted.TLabel", wraplength=290).grid(row=1, column=0, sticky="w")
         self.field_widgets["ignore_swap_guard"] = guard
         actions = ttk.Frame(right, style="Panel.TFrame")
         actions.grid(row=3, column=0, sticky="ew", pady=(14, 0))
@@ -354,10 +365,10 @@ class ManagerWindow:
         primary = max(gpus, key=lambda gpu: gpu.get("vram_total_mib", 0) or 0, default={})
         used = primary.get("vram_used_mib")
         total = primary.get("vram_total_mib")
-        self.cards["gpu"][0].set(gib(used) + " / " + gib(total) if total else "Unavailable")
+        self.cards["gpu"][0].set(gib(total_gpu_usage_mib(status)))
         self.cards["gpu"][1]["value"] = min(100, used * 100 / total) if total and used is not None else 0
         captions = ["%s · VRAM %s/%s · GTT %s" % (gpu.get("card", "GPU"), gib(gpu.get("vram_used_mib")).removesuffix(" GiB"), gib(gpu.get("vram_total_mib")), gib(gpu.get("gtt_used_mib"))) for gpu in sorted(gpus, key=lambda gpu: gpu is not primary)]
-        self.gpu_caption.set("\n".join(captions) if captions else "Device statistics unavailable")
+        self.gpu_caption.set("VRAM + GTT · all GPUs\nBar: primary GPU VRAM\n" + "\n".join(captions) if captions else "Device statistics unavailable")
         self.cards["ram"][0].set(gib(status.get("mem_available_mib")))
         self.cards["swap"][0].set(gib(status.get("swap_used_mib")))
 
