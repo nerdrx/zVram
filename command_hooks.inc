@@ -2999,7 +2999,6 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLineStipple(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer,"vkCmdSetLineStipple");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3021,7 +3020,6 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLineStippleKHR(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer,"vkCmdSetLineStippleKHR");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;
@@ -3043,7 +3041,6 @@ VKAPI_ATTR void VKAPI_CALL trackedvkCmdSetLineStippleEXT(
         try {
             std::lock_guard<std::mutex> lock(d->mutex);
             if (d->selectiveRestore) {
-                d->submission.unknown(commandBuffer,"vkCmdSetLineStippleEXT");
             }
         } catch (const std::bad_alloc&) {
             d->selectiveRestore = false;

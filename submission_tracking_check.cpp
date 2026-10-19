@@ -102,6 +102,13 @@ static VkPipeline readonlyPipeline(VkSubmissionTracker& tracker, VkShaderModule 
 }
 
 int main() {
+    for (const char* name : {"vkCmdSetLineStipple", "vkCmdSetLineStippleKHR",
+                             "vkCmdSetLineStippleEXT"})
+        require(!unknownCommandNeedsConservativeFallback(name),
+                "line stipple proc must not poison access tracking");
+    require(unknownCommandNeedsConservativeFallback("vkCmdDispatch"),
+            "unknown resource-access procs must keep conservative tracking");
+
     const std::uint32_t logicalWords[] = {
         0x07230203u, 0x00010000u, 0u, 8u, 0u,
         (3u << 16) | 14u, 0u, 1u

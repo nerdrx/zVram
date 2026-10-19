@@ -131,13 +131,17 @@ system swap grows by more than 4 GiB from launch. Defaults: 16 GiB available
 RAM for range-paged launches, 4 GiB otherwise. System swap includes unrelated
 activity, so the guard is deliberately conservative. Logs show the reason.
 This guard cannot guarantee an application or driver will not stall or OOM.
+Set a profile's `min_available_mib` to `0` to disable only the available-RAM
+floor; the default floor and swap-growth guard remain unchanged.
 
 Model profiles can opt out of the system-wide swap-growth check with
 `zvram model setup ... --ignore-swap-guard`. This saves
 `ignore_swap_guard: true` for that profile and applies on its next launch.
-The available-RAM guard stays enabled. Swap growth from other apps can otherwise
-trigger the check; ignoring it also allows the model to continue during real
-swap pressure, which can cause stalls. Existing profiles keep the guard enabled.
+The available-RAM floor stays enabled by default; set `min_available_mib` to
+`0` only when you want to disable that floor too. Swap growth from other apps
+can otherwise trigger the check; ignoring it also allows the model to continue
+during real swap pressure, which can cause stalls. Existing profiles keep both
+guards enabled.
 
 Profiles and logs live under `$XDG_STATE_HOME/zvram` (normally
 `~/.local/state/zvram`), privately owned by the current user. Commands are
