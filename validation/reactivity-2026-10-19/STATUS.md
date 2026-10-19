@@ -64,3 +64,16 @@ Recent-first ranking committed as 5ee7321. Final cadence review passed (commit/f
 - Next review-only frequency design with auto_safety_review: bounded decaying known-submit heat, distinct from recency; unknown accesses must not boost all counters. No fields/policy added yet. Need behavioral tests demonstrating one-off access vs repeatedly used child, aging out idle heat, dedup, and guard preservation before adopting.
 
 - Normal worker bootstrap also PASS0.02s (worker-normal.log). All owned build/test processes complete.
+
+## Frequency prototype in progress
+- Root uncommitted source now adds recovery-only known-submit heat (cap16, one-second decay, zeroafter5s) and ranks effective heat then recency. Eviction unchanged LRU. Existing unique submission use-list is reused; no extra per-group generation counter. Unknown/empty submissions do not add heat. All eligibility guards unchanged.
+- Fractional decay remainder retained rather than resetting timer on every hit (prevents 900ms hits accumulating without decay). Fields preserved through sync/async snapshot replacements using current post-lock state.
+- auto_docs_update owns tests/resident_bootstrap_check.cpp and builds normal/hook CPU checks when ready; auto_safety_review reviews root source read-only. No GPU work for this prototype yet. Do not claim tested/released until their results plus root review. Previous committed8550182 worker integration passed normal/hook; current source differs.
+
+## Frequency policy verified on CPU
+- Root authoritative build/layout bootstrap + production layer rebuilt from final source. 18/18 CPU/submission checks PASS6.34s (frequency-final-cpu.log). Agent also ran normal build/ and genuine hook-enabled build/reactivity-hooks; frequency-normal.log/frequency-hook-enabled.log. Do not substitute build/ evidence for root current-build check.
+- Behavioral tests prove repeated known uses outrank a newer one-off use, idle heat fades, busy candidates remain excluded, cap16 and 999ms/1000ms/5s decay boundaries, 900ms cadence does not accumulate without decay, command tracker deduplicates repeated ranges, unknown/knownempty do not boost heat, sync/async/current-read metadata survives freeze. Worker still uses oldest-first eviction regardless of heat.
+- Initial duplicate-range test omitted allocateCommands; expected tracker rejected unregistered command. Preserved frequency-initial-fixture-failure.log, corrected fixture before passing. No production bug inferred from that failure.
+- Source review passed: no arithmetic/lifecycle blocker. Failed-submit frequency increment gating reviewed in queueCall (only downstream success), not separately integration-fault-injected.
+- No latest-frequency GPU check yet; earlier cadence GPU pass is not proof of latest policy performance. Next: small fresh-health recovery integrity check, CI once exact pushed head, then review whether additional policy changes are justified. Do not add speculative heat-based eviction or arbitrary full-cap exchange.
+- All owned jobs finished; agents holding; unrelated historical files preserved.

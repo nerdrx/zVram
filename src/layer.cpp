@@ -155,6 +155,8 @@ struct VirtualMemory {
         bool budgetBlocked{};
         std::uint64_t writeEpoch{};
         std::uint64_t successfulFreezes{};
+        std::uint8_t recoveryUses{};
+        std::chrono::steady_clock::time_point recoveryUseEpoch{};
         std::chrono::steady_clock::time_point lastUse{std::chrono::steady_clock::now()};
         VkDeviceSize accountedBytes() const noexcept { return storedBytes + importedPaddingBytes; }
     };
@@ -3023,6 +3025,8 @@ VkResult freezeChildLocked(Device& d,VirtualMemory& memory,std::size_t i) {
     memory.bound=std::any_of(memory.children.begin(),memory.children.end(),[](VkDeviceMemory child){return child!=VK_NULL_HANDLE;});
     candidate.logicalBytes=logicalBytes; candidate.storedBytes=stored; candidate.cold=true;
     candidate.successfulFreezes=zvram::clean_cache::nextSuccessfulFreeze(group.successfulFreezes);
+    candidate.recoveryUses=group.recoveryUses;
+    candidate.recoveryUseEpoch=group.recoveryUseEpoch;
     candidate.lastUse=group.lastUse;
     group=std::move(candidate);
     memory.cold=true; memory.coldStoredBytes+=group.accountedBytes(); memory.coldLogicalSize+=logicalBytes;
@@ -3202,6 +3206,8 @@ bool freezeChildAsyncLocked(Device& d,VkDeviceMemory handle,std::size_t child,
     releaseBackingChild(d,current,token.child);
     current.bound=std::any_of(current.children.begin(),current.children.end(),[](VkDeviceMemory value){return value!=VK_NULL_HANDLE;});
     candidate.successfulFreezes=zvram::clean_cache::nextSuccessfulFreeze(currentGroup.successfulFreezes);
+    candidate.recoveryUses=currentGroup.recoveryUses;
+    candidate.recoveryUseEpoch=currentGroup.recoveryUseEpoch;
     candidate.lastUse=currentGroup.lastUse;
     currentGroup=std::move(candidate); current.cold=true;
     current.coldStoredBytes+=stored; current.coldLogicalSize+=rawSize;
@@ -3569,6 +3575,19 @@ bool coldCyclePromoteLocked(Device& d,VkDeviceMemory handle,std::size_t child,Vk
     }
     return finalizeWarmRecoveryLocked(d,pending);
 }
+// Ranking hint from known accepted submissions, independent of in-flight safety.
+unsigned recoveryUseHeat(const VirtualMemory::ColdGroup& group,std::chrono::steady_clock::time_point now) {
+    const auto seconds=now>group.recoveryUseEpoch?
+        std::chrono::duration_cast<std::chrono::seconds>(now-group.recoveryUseEpoch).count():0;
+    return seconds>=5?0:static_cast<unsigned>(group.recoveryUses)>>seconds;
+}
+void recordRecoveryUse(VirtualMemory::ColdGroup& group,std::chrono::steady_clock::time_point now) {
+    const auto heat=recoveryUseHeat(group,now);
+    if(!heat) group.recoveryUseEpoch=now;
+    else if(now>group.recoveryUseEpoch)
+        group.recoveryUseEpoch+=std::chrono::duration_cast<std::chrono::seconds>(now-group.recoveryUseEpoch);
+    group.recoveryUses=static_cast<std::uint8_t>(std::min(16u,heat+1));
+}
 bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
                               std::chrono::steady_clock::time_point now,
                               VkDeviceMemory& candidateMemory,std::size_t& candidateChild) {
@@ -3579,6 +3598,7 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
     if(d.testRecoveryPaused) return false;
 #endif
     auto newest=std::chrono::steady_clock::time_point::min();
+    unsigned hottest=0;
     for(const auto& pair:d.virtualMemory) {
         const auto& memory=pair.second;
         if(!memory.trackPhysicalStats || memory.hasAdoptedCallbacks || memory.bindings.empty() ||
@@ -3607,7 +3627,10 @@ bool selectColdCycleCandidate(const Device& d,VkDeviceSize target,
                     hasLocalType=true; break;
                 }
             }
-            if(hasLocalType && (!candidateMemory || group.lastUse>newest)) {
+            const auto heat=recoveryUseHeat(group,now);
+            if(hasLocalType && (!candidateMemory || heat>hottest ||
+               (heat==hottest && group.lastUse>newest))) {
+                hottest=heat;
                 newest=group.lastUse;
                 candidateMemory=pair.first;
                 candidateChild=i;
@@ -4568,14 +4591,18 @@ void bumpAcceptedWriteEpochs(Device& d,const char* name,Args... args) {
 
 void markSubmittedUseTimes(Device& d,const std::vector<ActiveRefs::Use>& uses,bool known,
                            std::chrono::steady_clock::time_point now) {
-    auto mark=[now](VirtualMemory& memory,std::size_t child) {
+    auto mark=[now,known](VirtualMemory& memory,std::size_t child) {
         if(memory.coldGroups.empty()) return;
         if(child==SIZE_MAX) {
             memory.lastUse=now;
-            for(auto& group:memory.coldGroups) group.lastUse=now;
+            for(auto& group:memory.coldGroups) {
+                group.lastUse=now;
+                if(known) recordRecoveryUse(group,now);
+            }
         } else if(child<memory.coldGroups.size()) {
             memory.lastUse=now;
             memory.coldGroups[child].lastUse=now;
+            if(known) recordRecoveryUse(memory.coldGroups[child],now);
         }
     };
     if(!known) {

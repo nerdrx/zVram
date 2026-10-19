@@ -77,6 +77,7 @@ std::mutex workerFreeMutex;
 std::condition_variable workerFreeCondition;
 bool observeWorkerFrees{};
 unsigned observedWorkerFrees{};
+std::vector<VkDeviceMemory> observedWorkerFreedMemory;
 std::uint32_t mockDeviceWaitCalls{},mockResetCommandPoolCalls{};
 VkResult mockDeviceWaitResult{VK_SUCCESS};
 std::uint32_t destroyedMockBuffers{},destroyedMockFences{};
@@ -128,7 +129,10 @@ VKAPI_ATTR void VKAPI_CALL mockFree(VkDevice,VkDeviceMemory memory,const VkAlloc
     ++frees; lastFreedMemoryUserData=allocator?allocator->pUserData:nullptr; liveAllocations.erase(memory);
     freedMemoryUserData[memory]=lastFreedMemoryUserData;
     { std::lock_guard<std::mutex> lock(workerFreeMutex);
-      if(observeWorkerFrees) { ++observedWorkerFrees; workerFreeCondition.notify_all(); } }
+      if(observeWorkerFrees) {
+          ++observedWorkerFrees; observedWorkerFreedMemory.push_back(memory);
+          workerFreeCondition.notify_all();
+      } }
 }
 VKAPI_ATTR VkResult VKAPI_CALL mockSparse(VkQueue,std::uint32_t count,const VkBindSparseInfo* infos,VkFence) {
     ++sparseBinds;
@@ -1428,6 +1432,90 @@ void checkColdCycleCandidatePrefersMostRecentEligible() {
             "busy recent child blocked fallback to an older eligible child");
 }
 
+void checkRecoveryUseHeatSelectionAndDecay() {
+    ColdCycleFixture c; auto& d=c.f.device; auto& older=c.f.state();
+    d.coldCycleQuietMilliseconds=0;
+    const auto used=std::chrono::steady_clock::now();
+    const auto recentHandle=tokenHandle<VkDeviceMemory>(0xc231);
+    auto recent=older;
+    recent.children[0]=tokenHandle<VkDeviceMemory>(0xc232);
+    const auto newerUse=used+std::chrono::milliseconds(1);
+    d.virtualMemory.emplace(recentHandle,std::move(recent)); d.liveOther+=MiB;
+    for(unsigned i=0;i<5;i++) markSubmittedUseTimes(d,{{c.f.memory,0}},true,used);
+    markSubmittedUseTimes(d,{{recentHandle,0}},true,newerUse);
+
+    VkDeviceMemory candidate{}; std::size_t child{};
+    require(older.coldGroups[0].lastUse<d.virtualMemory.at(recentHandle).coldGroups[0].lastUse &&
+            recoveryUseHeat(older.coldGroups[0],newerUse)==5 &&
+            recoveryUseHeat(d.virtualMemory.at(recentHandle).coldGroups[0],newerUse)==1 &&
+            selectColdCycleCandidate(d,64*MiB,newerUse,candidate,child) && candidate==c.f.memory,
+            "repeated known uses did not outrank one newer use for recovery");
+
+    const auto busyQueue=tokenHandle<VkQueue>(0xc233);
+    d.activeRefs.recordRanges(busyQueue,{{c.f.memory,0}},true);
+    require(selectColdCycleCandidate(d,64*MiB,newerUse,candidate,child) && candidate==recentHandle,
+            "busy hot recovery candidate blocked an eligible cooler child");
+    d.activeRefs.cover(busyQueue); d.activeRefs.retire(busyQueue);
+
+    const auto fadedAt=used+std::chrono::seconds(5);
+    markSubmittedUseTimes(d,{{recentHandle,0}},true,fadedAt-std::chrono::milliseconds(100));
+    require(recoveryUseHeat(older.coldGroups[0],fadedAt)==0 &&
+            recoveryUseHeat(d.virtualMemory.at(recentHandle).coldGroups[0],fadedAt)==1 &&
+            selectColdCycleCandidate(d,64*MiB,fadedAt,candidate,child) && candidate==recentHandle,
+            "recovery heat did not decay after five seconds or yield to newer use");
+
+    auto& tracked=d.virtualMemory.at(recentHandle);
+    const auto savedUses=tracked.coldGroups[0].recoveryUses;
+    const auto savedEpoch=tracked.coldGroups[0].recoveryUseEpoch;
+    const auto savedUse=tracked.coldGroups[0].lastUse;
+    markSubmittedUseTimes(d,{},true,fadedAt+std::chrono::seconds(1));
+    require(tracked.coldGroups[0].recoveryUses==savedUses &&
+            tracked.coldGroups[0].recoveryUseEpoch==savedEpoch && tracked.coldGroups[0].lastUse==savedUse,
+            "known empty submission changed recovery use metadata");
+    markSubmittedUseTimes(d,{},false,fadedAt+std::chrono::seconds(1));
+    require(tracked.coldGroups[0].recoveryUses==savedUses && tracked.coldGroups[0].recoveryUseEpoch==savedEpoch &&
+            tracked.coldGroups[0].lastUse==fadedAt+std::chrono::seconds(1),
+            "unknown submission changed heat or failed to retain conservative last-use tracking");
+
+    VirtualMemory::ColdGroup spaced{};
+    const auto start=std::chrono::steady_clock::now();
+    for(unsigned i=0;i<12;i++) recordRecoveryUse(spaced,start+std::chrono::milliseconds(900*i));
+    require(recoveryUseHeat(spaced,start+std::chrono::milliseconds(9900))<=3,
+            "900 ms use cadence accumulated unbounded recovery heat");
+    VirtualMemory::ColdGroup capped{};
+    for(unsigned i=0;i<32;i++) recordRecoveryUse(capped,start);
+    require(capped.recoveryUses==16 && recoveryUseHeat(capped,start)==16 &&
+            recoveryUseHeat(capped,start+std::chrono::milliseconds(999))==16 &&
+            recoveryUseHeat(capped,start+std::chrono::seconds(1))==8 &&
+            recoveryUseHeat(capped,start+std::chrono::seconds(5))==0,
+            "recovery heat exceeded its cap or missed whole-second/five-second decay boundaries");
+
+    {
+        Fixture tracked(2*MiB,2*MiB); auto& state=tracked.device; auto& memory=tracked.state();
+        const auto buffer=tracked.bind(0,2*MiB);
+        state.selectiveRestore=true; state.narrowDescriptorRanges=true;
+        state.promotedBuffers[buffer]=PromotedBuffer{};
+        state.promotedBuffers[buffer].size=2*MiB;
+        state.promotedBuffers[buffer].memory=tracked.memory;
+        const auto command=tokenHandle<VkCommandBuffer>(0xc252);
+        VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        allocate.commandPool=tokenHandle<VkCommandPool>(0xc253); allocate.commandBufferCount=1;
+        state.submission.allocateCommands(&allocate,&command);
+        state.submission.beginCommand(command);
+        state.submission.bufferRange(command,buffer,0,MiB,true);
+        state.submission.bufferRange(command,buffer,0,MiB,true);
+        const auto priorUnknown=unknownCommandProc.exchange(false);
+        std::vector<ActiveRefs::Use> uses;
+        const bool known=commandMemories(state,{command},uses,false);
+        unknownCommandProc.store(priorUnknown);
+        const auto touched=std::chrono::steady_clock::now();
+        if(known) markSubmittedUseTimes(state,uses,true,touched);
+        require(known && uses.size()==1 && uses[0].memory==tracked.memory && uses[0].child==0 &&
+                memory.coldGroups[0].recoveryUses==1 && memory.coldGroups[1].recoveryUses==0,
+                "duplicate known command ranges incremented recovery heat more than once");
+    }
+}
+
 void checkColdCycleCandidateZeroLiveOther() {
     ColdCycleFixture c; auto& d=c.f.device;
     d.liveOther=0;
@@ -1463,7 +1551,8 @@ void checkActiveSnapshotWorkerDrainsPressureAndStops() {
     busy.coldGroups[0].lastUse=now-std::chrono::seconds(10);
     const auto queue=tokenHandle<VkQueue>(0xc901);
     d.activeRefs.recordRanges(queue,{{c.f.memory,0}},true);
-    const auto makeSibling=[&](std::uintptr_t base,std::chrono::seconds age) {
+    std::vector<VkDeviceMemory> eligible;
+    const auto makeSibling=[&](std::uintptr_t base,std::chrono::seconds age,unsigned heat) {
         const auto memoryHandle=tokenHandle<VkDeviceMemory>(base);
         auto sibling=busy;
         sibling.children[0]=tokenHandle<VkDeviceMemory>(base+1);
@@ -1472,20 +1561,24 @@ void checkActiveSnapshotWorkerDrainsPressureAndStops() {
         sibling.poolViewMemoryTypeBits[0]=3; sibling.backingMemoryTypeBits=3;
         sibling.bindings[0].buffer=tokenHandle<VkBuffer>(base+3);
         sibling.coldGroups[0].lastUse=now-age;
+        sibling.coldGroups[0].recoveryUses=static_cast<std::uint8_t>(heat);
+        sibling.coldGroups[0].recoveryUseEpoch=now;
         sibling.residentBytes=MiB;
         bufferSizes[sibling.poolViews[0]]=MiB;
         bufferSizes[sibling.bindings[0].buffer]=MiB;
         liveAllocations.insert(sibling.children[0]);
+        eligible.push_back(sibling.children[0]);
         d.virtualMemory.emplace(memoryHandle,std::move(sibling));
     };
-    makeSibling(0xc910,std::chrono::seconds(5));
-    makeSibling(0xc920,std::chrono::seconds(4));
+    makeSibling(0xc910,std::chrono::seconds(5),0);
+    makeSibling(0xc920,std::chrono::seconds(4),16);
 
     require(d.autoQueues.init(d.handle,d.gdpa,d.copyQueue,{d.copyQueue},true)==VK_SUCCESS,
             "active worker mock queue initialization failed");
     {
         std::lock_guard<std::mutex> lock(workerFreeMutex);
-        observedWorkerFrees=0; observeWorkerFrees=true;
+        observedWorkerFrees=0; observedWorkerFreedMemory.clear();
+        observedWorkerFreedMemory.reserve(4); observeWorkerFrees=true;
     }
     auto shared=std::shared_ptr<Device>(&d,[](Device*){});
     std::mutex stoppedMutex; std::condition_variable stoppedCondition; bool stopped=false;
@@ -1507,7 +1600,9 @@ void checkActiveSnapshotWorkerDrainsPressureAndStops() {
         committed=busyFound!=d.virtualMemory.end() && busyFound->second.children[0]==c.nonlocal &&
             d.residentBytes==MiB && d.coldLogicalBytes==2*MiB && d.freezeCount==2 &&
             d.liveOther==MiB && !busyFound->second.coldGroups[0].cold &&
-            busyFound->second.coldGroups[0].lastUse==now-std::chrono::seconds(10);
+            busyFound->second.coldGroups[0].lastUse==now-std::chrono::seconds(10) &&
+            d.virtualMemory.at(tokenHandle<VkDeviceMemory>(0xc910)).coldGroups[0].recoveryUses==0 &&
+            d.virtualMemory.at(tokenHandle<VkDeviceMemory>(0xc920)).coldGroups[0].recoveryUses==16;
         d.stopWorker.store(true); d.activity.notify_all();
     }
     bool stoppedInTime=false;
@@ -1516,8 +1611,11 @@ void checkActiveSnapshotWorkerDrainsPressureAndStops() {
         stoppedInTime=stoppedCondition.wait_for(lock,std::chrono::seconds(5),[&]{return stopped;});
     }
     worker.join();
-    { std::lock_guard<std::mutex> lock(workerFreeMutex); observeWorkerFrees=false; }
-    require(drained && committed && stoppedInTime,
+    std::vector<VkDeviceMemory> freedOrder;
+    { std::lock_guard<std::mutex> lock(workerFreeMutex);
+      observeWorkerFrees=false; freedOrder=observedWorkerFreedMemory; }
+    require(drained && committed && stoppedInTime && freedOrder.size()==2 &&
+            freedOrder[0]==eligible[0] && freedOrder[1]==eligible[1],
             "active snapshot worker failed to drain eligible pressure backlog, preserve a busy child, or stop");
 }
 
@@ -2025,6 +2123,8 @@ void checkSubmitUseTimestampScope() {
     markSubmittedUseTimes(d,{{f.memory,1}},true,touched);
     require(memory.lastUse==touched && memory.coldGroups[0].lastUse==old &&
             memory.coldGroups[1].lastUse==touched && memory.coldGroups[2].lastUse==old &&
+            memory.coldGroups[0].recoveryUses==0 && memory.coldGroups[1].recoveryUses==1 &&
+            memory.coldGroups[2].recoveryUses==0 &&
             d.virtualMemory.at(unrelatedHandle).lastUse==old &&
             std::all_of(d.virtualMemory.at(unrelatedHandle).coldGroups.begin(),
                         d.virtualMemory.at(unrelatedHandle).coldGroups.end(),
@@ -2040,10 +2140,17 @@ void checkSubmitUseTimestampScope() {
 
     memory.lastUse=old;
     for(auto& group:memory.coldGroups) group.lastUse=old;
+    std::vector<std::pair<std::uint8_t,std::chrono::steady_clock::time_point>> beforeKnownEmpty;
+    for(const auto& group:memory.coldGroups)
+        beforeKnownEmpty.emplace_back(group.recoveryUses,group.recoveryUseEpoch);
     markSubmittedUseTimes(d,{},true,touched);
     require(memory.lastUse==old && d.virtualMemory.at(unrelatedHandle).lastUse==old &&
             std::all_of(memory.coldGroups.begin(),memory.coldGroups.end(),
-                        [&](const auto& group){return group.lastUse==old;}),
+                        [&](const auto& group){return group.lastUse==old;}) &&
+            std::equal(memory.coldGroups.begin(),memory.coldGroups.end(),beforeKnownEmpty.begin(),
+                [](const auto& group,const auto& prior) {
+                    return group.recoveryUses==prior.first && group.recoveryUseEpoch==prior.second;
+                }),
             "known empty use set mutated tracked timestamps");
 
     markSubmittedUseTimes(d,{{f.memory,99},{emptyHandle,SIZE_MAX},
@@ -2057,9 +2164,16 @@ void checkSubmitUseTimestampScope() {
                         [&](const auto& group){return group.lastUse==old;}),
             "invalid, empty, or missing known use mutated timestamps");
 
+    std::vector<std::pair<std::uint8_t,std::chrono::steady_clock::time_point>> beforeUnknown;
+    for(const auto& group:memory.coldGroups)
+        beforeUnknown.emplace_back(group.recoveryUses,group.recoveryUseEpoch);
     markSubmittedUseTimes(d,{},false,touched);
     require(memory.lastUse==touched && std::all_of(memory.coldGroups.begin(),memory.coldGroups.end(),
             [&](const auto& group){return group.lastUse==touched;}) &&
+            std::equal(memory.coldGroups.begin(),memory.coldGroups.end(),beforeUnknown.begin(),
+                [](const auto& group,const auto& prior) {
+                    return group.recoveryUses==prior.first && group.recoveryUseEpoch==prior.second;
+                }) &&
             d.virtualMemory.at(emptyHandle).lastUse==old &&
             d.virtualMemory.at(unrelatedHandle).lastUse==touched &&
             std::all_of(d.virtualMemory.at(unrelatedHandle).coldGroups.begin(),
@@ -2670,21 +2784,26 @@ void checkFreezePreservesUseTimestamp() {
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
         const auto used=std::chrono::steady_clock::now()-std::chrono::seconds(5);
-        m.coldGroups[0].lastUse=used;
+        m.coldGroups[0].lastUse=used; m.coldGroups[0].recoveryUses=7;
+        m.coldGroups[0].recoveryUseEpoch=used;
         require(freezeChildLocked(d,m,0)==VK_SUCCESS && m.coldGroups[0].cold &&
-                m.coldGroups[0].lastUse==used,
-                "synchronous freeze replaced the last-use timestamp");
+                m.coldGroups[0].lastUse==used && m.coldGroups[0].recoveryUses==7 &&
+                m.coldGroups[0].recoveryUseEpoch==used,
+                "synchronous freeze replaced use-tracking metadata");
     }
     {
         ColdCycleFixture c; auto& d=c.f.device; auto& m=c.f.state();
         d.asyncCompression=true; d.autoEnabled=true; d.coldBudget=2*MiB; d.residentLimitBytes=MiB/2;
         m.childGenerations.assign(m.children.size(),1);
         const auto used=std::chrono::steady_clock::now()+std::chrono::seconds(5);
-        m.coldGroups[0].lastUse=used;
+        m.coldGroups[0].lastUse=used; m.coldGroups[0].recoveryUses=11;
+        m.coldGroups[0].recoveryUseEpoch=used-std::chrono::seconds(1);
         std::unique_lock<std::mutex> deviceLock(d.mutex),queueLock(d.queueMutex);
         require(freezeChildAsyncLocked(d,c.f.memory,0,deviceLock,queueLock) &&
-                m.coldGroups[0].cold && m.coldGroups[0].lastUse==used,
-                "asynchronous freeze replaced the last-use timestamp");
+                m.coldGroups[0].cold && m.coldGroups[0].lastUse==used &&
+                m.coldGroups[0].recoveryUses==11 &&
+                m.coldGroups[0].recoveryUseEpoch==used-std::chrono::seconds(1),
+                "asynchronous freeze replaced use-tracking metadata");
     }
 #ifdef ZVRAM_TEST_ASYNC_HOOK
     {
@@ -2694,6 +2813,8 @@ void checkFreezePreservesUseTimestamp() {
         const auto used=std::chrono::steady_clock::now()-std::chrono::seconds(3);
         const auto touched=std::chrono::steady_clock::now();
         m.coldGroups[0].lastUse=used;
+        m.coldGroups[0].recoveryUses=4; m.coldGroups[0].recoveryUseEpoch=used;
+        auto expected=m.coldGroups[0]; recordRecoveryUse(expected,touched);
         struct TimestampUpdate { Device* device; VkDeviceMemory memory; std::chrono::steady_clock::time_point time; } update{
             &d,c.f.memory,touched};
         d.asyncEncodeTestHook=[](void* opaque) {
@@ -2704,8 +2825,10 @@ void checkFreezePreservesUseTimestamp() {
         d.asyncEncodeTestUserdata=&update;
         std::unique_lock<std::mutex> deviceLock(d.mutex),queueLock(d.queueMutex);
         require(freezeChildAsyncLocked(d,c.f.memory,0,deviceLock,queueLock) &&
-                m.coldGroups[0].cold && m.coldGroups[0].lastUse==touched,
-                "async freeze did not preserve the current timestamp changed during encoding");
+                m.coldGroups[0].cold && m.coldGroups[0].lastUse==touched &&
+                m.coldGroups[0].recoveryUses==expected.recoveryUses &&
+                m.coldGroups[0].recoveryUseEpoch==expected.recoveryUseEpoch,
+                "async freeze did not preserve current use metadata changed during encoding");
     }
 #endif
 }
@@ -3458,6 +3581,7 @@ int main() try {
     checkColdCycleHotCompletedChild();
     checkColdCycleCandidateSkipsUnpromotableOldest();
     checkColdCycleCandidatePrefersMostRecentEligible();
+    checkRecoveryUseHeatSelectionAndDecay();
     checkColdCycleCandidateZeroLiveOther();
     checkActiveWorkerDelayBounds();
     checkActiveSnapshotWorkerDrainsPressureAndStops();
