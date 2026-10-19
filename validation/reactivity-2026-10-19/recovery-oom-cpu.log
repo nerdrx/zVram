@@ -1,0 +1,41 @@
+Test project /home/nerdrx/Documents/ChatGPT/NX/zvram/build/layout
+      Start   1: cpu-vulkan-queue-flags
+ 1/18 Test   #1: cpu-vulkan-queue-flags ...........   Passed    0.00 sec
+      Start   2: cpu-device-features-chain
+ 2/18 Test   #2: cpu-device-features-chain ........   Passed    0.00 sec
+      Start   3: cpu-live-control
+ 3/18 Test   #3: cpu-live-control .................   Passed    0.00 sec
+      Start   4: cpu-bp16-codec
+ 4/18 Test   #4: cpu-bp16-codec ...................   Passed    0.02 sec
+      Start   5: cpu-resident-budget
+ 5/18 Test   #5: cpu-resident-budget ..............   Passed    0.00 sec
+      Start   6: cpu-resident-bootstrap
+ 6/18 Test   #6: cpu-resident-bootstrap ...........   Passed    0.02 sec
+      Start  17: cpu-vulkan-ram-guard
+ 7/18 Test  #17: cpu-vulkan-ram-guard .............   Passed    0.28 sec
+      Start  18: cpu-vulkan-compression-options
+ 8/18 Test  #18: cpu-vulkan-compression-options ...   Passed    2.95 sec
+      Start  19: cpu-vulkan-model-budget
+ 9/18 Test  #19: cpu-vulkan-model-budget ..........   Passed    2.19 sec
+      Start  20: cpu-compression-policy
+10/18 Test  #20: cpu-compression-policy ...........   Passed    0.01 sec
+      Start  21: cpu-clean-cache-policy
+11/18 Test  #21: cpu-clean-cache-policy ...........   Passed    0.00 sec
+      Start  22: cpu-snapshot-decode
+12/18 Test  #22: cpu-snapshot-decode ..............   Passed    0.03 sec
+      Start  23: cpu-gdeflate-envelope
+13/18 Test  #23: cpu-gdeflate-envelope ............   Passed    0.01 sec
+      Start  24: cpu-snapshot-pipeline
+14/18 Test  #24: cpu-snapshot-pipeline ............   Passed    0.02 sec
+      Start  25: vulkan-submission-tracking
+15/18 Test  #25: vulkan-submission-tracking .......   Passed    0.00 sec
+      Start  26: cpu-active-refs
+16/18 Test  #26: cpu-active-refs ..................   Passed    0.00 sec
+      Start 112: cpu-gdeflate-codec
+17/18 Test #112: cpu-gdeflate-codec ...............   Passed    0.76 sec
+      Start 113: cpu-gdeflate-snapshot
+18/18 Test #113: cpu-gdeflate-snapshot ............   Passed    0.01 sec
+
+100% tests passed out of 18
+
+Total Test time (real) =   6.31 sec

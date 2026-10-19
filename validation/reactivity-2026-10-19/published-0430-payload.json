@@ -1,0 +1,13 @@
+{
+  "archive_sha256": "c59666ec100be5566475ade3714cfae1376468b6b61c59a4cb7fd50106cfaf04",
+  "library_sha256": "9969e80aee0c45d7bf9aff7f9992b5ee541850077cb6976bfe3aaef283f45deb",
+  "codec_metadata": {
+    "gdeflate": true,
+    "gdeflate_gpu": true,
+    "bp16": true,
+    "bp16_gpu": true,
+    "test_hooks": false
+  },
+  "tag_payload_match": true,
+  "six_test_apis_absent": true
+}

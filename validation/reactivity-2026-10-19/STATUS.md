@@ -123,3 +123,33 @@ Recent-first ranking committed as 5ee7321. Final cadence review passed (commit/f
 ## 15:39 UTC — retry fix validated, preparing review
 - Normal and hook-enabled bootstrap PASS (budget-retry-normal.log, budget-retry-hook-enabled.log). Root rebuilt authoritative build/layout production layer; full18 CPU/submission tests PASS7.82s (budget-retry-build.log, budget-retry-cpu.log). Final readonly source review: no blocker.
 - VERSION prepared0.4.30 with release-notes-0.4.30.md; no release/install yet. Next commit/push PR and exact-head CI, then versioned publication/package verification. Installed remains0.4.29. No owned local jobs left, no new GPU tests run.
+
+- Commit d44ec52c10934440f985b89b7eec4697b3c11980 pushed on fix/pressure-budget-retry; PR15 https://github.com/nerdrx/zVram/pull/15 opened and attached. Exact-head Build39279355127/39279333571 queued. Package5 tests PASS0.211s. Next check CI once on future pass; merge only successful exact head, tag actual main merge0.4.30, verify public artifact then install versioned payload. Installed/public remain0.4.29; no owned running jobs.
+
+## 15:54 UTC — CI queue / recovery audit
+- PR15 exact-head Build39279355127/39279333571 still queued; no failed result and no merge/tag/install attempted. Avoid rerunning queued jobs.
+- active_queue_markers assigned bounded read-only selector-versus-promotion precondition audit: look for a reachable permanently unsuitable hottest candidate preventing another candidate from recovering. No edits/build/GPU authorized; require concrete mismatch before work. Other agents holding.
+
+## 16:04 UTC — CI running; conditional recovery finding
+- PR15 one Build running, other queued; exact head remains d44ec52. No merge/release/install.
+- Read-only recovery audit: static selector/promotion eligibility agrees. Candidate-specific allocation OOM can cause hottest candidate to repeat after device-global250ms backoff; smaller candidate might allocate. Root requested tighter proof because residentAdmissionLimit already includes reported external heap usage. Fragmentation/size-specific driver failure is distinct from known budget shortage. Agent checking minimal CPU regression/rollback boundary; no additional source/test edits authorized yet.
+
+## 16:15 UTC — CI finalization lag; isolated next regression
+- PR15 Build39279355127 SUCCESS. Build39279333571 still reports in_progress despite every job step including Complete job reporting success at15:38:48. Overall success not confirmed; no merge/tag/install. Check future pass, do not bypass gate.
+- Local branch fix/recovery-oom-candidates created from d44ec52, leaving PR15 unchanged. auto_docs_update owns test-only downstream allocation-size OOM regression; active_queue_markers static audit complete. Prove hottest allocation failure can repeat despite smaller candidate promotion success; stable external-budget shortage alone is not evidence because budget preflight already handles reported usage. No production change yet; no real-device OOM reproduction.
+
+## 16:25 UTC — v0.4.30 tagged; next recovery regression
+- Both PR15 exact-head Build jobs SUCCESS; merged with match-head d44ec52 to main541d95136f0fcf054cd509d412e461e97b309d66. Tagv0.4.30 pushed at actual merge. Release39285114642, tagBuild39285114583, mainBuild39285097611 queued (pages39285097103). Await publication, then verify via /tmp/verify-zvram-0430.py and exact publicpayload install; installed remains0.4.29. Do not install current dirty source.
+- New local branch fix/recovery-oom-candidates remains based on d44ec52. Agent CPU fixture recovery-oom-before.log reproduced size-specific downstream OOM starvation after proving oldbacking/accounting unchanged, no appbind/retention, temporaryview cleanup. This is fault-injected CPU evidence, not observed hardwareOOM.
+- Root added per-child recoveryRetryAfter: only replacement allocation OOM delays that child1s; existing global250ms failure limit remains. Selector/direct promotion respect it. No changes to ambiguous-error gates. auto_docs_update owns normal/hook regression and expiry guards; auto_safety_review reviews semantics. New patch uncommitted/unreleased; no GPU tests.
+
+## 16:36 UTC — recovery OOM validation
+- Root normal production layer rebuilt and18 CPU/submission checks PASS6.31s (recovery-oom-build.log/recovery-oom-cpu.log). Agent normal/hook bootstrap passed expiry boundary/direct retry/cooler promotion checks. Source review found no blocker; host-memory OOM remains outside this narrow device-memory OOM fix.
+- Root found synthetic fixture metadata copied the same app binding to both children and left hot view/binding size unchanged after growing child. Agent correcting distinct app bindings/matching sizes, then rerunning only normal/hook bootstrap. Do not commit until those final results. No GPU tests.
+- v0.4.30 Release39285114642 in_progress; both Build runs queued. Await exact-public-artifact checks before install; installed remains0.4.29.
+
+## 16:47 UTC — v0.4.30 published and installed
+- Release39285114642 and Build39285114583/39285097611 SUCCESS. Public archive SHAc59666ec100be5566475ade3714cfae1376468b6b61c59a4cb7fd50106cfaf04; librarySHA9969e80aee0c45d7bf9aff7f9992b5ee541850077cb6976bfe3aaef283f45deb. published-0430-payload.json verifies checksum assets/tag scripts/docs/assets/allcodecs/testhooksOFF/sixAPIsabsent/relative manifest.
+- Inspected0.4.29 symlink and absent0.4.30dir, copied exact publicpayload, bytecompared and atomically updated launcher; installed --version0.4.30. Release notes updated. Oldversions/userapps preserved.
+- Freshhealth: PSIall0, RAM19186492kB available, discreteGPU27%, ~2.69GBfree; existing2llama servers/ollama untouched, no games observed. Bounded installedpackage livecap PASSfullbytes, one32MiBfreeze/restore, finalresident/cold/cache/failures/driverlive0 (packaged-0430-live-cap.log). No latency/FPSclaim. Allownedjobscomplete.
+- New recoveryOOM fixture corrected to distinct matching appbindings; final normal/hook checks PASS, initial logs preserved. Production unchanged since full18CPU PASS6.31s. Preparing separate review commit; not in0.4.30.
