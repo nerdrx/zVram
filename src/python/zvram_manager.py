@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import select
 import signal
 import subprocess
 import sys
@@ -507,7 +508,7 @@ class Manager:
             write_json(path, job)
             return job
 
-    def stop(self, name):
+    def stop(self, name, force=False):
         if name.startswith('@'):
             row, saved = self.control_target(name)
             fd = os.pidfd_open(saved['pid'])
@@ -515,6 +516,19 @@ class Manager:
                 if identity(saved['pid']) != saved:
                     raise ValueError('Process identity changed; refusing to signal')
                 signal.pidfd_send_signal(fd, signal.SIGTERM)
+                if not force:
+                    return True
+                # Hold the pidfd through escalation: never signal a reused PID or
+                # a shared Steam/Wine process group.
+                poller = select.poll()
+                poller.register(fd, select.POLLIN)
+                if not poller.poll(3000):
+                    signal.pidfd_send_signal(fd, signal.SIGKILL)
+                    if not poller.poll(2000):
+                        raise ValueError('Stop sent, but process has not exited yet')
+                self._discovered_at = 0
+            except ProcessLookupError:
+                pass  # The selected process exited between checks.
             finally:
                 os.close(fd)
             return True

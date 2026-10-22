@@ -32,7 +32,7 @@ class FakeManager:
         self.calls.append(("start", name))
         self.profiles[name].update(running=True, pid=12345)
 
-    def stop(self, name):
+    def stop(self, name, force=False):
         self.calls.append(("stop", name))
         self.profiles[name].update(running=False)
 
@@ -304,7 +304,18 @@ def check_gui():
         for action in actions.values():
             action.assert_not_called()
     assert manager.profiles[EXTERNAL["name"]] == EXTERNAL
-    window.act("stop")
+    with patch("tkinter.messagebox.askyesno", return_value=False):
+        before = list(manager.calls)
+        window.act("stop")
+        assert manager.calls == before
+    with patch("tkinter.messagebox.askyesno", return_value=True):
+        window.act("stop")
+    import time
+    deadline = time.monotonic() + 2
+    while window.message.get() != "App stopped." and time.monotonic() < deadline:
+        root.update()
+        time.sleep(.01)
+    assert window.message.get() == "App stopped."
     assert manager.calls[-1] == ("stop", EXTERNAL["name"])
     manager.profiles[EXTERNAL["name"]].update(live_capable=True, running=True, control_devices=[dict(device="0", capable=True, current_limit_mib=1024, resident_mib=512, requested_mib=768, result=1)])
     window.refresh()
