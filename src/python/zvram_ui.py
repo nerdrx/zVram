@@ -4,6 +4,8 @@ Profiles affect wrapped launches only. Changed residency takes effect on restart
 """
 import shlex
 import textwrap
+import threading
+from concurrent.futures import Future
 from pathlib import Path
 
 PRIORITIES = ("high", "normal", "low")
@@ -568,8 +570,38 @@ class ManagerWindow:
         if not name:
             self.message.set("Select a profile first")
             return
+        if action == "stop" and name.startswith("@"):
+            from tkinter import messagebox
+            if not messagebox.askyesno(
+                    "Stop app", "Close the selected process? If it does not exit within 3 seconds, "
+                    "it will be force-stopped. Unsaved work may be lost.", parent=self.root):
+                return
+            result = Future()
+            def stop():
+                try:
+                    result.set_result(self.manager.stop(name, force=True))
+                except Exception as error:
+                    result.set_exception(error)
+            def finished():
+                if not result.done():
+                    self.root.after(100, finished)
+                    return
+                try:
+                    result.result()
+                    self.refresh()
+                    self.message.set("App stopped.")
+                except Exception as error:
+                    self.message.set("Error: %s" % error)
+            self.message.set("Stopping app… force stop after 3 seconds if needed.")
+            threading.Thread(target=stop).start()
+            self.root.after(100, finished)
+            return
         try:
-            getattr(self.manager, action)(name)
+            result = getattr(self.manager, action)(name)
+            if action == "stop" and result is False:
+                self.refresh()
+                self.message.set("App is no longer running.")
+                return
             self.refresh()
             self.message.set("%s: %s requested" % (name, action))
         except Exception as error:

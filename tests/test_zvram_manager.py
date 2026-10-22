@@ -105,6 +105,26 @@ class ManagerChecks(unittest.TestCase):
                 wrapped.wait()
                 unrelated.wait()
 
+    def test_external_stop_escalates_when_term_is_ignored(self):
+        with tempfile.TemporaryDirectory() as temp:
+            manager = Manager(temp)
+            child = subprocess.Popen(
+                [sys.executable, '-c',
+                 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); '
+                 'print("ready", flush=True); time.sleep(60)'],
+                stdout=subprocess.PIPE, text=True)
+            try:
+                self.assertEqual(child.stdout.readline().strip(), 'ready')
+                saved = identity(child.pid)
+                with patch.object(manager, 'control_target', return_value=({}, saved)):
+                    self.assertTrue(manager.stop('@dummy', force=True))
+                self.assertEqual(child.wait(timeout=2), -signal.SIGKILL)
+            finally:
+                if child.poll() is None:
+                    child.kill()
+                child.wait()
+                child.stdout.close()
+
     def test_lifecycle_and_isolation(self):
         with tempfile.TemporaryDirectory() as temp:
             manager = Manager(Path(temp) / "state")
